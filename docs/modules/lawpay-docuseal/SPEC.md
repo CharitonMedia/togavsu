@@ -2,6 +2,8 @@
 
 Module id `lawpay-docuseal`. Schema `mod_lawpay_docuseal`. Core PRD section 9.8, item 8. Every decision is made here, so the build runs from this spec with no pauses.
 
+**Where this module builds (Nov 14, 2026).** This module builds in its own repository, CharitonMedia/togavsu-lawpay-docuseal (modules PRD section 2), not in the core repository. Read each path below under `modules/lawpay-docuseal/` as the same path at that repository's root, `cmd/lawpay-docuseal/` as its `cmd/`, and `internal/modules/module_lawpay_docuseal_pg_test.go` as that repository's Postgres acceptance suite. The suite runs on `pkg/modulekit/coretest` from the public module kit (modules PRD section 5), whose counterparts of the harness names used below (`newEnv`, `e.rt.handlers`, `e.rt.last`, `approveAll`, `contextFor`, `moduleDB`) are listed in docs/modules/MODULE-KIT.md. Packaging and signing go through `pkg/modulekit`, never `internal/marketplace`. "Lane" below means this module's build in its repository. The repository's go.mod requires the core module for the kit and only dependencies the core's go.mod pins. The spec itself stays here, at docs/modules/lawpay-docuseal/SPEC.md.
+
 ## 1. Purpose and scope
 
 The module takes LawPay card and ACH payments into the firm's operating and trust accounts, issues full and partial refunds, and reconciles LawPay's records against the core's. It sends fee agreements for e-signature through DocuSeal and files the signed copy on the matter.
@@ -568,7 +570,7 @@ Each criterion runs against Postgres and the fake adapters with synthetic record
 
 Every test runs in the existing "Core tests" CI job (`go test ./...` against Postgres from `TOGAVSU_TEST_DATABASE_URL`). Postgres tests skip locally without it and fail in CI without it, as `testDSN` in `internal/modules/harness_pg_test.go` does.
 
-- `internal/modules/module_lawpay_docuseal_pg_test.go` (package `modules_test`, so it uses the existing harness in `internal/modules/harness_pg_test.go`: `newEnv`, `approveAll`, `contextFor`, `moduleDB`): before install the suite sets `e.rt.handlers["lawpay-docuseal"]` to a handler that, on its first request after each Deploy, reads `e.rt.last("lawpay-docuseal")` for the deployment's secrets and builds this module's handler with its own schema login from `e.moduleDB`, with `fake.LawPay`, `fake.DocuSeal` and a test clock injected through `Config`. It then builds and signs this package with `lawpaydocuseal.Build(priv, nil)` from a generated key, adds that key as trusted, installs through `POST /api/v1/modules` and approves every permission. The harness itself doesn't change (CORE-29). Core events reach the module's `/events`; provider webhooks reach it through `/hooks/lawpay-docuseal/...` on the core (CORE-07).
+- `internal/modules/module_lawpay_docuseal_pg_test.go` (package `modules_test`, so it uses the existing harness in `internal/modules/harness_pg_test.go`: `newEnv`, `approveAll`, `contextFor`, `moduleDB`): before install the suite sets `e.rt.handlers["lawpay-docuseal"]` to a handler that, on its first request after each Deploy, reads `e.rt.last("lawpay-docuseal")` for the deployment's secrets and builds this module's handler with its own schema login from `e.moduleDB`, with `fake.LawPay`, `fake.DocuSeal` and a test clock injected through `Config`. It then builds and signs this package with `lawpaydocuseal.Build(priv, nil)` from a generated key, adds that key as trusted, installs through `POST /api/v1/modules` and approves every permission. coretest serves the core routes this module calls (CORE-29). Core events reach the module's `/events`; provider webhooks reach it through `/hooks/lawpay-docuseal/...` on the core (CORE-07).
 - In the same file, one test per criterion, `TestPGModPay01` through `TestPGModPay53`, asserting core rows through the core API and module rows through the module's own database login.
 - Also in the same file: the package passes the install check (migrations, no duplicate record tables, RESTRICT keys, declared views and client tabs exist); uninstall with keep-data leaves the schema; hard-deleting a matter with module rows is refused and names the module.
 - `modules/lawpay-docuseal/webhook_test.go`, `status_test.go`, `money_test.go`: unit tests for candidate-field extraction, refund-first detection, status mapping, dedupe keys and cents parsing (a fractional or negative amount is refused).
@@ -580,7 +582,7 @@ Every test runs in the existing "Core tests" CI job (`go test ./...` against Pos
 modules/lawpay-docuseal/
   README.md                    what it does, settings, webhook URLs, build and sign steps
   Dockerfile                   as examples/matter-clock/Dockerfile; ENTRYPOINT ["/lawpay-docuseal", "serve"]
-  module.go                    Config, New, Handler, Build, Archive, SignFile (matter-clock's signing path, internal/marketplace)
+  module.go                    Config, New, Handler, Build, Archive, SignFile (the module kit's signing path, pkg/modulekit)
   charges.go refunds.go reconcile.go lawpayhook.go
   agreements.go docusealhook.go views.go pages.go sweep.go
   core/client.go               typed client for the section 6 calls
@@ -595,7 +597,7 @@ modules/lawpay-docuseal/
 internal/modules/module_lawpay_docuseal_pg_test.go   section 9 acceptance suite
 ```
 
-Secrets come from the Docker secrets the core hands the supervisor (`togavsu_api_token`, `togavsu_webhook_secret`, `togavsu_db_role`, `togavsu_db_password`, `togavsu_db_schema`), read as matter-clock reads them. Tunables come from module settings, never from integer literals, so `settings.CheckModule` passes. The sweep runs inside the module process every `reconcile_interval_minutes`. The build lane writes only under `modules/lawpay-docuseal/`, `docs/modules/lawpay-docuseal/` and the one suite file `internal/modules/module_lawpay_docuseal_pg_test.go`; it doesn't edit `.github/`, `go.mod`, protected control files or any other file in a core package. C1 to C15 go to the module-core lane through docs/modules/CORE-CHANGES.md and land before this module merges.
+Secrets come from the Docker secrets the core hands the supervisor (`togavsu_api_token`, `togavsu_webhook_secret`, `togavsu_db_role`, `togavsu_db_password`, `togavsu_db_schema`), read as matter-clock reads them. Tunables come from module settings, never from integer literals, so `settings.CheckModule` passes. The sweep runs inside the module process every `reconcile_interval_minutes`. The build writes only the CharitonMedia/togavsu-lawpay-docuseal repository and nothing in the core repository; a change to this spec goes to the integration lead. C1 to C15 go to the module-core lane through docs/modules/CORE-CHANGES.md and land before this module merges.
 
 ## 11. Out of scope
 
