@@ -1,7 +1,7 @@
 {
  "task_id": "release-api-coverage",
  "status": "pass",
- "tested_revision": "a92fb70523bf58ec3043932e33f0822128c8c83e",
+ "tested_revision": "0b09fd8fafcf2551ecb8ba90a25759cf14631088",
  "exit_code": 0,
  "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
  "tests": [
@@ -95,6 +95,13 @@
    "exit_code": 0,
    "status": "pass",
    "result": "107 markers, 66 ledger entries at the tested revision"
+  },
+  {
+   "id": "codex-findings-regressions-pr55-second-review",
+   "command": "go test -count=1 -run '^(TestReleaseBulkCustomFieldsReplacedTime|TestReleaseRecordCustomFields|TestEventsFeedAndAppend|TestFinanceTrustInvariants)$' ./internal/core/; go test -count=1 ./internal/trust/ ./internal/billing/ ./internal/domain/",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "the replaced-time test fails on d775cb0's code (a module write before the missing record's not_found) and passes at the tested revision; invalid bulkEvent, bulkCustomFieldValue and bulkTrustEntry items answer 422 batch_rejected"
   }
  ],
  "phase_cases": [
@@ -106,7 +113,7 @@
    "status": "pass",
    "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
    "exit_code": 0,
-   "revision": "a92fb70523bf58ec3043932e33f0822128c8c83e"
+   "revision": "0b09fd8fafcf2551ecb8ba90a25759cf14631088"
   }
  ],
  "passed_acceptance_ids": [
@@ -154,9 +161,9 @@
   "internal/core/migrations/1256_core_idempotency.sql"
  ],
  "known_limits": [
-  "bulkCustomFieldValue with time replaced by a module: routed to the module, untested (no harness), and not atomic with the core commit (ponytail in internal/core/customfields.go)",
+  "bulkCustomFieldValue with time replaced by a module: every forwarded record is resolved on the module before any write (missing is not_found, unavailable is batch_rejected), but forwarded items are written one PUT at a time, so a module refusing a later item, or a core commit fault, leaves values the module already accepted (ponytail in internal/core/customfields.go)",
   "custom_fields in time entry and expense create/patch bodies is still refused; values are set through the custom-fields routes",
-  "rejected batches answer validation (400) or not_found, following the existing bulk pattern; the domain error table has no batch_rejected/422 code",
+  "bulk routes the contract lists with batch_rejected (custom-field values, events, invoices, trust ledger, files) answer an invalid item with batch_rejected (422); access failures stay not_found, forbidden or scope_denied; an empty or oversized batch stays validation (400)",
   "staff role scope set does not include events:write, so a staff-owned token cannot append events; a staff session can",
   "event.appended rows also appear in listEvents as their own feed rows ('Event appended: <action>'); the feed has no rule to hide them"
  ],
@@ -182,6 +189,14 @@
   {
    "finding": "internal/files/grants.go: matter-grant upload published onto another matter returns forbidden",
    "resolution": "grantPlacement returns not_found for a matter grant's wrong matter (unassigned refusal unchanged); grants_pg_test.go asserts not_found alone and in a mixed batch that publishes nothing"
+  },
+  {
+   "finding": "bulkCustomFieldValue and bulkEvent return validation 400 for a rejected item where the contract lists batch_rejected",
+   "resolution": "domain.BatchRejected maps an item error to batch_rejected (422) keeping access codes; used by custom fields, events, invoices and bulkTrustEntry; tests expect 422 batch_rejected"
+  },
+  {
+   "finding": "with time replaced, forwarded custom-field items are written one by one after only an authorization check, so a later failure leaves earlier module writes",
+   "resolution": "every forwarded record is resolved on the module (GET, no write) before the first write, so a missing record is not_found and an unavailable replacement is batch_rejected with nothing written, core items included; a module refusing a later item's values is the widened ponytail ceiling; TestReleaseBulkCustomFieldsReplacedTime covers it with a fake time module"
   }
  ]
 }
