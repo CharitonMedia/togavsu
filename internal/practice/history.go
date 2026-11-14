@@ -74,6 +74,7 @@ func (s *Service) ActivityFeed(ctx context.Context, p domain.Principal, actorKin
 // Activity returns the feed with tab counts, staff chips, and a page.
 // The Agents tab is API tokens and modules together.
 func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQuery) (ActivityView, error) {
+	ctx = withSettingsMemo(ctx)
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
 		return ActivityView{}, err
 	}

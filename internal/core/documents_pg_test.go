@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -24,6 +25,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/editor"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/storage/storagetest"
 	"github.com/CharitonMedia/togavsu/internal/supervisor"
 )
@@ -83,6 +85,9 @@ func (c *client) raw(method, path string, body []byte, hdr ...string) resp {
 	}
 	if c.csrf != "" {
 		req.Header.Set("X-CSRF-Token", c.csrf)
+	}
+	if c.bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+c.bearer)
 	}
 	for i := 0; i+1 < len(hdr); i += 2 {
 		req.Header.Set(hdr[i], hdr[i+1])
@@ -1093,35 +1098,62 @@ func TestDocumentsDocTenderCorpus(t *testing.T) {
 	t.Run("corpus", testDocTenderCorpus)
 }
 
-// AC-043 (staff and drop-folder arrivals): each is processed by the running worker within
-// 10 minutes of arrival with no nightly run, and each comes out with the pattern name as
-// its only name, a category, a summary, its folder and a saved Markdown copy. The client
-// upload and the module-written file need the module runtime (pending); the core
-// refuses both writes today.
+// AC-043: a staff upload, a client upload, a file written by a module and a drop-folder
+// file are each processed by the running worker within 10 minutes of arrival with no
+// nightly run, and each comes out with the pattern name as its only name, a category, a
+// summary, its folder and a saved Markdown copy. The client upload comes through a
+// client portal module's frame (PRD 8.19: source client_upload, origin received, the
+// client as uploader); the module file is written with the module's own files:write
+// token (source the module id). Client users stay read-only directly (PRD 4).
 func testDocTenderArrival(t *testing.T) {
 	prov := NewProvider()
 	defer prov.Close()
-	d := newDocs(t, func(c *Config) { c.ProviderURLs = map[string]string{"openai": prov.URL()} })
+	x := newExt(t, func(c *Config) {
+		c.ProviderURLs = map[string]string{"openai": prov.URL()}
+		c.NoBackground = false // the core's own worker and drop-folder scan run
+	})
+	d := x.docs
+	ctx := context.Background()
 	d.useProvider()
 	d.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/files.drop_steady_seconds", map[string]any{"value": 1})
 	matter, clientContact := d.matter("Example Dissolution", "", map[string]any{"case_number": "23AR-CV00825"})
 	number := str(t, d.admin.must(http.StatusOK, "GET", "/api/v1/matters/"+matter, nil).json, "number")
-	clientUser, err := d.app.Identity.CreateUser(context.Background(), d.adminCaller(), identity.NewUser{Name: "Cleo Client", Email: "cleo@client.example",
+	other, _ := d.matter("Estate of Other", "", nil)
+	walled, _ := d.matter("Sealed Guardianship", "", nil)
+	if err := x.app.Practice.SetWall(ctx, x.adminP(), domain.ID(walled), []domain.ID{domain.ID(x.attyID)}); err != nil {
+		t.Fatal(err)
+	}
+	clientUser, err := d.app.Identity.CreateUser(ctx, d.adminCaller(), identity.NewUser{Name: "Cleo Client", Email: "cleo@client.example",
 		Password: "synthetic-password-cleo", Roles: []domain.Role{domain.RoleClient}, ContactID: domain.ID(clientContact)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = clientUser
-	// A client user signs in with a session (two-factor is optional for clients); client
-	// tokens carry no files:write scope.
+	// A client user signs in with a session (two-factor is optional for clients).
 	asClient := newClient(t, d.srv.URL)
 	login := asClient.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": "cleo@client.example", "password": "synthetic-password-cleo"})
 	if str(t, login.json, "status") != "authenticated" {
 		t.Fatalf("client sign-in: %s", login.body)
 	}
 	asClient.csrf = str(t, login.json, "csrf_token")
-	asModule := d.token(map[string]any{"name": "sample module", "module_id": "sample-module", "scopes": []string{"files:read", "files:write"},
-		"approved_scopes": []string{"files:read", "files:write"}})
+
+	// The portal module, installed, signed and approved for files:read and files:write.
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	x.rt.handlers["client-portal"] = http.NotFoundHandler()
+	if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(extPortalManifest))); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("client-portal")
+	moduleToken := x.rt.last("client-portal").Secrets["togavsu_api_token"]
+	asModule := newClient(t, d.srv.URL)
+	asModule.bearer = moduleToken
+	ct, err := x.app.Modules.IssueContext(ctx, x.principal(asClient), "client-portal", domain.ID(matter))
+	if err != nil {
+		t.Fatal(err)
+	}
+	asPortalClient := newClient(t, d.srv.URL)
+	asPortalClient.bearer = moduleToken
+	asPortalClient.http.Transport = withHeader{modules.ContextHeader, ct.Token}
+
 	share := filepath.Join(d.cfg.DataDir, "share")
 	d.admin.must(http.StatusCreated, "POST", "/api/v1/storage-backends", map[string]any{"kind": "network_path", "name": "Office NAS", "drop_folder": true, "settings": map[string]any{"path": share}})
 
@@ -1129,15 +1161,21 @@ func testDocTenderArrival(t *testing.T) {
 	var got []string
 	body := func(date string) []byte { return []byte(strings.Replace(motionText, "2026-10-15", date, 1)) }
 	got = append(got, str(t, d.upload(d.staff, matter, "Scan_0001 final(2).txt", "text/plain", body("2026-10-15"), nil), "id"))
-	// Client users are read-only in the core (PRD 4); client uploads arrive through the
-	// client portal module (PRD 8.19), a later phase. A direct client write is refused.
-	if r := asClient.do("POST", "/api/v1/file-uploads", map[string]any{"file_name": "from client.txt", "matter_id": matter, "size_bytes": 10, "media_type": "text/plain"}); r.code != http.StatusForbidden {
+	got = append(got, str(t, d.upload(asModule, matter, "module output.txt", "text/plain", body("2026-10-16"), nil), "id"))
+	got = append(got, str(t, d.upload(asPortalClient, matter, "from client.txt", "text/plain", body("2026-10-17"), nil), "id"))
+	// Failure paths: a client user's own session stays read-only (PRD 4); the module's
+	// token can't reach a matter behind a wall; the client through the portal can't
+	// write onto a matter they are not a client on.
+	up := map[string]any{"file_name": "x.txt", "size_bytes": 10, "media_type": "text/plain"}
+	with := func(m string) map[string]any { up["matter_id"] = m; return up }
+	if r := asClient.do("POST", "/api/v1/file-uploads", with(matter)); r.code != http.StatusForbidden {
 		t.Fatalf("a client user's direct upload: %d %s", r.code, r.body)
 	}
-	// A module-bound token has no user and no roles until the module runtime grants a
-	// module its manifest's permissions (PRD 9.3), a later phase; today its write is refused.
-	if r := asModule.do("POST", "/api/v1/file-uploads", map[string]any{"file_name": "module output.txt", "matter_id": matter, "size_bytes": 10, "media_type": "text/plain"}); r.code != http.StatusForbidden {
-		t.Fatalf("a module token's upload: %d %s", r.code, r.body)
+	if r := asModule.do("POST", "/api/v1/file-uploads", with(walled)); r.code != http.StatusNotFound {
+		t.Fatalf("a module token's upload behind a wall: %d %s", r.code, r.body)
+	}
+	if r := asPortalClient.do("POST", "/api/v1/file-uploads", with(other)); r.code != http.StatusNotFound {
+		t.Fatalf("a client's portal upload onto another matter: %d %s", r.code, r.body)
 	}
 	dropDir := filepath.Join(share, "drop", number)
 	waitFor(t, time.Minute, "the drop folder's matter subfolder", func() bool { _, err := os.Stat(dropDir); return err == nil })
@@ -1153,16 +1191,24 @@ func testDocTenderArrival(t *testing.T) {
 		}
 		return false
 	})
-	wantSource := []string{"upload", "drop_folder"}
+	wantSource := []string{"upload", "client-portal", "client_upload", "drop_folder"}
+	wantOrigin := []string{"firm", "firm", "received", "firm"}
+	wantBy := []string{d.staffID, string(domain.SystemUserID), string(clientUser.ID), ""}
 	for k, id := range got {
 		waitFor(t, 10*time.Minute, "processing of the "+wantSource[k]+" file", func() bool { return d.dtStatus(d.atty, id)["status"] == "published" })
 		f := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+id, nil).json
-		want := "dissolution-" + number + "-motion-to-withdraw-2026-10-" + []string{"15", "18"}[k] + ".txt"
-		if f["name"] != want || f["source"] != wantSource[k] || f["arrived_as"] == f["name"] {
-			t.Fatalf("%s file: name %v (want %s), source %v, arrived as %v", wantSource[k], f["name"], want, f["source"], f["arrived_as"])
+		want := "dissolution-" + number + "-motion-to-withdraw-2026-10-" + []string{"15", "16", "17", "18"}[k] + ".txt"
+		if f["name"] != want || f["source"] != wantSource[k] || f["arrived_as"] == f["name"] || f["origin"] != wantOrigin[k] {
+			t.Fatalf("%s file: name %v (want %s), source %v, arrived as %v, origin %v", wantSource[k], f["name"], want, f["source"], f["arrived_as"], f["origin"])
 		}
 		if f["category_id"] != "court_filing" || f["folder_id"] == nil || d.folderName(d.atty, matter, f["folder_id"].(string)) != "Pleadings" {
 			t.Fatalf("%s file: category %v, folder %v", wantSource[k], f["category_id"], f["folder_id"])
+		}
+		if wantBy[k] != "" {
+			vs := items(t, d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+id+"/versions", nil))
+			if len(vs) == 0 || vs[len(vs)-1]["saved_by"] != wantBy[k] {
+				t.Fatalf("%s file: first version saved by %v, want %s", wantSource[k], vs, wantBy[k])
+			}
 		}
 		res := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+id+"/doc-tender-result", nil).json
 		if s, _ := res["summary"].(string); s == "" {
@@ -1177,13 +1223,44 @@ func testDocTenderArrival(t *testing.T) {
 		t.Fatalf("processing took %v", took)
 	}
 	// No nightly run was involved: the sweep finds nothing left to queue.
-	if n, err := d.app.DocTender.Sweep(context.Background()); err != nil || n != 0 {
+	if n, err := d.app.DocTender.Sweep(ctx); err != nil || n != 0 {
 		t.Fatalf("the nightly sweep found %d files unprocessed (%v)", n, err)
 	}
-	// The client sees none of the firm's unshared files.
-	if r := asClient.do("GET", "/api/v1/files?matter_id="+matter, nil); strings.Contains(r.body, got[0]) || strings.Contains(r.body, got[1]) || strings.Contains(r.body, "dissolution-") {
-		t.Fatalf("client file list: %d %s", r.code, r.body)
+	// The client sees their own upload and none of the firm's unshared files.
+	list := asClient.must(http.StatusOK, "GET", "/api/v1/files?matter_id="+matter, nil)
+	if strings.Contains(list.body, got[0]) || strings.Contains(list.body, got[1]) || strings.Contains(list.body, got[3]) || !strings.Contains(list.body, got[2]) {
+		t.Fatalf("client file list: %s", list.body)
 	}
+	// A disabled module's token writes nothing.
+	x.tabForm(x.admin, "disable", url.Values{"module_id": {"client-portal"}}, nil)
+	if r := asModule.do("POST", "/api/v1/file-uploads", with(matter)); r.code != http.StatusForbidden && r.code != http.StatusUnauthorized {
+		t.Fatalf("a disabled module's upload: %d %s", r.code, r.body)
+	}
+}
+
+// extPortalManifest is a client portal module that writes files (PRD 8.19).
+const extPortalManifest = `id: client-portal
+name: Client portal
+version: "1.0.0"
+author: Synthetic author
+container:
+  image: ghcr.io/example/client-portal
+  digest: sha256:4444444444444444444444444444444444444444444444444444444444444444
+  port: 8080
+permissions:
+  - scope: files:read
+  - scope: files:write
+  - scope: matters:read
+`
+
+// withHeader adds one header to every request, as a module adds the viewer's context
+// token to each call it makes for that viewer.
+type withHeader [2]string
+
+func (h withHeader) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set(h[0], h[1])
+	return http.DefaultTransport.RoundTrip(r)
 }
 
 func (d *docs) adminCaller() identity.Caller {
@@ -1258,6 +1335,72 @@ func testDocTenderCorpus(t *testing.T) {
 	}
 	if prov.Count("labeling:gpt-6.1-sol") == 0 {
 		t.Fatalf("the provider saw no labeling call on gpt-6.1-sol: %v", prov.Calls())
+	}
+	// The AI call log shows it: over the API, filtered by task and provider and paged by
+	// cursor, over the admin's MCP, and on the AI and inference tab. Staff and the
+	// accountant are refused.
+	logged := d.admin.must(http.StatusOK, "GET", "/api/v1/ai/calls?task=labeling&provider=openai", nil)
+	labeled := items(t, logged)
+	if len(labeled) == 0 {
+		t.Fatalf("no labeling call in the log: %s", logged.body)
+	}
+	for _, c := range labeled {
+		if c["task"] != "labeling" || c["provider"] != "openai" || c["model"] != "gpt-6.1-sol" || c["requester"] != "system" {
+			t.Fatalf("labeling log row: %v", c)
+		}
+	}
+	if none := items(t, d.admin.must(http.StatusOK, "GET", "/api/v1/ai/calls?task=labeling&provider=anthropic", nil)); len(none) != 0 {
+		t.Fatalf("provider filter: %v", none)
+	}
+	all := items(t, d.admin.must(http.StatusOK, "GET", "/api/v1/ai/calls", nil))
+	if len(all) < 2 {
+		t.Fatalf("want at least two logged calls to page: %d", len(all))
+	}
+	var paged []any
+	cursor := ""
+	for i := 0; i <= len(all); i++ {
+		path := "/api/v1/ai/calls?limit=1"
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		pg := d.admin.must(http.StatusOK, "GET", path, nil)
+		for _, c := range items(t, pg) {
+			paged = append(paged, c["id"])
+		}
+		next, _ := pg.json["page"].(map[string]any)["next_cursor"].(string)
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	if len(paged) != len(all) || paged[0] != all[0]["id"] || paged[len(paged)-1] != all[len(all)-1]["id"] {
+		t.Fatalf("cursor pages %v differ from the full list of %d", paged, len(all))
+	}
+	for _, bad := range []string{"cursor=not-a-cursor", "limit=0", "limit=100000", "from_time=yesterday"} {
+		if r := d.admin.do("GET", "/api/v1/ai/calls?"+bad, nil); r.code != http.StatusBadRequest {
+			t.Fatalf("GET /api/v1/ai/calls?%s answered %d", bad, r.code)
+		}
+	}
+	for _, c := range []*client{d.staff, d.acct, d.atty} {
+		if r := c.do("GET", "/api/v1/ai/calls", nil); r.code != http.StatusForbidden {
+			t.Fatalf("a non-admin read the AI call log: %d", r.code)
+		}
+		if r := c.do("GET", "/admin?tab=ai", nil); r.code != http.StatusForbidden {
+			t.Fatalf("a non-admin opened the AI tab: %d", r.code)
+		}
+	}
+	if mcp := mcpCall(d.admin, toolName(t, "GET", "/api/v1/ai/calls"), map[string]any{"query": map[string]any{"task": "labeling"}}); !strings.Contains(mcp.body, "gpt-6.1-sol") || strings.Contains(mcp.body, `"isError":true`) {
+		t.Fatalf("call log over MCP: %s", mcp.body)
+	}
+	if mcp := mcpCall(d.staff, toolName(t, "GET", "/api/v1/ai/calls"), map[string]any{}); strings.Contains(mcp.body, "gpt-6.1-sol") {
+		t.Fatalf("staff read the call log over MCP: %s", mcp.body)
+	}
+	tab := d.admin.must(http.StatusOK, "GET", "/admin?tab=ai&task=labeling", nil)
+	if !strings.Contains(tab.body, `id="ai-call-log"`) || !strings.Contains(tab.body, `<td>labeling</td><td>openai</td><td><code>gpt-6.1-sol</code></td>`) {
+		t.Fatalf("the AI tab does not show the labeling call:\n%s", tab.body)
+	}
+	if tab := d.admin.must(http.StatusOK, "GET", "/admin?tab=ai&task=ocr&provider=anthropic", nil); strings.Contains(tab.body, `id="call-`) || !strings.Contains(tab.body, "No AI calls match.") {
+		t.Fatal("the AI tab's filter still lists calls")
 	}
 	choices := d.admin.must(http.StatusOK, "GET", "/api/v1/doc-tender/model-choices", nil).json
 	for _, task := range []string{"labeling", "categorizing"} {
@@ -1588,11 +1731,14 @@ func inOrder(s string, parts ...string) bool {
 // core keeps its files under; the two constants must agree or an update would start on
 // an empty file store.
 func TestCoreDataDirMatchesTheSupervisorMount(t *testing.T) {
+	if filepath.Dir(PassphraseFile) != supervisor.BackupKeyDir {
+		t.Fatalf("the core writes the backup passphrase to %s, the supervisor mounts %s", PassphraseFile, supervisor.BackupKeyDir)
+	}
 	if supervisor.CoreDataDir != DataDir {
 		t.Fatalf("supervisor mounts the core data volume at %s, the core uses %s", supervisor.CoreDataDir, DataDir)
 	}
-	binds := supervisor.CoreBinds("p_appsecrets", "p_core_data")
-	if len(binds) != 2 || binds[1] != "p_core_data:"+DataDir {
+	binds := supervisor.CoreBinds(supervisor.CoreVolumes{AppSecrets: "p_appsecrets", Data: "p_core_data"})
+	if len(binds) != 3 || binds[2] != "p_core_data:"+DataDir {
 		t.Fatalf("replacement core binds %v", binds)
 	}
 }

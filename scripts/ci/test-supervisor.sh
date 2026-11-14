@@ -41,6 +41,8 @@ trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/cmd" "$work/internal"
 cp -a "$root/cmd/supervisor" "$work/cmd/supervisor"
 cp -a "$root/internal/supervisor" "$work/internal/supervisor"
+# The supervisor image builds these two packages alone (Dockerfile); so does this copy.
+cp -a "$root/internal/ledgerseal" "$work/internal/ledgerseal"
 printf 'module github.com/CharitonMedia/togavsu\n\ngo 1.22\n' > "$work/go.mod"
 cd "$work"
 go test ./internal/supervisor/ ./cmd/supervisor/

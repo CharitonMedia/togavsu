@@ -200,6 +200,10 @@ def _arr(items: dict, description: str = "") -> dict:
     return schema
 
 
+# Backup ids are the supervisor's archive names (docs/platform/backup-format.md), not UUIDs.
+_BACKUP_ID = {"type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$", "description": "Backup id: UTC time and 16 hex characters."}
+
+
 def _meta(extra: dict, required: list[str], description: str = "", mutable: bool = True) -> dict:
     properties = {
         "id": _uuid(),
@@ -2336,10 +2340,13 @@ SCHEMAS = _register(
         ),
         "Backup": _meta(
             {
+                "id": _BACKUP_ID,
                 "status": _enum(["running", "completed", "failed"]),
-                "checksum": {"type": "string"},
+                "checksum": {"type": "string", "description": "SHA-256 of the encrypted archive, as the downloaded file and every destination copy must match."},
                 "bytes": {"type": "integer", "minimum": 0},
-                "kind": _enum(["nightly", "pre_update", "manual"]),
+                "kind": _enum(["nightly", "pre_update", "manual", "safety", "imported"]),
+                "files": {"type": "boolean", "description": "The archive holds every file version and rendition (Markdown copies included) from the backed-up storage backends. False for the safety backup a restore takes while the core is stopped."},
+                "destination_errors": {"type": "array", "items": {"type": "string"}, "description": "Destinations the archive could not be copied to. The admin is mailed as well."},
             },
             ["status", "kind"],
             "A backup archive. The bytes are encrypted with the backup passphrase.",
@@ -2364,7 +2371,9 @@ SCHEMAS = _register(
         ),
         "Restore": _meta(
             {
-                "backup_id": _null(_uuid()),
+                "id": {"type": "string", "pattern": "^restore-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$", "description": "Supervisor restore id."},
+                "backup_id": _null(_BACKUP_ID),
+                "error": {"type": "string", "description": "Why a failed restore stopped. invalid_backup includes a damaged or partial file set, refused before the database swap. files_rolled_back means the file bytes could not be written, so the safety backup taken before the swap was restored as a separate restore of that backup and the previous data is live. files_not_restored means the database was restored, the file bytes were not, and the rollback did not complete."},
                 "status": _enum(["running", "completed", "failed"]),
                 "interrupts_users": {"type": "boolean", "const": True},
             },
@@ -2383,7 +2392,7 @@ SCHEMAS = _register(
         ),
         "RestoreWrite": _obj(
             {
-                "backup_id": _null(_uuid("A stored backup. Omit when upload_token is set.")),
+                "backup_id": _null(dict(_BACKUP_ID, description="A stored backup. Omit when upload_token is set.")),
                 "upload_token": {"type": "string", "description": "From createBackupUpload, including an archive that was downloaded and uploaded again."},
                 "passphrase": {"type": "string", "minLength": 1, "description": "Backup passphrase set at first-run setup."},
             },
@@ -3281,6 +3290,9 @@ QUERY = {
     "screen": _query("screen", {"type": "string"}, "Guide topic screen id."),
     "section_id": _query("section_id", _ref("Uuid"), "Help section filter."),
     "as_of": _query("as_of", _date(), "Report as-of date."),
+    "ai_task": _query("task", {"type": "string"}, "AI task filter, such as labeling, categorizing, ocr, summaries or a module task."),
+    "ai_provider": _query("provider", _enum(["anthropic", "openai", "compatible", "local"]), "AI provider filter."),
+    "ai_module_id": _query("module_id", {"type": "string"}, "Module that asked. Calls the core made itself have no module."),
     "custom": {
         "name": "custom",
         "in": "query",

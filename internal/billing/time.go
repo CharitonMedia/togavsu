@@ -30,6 +30,15 @@ type TimeFilter struct {
 	Billable  *bool
 	InvoiceID domain.ID
 	Unbilled  bool
+	// Max stops the list after that many visible entries; zero lists every one.
+	Max int
+	// Newest lists by worked_on then id, newest first, instead of id order.
+	Newest bool
+}
+
+func (f TimeFilter) where() Where {
+	return Where{MatterID: f.MatterID, UserID: f.UserID, InvoiceID: f.InvoiceID, FromDate: f.FromDate, ToDate: f.ToDate,
+		Unbilled: f.Unbilled, Newest: f.Newest}
 }
 
 // overBulkMax reports a batch larger than api.bulk_batch_max (registry default 500).
@@ -66,26 +75,27 @@ func (s *Service) TimeEntries(ctx context.Context, p domain.Principal, f TimeFil
 	if err := s.readBilling(ctx, p, ""); err != nil {
 		return nil, err
 	}
-	rows, err := listOf[TimeEntry](ctx, s.d.Store, kindTime)
-	if err != nil {
-		return nil, err
-	}
 	seen := map[domain.ID]bool{}
 	var out []TimeEntry
-	for _, r := range rows {
+	err := scanFind(ctx, s.d.Store, kindTime, f.where(), f.Max, func(r TimeEntry) (bool, error) {
 		if !f.match(r) {
-			continue
+			return false, nil
 		}
 		ok, cached := seen[r.MatterID]
 		if !cached {
+			var err error
 			if ok, err = s.visible(ctx, p, r.MatterID); err != nil {
-				return nil, err
+				return false, err
 			}
 			seen[r.MatterID] = ok
 		}
 		if ok {
 			out = append(out, r)
 		}
+		return ok, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }

@@ -402,12 +402,15 @@ func (s *Service) replayVersion(ctx context.Context, p domain.Principal, fileID,
 	return s.Version(ctx, p, fileID, u.VersionID)
 }
 
+// sourceFor is the file's source: a client's upload (directly, or through the client
+// portal module's frame, PRD 8.19) is client_upload, a module's own write is the module
+// id, and a staff upload is upload.
 func sourceFor(p domain.Principal) string {
 	switch {
-	case p.Source == domain.SourceModule && p.ModuleID != "":
-		return p.ModuleID
 	case clientOnly(p):
 		return "client_upload"
+	case p.Source == domain.SourceModule && p.ModuleID != "":
+		return p.ModuleID
 	default:
 		return "upload"
 	}

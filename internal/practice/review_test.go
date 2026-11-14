@@ -624,7 +624,7 @@ func TestPracticeAPINotesAndActivityPages(t *testing.T) {
 		t.Fatal(staffOnly)
 	}
 	text := strings.Join(Pending, "\n")
-	for _, needle := range []string{"contacts:bulk", "merge", "archive matter", "MCP and bearer tokens"} {
+	for _, needle := range []string{"custom-field-values:bulk", "merge", "archive matter", "MCP and bearer tokens"} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("pending list lost %q", needle)
 		}

@@ -4081,12 +4081,15 @@ def _admin(api: Contract) -> None:
         "/api/v1/ai/calls",
         operation_id="listAiCalls",
         summary="AI call log",
-        description="Task, provider, model, tokens, fallback, and the user or module that asked.",
+        description=(
+            "Task, provider, model, tokens, fallback, and the user or module that asked, newest first. "
+            "A call on a matter the admin is walled off from is omitted."
+        ),
         tag="AI",
         features=["ai"],
         roles=ADMIN,
         scopes=["ai:admin"],
-        query=["from_time", "to_time", "matter_id"],
+        query=["from_time", "to_time", "matter_id", "ai_task", "ai_provider", "ai_module_id"],
         response_schema=_page("AiCall"),
         paginate=True,
         writes=False,
@@ -4240,6 +4243,15 @@ def _admin(api: Contract) -> None:
         "upload_token is how an archive the admin downloaded is restored. A body with neither source is validation_failed."
     )
     api.spec["paths"]["/api/v1/restores"]["post"]["x-togavsu-error-codes"] = ["validation_failed"]
+    # Backup and restore ids are the supervisor's names, not UUIDs.
+    for path, item in api.spec["paths"].items():
+        for name, pattern in (("backup_id", "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$"), ("restore_id", "^restore-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$")):
+            if "{" + name + "}" not in path:
+                continue
+            for op in item.values():
+                for param in op.get("parameters", []) if isinstance(op, dict) else []:
+                    if param.get("name") == name and param.get("in") == "path":
+                        param["schema"] = {"type": "string", "pattern": pattern}
     api.add(
         "post",
         "/api/v1/backup-uploads",
@@ -4261,6 +4273,16 @@ def _admin(api: Contract) -> None:
         response="BackupUpload",
         success="201",
     )
+    api.spec["paths"]["/api/v1/backup-uploads"]["post"].setdefault("parameters", []).append({
+        "name": "backup_id",
+        "in": "query",
+        "required": False,
+        "schema": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}(\\.tgbk)?$"},
+        "description": (
+            "The archive's file name, with or without .tgbk. Its encrypted manifest names this id. "
+            "An archive this installation still holds byte for byte is restored by its own id without it; any other needs it."
+        ),
+    })
     api.add(
         "get",
         "/api/v1/updates",

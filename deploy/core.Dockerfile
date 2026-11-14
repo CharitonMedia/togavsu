@@ -5,9 +5,11 @@
 FROM golang:1.22-bookworm AS build
 WORKDIR /src
 COPY . .
+# TOGAVSU_VERSION is the release version /api/v1/health reports (internal/core.Version).
+ARG TOGAVSU_VERSION=dev
 RUN test -f go.mod \
     && test -d cmd/core \
-    && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/core ./cmd/core
+    && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/CharitonMedia/togavsu/internal/core.Version=$TOGAVSU_VERSION" -o /out/core ./cmd/core
 
 # LawCraft (PRD 8.20) at the pinned commit, built by web/editor/build.sh: wordcraft-cli,
 # which the core runs for editor runs, merge fields, conversions and Doc Tender's Word
@@ -55,7 +57,14 @@ COPY --from=editor /out/wordcraft-cli /usr/local/bin/wordcraft-cli
 COPY --from=editor /out/editor /usr/share/togavsu/editor
 COPY deploy/core/entrypoint.sh /usr/local/bin/core-entrypoint
 RUN chmod 755 /usr/local/bin/core-entrypoint
-LABEL togavsu.role=core
+# The supervisor compares the togavsu.version label of the running and the advertised
+# core; the same build argument is the version compiled into the binary above.
+ARG TOGAVSU_VERSION=dev
+LABEL togavsu.role=core togavsu.version=$TOGAVSU_VERSION
 USER 65532:65532
 EXPOSE 8080
+# The supervisor swaps in a core only after Docker reports this check healthy, and waits
+# for it after it restarts the core for a restore (PRD 6). --start-interval needs Docker 25+.
+HEALTHCHECK --interval=10s --timeout=4s --start-period=120s --start-interval=1s --retries=3 \
+    CMD ["/usr/local/bin/core", "healthcheck"]
 ENTRYPOINT ["/bin/sh", "/usr/local/bin/core-entrypoint"]

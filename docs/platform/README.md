@@ -2,9 +2,13 @@
 
 This assignment builds the Compose project, Caddy entry point, Postgres 17, the supervisor, and product CI. It uses synthetic data only. It does not deploy to a firm and it does not claim a signed release.
 
-`docker compose up` of the caddy, postgres, and supervisor services needs no edited config files. Bootstrap generates the database password, the supervisor token, and the field key into volumes. The backup passphrase stays unset until first-run writes `/appsecrets/backup_passphrase`.
+`docker compose up` needs no edited config files. Bootstrap (`deploy/bootstrap/bootstrap-secrets.sh`) generates the database passwords, the supervisor token, and the field key into three volumes:
 
-The core service is declared in `compose.yaml`. `deploy/core.Dockerfile` builds `cmd/core`. That binary accepts the contracts bootstrap environment and does not start HTTP or migrations, so a fresh install does not yet reach the firm-name, admin, and two-factor screen.
+- `/appsecrets`: `database_url` (the `togavsu_app` login), `field_key`, `supervisor_token`, `domain`. Every core container, Compose's or a supervisor replacement, mounts it read-only.
+- `/adminsecrets`: `admin_database_url`, the Postgres superuser URL. Only the `migrate` one-shot, the supervisor, and the update migrator container the supervisor starts mount it (read-only). A serving core never mounts it, and the core entrypoint refuses to serve if it can read a superuser URL.
+- `/backupkey`: `backup_passphrase`, created empty. It stays unset until first-run writes `/backupkey/backup_passphrase`; it is the one secret the core writes, and the supervisor reads it read-only.
+
+The core service is declared in `compose.yaml`. `deploy/core.Dockerfile` builds `cmd/core`, which serves HTTP on port 8080 after the `migrate` one-shot has applied the migrations and sealed the append-only ledgers; a fresh install opens on the firm-name, admin, and two-factor screen.
 
 Module path: `github.com/CharitonMedia/togavsu`. The supervisor imports `github.com/CharitonMedia/togavsu/internal/supervisor`. The module file and the core schema come from the contracts assignment.
 

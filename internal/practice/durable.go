@@ -106,6 +106,7 @@ func (m *Memory) adopt(f *Memory) {
 	m.audits, m.events = f.audits, f.events
 	m.fields, m.values, m.markers, m.pinned = f.fields, f.values, f.markers, f.pinned
 	m.closes, m.runs, m.checked = f.closes, f.runs, f.checked
+	m.idx, m.gidx = nil, nil
 	// Pending idempotency reservations belong to requests still running in this process.
 	for k, rec := range m.idem {
 		if rec.Pending {
@@ -343,6 +344,23 @@ func simple(ctx context.Context, d *Durable, op func() error, recs ...record) er
 
 // User prefers the identity users table, so practice sees the signed-in staff.
 func (d *Durable) User(ctx context.Context, id domain.ID) (domain.User, error) {
+	memo, ok := ctx.Value(settingsMemoKey{}).(*settingsMemo)
+	if !ok {
+		return d.user(ctx, id)
+	}
+	memo.mu.Lock()
+	u, hit := memo.users[id]
+	memo.mu.Unlock()
+	if !hit {
+		u.row, u.err = d.user(ctx, id)
+		memo.mu.Lock()
+		memo.users[id] = u
+		memo.mu.Unlock()
+	}
+	return u.row, u.err
+}
+
+func (d *Durable) user(ctx context.Context, id domain.ID) (domain.User, error) {
 	if d.users != nil {
 		if row, err := d.users(ctx, id); err == nil {
 			return row, nil
@@ -511,6 +529,18 @@ func (d *Durable) PutValue(ctx context.Context, row FieldValue) error {
 }
 
 func (d *Durable) EnsureMarkers(ctx context.Context, labels []string, at time.Time, actor domain.ID, ids func() (domain.ID, error)) error {
+	// Every matter view calls this; when each label already has its marker there is
+	// nothing to store, so skip the transaction.
+	all := true
+	for _, label := range labels {
+		if _, ok := d.Memory.MarkerByLabel(label); !ok {
+			all = false
+			break
+		}
+	}
+	if all {
+		return ready(ctx)
+	}
 	return d.write(ctx, func() error { return d.Memory.EnsureMarkers(ctx, labels, at, actor, ids) }, func() []record {
 		var recs []record
 		for _, label := range labels {

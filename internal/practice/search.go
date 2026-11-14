@@ -2,6 +2,7 @@ package practice
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 // A walled matter, its invoice, and a person who appears only on walled matters are omitted.
 // Attorney-only values are not searched for a caller who cannot read them.
 func (s *Service) Search(ctx context.Context, p domain.Principal, query, scope string) (SearchResult, error) {
+	ctx = withSettingsMemo(ctx)
 	query = strings.TrimSpace(query)
 	minChars := s.intSetting(ctx, "search.min_chars", domain.SearchMinChars)
 	if len([]rune(query)) < minChars {
@@ -178,15 +180,7 @@ func (s *Service) searchInvoices(ctx context.Context, p domain.Principal, query 
 		}
 		rows = append(rows, row)
 	}
-	for i := 1; i < len(rows); i++ {
-		row := rows[i]
-		j := i
-		for j > 0 && row.IssuedOn > rows[j-1].IssuedOn {
-			rows[j] = rows[j-1]
-			j--
-		}
-		rows[j] = row
-	}
+	sort.SliceStable(rows, func(i, j int) bool { return rows[i].IssuedOn > rows[j].IssuedOn })
 	if len(rows) > limit {
 		rows = rows[:limit]
 	}
@@ -204,16 +198,9 @@ func (s *Service) searchInvoices(ctx context.Context, p domain.Principal, query 
 	return hits
 }
 
+// sortMatterRows is a stable sort, like the quadratic insertion sort it replaced.
 func sortMatterRows(rows []domain.Matter) {
-	for i := 1; i < len(rows); i++ {
-		row := rows[i]
-		j := i
-		for j > 0 && matterRowLess(row, rows[j-1]) {
-			rows[j] = rows[j-1]
-			j--
-		}
-		rows[j] = row
-	}
+	sort.SliceStable(rows, func(i, j int) bool { return matterRowLess(rows[i], rows[j]) })
 }
 
 func matterRowLess(a, b domain.Matter) bool {

@@ -35,12 +35,13 @@ func CheckModule(root string) error {
 		}
 		if d.IsDir() {
 			// These exact module-relative packages belong to the separate
-			// supervisor executable, not the core checked by AC-030.
+			// supervisor executable, the AC-016 load-test client or the module stack run's test packer, not the core
+			// checked by AC-030.
 			rel, err := filepath.Rel(root, path)
 			if err != nil {
 				return err
 			}
-			if rel == filepath.Join("cmd", "supervisor") || rel == filepath.Join("internal", "supervisor") {
+			if rel == filepath.Join("cmd", "supervisor") || rel == filepath.Join("internal", "supervisor") || rel == filepath.Join("tests", "update", "loadgen") || rel == filepath.Join("tests", "e2e", "modpack") {
 				return filepath.SkipDir
 			}
 			switch d.Name() {
@@ -492,7 +493,7 @@ func fixedSite(path, fn string) bool {
 		// Positive migration versions, placeholder numbers, the single held connection,
 		// and the first-match count passed to strings.Replace.
 		switch fn {
-		case "LoadFS", "Apply", "Rebind", "migrateOnHeldConn", "gooseNoTransaction":
+		case "LoadFS", "Apply", "ApplyCount", "Rebind", "migrateOnHeldConn", "gooseNoTransaction":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/db/goose_store.go"):
@@ -512,9 +513,23 @@ func fixedSite(path, fn string) bool {
 		// Those exist before the registry can be read. A different function in this file is still reported.
 		return fn == "RunFrom" || fn == "LoadFrom"
 	case strings.HasSuffix(slash, "cmd/core/main.go"):
-		// Process status 0, 1 and 2, the argument index of "check", the HTTP read-header
+		// Process status 0, 1 and 2, the argument index of "check" and "migrate", the HTTP read-header
 		// guard against slow clients and the shutdown drain. None is a firm setting.
-		return fn == "main" || fn == "serve"
+		return fn == "main" || fn == "serve" || fn == "migrate" || fn == "healthcheck"
+	case strings.HasSuffix(slash, "internal/core/backups.go"):
+		// Private file modes for the passphrase and uploaded archives, a page size of at
+		// least one, a positive retention, the TCP port range, the length of an upload
+		// token and subtle.ConstantTimeCompare's 1 for equal. None is a firm setting; the
+		// firm's backup tunables are backups.* settings the supervisor reads.
+		switch fn {
+		case "syncPassphrase", "page", "download", "apply", "upload", "createRestore", "supervisor":
+			return true
+		}
+		return false
+	case strings.HasSuffix(slash, "internal/core/updates.go"):
+		// The RFC 9562 UUIDv7 layout: a 48-bit millisecond time, the version and variant
+		// bits, and the 8-4-4-4-12 hex grouping.
+		return fn == "eventID"
 	case strings.HasSuffix(slash, "internal/core/app.go"):
 		// AES-256 keys are 32 bytes, checked before any service is built.
 		return fn == "Open"

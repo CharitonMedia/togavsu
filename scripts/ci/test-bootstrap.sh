@@ -1,6 +1,8 @@
 #!/bin/sh
 # Bootstrap secrets are generated once. The core UID can read them and write
-# only the passphrase file. The Postgres UID can read its password.
+# only the passphrase file. The Postgres UID can read its password. The superuser
+# URL lives only in the admin volume, which a serving core never mounts, and the
+# core entrypoint refuses to serve when it can see that URL (PRD 6, AC-006, AC-024).
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
@@ -12,8 +14,11 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-mkdir -p "$work/pgsecrets" "$work/appsecrets"
-sed "s#/pgsecrets#$work/pgsecrets#g; s#/appsecrets#$work/appsecrets#g" \
+mkdir -p "$work/pgsecrets" "$work/appsecrets" "$work/adminsecrets" "$work/backupkey"
+# An earlier layout: the superuser URL and a set passphrase beside the core's secrets.
+echo "postgres://legacy" > "$work/appsecrets/admin_database_url"
+echo "legacy-phrase" > "$work/appsecrets/backup_passphrase"
+sed "s#/pgsecrets#$work/pgsecrets#g; s#/appsecrets#$work/appsecrets#g; s#/adminsecrets#$work/adminsecrets#g; s#/backupkey#$work/backupkey#g" \
   "$root/deploy/bootstrap/bootstrap-secrets.sh" > "$work/bootstrap.sh"
 sudo sh "$work/bootstrap.sh"
 sudo sh "$work/bootstrap.sh"
@@ -24,19 +29,27 @@ sudo test -s "$work/pgsecrets/postgres_password"
 sudo test -s "$work/appsecrets/supervisor_token"
 sudo test -s "$work/appsecrets/field_key"
 sudo test -s "$work/appsecrets/database_url"
-sudo test -f "$work/appsecrets/backup_passphrase"
-sudo test ! -s "$work/appsecrets/backup_passphrase"
+# The legacy files moved out of the core's volume; the set passphrase was carried over.
+sudo test ! -e "$work/appsecrets/admin_database_url"
+sudo test ! -e "$work/appsecrets/backup_passphrase"
+test "$(sudo cat "$work/backupkey/backup_passphrase")" = "legacy-phrase"
+# A fresh install starts with an empty passphrase file.
+sudo sh -c ': > "$1"' sh "$work/backupkey/backup_passphrase"
+sudo sh "$work/bootstrap.sh"
+sudo test -f "$work/backupkey/backup_passphrase"
+sudo test ! -s "$work/backupkey/backup_passphrase"
 pass1=$(sudo cat "$work/pgsecrets/postgres_password")
 app1=$(sudo cat "$work/pgsecrets/app_password")
 sudo sh "$work/bootstrap.sh"
 test "$pass1" = "$(sudo cat "$work/pgsecrets/postgres_password")"
 test "$app1" = "$(sudo cat "$work/pgsecrets/app_password")"
 test "$app1" != "$pass1"
-# The core logs in as the non-superuser togavsu_app; only the supervisor gets the admin role.
+# The core logs in as the non-superuser togavsu_app; the superuser URL is only in the
+# admin volume (migrate and the supervisor mount it, a serving core does not).
 sudo grep -q "postgres://togavsu_app:${app1}@postgres:5432/togavsu" "$work/appsecrets/database_url"
-sudo grep -q "postgres://togavsu:${pass1}@postgres:5432/postgres" "$work/appsecrets/admin_database_url"
-if sudo grep -q "$pass1" "$work/appsecrets/database_url"; then
-  echo "the core database URL carries the admin password" >&2
+sudo grep -q "postgres://togavsu:${pass1}@postgres:5432/postgres" "$work/adminsecrets/admin_database_url"
+if sudo grep -rq "$pass1" "$work/appsecrets" "$work/backupkey"; then
+  echo "a volume the serving core mounts carries the superuser password" >&2
   exit 1
 fi
 
@@ -52,7 +65,7 @@ try:
 except PermissionError:
     sys.exit(0)
 sys.exit("core user overwrote the supervisor token")
-' "$work/appsecrets/database_url" "$work/appsecrets/backup_passphrase" "$work/appsecrets/supervisor_token"
+' "$work/appsecrets/database_url" "$work/backupkey/backup_passphrase" "$work/appsecrets/supervisor_token"
 
 sudo python3 -c '
 import os, sys
@@ -63,7 +76,7 @@ open(sys.argv[1]).read()
 open(sys.argv[2]).read()
 ' "$work/pgsecrets/postgres_password" "$work/pgsecrets/app_password"
 
-phrase=$(sudo cat "$work/appsecrets/backup_passphrase")
+phrase=$(sudo cat "$work/backupkey/backup_passphrase")
 test "$phrase" = "set-at-first-run"
 
 sudo python3 -c '
@@ -77,10 +90,10 @@ test "$(sudo cat "$work/appsecrets/domain")" = "localhost"
 
 hexwork=$(mktemp -d)
 chmod 755 "$hexwork"
-mkdir -p "$hexwork/pgsecrets" "$hexwork/appsecrets"
+mkdir -p "$hexwork/pgsecrets" "$hexwork/appsecrets" "$hexwork/adminsecrets" "$hexwork/backupkey"
 python3 -c 'import sys; open(sys.argv[1], "w").write("11"*32 + "\n")' "$hexwork/appsecrets/field_key"
 before=$(python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$hexwork/appsecrets/field_key")
-sed "s#/pgsecrets#$hexwork/pgsecrets#g; s#/appsecrets#$hexwork/appsecrets#g" \
+sed "s#/pgsecrets#$hexwork/pgsecrets#g; s#/appsecrets#$hexwork/appsecrets#g; s#/adminsecrets#$hexwork/adminsecrets#g; s#/backupkey#$hexwork/backupkey#g" \
   "$root/deploy/bootstrap/bootstrap-secrets.sh" > "$hexwork/bootstrap.sh"
 sudo sh "$hexwork/bootstrap.sh"
 after=$(sudo python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$hexwork/appsecrets/field_key")
@@ -109,6 +122,7 @@ os.setgroups([])
 os.setgid(65532)
 os.setuid(65532)
 os.environ["TOGAVSU_SECRETS_DIR"] = sys.argv[1]
+os.environ["TOGAVSU_ADMIN_SECRETS_DIR"] = sys.argv[1] + "/no-admin-volume"
 os.environ["CORE_BIN"] = sys.argv[2]
 os.environ["RESULT"] = sys.argv[3]
 os.environ["TOGAVSU_DOMAIN"] = "localhost"
@@ -140,6 +154,7 @@ os.setgroups([])
 os.setgid(65532)
 os.setuid(65532)
 os.environ["TOGAVSU_SECRETS_DIR"] = sys.argv[1]
+os.environ["TOGAVSU_ADMIN_SECRETS_DIR"] = sys.argv[1] + "/no-admin-volume"
 os.environ["CORE_BIN"] = sys.argv[2]
 os.environ["RESULT"] = sys.argv[3]
 os.environ["TOGAVSU_DOMAIN"] = "localhost"
@@ -154,4 +169,45 @@ if length != "32" or domain != "localhost" or int(secret) < 16 or keyhex != want
 ' "$result" "$lowkey"
 lowafter=$(sudo python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$hexwork/appsecrets/field_key")
 test "$lowbefore" = "$lowafter"
+# The entrypoint, as uid 65532, with a stub binary that records its arguments and
+# whether it was handed the superuser URL.
+cat > "$hexwork/args-stub" <<'EOF'
+#!/bin/sh
+printf '%s admin=%s\n' "$*" "${TOGAVSU_ADMIN_DATABASE_URL:+set}" > "$RESULT"
+EOF
+chmod 755 "$hexwork/args-stub"
+entry() { # admin dir, then core arguments; prints the exit code
+  admin_dir=$1
+  shift
+  sudo rm -f "$result"
+  set +e
+  sudo python3 -c '
+import os, sys
+os.setgroups([])
+os.setgid(65532)
+os.setuid(65532)
+os.environ["TOGAVSU_SECRETS_DIR"] = sys.argv[1]
+os.environ["TOGAVSU_ADMIN_SECRETS_DIR"] = sys.argv[2]
+os.environ["CORE_BIN"] = sys.argv[3]
+os.environ["RESULT"] = sys.argv[4]
+os.environ["TOGAVSU_DOMAIN"] = "localhost"
+os.environ["TOGAVSU_ADMIN_DATABASE_URL"] = "postgres://inherited"
+os.execv("/bin/sh", ["sh", sys.argv[5]] + sys.argv[6:])
+' "$hexwork/appsecrets" "$admin_dir" "$hexwork/args-stub" "$result" "$hexwork/entrypoint.sh" "$@" 2>/dev/null
+  code=$?
+  set -e
+  echo "$code"
+}
+# migrate is handed the superuser URL from the admin volume.
+test "$(entry "$hexwork/adminsecrets" migrate)" = 0
+test "$(sudo cat "$result")" = "migrate admin=set"
+# migrate without the admin volume fails before the binary runs.
+test "$(entry "$hexwork/no-admin-volume" migrate)" = 2
+sudo test ! -e "$result"
+# The serving core never inherits the superuser URL from its environment ...
+test "$(entry "$hexwork/no-admin-volume")" = 0
+test "$(sudo cat "$result")" = " admin="
+# ... and refuses to start when the admin volume is mounted on it.
+test "$(entry "$hexwork/adminsecrets")" = 2
+sudo test ! -e "$result"
 echo "bootstrap secrets check passed"

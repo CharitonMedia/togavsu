@@ -125,9 +125,11 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	journal := supervisor.OpenJournal(filepath.Join(cfg.DataDir, "restore-journal.jsonl"))
 	updateJournal := supervisor.OpenUpdateJournal(filepath.Join(cfg.DataDir, "update-journal.jsonl"))
 	outbox := supervisor.OpenOutbox(filepath.Join(cfg.DataDir, "mail-outbox.jsonl"))
+	coreFiles := supervisor.CoreFiles{Upstream: supervisor.UpstreamFrom(cfg.UpstreamFile), Token: cfg.Token}
 	store := &supervisor.Store{
 		Dir:            cfg.BackupDir,
 		Dump:           supervisor.DumpCommand("pg_dump", cfg.DatabaseURL),
+		FileBytes:      coreFiles.Export,
 		Book:           &supervisor.DestinationBook{Path: filepath.Join(cfg.DataDir, "destinations.json"), Key: cfg.FieldKey},
 		Outbox:         outbox,
 		MaxImportBytes: cfg.RestoreMaxBytes,
@@ -136,12 +138,11 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		return nil, err
 	}
 	docker := &supervisor.DockerRuntime{
-		Client:           supervisor.DockerSocketClient(cfg.DockerSocket),
-		Network:          cfg.DockerNetwork,
-		Env:              supervisor.CoreEnv(),
-		Binds:            supervisor.CoreBinds(cfg.AppSecretsVolume, cfg.CoreDataVolume),
-		AppSecretsVolume: cfg.AppSecretsVolume,
-		CoreDataVolume:   cfg.CoreDataVolume,
+		Client:  supervisor.DockerSocketClient(cfg.DockerSocket),
+		Network: cfg.DockerNetwork,
+		Env:     supervisor.CoreEnv(),
+		Volumes: supervisor.CoreVolumes{AppSecrets: cfg.AppSecretsVolume, AdminSecrets: cfg.AdminSecretsVolume,
+			BackupKey: cfg.BackupKeyVolume, Data: cfg.CoreDataVolume},
 	}
 	sched, err := cfg.Schedule()
 	if err != nil {
@@ -151,7 +152,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Window:   sched.Window,
 		Paused:   cfg.UpdatesPaused,
 		Registry: supervisor.IndexRegistry{URL: cfg.ReleaseIndexURL, HTTP: &http.Client{Timeout: 30 * time.Second}},
-		Verifier: supervisor.CLIVerifier{Cosign: cfg.CosignBin, KeyPath: cfg.CosignKey},
+		Verifier: supervisor.CLIVerifier{Cosign: cfg.CosignBin, KeyPath: cfg.CosignKey, Flags: cfg.CosignFlags},
 		Runtime:  docker,
 		Migrator: supervisor.DockerMigrator{Docker: docker},
 		Backup: func(ctx context.Context, reason string) (supervisor.BackupMeta, error) {
@@ -185,6 +186,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Catalog:       supervisor.PostgresCatalog{Bin: "psql", AdminURL: cfg.AdminDatabaseURL},
 		Outbox:        outbox,
 		Passphrase:    cfg.ReloadPassphrase,
+		RestoreFiles:  coreFiles.Import,
 		ApplyRestore: func(ctx context.Context, payload supervisor.RestorePayload) error {
 			return supervisor.ApplyProductRestore(ctx, "psql", cfg.AdminDatabaseURL, cfg.DatabaseURL, payload)
 		},
@@ -194,6 +196,8 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 }
 
 func schedule(ctx context.Context, cfg supervisor.Config, ops *supervisor.Operations) {
+	// Scheduled work yields the operation gate to admin requests.
+	ctx = supervisor.Scheduled(ctx)
 	sched, err := cfg.Schedule()
 	if err != nil {
 		slog.Error("scheduled tasks are off because the schedule settings are invalid", "err", err)

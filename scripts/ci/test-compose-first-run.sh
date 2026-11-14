@@ -1,9 +1,11 @@
 #!/bin/sh
 # AC-001 on a clean Docker host: one Compose up with no edits reaches first-run setup.
 # Then: setup with two-factor, a matter write with its audit rows, proof that the core's
-# database role cannot change audit_log or trust_ledger, and a core restart that keeps the session and
+# database role cannot change, grant back, alter or drop the append-only tables, and a core restart that keeps the session and
 # the matter. Also: dbinit hands a superuser-owned core schema from an older volume to
-# togavsu_app. Synthetic data only. The project and its volumes are removed at the end.
+# togavsu_app. PRD 6, AC-006, AC-024: the serving core cannot read the superuser URL or
+# write its own secrets, core migrate fails without the superuser URL, and the core
+# refuses to serve until core migrate has sealed the ledgers. Synthetic data only. The project and its volumes are removed at the end.
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 docker=${DOCKER:-docker}
@@ -15,7 +17,7 @@ cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
     compose ps -a || true
-    compose logs --no-color --tail 80 core dbinit postgres || true
+    compose logs --no-color --tail 80 core migrate dbinit postgres || true
   fi
   compose down -v --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$work"
@@ -49,12 +51,30 @@ if [ "$super" != "f" ]; then
   echo "core role togavsu_app is missing or a superuser: '$super'" >&2
   exit 1
 fi
-owner=$(psql_as "SELECT tableowner FROM pg_tables WHERE schemaname = 'core' AND tablename = 'audit_log'")
-if [ "$owner" != "togavsu_app" ]; then
-  echo "audit_log owner is '$owner', want togavsu_app" >&2
-  exit 1
-fi
 append_only() {
+  # core migrate (compose service migrate) hands schema core and the append-only tables
+  # to the NOLOGIN togavsu_ledger_owner; togavsu_app keeps SELECT and INSERT only.
+  for t in audit_log trust_ledger events ai_call_log file_versions file_renditions; do
+    owner=$(psql_as "SELECT tableowner FROM pg_tables WHERE schemaname = 'core' AND tablename = '$t'")
+    if [ "$owner" != "togavsu_ledger_owner" ]; then
+      echo "$t owner is '$owner', want togavsu_ledger_owner" >&2
+      return 1
+    fi
+    for stmt in "UPDATE core.$t SET created_by = created_by" "DELETE FROM core.$t" "TRUNCATE core.$t" \
+      "GRANT UPDATE, DELETE, TRUNCATE ON core.$t TO togavsu_app; UPDATE core.$t SET created_by = created_by" \
+      "ALTER TABLE core.$t ADD COLUMN tampered text" "DROP TABLE core.$t"; do
+      if psql_as "SET ROLE togavsu_app; $stmt" >/dev/null 2>&1; then
+        echo "core role ran: $stmt" >&2
+        return 1
+      fi
+    done
+  done
+  # SET ROLE is checked against the superuser session here, so ask the catalog instead.
+  member=$(psql_as "SELECT pg_has_role('togavsu_app', 'togavsu_ledger_owner', 'MEMBER')")
+  if [ "$member" != "f" ]; then
+    echo "core role can act as togavsu_ledger_owner" >&2
+    return 1
+  fi
   rows=$(psql_as "SELECT count(*) FROM core.audit_log")
   for stmt in "UPDATE core.audit_log SET new_value = 'tampered'" "DELETE FROM core.audit_log" "TRUNCATE core.audit_log"; do
     if psql_as "SET ROLE togavsu_app; $stmt" >/dev/null 2>&1; then
@@ -78,6 +98,36 @@ append_only() {
   echo "trust_ledger is append-only for the core role"
 }
 append_only
+
+# The serving core holds no superuser secret and cannot rewrite its own.
+core_id=$(compose ps -q core)
+mounts=$("$docker" inspect -f '{{range .Mounts}}{{.Name}}={{.Destination}}:{{.RW}} {{end}}' "$core_id")
+case "$mounts" in
+  *adminsecrets*) echo "the core mounts the superuser volume: $mounts" >&2; exit 1 ;;
+esac
+case "$mounts" in
+  *"${project}_appsecrets=/appsecrets:false"*) ;;
+  *) echo "the core does not mount appsecrets read-only: $mounts" >&2; exit 1 ;;
+esac
+if compose exec -T core sh -c 'test -e /adminsecrets/admin_database_url || test -e /appsecrets/admin_database_url || grep -rqs "@postgres:5432/postgres" /appsecrets /backupkey'; then
+  echo "the superuser URL is visible inside the serving core" >&2
+  exit 1
+fi
+if compose exec -T core sh -c 'printf x >> /appsecrets/database_url' 2>/dev/null; then
+  echo "the serving core could write /appsecrets" >&2
+  exit 1
+fi
+echo "the serving core cannot read the superuser URL and mounts its secrets read-only"
+# core migrate without the superuser volume fails instead of skipping the seal.
+set +e
+nomig=$("$docker" run --rm -v "${project}_appsecrets:/appsecrets:ro" togavsu-core:local migrate 2>&1)
+code=$?
+set -e
+if [ "$code" -eq 0 ] || ! printf '%s' "$nomig" | grep -q "migrate needs"; then
+  echo "core migrate without the superuser URL exited $code: $nomig" >&2
+  exit 1
+fi
+echo "core migrate without the superuser URL fails ($code)"
 
 # A volume from an install where the core ran as the Postgres superuser has schema core
 # and its relations owned by togavsu. Rebuild that state, rerun dbinit, and check that
@@ -104,6 +154,18 @@ if [ "$schema_owner" != "togavsu_app" ] || [ "$left" != "0" ]; then
   exit 1
 fi
 echo "dbinit handed a superuser-owned core schema to togavsu_app"
+# The ledgers are unsealed now; the serving core refuses to start on them.
+set +e
+refused=$(timeout 120 "$docker" compose -p "$project" -f "$root/compose.yaml" run --rm --no-deps -T core 2>&1)
+code=$?
+set -e
+if [ "$code" -eq 0 ] || [ "$code" -eq 124 ] || ! printf '%s' "$refused" | grep -q "not sealed"; then
+  echo "the core served on an unsealed database (exit $code): $refused" >&2
+  exit 1
+fi
+echo "the serving core refuses an unsealed database ($code)"
+# core migrate seals the schema and the append-only tables again before the core starts.
+compose run --rm --no-deps migrate >/dev/null
 compose start core >/dev/null
 wait_health
 append_only

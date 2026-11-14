@@ -57342,7 +57342,7 @@
       "get": {
         "operationId": "listAiCalls",
         "summary": "AI call log",
-        "description": "Task, provider, model, tokens, fallback, and the user or module that asked.",
+        "description": "Task, provider, model, tokens, fallback, and the user or module that asked, newest first. A call on a matter the admin is walled off from is omitted.",
         "tags": [
           "AI"
         ],
@@ -57398,6 +57398,39 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Matter filter."
+          },
+          {
+            "name": "task",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "AI task filter, such as labeling, categorizing, ocr, summaries or a module task."
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "anthropic",
+                "openai",
+                "compatible",
+                "local"
+              ]
+            },
+            "description": "AI provider filter."
+          },
+          {
+            "name": "module_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Module that asked. Calls the core made itself have no module."
           }
         ],
         "responses": {
@@ -58430,7 +58463,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/Uuid"
+              "type": "string",
+              "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$"
             },
             "description": "Path parameter backup_id."
           }
@@ -58522,7 +58556,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/Uuid"
+              "type": "string",
+              "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$"
             },
             "description": "Path parameter backup_id."
           },
@@ -58625,7 +58660,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/Uuid"
+              "type": "string",
+              "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$"
             },
             "description": "Path parameter backup_id."
           }
@@ -59631,7 +59667,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/Uuid"
+              "type": "string",
+              "pattern": "^restore-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$"
             },
             "description": "Path parameter restore_id."
           }
@@ -59725,6 +59762,16 @@
           },
           {
             "$ref": "#/components/parameters/csrfToken"
+          },
+          {
+            "name": "backup_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}(\\.tgbk)?$"
+            },
+            "description": "The archive's file name, with or without .tgbk. Its encrypted manifest names this id. An archive this installation still holds byte for byte is restored by its own id without it; any other needs it."
           }
         ],
         "responses": {
@@ -73795,8 +73842,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
+            "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$",
+            "description": "Backup id: UTC time and 16 hex characters."
           },
           "created_at": {
             "type": "string",
@@ -73817,7 +73864,8 @@
             ]
           },
           "checksum": {
-            "type": "string"
+            "type": "string",
+            "description": "SHA-256 of the encrypted archive, as the downloaded file and every destination copy must match."
           },
           "bytes": {
             "type": "integer",
@@ -73828,8 +73876,21 @@
             "enum": [
               "nightly",
               "pre_update",
-              "manual"
+              "manual",
+              "safety",
+              "imported"
             ]
+          },
+          "files": {
+            "type": "boolean",
+            "description": "The archive holds every file version and rendition (Markdown copies included) from the backed-up storage backends. False for the safety backup a restore takes while the core is stopped."
+          },
+          "destination_errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Destinations the archive could not be copied to. The admin is mailed as well."
           }
         },
         "required": [
@@ -73930,8 +73991,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
+            "pattern": "^restore-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$",
+            "description": "Supervisor restore id."
           },
           "created_at": {
             "type": "string",
@@ -73947,13 +74008,17 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "description": "UUIDv7."
+                "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$",
+                "description": "Backup id: UTC time and 16 hex characters."
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "error": {
+            "type": "string",
+            "description": "Why a failed restore stopped. invalid_backup includes a damaged or partial file set, refused before the database swap. files_rolled_back means the file bytes could not be written, so the safety backup taken before the swap was restored as a separate restore of that backup and the previous data is live. files_not_restored means the database was restored, the file bytes were not, and the rollback did not complete."
           },
           "status": {
             "type": "string",
@@ -74007,7 +74072,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
+                "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$",
                 "description": "A stored backup. Omit when upload_token is set."
               },
               {
@@ -80125,7 +80190,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
+                "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$",
                 "description": "A stored backup. Omit when upload_token is set."
               },
               {

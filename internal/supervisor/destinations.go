@@ -173,6 +173,15 @@ type DestinationSpec struct {
 	ID            string `json:"id"`
 	Kind          string `json:"kind"`
 	RetentionDays int    `json:"retention_days"`
+	// Name, Label, CreatedBy, CreatedAt and UpdatedAt are the core's record of
+	// the destination (/api/v1/backup-destinations): its name, the kind the
+	// admin chose (local_path and network_path are both a path here), and who
+	// added it when. They do not change where archives go.
+	Name      string `json:"name,omitempty"`
+	Label     string `json:"label,omitempty"`
+	CreatedBy string `json:"created_by,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 	// Namespace is the per-installation directory or key prefix. Retention
 	// deletes only receipts inside it. Objects already in the configured root
 	// are left where they are.
@@ -208,9 +217,11 @@ func (s DestinationSpec) Public() DestinationSpec {
 // written next to the ciphertext. SFTP keeps using IdentityFile as a path
 // reference and does not copy the key file into this record.
 //
-// ponytail: destinations live in a supervisor JSON file, ceiling: not the
-// core settings table, upgrade: core backup-destination records push here,
-// trigger: /api/v1/backup-destinations is served by core.
+// ponytail: destinations live in a supervisor JSON file that the core's
+// /api/v1/backup-destinations fronts, ceiling: not the core settings table, so
+// a database restore leaves them as they are and the core lists them by
+// reading this file, upgrade: core backup-destination records push here,
+// trigger: a second core process or a settings export needs to read them.
 type DestinationBook struct {
 	Path string
 	Key  []byte

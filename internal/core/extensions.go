@@ -108,16 +108,14 @@ func (x *extensions) port(module string) (port int) {
 	return port
 }
 
-// start re-registers enabled modules' widgets and sidebar entries and, with background,
-// starts the event pump and webhook delivery every interval and the marketplace alert
-// check.
-func (x *extensions) start(ctx context.Context, background bool, every time.Duration) error {
-	if err := x.Modules.Start(ctx); err != nil {
-		return err
-	}
-	if !background {
-		return nil
-	}
+// start re-registers enabled modules' widgets and sidebar entries.
+func (x *extensions) start(ctx context.Context) error {
+	return x.Modules.Start(ctx)
+}
+
+// run starts the event pump and webhook delivery every interval and the marketplace
+// alert check. The core calls it once no restore hold keeps users out.
+func (x *extensions) run(every time.Duration) {
 	bg, stop := context.WithCancel(context.Background())
 	x.stop, x.done = stop, make(chan struct{})
 	x.Market.Start(bg, log.Printf)
@@ -125,7 +123,6 @@ func (x *extensions) start(ctx context.Context, background bool, every time.Dura
 		defer close(x.done)
 		x.Modules.Run(bg, every, log.Printf)
 	}()
-	return nil
 }
 
 func (x *extensions) close() {

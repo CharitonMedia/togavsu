@@ -3,6 +3,7 @@ package supervisor
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -331,6 +332,10 @@ func TestUpdateHealthFailureRestoresBackup(t *testing.T) {
 	if !stoppedNew {
 		t.Fatalf("new container was not stopped: %v", order)
 	}
+	evs, err := up.Ledger.List("update")
+	if err != nil || len(evs) != 1 || evs[0].Fields["status"] != "refused" || evs[0].Fields["reason"] != "health" || evs[0].Fields["image"] != testReleaseImage {
+		t.Fatalf("update history does not record the health refusal: %+v %v", evs, err)
+	}
 	for _, step := range order {
 		if step == "stop:old" || step == "switch:togavsu-core-next:8080" {
 			t.Fatalf("old core was disturbed: %v", order)
@@ -574,4 +579,56 @@ func stringsJoinSep(v []string, sep string) string {
 		out += s
 	}
 	return out
+}
+
+func TestCLIVerifierPassesAllowedFlagsBeforeImage(t *testing.T) {
+	var got []string
+	v := CLIVerifier{Cosign: "/usr/local/bin/cosign", KeyPath: "/appsecrets/cosign.pub",
+		Flags: []string{"--insecure-ignore-tlog=true", "--allow-http-registry=true"},
+		Run: func(_ context.Context, name string, args ...string) ([]byte, error) {
+			got = append([]string{name}, args...)
+			return nil, nil
+		}}
+	img := "127.0.0.1:15000/core@sha256:" + strings.Repeat("a", 64)
+	if err := v.Verify(context.Background(), img); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"/usr/local/bin/cosign", "verify", "--key", "/appsecrets/cosign.pub", "--insecure-ignore-tlog=true", "--allow-http-registry=true", img}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("args %v, want %v", got, want)
+	}
+	v.Run = func(context.Context, string, ...string) ([]byte, error) {
+		return []byte("Error: no signatures found"), errors.New("exit status 1")
+	}
+	if err := v.Verify(context.Background(), img); !errors.Is(err, ErrSignature) || !strings.Contains(err.Error(), "no signatures found") {
+		t.Fatalf("unsigned image: %v", err)
+	}
+}
+
+func TestParseCosignFlagsRefusesUnlistedFlags(t *testing.T) {
+	flags, err := ParseCosignFlags("  --insecure-ignore-tlog=true\t--allow-http-registry=true ")
+	if err != nil || len(flags) != 2 {
+		t.Fatalf("%v %v", flags, err)
+	}
+	if flags, err := ParseCosignFlags(""); err != nil || flags != nil {
+		t.Fatalf("empty: %v %v", flags, err)
+	}
+	for _, bad := range []string{"--key=/tmp/other.pub", "--insecure-ignore-tlog", "--certificate-identity-regexp=.*", "--insecure-ignore-tlog=true --output=json"} {
+		if _, err := ParseCosignFlags(bad); !errors.Is(err, ErrBadRequest) {
+			t.Fatalf("%q accepted: %v", bad, err)
+		}
+	}
+	token := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(token, []byte("local-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"SUPERVISOR_TOKEN_FILE": token, "COSIGN_VERIFY_FLAGS": "--insecure-ignore-tlog=true"}
+	cfg, err := LoadFrom(func(k string) string { return env[k] })
+	if err != nil || len(cfg.CosignFlags) != 1 || cfg.CosignFlags[0] != "--insecure-ignore-tlog=true" {
+		t.Fatalf("config flags %v %v", cfg.CosignFlags, err)
+	}
+	env["COSIGN_VERIFY_FLAGS"] = "--key=/tmp/other.pub"
+	if _, err := LoadFrom(func(k string) string { return env[k] }); !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("config accepted an unlisted cosign flag: %v", err)
+	}
 }

@@ -187,7 +187,7 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	}
 	ran := false
 	if u.Migrator == nil {
-		u.abort(ctx, backupID, ran, nil)
+		u.abort(ctx, backupID, ran, nil, "migrator", release.Image)
 		return UpdateResult{Status: "refused", Reason: "migrator", From: current.Image, To: release.Image, BackupID: backupID}, ErrMigratorUnconfigured
 	}
 	opID := backupID
@@ -214,7 +214,7 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 		return UpdateResult{Status: "refused", Reason: "migration", From: current.Image, To: release.Image, BackupID: backupID, Rollback: "cleanup_unreconciled"}, err
 	}
 	if err != nil {
-		rolled := u.abort(ctx, backupID, ran, nil)
+		rolled := u.abort(ctx, backupID, ran, nil, "migration", release.Image)
 		if cerr := u.confirmMigrationGone(opID, st); cerr != nil {
 			_ = u.keepPending(opID, "migration", "migration_intended")
 		} else if rolled.Mode == "cleanup_unreconciled" {
@@ -227,13 +227,13 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	}
 	nextName, err := nextCoreName(u.now())
 	if err != nil {
-		rolled := u.abort(ctx, backupID, ran, nil)
+		rolled := u.abort(ctx, backupID, ran, nil, "start", release.Image)
 		_ = u.finalize(opID, "failed", "failed")
 		return mergeRollback(UpdateResult{Status: "refused", Reason: "start", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
 	}
 	next, err := u.startCandidate(ctx, opID, release.Image, nextName, current, backupID)
 	if err != nil {
-		rolled := u.abort(ctx, backupID, ran, nil)
+		rolled := u.abort(ctx, backupID, ran, nil, "start", release.Image)
 		if cerr := u.confirmCandidateGone(opID, next); cerr != nil {
 			_ = u.keepPending(opID, "replacement", "candidate_cleanup")
 			if next.Name != "" || next.ID != "" {
@@ -257,7 +257,7 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 		timeout = time.Minute
 	}
 	if err := u.Runtime.WaitHealthy(ctx, next.ID, timeout); err != nil {
-		rolled := u.abort(ctx, backupID, ran, &next)
+		rolled := u.abort(ctx, backupID, ran, &next, "health", release.Image)
 		if rolled.Mode == "cleanup_unreconciled" {
 			_ = u.keepPending(opID, "replacement", "candidate_started")
 		} else {
@@ -319,7 +319,9 @@ type rollbackOutcome struct {
 	Err      error
 }
 
-func (u *Updater) abort(ctx context.Context, backupID string, migrated bool, started *ContainerInfo) rollbackOutcome {
+// abort records the refused attempt with its reason and image in the update
+// history (GET /v1/updates).
+func (u *Updater) abort(ctx context.Context, backupID string, migrated bool, started *ContainerInfo, reason, image string) rollbackOutcome {
 	// The HTTP request may already be canceled. Cleanup and the rollback
 	// notice use a fresh bounded context so Stop and Remove still run.
 	cleanCtx, cancel := context.WithTimeout(context.Background(), updateCleanupTimeout)
@@ -344,6 +346,8 @@ func (u *Updater) abort(ctx context.Context, backupID string, migrated bool, sta
 	}
 	u.record("update", map[string]string{
 		"status":   "refused",
+		"reason":   reason,
+		"image":    image,
 		"backup":   backupID,
 		"restored": strconv.FormatBool(out.Restored),
 		"rollback": out.Mode,
@@ -1046,7 +1050,33 @@ func parseSemver(v string) ([3]int, bool) {
 type CLIVerifier struct {
 	Cosign  string
 	KeyPath string
-	Run     func(ctx context.Context, name string, args ...string) ([]byte, error)
+	// Flags are extra cosign verify flags from COSIGN_VERIFY_FLAGS, limited to
+	// AllowedCosignFlags. An install whose release signatures are not in the
+	// public transparency log, or a local test registry, sets them.
+	Flags []string
+	Run   func(ctx context.Context, name string, args ...string) ([]byte, error)
+}
+
+// AllowedCosignFlags are the only cosign verify flags COSIGN_VERIFY_FLAGS may
+// set. Each one loosens transport or the transparency-log check; none skips
+// the signature check against the release key.
+var AllowedCosignFlags = map[string]bool{
+	"--insecure-ignore-tlog=true":    true,
+	"--allow-http-registry=true":     true,
+	"--allow-insecure-registry=true": true,
+}
+
+// ParseCosignFlags splits COSIGN_VERIFY_FLAGS on whitespace and refuses any
+// flag outside AllowedCosignFlags.
+func ParseCosignFlags(raw string) ([]string, error) {
+	var out []string
+	for _, f := range strings.Fields(raw) {
+		if !AllowedCosignFlags[f] {
+			return nil, fmt.Errorf("COSIGN_VERIFY_FLAGS %q: %w", f, ErrBadRequest)
+		}
+		out = append(out, f)
+	}
+	return out, nil
 }
 
 func (v CLIVerifier) Verify(ctx context.Context, image string) error {
@@ -1064,7 +1094,8 @@ func (v CLIVerifier) Verify(ctx context.Context, image string) error {
 	if run == nil {
 		run = execCombined
 	}
-	out, err := run(ctx, bin, "verify", "--key", v.KeyPath, image)
+	args := append([]string{"verify", "--key", v.KeyPath}, v.Flags...)
+	out, err := run(ctx, bin, append(args, image)...)
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrSignature, Scrub(strings.TrimSpace(string(out))))
 	}

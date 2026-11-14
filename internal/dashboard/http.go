@@ -29,6 +29,10 @@ type Handler struct {
 	Audit func(r *http.Request, p domain.Principal, limit int) ([]AuditRow, error)
 	// Modules backs the Modules and marketplace tab; nil shows its settings only.
 	Modules ModulesAdmin
+	// AICalls returns the AI call log panel on the AI and inference tab for p (rendered
+	// by admin.html under .AICalls); the core's module runtime checks the admin role and
+	// matter walls, as GET /api/v1/ai/calls does. Nil shows the tab's settings only.
+	AICalls func(r *http.Request, p domain.Principal) (any, error)
 
 	tpl *template.Template
 }

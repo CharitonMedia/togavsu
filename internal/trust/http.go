@@ -115,6 +115,9 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/widgets/trust-alerts", h.widgetAlerts)
 	mux.HandleFunc("GET /api/v1/widgets/replenishment-requests", h.widgetRepl)
 	mux.HandleFunc("GET /api/v1/notifications", h.listNotifications)
+	mux.HandleFunc("POST /api/v1/notifications", h.sendNotification)
+	mux.HandleFunc("GET /api/v1/notifications/{notification_id}", h.getNotification)
+	mux.HandleFunc("DELETE /api/v1/notifications/{notification_id}", h.deleteNotification)
 	mux.HandleFunc("POST /api/v1/notifications/{notification_id}/read", h.readNotification)
 	mux.HandleFunc("POST /api/v1/notifications:read-all", h.readAll)
 	h.pageRoutes(mux)
@@ -760,6 +763,54 @@ func (h *Handler) readNotification(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, n)
+}
+
+func (h *Handler) getNotification(w http.ResponseWriter, r *http.Request) {
+	p, ok := h.who(w, r)
+	if !ok {
+		return
+	}
+	n, err := h.Svc.Notification(r.Context(), p, pathID(r, "notification_id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, n)
+}
+
+func (h *Handler) deleteNotification(w http.ResponseWriter, r *http.Request) {
+	p, ok := h.who(w, r)
+	if !ok {
+		return
+	}
+	if err := h.Svc.DeleteNotification(r.Context(), p, pathID(r, "notification_id")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) sendNotification(w http.ResponseWriter, r *http.Request) {
+	p, ok := h.who(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		UserID domain.ID `json:"user_id"`
+		Kind   string    `json:"kind"`
+		Title  string    `json:"title"`
+		Link   string    `json:"link"`
+	}
+	if err := decode(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	n, err := h.Svc.SendNotification(r.Context(), p, body.UserID, body.Kind, body.Title, body.Link)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, n)
 }
 
 func (h *Handler) readAll(w http.ResponseWriter, r *http.Request) {

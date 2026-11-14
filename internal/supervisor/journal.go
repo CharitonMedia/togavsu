@@ -29,6 +29,9 @@ const (
 	phaseFailed         = "failed"
 )
 
+// filesPending is journalRecord.Files while a spooled file export waits for the core.
+const filesPending = "pending"
+
 // journalRecord is the durable restore operation. It records intent and
 // observed runtime facts. It must not contain passphrases, tokens, or
 // database URLs.
@@ -39,6 +42,12 @@ type journalRecord struct {
 	Database   *databaseIntent   `json:"database,omitempty"`
 	Recovery   string            `json:"recovery,omitempty"`
 	Cleanup    string            `json:"cleanup,omitempty"`
+	// Files is "pending" from the moment a restore spools a file export, before the
+	// swap, until the restarted core has written those bytes. FilesSafety is the
+	// backup taken before that swap. The spool lives only in the process that made
+	// it, so a recovery that finds Files pending with no spool rolls back to it.
+	Files       string `json:"files,omitempty"`
+	FilesSafety string `json:"files_safety,omitempty"`
 }
 
 type containerIntent struct {

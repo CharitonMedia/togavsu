@@ -891,13 +891,18 @@ func TestStalledPathPutReleasesTheGateAndKeepsPendingOwnership(t *testing.T) {
 		t.Fatal("filesystem operation was dropped while the syscall was still running")
 	}
 	release()
-	deadline := time.Now().Add(2 * time.Second)
-	for remoteBusy(remoteKey("share", archiveName)) {
+	// Wait for every tracked operation on the destination, not only this key: the worker
+	// can still be finishing its temp file when this key goes idle.
+	deadline := time.Now().Add(5 * time.Second)
+	for remoteBusy(remoteKey("share", archiveName)) || !destinationIdle("share") {
 		if time.Now().After(deadline) {
 			t.Fatal("path worker did not finish after the syscall returned")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	// The short wait was for the stalled upload only; the reconcile below gets the normal
+	// budget, or a slow machine leaves the receipt pending on an ordinary write.
+	destinationIOTimeout = old
 	dest, err := OpenDestination(spec)
 	if err != nil {
 		t.Fatal(err)
@@ -1053,11 +1058,13 @@ func TestStalledPathRestoreRestartsWriters(t *testing.T) {
 	}
 	releaseGate()
 	release()
-	deadline := time.Now().Add(3 * time.Second)
+	// No destination operation may still be running, and no temp file left, before the
+	// test's TempDir is removed.
+	deadline := time.Now().Add(5 * time.Second)
 	var quiet time.Time
 	for {
 		temps, _ := filepath.Glob(filepath.Join(root, "*", ".togavsu-*.tmp"))
-		if len(temps) == 0 {
+		if len(temps) == 0 && destinationIdle("share") {
 			if quiet.IsZero() {
 				quiet = time.Now()
 			} else if time.Since(quiet) > 100*time.Millisecond {
@@ -2652,4 +2659,22 @@ func tarWithName(t *testing.T, name string) io.Reader {
 		t.Fatal(err)
 	}
 	return &buf
+}
+
+// destinationIdle reports whether no tracked operation on destination destID is still
+// running.
+func destinationIdle(destID string) bool {
+	idle := true
+	remoteOps.Range(func(k, v any) bool {
+		if key, ok := k.(string); ok && strings.HasPrefix(key, destID+"\x00") {
+			select {
+			case <-v.(*remoteOp).done:
+			default:
+				idle = false
+				return false
+			}
+		}
+		return true
+	})
+	return idle
 }

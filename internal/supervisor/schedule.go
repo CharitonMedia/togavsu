@@ -203,6 +203,7 @@ func updatesUnconfigured(err error) bool {
 // Tick runs whatever is due at now. It returns the ledger read error, if any;
 // task failures are recorded and notified, not returned.
 func (s *Scheduler) Tick(ctx context.Context, now time.Time) error {
+	ctx = Scheduled(ctx)
 	o := s.Ops
 	if o == nil || o.Ledger == nil {
 		return errors.New("scheduler has no ledger")

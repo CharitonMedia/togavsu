@@ -23,11 +23,19 @@ func TestDocumentsDocTenderTokensAndMCP(t *testing.T) {
 	d.admin.must(http.StatusOK, "PUT", "/api/v1/matters/"+walled+"/wall", map[string]any{"user_ids": []string{d.adminID}})
 	openFile := str(t, d.upload(d.atty, open, "motion.txt", "text/plain", []byte(motionText), nil), "id")
 	sealedFile := str(t, d.upload(d.admin, walled, "sealed-WALLTEXT.txt", "text/plain", []byte(strings.Replace(motionText, "MOTION", "SEALED WALLTEXT", 1)), nil), "id")
-	// The core's own worker may hold a job's lease; wait for the open file to publish.
+	// The core's own worker may hold a job's lease; wait for the open file to publish and
+	// the walled file's first run to settle (it ends in exception: no matter matches its
+	// text), so no model call from either first run lands after ai.model_prices is set
+	// below and is priced, which would fail the 0-cent check.
 	published := func(c *client, file string) func() bool {
 		return func() bool { d.drain(); return d.dtStatus(c, file)["status"] == "published" }
 	}
 	waitFor(t, 2*time.Minute, "the open file's processing", published(d.atty, openFile))
+	waitFor(t, 2*time.Minute, "the walled file's processing", func() bool {
+		d.drain()
+		s := d.dtStatus(d.admin, sealedFile)["status"]
+		return s == "published" || s == "exception"
+	})
 
 	// The setting is registered, checked on write, and in the AI tab's catalog.
 	for _, bad := range []any{"not json", map[string]any{"m": map[string]any{"input": -1, "output": 0}}, map[string]any{"m": map[string]any{"input": 1}}, []any{1}} {

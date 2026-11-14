@@ -11,6 +11,8 @@ services:
       - ./deploy/bootstrap/bootstrap-secrets.sh:/bootstrap-secrets.sh:ro
       - pgsecrets:/pgsecrets
       - appsecrets:/appsecrets
+      - adminsecrets:/adminsecrets
+      - backupkey:/backupkey
     restart: "no"
 
   postgres:
@@ -44,6 +46,34 @@ services:
         condition: service_healthy
     restart: "no"
 
+  migrate:
+    # Applies the core migrations as togavsu_app and seals the append-only tables to the
+    # NOLOGIN togavsu_ledger_owner as the superuser (core migrate, core.MigrateSealed).
+    # Only this one-shot and the supervisor mount adminsecrets, the superuser URL; the
+    # serving core logs in as togavsu_app and never mounts it (PRD 6, AC-006, AC-024).
+    # Same build as core, so a first up builds the image once and both use it. The label
+    # replaces the image's togavsu.role=core, so the supervisor never takes this exited
+    # one-shot for the core container.
+    labels:
+      togavsu.role: migrate
+    build:
+      context: .
+      dockerfile: deploy/core.Dockerfile
+    image: togavsu-core:local
+    user: "65532:65532"
+    command: ["migrate"]
+    environment:
+      TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
+    volumes:
+      - appsecrets:/appsecrets:ro
+      - adminsecrets:/adminsecrets:ro
+    depends_on:
+      dbinit:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   caddy:
     # ponytail: root so the alpine entrypoint can read the upstream file and write certificates, ceiling: root on the edge container, upgrade: a non-root entrypoint image, trigger: phase 7 release hardening.
     image: caddy:2-alpine
@@ -73,21 +103,31 @@ services:
       SUPERVISOR_LISTEN: ":8081"
       SUPERVISOR_DATA: /var/lib/togavsu
       BACKUP_DIR: /var/lib/togavsu/backups
-      BACKUP_PASSPHRASE_FILE: /appsecrets/backup_passphrase
+      BACKUP_PASSPHRASE_FILE: /backupkey/backup_passphrase
       FIELD_KEY_FILE: /appsecrets/field_key
       DATABASE_URL_FILE: /appsecrets/database_url
-      ADMIN_DATABASE_URL_FILE: /appsecrets/admin_database_url
+      # The supervisor restores and measures the database as the superuser.
+      ADMIN_DATABASE_URL_FILE: /adminsecrets/admin_database_url
       TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
       CADDY_ADMIN_SOCKET: /run/caddy-admin/admin.sock
       UPSTREAM_FILE: /runtime/upstream
       DOCKER_SOCKET: /var/run/docker.sock
       TOGAVSU_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-togavsu}_default
       TOGAVSU_APPSECRETS_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_appsecrets
+      TOGAVSU_ADMINSECRETS_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_adminsecrets
+      TOGAVSU_BACKUPKEY_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_backupkey
       TOGAVSU_CORE_DATA_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_core_data
       FIRM_TIMEZONE: UTC
-      COSIGN_KEY: /appsecrets/cosign.pub
+      # The release public key ships in the supervisor image (deploy/release/cosign.pub).
+      # Release signatures are made off GitHub and are not in the public transparency
+      # log, so the default flags skip only that log lookup; cosign verify --key still
+      # checks the signature against the release key.
+      COSIGN_KEY: ${COSIGN_KEY:-/usr/share/togavsu/cosign.pub}
+      COSIGN_VERIFY_FLAGS: ${COSIGN_VERIFY_FLAGS:---insecure-ignore-tlog=true}
     volumes:
       - appsecrets:/appsecrets:ro
+      - adminsecrets:/adminsecrets:ro
+      - backupkey:/backupkey:ro
       - backups:/var/lib/togavsu/backups
       - supervisor_data:/var/lib/togavsu
       - runtime:/runtime
@@ -121,12 +161,16 @@ services:
       TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
       SUPERVISOR_URL: http://supervisor:8081
     volumes:
-      - appsecrets:/appsecrets
+      # Read-only, and never adminsecrets: the serving core cannot read the superuser URL
+      # or rewrite its own secrets. backupkey holds the backup passphrase it writes at
+      # first-run (core.PassphraseFile); supervisor.CoreBinds mounts the same three.
+      - appsecrets:/appsecrets:ro
+      - backupkey:/backupkey
       # Upload staging and the default local-disk file store (core.DataDir). The
       # supervisor mounts the same volume on a replacement core.
       - core_data:/var/lib/togavsu-core
     depends_on:
-      dbinit:
+      migrate:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -140,6 +184,8 @@ volumes:
   pgdata:
   pgsecrets:
   appsecrets:
+  adminsecrets:
+  backupkey:
   caddy_data:
   caddy_admin:
   runtime:

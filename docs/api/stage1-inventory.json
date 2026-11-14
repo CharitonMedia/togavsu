@@ -79,7 +79,7 @@
     "runtime_fixtures": 52
   },
   "artifacts": {
-    "api/openapi/v1/openapi.json": "09a4da31b8f54836ed1f3cf467ee94477ee56d984c242627ca04ebea30666908",
+    "api/openapi/v1/openapi.json": "367d7a16f3fe86ca86e45d611cd108a434bc482454ab79381a3794af958a82c0",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
     "api/openapi/v1/mcp-tools.json": "1f9bb12f7881a9fde925166a6a380a1a519148b718dba32c614aeca766e9ed34",
     "docs/api/coverage.md": "dd8b086c8a2c0b8a09ecaa74a24ef4c91b8d0c1c11639bb76fe2bb2c4525c8f9"
@@ -180,6 +180,13 @@
         "docs/api/coverage.md"
       ],
       "change": "The core's Doc Tender routes join the contract so tokens and /mcp reach them: getDocTenderStatus (GET /api/v1/files/{file_id}/doc-tender-status, staff, doc_tender:read), reprocessDocTenderFile (POST /api/v1/files/{file_id}/doc-tender-reprocess, admin or attorney, doc_tender:write, 202 with the queued DocTenderJob, emits doc_tender.retry_scheduled) and getDocTenderModelChoices (GET /api/v1/doc-tender/model-choices, admin, doc_tender:read). The two file routes carry the file wall. The settings catalog adds ai.model_prices (json, AI tab, default {}), the price table AI call costs read."
+    },
+    {
+      "id": "ai-call-log-filters",
+      "files": [
+        "api/openapi/v1/openapi.json"
+      ],
+      "change": "listAiCalls (GET /api/v1/ai/calls) gains the task, provider and module_id query filters the AI tab's call log uses, and its description says the log is newest first and omits calls on matters behind a wall the admin is not on. The MCP catalog still describes query as one object, and coverage does not list parameters, so their bytes stay the same."
     }
   ],
   "intentional_corrections": [

@@ -111,6 +111,8 @@ func (a *Accounts) now() time.Time {
 }
 
 // UserInput is the add and edit form for one user. Nil fields are left as they are.
+// A nil field is left as it is. A pointer to the zero value clears the field: the JSON
+// API maps an explicit null for default_hourly_rate_cents and linked_contact_id to that.
 type UserInput struct {
 	Name      *string
 	Email     *string
@@ -121,6 +123,7 @@ type UserInput struct {
 	BarState  *string
 	ContactID *domain.ID
 	Phone     *string
+	Initials  *string
 }
 
 // UserRow is one user on the Users and roles tab.
@@ -255,7 +258,7 @@ func (a *Accounts) CreateUser(ctx context.Context, p domain.Principal, in UserIn
 		if u, err = a.Identity.CreateUser(ctx, caller(p), nu); err != nil {
 			return userWriteErr(err)
 		}
-		rest := UserInput{RateCents: in.RateCents, BarNumber: in.BarNumber, BarState: in.BarState, Phone: in.Phone}
+		rest := UserInput{RateCents: in.RateCents, BarNumber: in.BarNumber, BarState: in.BarState, Phone: in.Phone, Initials: in.Initials}
 		if rest != (UserInput{}) {
 			u, err = a.updateUser(ctx, p, u.ID, rest)
 		}
@@ -411,7 +414,7 @@ func (a *Accounts) updateUser(ctx context.Context, p domain.Principal, id domain
 	}
 	var prof Profile
 	var profChanged bool
-	if in.Phone != nil {
+	if in.Phone != nil || in.Initials != nil {
 		cur, ok, err := a.Profiles.Profile(ctx, id)
 		if err != nil {
 			return domain.User{}, err
@@ -419,13 +422,27 @@ func (a *Accounts) updateUser(ctx context.Context, p domain.Principal, id domain
 		if !ok {
 			cur = Profile{UserID: id}
 		}
-		if ph := strings.TrimSpace(*in.Phone); ph != cur.Phone {
-			if err := checkPhone(ph); err != nil {
+		if in.Phone != nil {
+			if ph := strings.TrimSpace(*in.Phone); ph != cur.Phone {
+				if err := checkPhone(ph); err != nil {
+					return domain.User{}, err
+				}
+				changes = append(changes, fieldChange{"phone", cur.Phone, ph})
+				cur.Phone = ph
+				prof, profChanged = cur, true
+			}
+		}
+		// Initials follow PATCH /me's rule: letters only, stored upper case.
+		if in.Initials != nil {
+			v := strings.ToUpper(strings.TrimSpace(*in.Initials))
+			if err := checkInitials(v); err != nil {
 				return domain.User{}, err
 			}
-			changes = append(changes, fieldChange{"phone", cur.Phone, ph})
-			cur.Phone = ph
-			prof, profChanged = cur, true
+			if v != cur.Initials {
+				changes = append(changes, fieldChange{"initials", cur.Initials, v})
+				cur.Initials = v
+				prof, profChanged = cur, true
+			}
 		}
 	}
 	if len(changes) == 0 {
@@ -658,6 +675,20 @@ func checkInitials(s string) error {
 // UpdateMe changes p's own name, phone and initials (contract PATCH /api/v1/me: email,
 // roles and the rest are the admin's). Each change is audited with old and new values.
 func (a *Accounts) UpdateMe(ctx context.Context, p domain.Principal, name, phone, inits *string) (MyProfile, error) {
+	return a.UpdateMeProfile(ctx, p, MeInput{Name: name, Phone: phone, Initials: inits})
+}
+
+// MeInput is MeProfileWrite. A nil field is left as it is. Picture, when not nil, is the
+// new picture's bytes, or empty to remove it; it is checked as SetPicture checks it.
+type MeInput struct {
+	Name, Phone, Initials *string
+	Picture               *[]byte
+}
+
+// UpdateMeProfile is UpdateMe with the picture: every field is checked before anything is
+// written, and the writes and their audit rows commit together.
+func (a *Accounts) UpdateMeProfile(ctx context.Context, p domain.Principal, mi MeInput) (MyProfile, error) {
+	name, phone, inits := mi.Name, mi.Phone, mi.Initials
 	if err := staff(p); err != nil {
 		return MyProfile{}, err
 	}
@@ -712,6 +743,23 @@ func (a *Accounts) UpdateMe(ctx context.Context, p domain.Principal, name, phone
 			nextPr.Initials = in
 		}
 	}
+	if mi.Picture != nil {
+		ctype, err := pictureType(*mi.Picture)
+		if err != nil {
+			return MyProfile{}, err
+		}
+		if ctype != "" || pr.PictureType != "" {
+			nv := "removed"
+			if ctype != "" {
+				nv = ctype
+			}
+			changes = append(changes, fieldChange{"profile_picture", pr.PictureType, nv})
+			nextPr.Picture, nextPr.PictureType = *mi.Picture, ctype
+			if ctype == "" {
+				nextPr.Picture = nil
+			}
+		}
+	}
 	if len(changes) > 0 {
 		at := a.now()
 		err = a.Audit.Atomic(ctx, func(ctx context.Context) error {
@@ -721,7 +769,7 @@ func (a *Accounts) UpdateMe(ctx context.Context, p domain.Principal, name, phone
 					return userWriteErr(err)
 				}
 			}
-			if nextPr.Phone != pr.Phone || nextPr.Initials != pr.Initials {
+			if nextPr.Phone != pr.Phone || nextPr.Initials != pr.Initials || mi.Picture != nil {
 				nextPr.UpdatedAt = at
 				if err := a.Profiles.PutProfile(ctx, nextPr); err != nil {
 					return err
@@ -745,21 +793,33 @@ func (a *Accounts) UpdateMe(ctx context.Context, p domain.Principal, name, phone
 // not trusted from the upload's name or header.
 var pictureTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/webp": true}
 
+// PictureMaxBytes is the largest profile picture, for a caller reading one from a file.
+func PictureMaxBytes() int { return fixed.PictureMaxBytes }
+
+// pictureType sniffs a picture's type and checks its size; empty data is a removal ("").
+func pictureType(data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", nil
+	}
+	if len(data) > fixed.PictureMaxBytes {
+		return "", domain.Invalid("picture", "the picture is larger than "+strconv.Itoa(fixed.PictureMaxBytes/1024)+" KB")
+	}
+	ctype := http.DetectContentType(data)
+	if !pictureTypes[ctype] {
+		return "", domain.Invalid("picture", "the picture must be a PNG, JPEG or WebP image")
+	}
+	return ctype, nil
+}
+
 // SetPicture stores p's profile picture, or removes it when data is empty. The audit
 // row records the change and the type, not the image.
 func (a *Accounts) SetPicture(ctx context.Context, p domain.Principal, data []byte) error {
 	if err := staff(p); err != nil {
 		return err
 	}
-	ctype := ""
-	if len(data) > 0 {
-		if len(data) > fixed.PictureMaxBytes {
-			return domain.Invalid("picture", "the picture is larger than "+strconv.Itoa(fixed.PictureMaxBytes/1024)+" KB")
-		}
-		ctype = http.DetectContentType(data)
-		if !pictureTypes[ctype] {
-			return domain.Invalid("picture", "the picture must be a PNG, JPEG or WebP image")
-		}
+	ctype, err := pictureType(data)
+	if err != nil {
+		return err
 	}
 	// PutProfile writes the whole user_profiles row, so the read and write run under the
 	// lock UpdateMe and the admin's phone edit hold for theirs: a picture change never

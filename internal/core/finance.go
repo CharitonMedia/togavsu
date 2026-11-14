@@ -85,8 +85,12 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 	if err != nil {
 		return nil, err
 	}
+	bstore := billing.NewPostgres(pool).PublishEvents()
+	if err := bstore.IndexRows(ctx); err != nil {
+		return nil, fmt.Errorf("core: billing index: %w", err)
+	}
 	bs, err := billing.New(billing.Deps{
-		Store: billing.NewPostgres(pool).PublishEvents(), Practice: store, Walls: walls, Audit: aud, Settings: reg,
+		Store: bstore, Practice: store, Walls: walls, Audit: aud, Settings: reg,
 		Trust: link, Mail: smtpMailer{Settings: reg}, Mirror: store, Receipts: fileLink, InvoiceFiles: fileLink, Now: now,
 	})
 	if err != nil {

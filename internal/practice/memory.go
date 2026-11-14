@@ -56,6 +56,12 @@ type Memory struct {
 	runs    []ConflictRun
 	checked map[domain.ID]time.Time
 	idem    map[string]idemRecord
+
+	// idx is the child-row index (memindex.go); nil until first use and after a write.
+	idx *childIndex
+	// gidx is the per-matter glance index (memindex.go), dropped on invoice, trust and
+	// time writes.
+	gidx *glanceIndex
 }
 
 // NewMemory returns an empty store.
@@ -163,6 +169,7 @@ func (m *Memory) InsertAddress(ctx context.Context, row domain.ContactAddress) e
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.addresses[row.ID] = row
+	m.idx = nil
 	return nil
 }
 
@@ -176,12 +183,16 @@ func (m *Memory) UpdateAddress(ctx context.Context, row domain.ContactAddress) e
 		return repository.ErrNotFound
 	}
 	m.addresses[row.ID] = row
+	m.idx = nil
 	return nil
 }
 
 func (m *Memory) Addresses(contact domain.ID) []domain.ContactAddress {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !contact.IsZero() {
+		return pick(m.addresses, m.children().addresses[contact])
+	}
 	var out []domain.ContactAddress
 	for _, row := range m.addresses {
 		if contact.IsZero() || row.ContactID == contact {
@@ -198,6 +209,7 @@ func (m *Memory) InsertEmail(ctx context.Context, row domain.ContactEmail) error
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.emails[row.ID] = row
+	m.idx = nil
 	return nil
 }
 
@@ -211,12 +223,16 @@ func (m *Memory) UpdateEmail(ctx context.Context, row domain.ContactEmail) error
 		return repository.ErrNotFound
 	}
 	m.emails[row.ID] = row
+	m.idx = nil
 	return nil
 }
 
 func (m *Memory) Emails(contact domain.ID) []domain.ContactEmail {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !contact.IsZero() {
+		return pick(m.emails, m.children().emails[contact])
+	}
 	var out []domain.ContactEmail
 	for _, row := range m.emails {
 		if contact.IsZero() || row.ContactID == contact {
@@ -233,6 +249,7 @@ func (m *Memory) InsertPhone(ctx context.Context, row domain.ContactPhone) error
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.phones[row.ID] = row
+	m.idx = nil
 	return nil
 }
 
@@ -246,6 +263,7 @@ func (m *Memory) UpdatePhone(ctx context.Context, row domain.ContactPhone) error
 		return repository.ErrNotFound
 	}
 	m.phones[row.ID] = row
+	m.idx = nil
 	return nil
 }
 
@@ -262,6 +280,9 @@ func (m *Memory) Phone(_ context.Context, id domain.ID) (domain.ContactPhone, er
 func (m *Memory) Phones(contact domain.ID) []domain.ContactPhone {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !contact.IsZero() {
+		return pick(m.phones, m.children().phones[contact])
+	}
 	var out []domain.ContactPhone
 	for _, row := range m.phones {
 		if contact.IsZero() || row.ContactID == contact {
@@ -278,6 +299,7 @@ func (m *Memory) InsertTag(ctx context.Context, row domain.ContactTag) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.tags[row.ID] = row
+	m.idx = nil
 	return nil
 }
 
@@ -291,6 +313,7 @@ func (m *Memory) UpdateTag(ctx context.Context, row domain.ContactTag) error {
 		return repository.ErrNotFound
 	}
 	m.tags[row.ID] = row
+	m.idx = nil
 	return nil
 }
 
@@ -304,12 +327,16 @@ func (m *Memory) DeleteTag(ctx context.Context, id domain.ID) error {
 		return repository.ErrNotFound
 	}
 	delete(m.tags, id)
+	m.idx = nil
 	return nil
 }
 
 func (m *Memory) Tags(contact domain.ID) []domain.ContactTag {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if !contact.IsZero() {
+		return pick(m.tags, m.children().tags[contact])
+	}
 	var out []domain.ContactTag
 	for _, row := range m.tags {
 		if contact.IsZero() || row.ContactID == contact {
@@ -393,6 +420,7 @@ func (m *Memory) InsertParty(ctx context.Context, row domain.MatterParty) error 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.parties[row.ID] = row
+	m.idx = nil
 	return nil
 }
 
@@ -406,6 +434,7 @@ func (m *Memory) UpdateParty(ctx context.Context, row domain.MatterParty) error 
 		return repository.ErrNotFound
 	}
 	m.parties[row.ID] = row
+	m.idx = nil
 	return nil
 }
 
@@ -422,8 +451,15 @@ func (m *Memory) Party(_ context.Context, id domain.ID) (domain.MatterParty, err
 func (m *Memory) Parties(matter, contact domain.ID) []domain.MatterParty {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	src := m.parties
+	switch {
+	case !matter.IsZero():
+		src = indexed(m.parties, m.children().partiesByMatter[matter])
+	case !contact.IsZero():
+		src = indexed(m.parties, m.children().partiesByCon[contact])
+	}
 	var out []domain.MatterParty
-	for _, row := range m.parties {
+	for _, row := range src {
 		if !matter.IsZero() && row.MatterID != matter {
 			continue
 		}
@@ -444,10 +480,12 @@ func (m *Memory) ReplaceWalls(ctx context.Context, matter domain.ID, rows []doma
 	for id, row := range m.walls {
 		if row.MatterID == matter {
 			delete(m.walls, id)
+			m.idx = nil
 		}
 	}
 	for _, row := range rows {
 		m.walls[row.ID] = row
+		m.idx = nil
 	}
 	return nil
 }
@@ -455,13 +493,7 @@ func (m *Memory) ReplaceWalls(ctx context.Context, matter domain.ID, rows []doma
 func (m *Memory) Walls(matter domain.ID) []domain.MatterWall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []domain.MatterWall
-	for _, row := range m.walls {
-		if row.MatterID == matter {
-			out = append(out, row)
-		}
-	}
-	return out
+	return pick(m.walls, m.children().walls[matter])
 }
 
 func (m *Memory) InsertArea(ctx context.Context, row domain.PracticeArea) error {
@@ -748,6 +780,7 @@ func (m *Memory) PutInvoice(ctx context.Context, row domain.Invoice) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.invoices[row.ID] = row
+	m.gidx = nil
 	return nil
 }
 
@@ -768,6 +801,7 @@ func (m *Memory) PutTrust(ctx context.Context, row domain.TrustBalance) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.trust[row.ID] = row
+	m.gidx = nil
 	return nil
 }
 
@@ -788,6 +822,7 @@ func (m *Memory) PutTime(ctx context.Context, row domain.TimeEntry) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.times[row.ID] = row
+	m.gidx = nil
 	return nil
 }
 

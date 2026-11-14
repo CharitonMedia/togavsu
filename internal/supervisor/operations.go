@@ -6,23 +6,99 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-// Gate lets one backup, restore, or update run at a time.
-type Gate struct{ mu sync.Mutex }
+// Gate lets one backup, restore, or update run at a time. Scheduled work
+// (the 30-second tick's nightly backup, update check, test restore and prune)
+// holds it for moments at a time, so an admin's request that arrives during a
+// tick waits up to ScheduledWait for that work to finish instead of being
+// refused. A request that finds another admin request holding the gate, and
+// scheduled work that finds it held at all, is refused at once.
+type Gate struct {
+	mu        sync.Mutex
+	held      bool
+	scheduled bool
+	free      chan struct{}
+	// ScheduledWait overrides scheduledWait (tests).
+	ScheduledWait time.Duration
+}
 
+// scheduledWait bounds how long an admin request waits for scheduled work.
+const scheduledWait = 30 * time.Second
+
+type scheduledKey struct{}
+
+// Scheduled marks ctx as the scheduler's, so its gate holds yield to admin
+// requests.
+func Scheduled(ctx context.Context) context.Context {
+	return context.WithValue(ctx, scheduledKey{}, true)
+}
+
+func isScheduled(ctx context.Context) bool {
+	v, _ := ctx.Value(scheduledKey{}).(bool)
+	return v
+}
+
+// Try takes the gate for an admin request without waiting.
 func (g *Gate) Try() (func(), bool) {
+	return g.take(false, nil)
+}
+
+// Acquire takes the gate for ctx. Scheduled work never waits. An admin
+// request waits for scheduled work up to ScheduledWait or until ctx ends.
+func (g *Gate) Acquire(ctx context.Context) (func(), bool) {
+	if isScheduled(ctx) {
+		return g.take(true, nil)
+	}
+	wait := g.ScheduledWait
+	if wait <= 0 {
+		wait = scheduledWait
+	}
+	wctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	return g.take(false, wctx.Done())
+}
+
+// take acquires the gate. stop, when non-nil, lets an admin request wait for
+// a scheduled holder until stop closes.
+func (g *Gate) take(scheduled bool, stop <-chan struct{}) (func(), bool) {
 	if g == nil {
 		return func() {}, true
 	}
-	if !g.mu.TryLock() {
-		return nil, false
+	for {
+		g.mu.Lock()
+		if !g.held {
+			g.held, g.scheduled, g.free = true, scheduled, make(chan struct{})
+			free := g.free
+			g.mu.Unlock()
+			var once sync.Once
+			return func() {
+				once.Do(func() {
+					g.mu.Lock()
+					g.held, g.scheduled = false, false
+					close(free)
+					g.mu.Unlock()
+				})
+			}, true
+		}
+		if stop == nil || !g.scheduled {
+			g.mu.Unlock()
+			return nil, false
+		}
+		free := g.free
+		g.mu.Unlock()
+		select {
+		case <-free:
+		case <-stop:
+			return nil, false
+		}
 	}
-	return g.mu.Unlock, true
 }
 
 // RestoreRecord is the stable restore status. Polling returns this shape from
@@ -50,19 +126,23 @@ type Catalog interface {
 // Operations ties the archive store to the runtime. Restores stop the core
 // first and bring it back only when the live catalog says that is safe.
 type Operations struct {
-	Store           *Store
-	Updater         *Updater
-	Runtime         Runtime
-	Catalog         Catalog
-	Gate            *Gate
-	Ledger          *Ledger
-	Journal         *Journal
-	UpdateJournal   *UpdateJournal
-	Outbox          *Outbox
-	ApplyDump       func(ctx context.Context, r io.Reader) error
-	ApplyRestore    func(ctx context.Context, payload RestorePayload) error
-	Measure         func(ctx context.Context, r io.Reader) (map[string]int64, error)
-	Passphrase      func() (string, error)
+	Store         *Store
+	Updater       *Updater
+	Runtime       Runtime
+	Catalog       Catalog
+	Gate          *Gate
+	Ledger        *Ledger
+	Journal       *Journal
+	UpdateJournal *UpdateJournal
+	Outbox        *Outbox
+	ApplyDump     func(ctx context.Context, r io.Reader) error
+	ApplyRestore  func(ctx context.Context, payload RestorePayload) error
+	Measure       func(ctx context.Context, r io.Reader) (map[string]int64, error)
+	Passphrase    func() (string, error)
+	// RestoreFiles hands an archive's file export (Manifest.FileBytes) to the
+	// restarted core once the database is restored (CoreFiles.Import). Nil
+	// rejects an archive that carries file bytes before writers stop.
+	RestoreFiles    func(ctx context.Context, path string) error
 	Now             func() time.Time
 	RestoreTimeout  time.Duration
 	RecoveryTimeout time.Duration
@@ -70,9 +150,16 @@ type Operations struct {
 	jobsMu          sync.Mutex
 	// held lists restores whose terminal record is not published yet; the
 	// value is that record once it exists.
-	held     map[string]*RestoreRecord
-	active   sync.WaitGroup
-	shutting atomic.Bool
+	held map[string]*RestoreRecord
+	// files holds each running restore's kept file export until the core is
+	// back to take it.
+	files map[string]keptFiles
+	// rollingBack counts file rollbacks in progress. Their record is already
+	// failed, so the journal alone would let users back into the restored core
+	// while the safety backup is still being put back.
+	rollingBack int
+	active      sync.WaitGroup
+	shutting    atomic.Bool
 }
 
 func (o *Operations) now() time.Time {
@@ -124,7 +211,7 @@ func (o *Operations) CreateBackup(ctx context.Context, reason string) (BackupMet
 	if o.shutting.Load() {
 		return BackupMeta{}, ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return BackupMeta{}, ErrBusy
 	}
@@ -146,7 +233,7 @@ func (o *Operations) Update(ctx context.Context, force bool) (UpdateResult, erro
 	if o.shutting.Load() {
 		return UpdateResult{}, ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return UpdateResult{}, ErrBusy
 	}
@@ -187,7 +274,7 @@ func (o *Operations) DeleteBackup(ctx context.Context, id string) error {
 	if o.shutting.Load() {
 		return ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return ErrBusy
 	}
@@ -205,7 +292,7 @@ func (o *Operations) Prune(ctx context.Context, local time.Duration) error {
 	if o.shutting.Load() {
 		return ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return ErrBusy
 	}
@@ -464,7 +551,7 @@ func (o *Operations) admitRestoreFrom(ctx context.Context, backupID string, src 
 	if o.shutting.Load() {
 		return RestoreRecord{}, nil, ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return RestoreRecord{}, nil, ErrBusy
 	}
@@ -502,7 +589,7 @@ func (o *Operations) admitRestoreFrom(ctx context.Context, backupID string, src 
 		rec, ferr := o.failedRestore(backupID, source, err)
 		return rec, nil, ferr
 	}
-	if len(man.Files) > 0 {
+	if len(man.Files) > 0 || (man.FileBytes != nil && o.RestoreFiles == nil) {
 		release()
 		rec, ferr := o.failedRestore(backupID, source, ErrFileRestoreUnsupported)
 		return rec, nil, ferr
@@ -576,10 +663,20 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 	if err != nil {
 		return o.closeStopped(rec, stopped, err, "")
 	}
-	_ = safety
 	apply := func(ctx context.Context, payload RestorePayload) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		// The file set is checked whole (manifest complete, every object's size and
+		// SHA-256) and spooled before the database is touched, so a damaged or partial
+		// export fails here with the existing data in place.
+		if payload.FileBytes != "" {
+			if err := checkFileExport(payload.FileBytes); err != nil {
+				return err
+			}
+			if err := o.keepFiles(rec.ID, payload.FileBytes, safety.ID); err != nil {
+				return err
+			}
 		}
 		ctx = WithRestoreOpID(ctx, rec.ID)
 		ctx = WithAllocHook(ctx, func(a RestoreAlloc) error {
@@ -639,7 +736,14 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 			})
 			return herr
 		})
-		if _, perr := o.persist(o.current(rec.ID, rec), phaseApplying, nil); perr != nil {
+		var spooled func(*journalRecord)
+		if payload.FileBytes != "" {
+			spooled = func(cur *journalRecord) {
+				cur.Files = filesPending
+				cur.FilesSafety = safety.ID
+			}
+		}
+		if _, perr := o.persist(o.current(rec.ID, rec), phaseApplying, spooled); perr != nil {
 			return perr
 		}
 		if o.ApplyRestore != nil {
@@ -662,6 +766,9 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 		return o.finishCleanup(rec, stopped, err)
 	}
 	if err != nil {
+		if kept, ok := o.takeFiles(rec.ID); ok {
+			kept.cleanup()
+		}
 		if o.Outbox != nil {
 			_ = o.Outbox.Notify(context.Background(), "Restore failed", "The archive was not applied. Existing data was left in place. "+Scrub(err.Error()))
 		}
@@ -681,6 +788,10 @@ func (o *Operations) finishApplied(rec RestoreRecord, stopped []ContainerInfo, p
 		}
 		return o.keepPending(rec, phaseApplied, writerRecoveryReason(startErr), errors.Join(persistErr, startErr))
 	}
+	rec, done, ferr := o.importFiles(rec)
+	if done {
+		return rec, ferr
+	}
 	rec.Status = "completed"
 	rec.Recovery = ""
 	rec.Finished = o.now().UTC()
@@ -689,6 +800,54 @@ func (o *Operations) finishApplied(rec RestoreRecord, stopped []ContainerInfo, p
 		return o.keepPending(rec, phaseApplied, "journal_unpersisted", errors.Join(persistErr, perr))
 	}
 	return saved, nil
+}
+
+// importFiles writes a committed restore's file export through the running core.
+// Every path that ends a committed swap calls it once the writers are back, so a
+// restore never ends completed while the bytes it spooled are unwritten. Only the
+// running core can write them: it holds the storage backends' credentials and reads
+// where each object lives from the restored database. The set was checked and spooled
+// before the swap, so what is left to fail is the backend write itself, and that
+// rolls back to the safety backup. The spool exists only in the process that made it;
+// a recovery that finds the journal's Files still pending without it (the supervisor
+// restarted after the swap) cannot write the bytes and rolls back the same way.
+// done is true when the record was finished or left pending here.
+func (o *Operations) importFiles(rec RestoreRecord) (RestoreRecord, bool, error) {
+	item, _ := o.journalItem(rec.ID)
+	kept, ok := o.takeFiles(rec.ID)
+	if !ok {
+		if item.Files != filesPending {
+			return rec, false, nil
+		}
+		saved, err := o.rollBackFiles(rec, item.FilesSafety, errFilesLost)
+		return saved, true, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), o.restoreTimeout())
+	ferr := o.RestoreFiles(ctx, kept.path)
+	cancel()
+	kept.cleanup()
+	if ferr != nil {
+		saved, err := o.rollBackFiles(rec, kept.safety, ferr)
+		return saved, true, err
+	}
+	if item.Files == "" {
+		return rec, false, nil
+	}
+	phase := item.Phase
+	if phase == "" {
+		phase = phaseApplied
+	}
+	saved, perr := o.persist(rec, phase, func(cur *journalRecord) {
+		cur.Files = ""
+		cur.FilesSafety = ""
+	})
+	if perr != nil {
+		// The journal still says pending, so a later recovery rolls back rather
+		// than trust bytes it cannot see were written.
+		saved, err := o.keepPending(rec, phaseApplied, "journal_unpersisted", perr)
+		return saved, true, err
+	}
+	return saved, false, nil
 }
 
 func (o *Operations) finishCleanup(rec RestoreRecord, stopped []ContainerInfo, err error) (RestoreRecord, error) {
@@ -704,6 +863,10 @@ func (o *Operations) finishCleanup(rec RestoreRecord, stopped []ContainerInfo, e
 				return o.keepPending(rec, phaseSwapIntended, "commit_unjournaled", derr)
 			}
 		}
+	}
+	rec, done, ferr := o.importFiles(rec)
+	if done {
+		return rec, ferr
 	}
 	rec.Status = "completed"
 	rec.Recovery = ""
@@ -875,6 +1038,9 @@ func (o *Operations) finishCommittedUnjournaled(rec RestoreRecord, stopped []Con
 // configured data is unchanged, and the poll says so without deleting the
 // name that proves the rollback.
 func (o *Operations) finishRollbackUnjournaled(rec RestoreRecord, stopped []ContainerInfo, cause error) (RestoreRecord, error) {
+	if kept, ok := o.takeFiles(rec.ID); ok {
+		kept.cleanup()
+	}
 	if o.Outbox != nil {
 		_ = o.Outbox.Notify(context.Background(), "Restore failed", "The archive was not applied. Existing data was left in place. The loaded database was kept because the rollback was not recorded. "+Scrub(cause.Error()))
 	}
@@ -1264,7 +1430,7 @@ func (o *Operations) Recover(ctx context.Context) error {
 	if o.shutting.Load() {
 		return ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return ErrBusy
 	}
@@ -1441,6 +1607,13 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 				return nil
 			}
 		}
+		rec, done, ferr := o.importFiles(rec)
+		if done {
+			if rec.Status == "running" {
+				return ferr
+			}
+			return nil
+		}
 		rec.Status = "completed"
 		rec.Recovery = ""
 		rec.Finished = o.now().UTC()
@@ -1541,6 +1714,13 @@ func (o *Operations) recoverCommitted(item journalRecord) error {
 	if err := o.restoreWriters(rec, nil); err != nil {
 		_, perr := o.keepPending(rec, phaseApplied, writerRecoveryReason(err), err)
 		return errors.Join(err, perr)
+	}
+	rec, done, ferr := o.importFiles(rec)
+	if done {
+		if rec.Status == "running" {
+			return ferr
+		}
+		return nil
 	}
 	rec.Status = "completed"
 	rec.Recovery = ""
@@ -1827,6 +2007,8 @@ func (o *Operations) persist(rec RestoreRecord, phase string, mutate func(*journ
 		if ok {
 			cur.Containers = prev.Containers
 			cur.Database = prev.Database
+			cur.Files = prev.Files
+			cur.FilesSafety = prev.FilesSafety
 		}
 	}
 	cur.Record = rec
@@ -1872,7 +2054,7 @@ func (o *Operations) TestRestore(ctx context.Context, id string) error {
 	if o.shutting.Load() {
 		return ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return ErrBusy
 	}
@@ -1976,4 +2158,123 @@ func (o *Operations) recordRestore(rec RestoreRecord) {
 		fields["finished"] = rec.Finished.UTC().Format(time.RFC3339Nano)
 	}
 	_, _ = o.Ledger.Append("restore", "supervisor", fields)
+}
+
+type keptFiles struct {
+	path    string
+	cleanup func()
+	// safety is the backup this restore took before the swap, for rollBackFiles.
+	safety string
+}
+
+// ponytail: ceiling: a rollback that also fails lifts the restore hold over the restored
+// database without its files; upgrade path and trigger are PONYTAIL-DEBT.md Platform 18.
+// rollBackFiles handles a restored database whose file bytes the core could not write.
+// Users have been held out of the restored core since it started (FileHold), and stay
+// out until this returns, so the rollback drops nothing they did. The record is failed
+// with files_not_restored first, so a crash during the rollback leaves it terminal. Then the safety backup taken before the swap is restored as its
+// own journaled restore (source "rollback:<id>"), through the same stop, swap and
+// restart path, so the previous database is live again over the files it names. When
+// that completes the record's error becomes files_rolled_back.
+func (o *Operations) rollBackFiles(rec RestoreRecord, safetyID string, ferr error) (RestoreRecord, error) {
+	o.jobsMu.Lock()
+	o.rollingBack++
+	o.jobsMu.Unlock()
+	defer func() {
+		o.jobsMu.Lock()
+		o.rollingBack--
+		o.jobsMu.Unlock()
+	}()
+	rec.Error = "files_not_restored"
+	saved, perr := o.markFailed(rec, ferr)
+	if perr != nil {
+		return o.keepPending(rec, phaseApplied, "journal_unpersisted", errors.Join(ferr, perr))
+	}
+	notify := func(subject, body string) {
+		if o.Outbox != nil {
+			_ = o.Outbox.Notify(context.Background(), subject, body+Scrub(ferr.Error()))
+		}
+	}
+	if safetyID == "" {
+		notify("Restore needs attention", "The database was restored and the core is running. The file bytes were not restored, and there is no safety backup to roll back to. ")
+		return saved, ferr
+	}
+	opID, err := newRestoreOpID(o.now())
+	if err != nil {
+		notify("Restore needs attention", "The database was restored and the core is running. The file bytes were not restored, and the rollback did not start. ")
+		return saved, errors.Join(ferr, err)
+	}
+	rb := RestoreRecord{ID: opID, BackupID: safetyID, Source: "rollback:" + rec.ID, Status: "accepted", Started: o.now().UTC()}
+	if _, err := o.persist(rb, phaseAccepted, nil); err != nil {
+		notify("Restore needs attention", "The database was restored and the core is running. The file bytes were not restored, and the rollback did not start. ")
+		return saved, errors.Join(ferr, err)
+	}
+	done, rerr := o.executeRestore(rb)
+	if rerr != nil || done.Status != "completed" {
+		notify("Restore needs attention", "The database was restored and the core is running. The file bytes were not restored, and putting the previous database back failed (restore "+opID+"). ")
+		return saved, errors.Join(ferr, rerr)
+	}
+	saved.Error = "files_rolled_back"
+	if again, err := o.persist(saved, phaseFailed, nil); err == nil {
+		saved = again
+	}
+	notify("Restore rolled back", "The file bytes could not be restored, so the database was put back from the safety backup taken just before the restore. Existing data is in place; changes made after the restored core started are not kept. ")
+	return saved, ferr
+}
+
+// keepFiles moves a restore's file export out of the decrypted workspace,
+// which is removed when apply returns, into a scratch workspace of its own.
+// Startup recovery removes it if this process dies before the core takes it.
+func (o *Operations) keepFiles(id, path, safety string) error {
+	if o.RestoreFiles == nil {
+		return ErrFileRestoreUnsupported
+	}
+	dir, cleanup, err := o.Store.plaintextWorkspace("restore-files-")
+	if err != nil {
+		return err
+	}
+	kept := filepath.Join(dir, "bytes.tar")
+	if err := os.Rename(path, kept); err != nil {
+		cleanup()
+		return err
+	}
+	o.jobsMu.Lock()
+	if o.files == nil {
+		o.files = map[string]keptFiles{}
+	}
+	o.files[id] = keptFiles{path: kept, cleanup: cleanup, safety: safety}
+	o.jobsMu.Unlock()
+	return nil
+}
+
+// FileHold reports whether users must stay out of the core: a restore has put
+// its database in place and its file bytes are not written yet, or a failed
+// file write is being rolled back. The core serves only its health check and
+// the supervisor's file import until this is false, so nothing a user does in
+// that window can be lost to a rollback. An unreadable journal holds.
+func (o *Operations) FileHold() (bool, error) {
+	o.jobsMu.Lock()
+	busy := len(o.files) > 0 || o.rollingBack > 0
+	o.jobsMu.Unlock()
+	if busy || o.Journal == nil {
+		return busy, nil
+	}
+	open, err := o.Journal.Incomplete()
+	if err != nil {
+		return true, err
+	}
+	for _, rec := range open {
+		if rec.Files == filesPending {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (o *Operations) takeFiles(id string) (keptFiles, bool) {
+	o.jobsMu.Lock()
+	defer o.jobsMu.Unlock()
+	k, ok := o.files[id]
+	delete(o.files, id)
+	return k, ok && o.RestoreFiles != nil
 }

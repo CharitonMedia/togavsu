@@ -14,7 +14,9 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -69,6 +71,13 @@ type Config struct {
 	// SupervisorURL (the Compose service).
 	SupervisorURL    string
 	SupervisorSecret string
+	// RequireSealed makes Open refuse a database whose append-only tables are not sealed
+	// to db.LedgerOwner (db.VerifySealed), before it migrates or serves anything. The
+	// serving core (cmd/core) sets it; only core migrate, as the superuser, can seal.
+	RequireSealed bool
+	// BackupPassphraseFile is where the core writes the backup passphrase for the
+	// supervisor. Empty is PassphraseFile when that file exists, else none.
+	BackupPassphraseFile string
 	// ModuleRuntime and ModuleBackups replace the supervisor for tests that run a module
 	// in process. Production leaves them nil.
 	ModuleRuntime modules.Runtime
@@ -102,6 +111,7 @@ type App struct {
 	Market  *marketplace.Service
 
 	ext      *extensions
+	backups  *backups
 	handler  http.Handler
 	ledger   *audit.Postgres
 	tools    []tool
@@ -119,26 +129,105 @@ type App struct {
 	docs     *documents
 	stopDocs context.CancelFunc
 	docsDone chan struct{}
+	hold     *restoreHold
+	// bgMu orders starting the background workers against Close; bgClosed is set
+	// by Close so a hold released during shutdown starts nothing.
+	bgMu     sync.Mutex
+	bgClosed bool
 }
 
 // Migrate applies every embedded core migration to dsn in schema core.
 func Migrate(ctx context.Context, dsn string) error {
+	_, err := MigrateCount(ctx, dsn)
+	return err
+}
+
+// MigrateCount is Migrate that reports how many migrations it applied (`core migrate`).
+func MigrateCount(ctx context.Context, dsn string) (int, error) {
 	plain, err := db.OpenPostgres(dsn, "")
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer plain.Close()
 	ms, err := migrations()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
+	return db.ApplyCount(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
+}
+
+// ErrNoAdminDatabaseURL is returned by MigrateSealed when it has no superuser URL: the
+// migrations would run and leave the append-only tables unsealed.
+var ErrNoAdminDatabaseURL = errors.New("core: migrate needs the superuser database url (TOGAVSU_ADMIN_DATABASE_URL) to seal the append-only tables")
+
+// MigrateSealed is "core migrate": it applies the core migrations as the application
+// role behind dsn and leaves the append-only tables owned by db.LedgerOwner. adminDSN is
+// a superuser on the same server; its database name is replaced with dsn's. The
+// migrations run on a superuser session switched to the application role
+// (db.ApplySealed), and a migration that names an append-only table gets it for its
+// own transaction only, so no other session ever sees an unsealed ledger, even while
+// the old core serves during an update or when a migration fails or the process dies.
+// It then runs the seal again, which also repairs a database an older core migrate
+// left unsealed. ran reports whether a migration was applied. An empty adminDSN fails
+// before anything runs, and the run fails unless db.VerifySealed then passes on the
+// application role's own connection.
+func MigrateSealed(ctx context.Context, dsn, adminDSN string) (ran bool, err error) {
+	if strings.TrimSpace(adminDSN) == "" {
+		return false, ErrNoAdminDatabaseURL
+	}
+	plain, err := db.OpenPostgres(dsn, "")
+	if err != nil {
+		return false, err
+	}
+	defer plain.Close()
+	var app string
+	if err := plain.QueryRowContext(ctx, `SELECT current_user`).Scan(&app); err != nil {
+		return false, err
+	}
+	target, err := url.Parse(dsn)
+	if err != nil {
+		return false, errors.New("core: database url does not parse")
+	}
+	au, err := url.Parse(adminDSN)
+	if err != nil {
+		return false, errors.New("core: admin database url does not parse")
+	}
+	au.Path = target.Path
+	admin, err := db.OpenPostgres(au.String(), "")
+	if err != nil {
+		return false, err
+	}
+	defer admin.Close()
+	ms, err := migrations()
+	if err != nil {
+		return false, err
+	}
+	n, merr := db.ApplySealed(ctx, admin, app, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
+	ran = n > int(0)
+	if errors.Is(merr, db.ErrNotSuperuser) {
+		return false, merr
+	}
+	if serr := db.SealLedgers(ctx, admin, app); serr != nil {
+		return ran, errors.Join(merr, fmt.Errorf("core: seal ledgers: %w", serr))
+	}
+	if merr != nil {
+		return ran, merr
+	}
+	if verr := db.VerifySealed(ctx, plain); verr != nil {
+		return ran, fmt.Errorf("core: after migrate: %w", verr)
+	}
+	return ran, nil
 }
 
 // Open migrates, seeds reference rows, and wires every service on one pool.
 func Open(ctx context.Context, cfg Config) (*App, error) {
 	if len(cfg.Key) != 32 {
 		return nil, errors.New("core: encryption key must be 32 bytes")
+	}
+	if cfg.RequireSealed {
+		if err := requireSealed(ctx, cfg.DatabaseURL); err != nil {
+			return nil, err
+		}
 	}
 	now := cfg.Now
 	if now == nil {
@@ -177,7 +266,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	ids, err := identity.New(identity.Deps{
 		Users: pg.Users(), Sessions: pg.Sessions(), Passwords: pg.Passwords(),
 		TOTP: pg.TOTP(), Recovery: pg.Recovery(), Tokens: pg.Tokens(),
-		Audit: aud, Settings: reg, Key: cfg.Key, Now: now, Mail: logMailer{},
+		Audit: aud, Settings: reg, Key: cfg.Key, Now: now, Mail: resetMailer{mail: smtpMailer{Settings: reg}},
 	})
 	if err != nil {
 		return fail(err)
@@ -247,9 +336,27 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.ext, app.Market = ext, ext.Market
+	// A module's own token writes files only while the module is installed and enabled
+	// (PRD 8.19, 9.3); the files service asks the module runtime, which is opened after
+	// the ui, so until then every module principal is refused.
+	docs.Files.SetModuleCheck(func(ctx context.Context, module string) (bool, error) {
+		if ext.Modules == nil {
+			return false, nil
+		}
+		in, err := ext.Modules.Installed(ctx, module)
+		var api *domain.APIError
+		if errors.As(err, &api) && api.Code == domain.CodeNotFound {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return in.Enabled, nil
+	})
 	if app.tools, err = loadTools(api.MCPTools); err != nil {
 		return fail(err)
 	}
+	app.backups = newBackups(app, cfg, dataDir, now)
 	app.routes()
 	files := cfg.HelpFiles
 	if files == nil {
@@ -277,31 +384,46 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	last := len(app.domains) - 1
 	app.domains = append(app.domains[:last:last], modMux, mkMux, app.domains[last])
 	app.uiMuxes = []*http.ServeMux{ui.helpMux, ui.dash}
-	app.handler = ui.Handler()
-	// Module events are pumped and their webhooks sent every five seconds.
-	if err := ext.start(ctx, !cfg.NoBackground, 5*time.Second); err != nil {
+	// Each request reads a setting or an identity user once however many rows ask
+	// (AC-017); the memo ends with the request, so changes apply from the next one.
+	inner := ui.Handler()
+	app.handler = app.holdGate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		inner.ServeHTTP(w, r.WithContext(practice.WithRequestMemo(r.Context())))
+	}))
+	if err := ext.start(ctx); err != nil {
 		return fail(err)
 	}
-	if !cfg.NoBackground {
-		docCtx, stop := context.WithCancel(context.Background())
-		app.stopDocs, app.docsDone = stop, make(chan struct{})
-		go func() {
-			defer close(app.docsDone)
-			app.runDocuments(docCtx, 10*time.Second, time.Minute)
-		}()
-	}
-	if cfg.MailEvery >= 0 {
-		every := cfg.MailEvery
-		if every == 0 {
-			every = 30 * time.Second
-		}
-		mailCtx, stop := context.WithCancel(context.Background())
-		app.stopMail, app.mailDone = stop, make(chan struct{})
-		go func() {
-			defer close(app.mailDone)
-			app.deliverTrustMail(mailCtx, every)
-		}()
-	}
+	// Background work writes to the database, so it starts only once no restore
+	// hold keeps users out (restorehold.go): a write made before the restore's
+	// file bytes are back would be lost if those bytes then failed and the
+	// database were rolled back.
+	app.hold = newRestoreHold(app.backups)
+	app.hold.watch(time.Second, func() {
+		app.startBackground(func() {
+			// Module events are pumped and their webhooks sent every five seconds.
+			if !cfg.NoBackground {
+				ext.run(5 * time.Second)
+				docCtx, stop := context.WithCancel(context.Background())
+				app.stopDocs, app.docsDone = stop, make(chan struct{})
+				go func() {
+					defer close(app.docsDone)
+					app.runDocuments(docCtx, 10*time.Second, time.Minute)
+				}()
+			}
+			if cfg.MailEvery >= 0 {
+				every := cfg.MailEvery
+				if every == 0 {
+					every = 30 * time.Second
+				}
+				mailCtx, stop := context.WithCancel(context.Background())
+				app.stopMail, app.mailDone = stop, make(chan struct{})
+				go func() {
+					defer close(app.mailDone)
+					app.deliverTrustMail(mailCtx, every)
+				}()
+			}
+		})
+	})
 	return app, nil
 }
 
@@ -309,6 +431,10 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 // closes any SMTP connection it has open (internal/smtpsend), so a stalled server cannot
 // hold shutdown or an update.
 func (a *App) Close() error {
+	a.hold.close()
+	a.bgMu.Lock()
+	a.bgClosed = true
+	a.bgMu.Unlock()
 	if a.stopDocs != nil {
 		a.stopDocs()
 		<-a.docsDone
@@ -322,6 +448,16 @@ func (a *App) Close() error {
 		<-a.mailDone
 	}
 	return a.Pool.Close()
+}
+
+// startBackground runs start, which starts the background workers, unless Close
+// has begun; Close waits for it, so every worker start sees the stop that follows.
+func (a *App) startBackground(start func()) {
+	a.bgMu.Lock()
+	defer a.bgMu.Unlock()
+	if !a.bgClosed {
+		start()
+	}
 }
 
 // Handler is the whole HTTP surface: the module runtime's domain router and include=
@@ -339,16 +475,24 @@ func (a *App) Ready(ctx context.Context) (bool, error) {
 	}
 	if ok {
 		a.ready.Store(true)
+		// The supervisor reads the passphrase setup stored from a file; a failure
+		// here is retried before each backup and restore the core asks for.
+		if err := a.backups.syncPassphrase(ctx); err != nil {
+			log.Printf("core: backup passphrase file: %v", err)
+		}
 	}
 	return ok, nil
 }
 
-// logMailer records that a reset was requested. Outbound mail is a later package.
-// ponytail: ceiling: password-reset tokens are not delivered; the admin resets the user instead.
-// Upgrade path: the notifications package sends the reset mail. Trigger: SMTP settings ship.
-type logMailer struct{}
-
-func (logMailer) SendPasswordReset(email, _ string) error {
-	log.Printf("core: password reset requested; mail delivery is not configured")
+// requireSealed is Config.RequireSealed.
+func requireSealed(ctx context.Context, dsn string) error {
+	plain, err := db.OpenPostgres(dsn, "")
+	if err != nil {
+		return err
+	}
+	defer plain.Close()
+	if err := db.VerifySealed(ctx, plain); err != nil {
+		return fmt.Errorf("core: refusing to serve: %w; run core migrate (the Compose migrate service) first", err)
+	}
 	return nil
 }

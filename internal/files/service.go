@@ -107,6 +107,9 @@ type Service struct {
 	now       func() time.Time
 	newID     func() (domain.ID, error)
 	onVersion func(ctx context.Context, ev VersionCreated)
+	// moduleOn reports whether a module is installed and enabled; nil refuses every
+	// module principal (SetModuleCheck).
+	moduleOn func(ctx context.Context, module string) (bool, error)
 
 	mu       sync.Mutex
 	adapters map[domain.ID]cached
@@ -242,6 +245,62 @@ func clientSees(p domain.Principal, f fileRow) bool {
 // decide applies walls and roles to one file. A file with a matter follows the
 // matter's wall; a file with only a contact follows that contact (a client sees it
 // only when it is their own contact and shared); a file with neither is firm-only.
+// SetModuleCheck gives the service the module runtime's installed-and-enabled check.
+// The core sets it once at start, before serving; until then a module principal is
+// refused.
+func (s *Service) SetModuleCheck(fn func(ctx context.Context, module string) (bool, error)) {
+	s.moduleOn = fn
+}
+
+// moduleOnly is a module's own token with no viewer (PRD 9.3): no user and no roles, only
+// the approved scopes the core checked on the route.
+func moduleOnly(p domain.Principal) bool {
+	return p.Source == domain.SourceModule && p.ModuleID != "" && p.UserID.IsZero()
+}
+
+// clientViaModule is a client user acting through a module's frame (a context token):
+// the client portal module (PRD 8.19).
+func clientViaModule(p domain.Principal) bool {
+	return p.Source == domain.SourceModule && p.ModuleID != "" && !p.UserID.IsZero() && clientOnly(p)
+}
+
+// moduleDecision applies the file rule for a module's own token and for a client's
+// upload through a module, after the matter wall view is known; ok false leaves the
+// decision to domain.Decide. A module that is not installed and enabled is refused.
+// A module's own token reads and writes general files on a matter, never one behind a
+// wall or an attorney-only file. A client through a module writes only onto a matter
+// they are a client on; reads keep the ordinary client rule.
+func (s *Service) moduleDecision(ctx context.Context, p domain.Principal, in domain.AccessInput) (domain.Decision, bool, error) {
+	only, client := moduleOnly(p), clientViaModule(p)
+	if !only && !(client && in.Action == domain.ActionWrite) {
+		return domain.Decision{}, false, nil
+	}
+	on := false
+	if s.moduleOn != nil {
+		var err error
+		if on, err = s.moduleOn(ctx, p.ModuleID); err != nil {
+			return domain.Decision{}, true, err
+		}
+	}
+	switch {
+	case !on:
+		return domain.Decision{Allow: false, Reason: domain.ReasonRole}, true, nil
+	case in.MatterID == "":
+		return domain.Decision{Allow: false, Reason: domain.ReasonRole}, true, nil
+	case in.Walled && !in.WallAllows:
+		return domain.Decision{Allow: false, Reason: domain.ReasonMatterWall}, true, nil
+	case in.AttorneyOnly:
+		return domain.Decision{Allow: false, Reason: domain.ReasonAttorneyOnly}, true, nil
+	case in.FileClass != domain.FileGeneral:
+		return domain.Decision{Allow: false, Reason: domain.ReasonRole}, true, nil
+	case client && !in.ClientMatter:
+		return domain.Decision{Allow: false, Reason: domain.ReasonClientScope}, true, nil
+	case only && in.Action != domain.ActionRead && in.Action != domain.ActionWrite:
+		return domain.Decision{Allow: false, Reason: domain.ReasonRole}, true, nil
+	}
+	return domain.Decision{Allow: true}, true, nil
+}
+
 func (s *Service) decide(ctx context.Context, p domain.Principal, f fileRow, action domain.Action, walls map[domain.ID]domain.WallView) (domain.Decision, error) {
 	in := domain.AccessInput{
 		Resource: domain.ResFile, Action: action, MatterID: f.MatterID, AttorneyOnly: f.AttorneyOnly,
@@ -270,6 +329,9 @@ func (s *Service) decide(ctx context.Context, p domain.Principal, f fileRow, act
 			return domain.Decision{}, err
 		}
 		in.ClientMatter = own != "" && own == f.ContactID
+	}
+	if d, ok, err := s.moduleDecision(ctx, p, in); ok || err != nil {
+		return d, err
 	}
 	return domain.Decide(p, in), nil
 }

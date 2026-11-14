@@ -354,13 +354,12 @@ func (c CoreServices) Badges() map[string]func(ctx context.Context, p domain.Pri
 	b := map[string]func(ctx context.Context, p domain.Principal) (int, error){}
 	if c.Practice != nil {
 		b["matters"] = func(ctx context.Context, p domain.Principal) (int, error) {
-			rows, err := c.Practice.ListMatters(ctx, p, practice.StatusOpen, "")
-			return len(rows), err
+			return c.Practice.CountMatters(ctx, p, practice.StatusOpen, "")
 		}
 	}
 	if c.Billing != nil {
 		b["invoices_draft"] = func(ctx context.Context, p domain.Principal) (int, error) {
-			rows, err := c.Billing.Invoices(ctx, p, billing.InvoiceFilter{Status: "draft"})
+			rows, err := c.Billing.Invoices(ctx, p, billing.InvoiceFilter{Status: "draft", Heads: true})
 			return len(rows), err
 		}
 	}

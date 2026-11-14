@@ -347,6 +347,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 "extension-trust-entry-file-version",
                 "extension-section5-records",
                 "doc-tender-status-reprocess-model-choices",
+                "ai-call-log-filters",
             },
         )
 

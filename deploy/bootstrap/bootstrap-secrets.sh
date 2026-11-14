@@ -2,9 +2,16 @@
 # Installer bootstrap. Generates the database password, supervisor token, and
 # field key once. The backup passphrase file is created empty so UID 65532 can
 # fill it at first-run; an empty file is not a passphrase.
+#
+# Three volumes, by who may read them (PRD section 6):
+#   /appsecrets    database_url (togavsu_app), field_key, supervisor_token, domain;
+#                  every core mounts it read-only.
+#   /adminsecrets  admin_database_url, the Postgres superuser. Only the migrate one-shot
+#                  and the supervisor mount it; a serving core never does.
+#   /backupkey     backup_passphrase, the one secret the core writes.
 set -eu
 umask 077
-mkdir -p /pgsecrets /appsecrets
+mkdir -p /pgsecrets /appsecrets /adminsecrets /backupkey
 
 # Matches deploy/core.Dockerfile USER and the Postgres image's postgres user.
 core_uid=65532
@@ -49,10 +56,17 @@ fi
 pass=$(tr -d '\n' < /pgsecrets/postgres_password)
 app_pass=$(tr -d '\n' < /pgsecrets/app_password)
 printf 'postgres://togavsu_app:%s@postgres:5432/togavsu?sslmode=disable\n' "$app_pass" > /appsecrets/database_url
-printf 'postgres://togavsu:%s@postgres:5432/postgres?sslmode=disable\n' "$pass" > /appsecrets/admin_database_url
+printf 'postgres://togavsu:%s@postgres:5432/postgres?sslmode=disable\n' "$pass" > /adminsecrets/admin_database_url
+# An earlier layout kept the superuser URL beside the core's secrets; remove it.
+rm -f /appsecrets/admin_database_url
 
-if [ ! -f /appsecrets/backup_passphrase ]; then
-  : > /appsecrets/backup_passphrase
+# An earlier layout kept the backup passphrase in /appsecrets; carry a set one over.
+if [ ! -s /backupkey/backup_passphrase ] && [ -s /appsecrets/backup_passphrase ]; then
+  cp /appsecrets/backup_passphrase /backupkey/backup_passphrase
+fi
+rm -f /appsecrets/backup_passphrase
+if [ ! -f /backupkey/backup_passphrase ]; then
+  : > /backupkey/backup_passphrase
 fi
 
 chown "root:${core_gid}" /appsecrets
@@ -61,16 +75,20 @@ chown "root:${core_gid}" \
   /appsecrets/supervisor_token \
   /appsecrets/field_key \
   /appsecrets/domain \
-  /appsecrets/database_url \
-  /appsecrets/admin_database_url
+  /appsecrets/database_url
 chmod 640 \
   /appsecrets/supervisor_token \
   /appsecrets/field_key \
   /appsecrets/domain \
-  /appsecrets/database_url \
-  /appsecrets/admin_database_url
-chown "${core_uid}:${core_gid}" /appsecrets/backup_passphrase
-chmod 600 /appsecrets/backup_passphrase
+  /appsecrets/database_url
+# The migrate one-shot runs as UID 65532 and reads this; the core never mounts it.
+chown "root:${core_gid}" /adminsecrets /adminsecrets/admin_database_url
+chmod 750 /adminsecrets
+chmod 640 /adminsecrets/admin_database_url
+chown "root:${core_gid}" /backupkey
+chmod 750 /backupkey
+chown "${core_uid}:${core_gid}" /backupkey/backup_passphrase
+chmod 600 /backupkey/backup_passphrase
 
 chown "root:${postgres_gid}" /pgsecrets /pgsecrets/postgres_password /pgsecrets/app_password
 chmod 750 /pgsecrets

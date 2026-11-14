@@ -1,0 +1,583 @@
+{
+  "about": "Full acceptance map for the release (PRD 12). scripts/release/full_acceptance.py runs every check below once and marks a criterion passed only when every one of its checks exits 0 and it lists no gap. A gap is a part of the criterion no executed check proves; external gaps need something this repository and its CI cannot supply. Editing this file to drop a gap or a check is a change to acceptance and needs review like code.",
+  "release_gates": {
+    "signed-release": {
+      "requirement": "PRD 12: a tagged release with signed images. The core and supervisor images for the release tag are on ghcr.io/charitonmedia and verify against the Togavsu release public key that ships in the image.",
+      "checks": [
+        "release-signature"
+      ]
+    },
+    "docker-desktop": {
+      "requirement": "PRD 12 and WORKFLOW.md: the tagged release installs on a clean Docker Desktop (Windows or macOS) and the full suite passes there. Linux Compose CI does not meet it.",
+      "checks": [
+        "desktop-install"
+      ]
+    },
+    "product-suites": {
+      "checks": [
+        "core-suite",
+        "api-contract",
+        "qa-harness",
+        "supervisor-suite",
+        "backup-integration",
+        "ui-qc",
+        "compose-first-run"
+      ],
+      "requirement": "Every product CI suite passes at the tested revision: Core tests, API contract tests, QA harness tests, Supervisor tests, Backup integration and the core image build with its cases, plus the UI QC and the Linux Compose first run."
+    }
+  },
+  "checks": {
+    "core-suite": {
+      "command": "sh scripts/ci/test-core.sh",
+      "needs": [
+        "db",
+        "docker"
+      ],
+      "about": "Product CI Core tests: gofmt, vet, every Go package against Postgres, the strict no-skip run and the phase 4 cases inside the core image."
+    },
+    "api-contract": {
+      "command": "sh scripts/ci/test-api.sh",
+      "needs": [
+        "db"
+      ],
+      "about": "Product CI API contract tests: the contract suite, OpenAPI 3.1 validation and the runtime fail-closed and scope checks."
+    },
+    "qa-harness": {
+      "command": "docker build -q -t togavsu-qa:local scripts/ci/qa-image >/dev/null && docker run --rm -v \"$PWD:/src\" -w /src togavsu-qa:local sh scripts/ci/test-qa.sh",
+      "needs": [
+        "docker"
+      ],
+      "about": "Product CI QA harness tests in the QA image."
+    },
+    "supervisor-suite": {
+      "command": "sh scripts/ci/test-supervisor.sh",
+      "needs": [],
+      "about": "Product CI Supervisor tests: the supervisor's Go suite (updater, backups, destinations, restore engine, modules)."
+    },
+    "backup-integration": {
+      "command": "sh scripts/ci/test-backup-integration.sh",
+      "needs": [
+        "db",
+        "db_b",
+        "pg_tools"
+      ],
+      "about": "Product CI Backup integration: encrypted archives restored into a second Postgres 17 with matching synthetic row counts."
+    },
+    "compose-first-run": {
+      "command": "sh scripts/ci/test-compose-first-run.sh",
+      "needs": [
+        "docker"
+      ],
+      "about": "One Compose up on an empty volume reaches first-run setup, the first admin and required two-factor with no manual edits (Linux engine)."
+    },
+    "core-image-cases": {
+      "command": "sh scripts/ci/test-core-image-cases.sh",
+      "needs": [
+        "db",
+        "docker"
+      ],
+      "about": "The editor, browser and Doc Tender cases inside the core image with its wordcraft-cli, browser editor and Tesseract."
+    },
+    "module-container": {
+      "command": "sh scripts/ci/test-module-container.sh",
+      "needs": [
+        "docker"
+      ],
+      "about": "The supervisor pulls the Matter Clock image by digest and creates, starts, replaces and removes its container on a real Docker engine."
+    },
+    "ui-qc": {
+      "command": "sh scripts/ci/ui-qc.sh",
+      "needs": [],
+      "about": "Every screen and admin tab has a guide topic and passes the UI checks."
+    },
+    "update-load": {
+      "command": "sh scripts/ci/update-load.sh",
+      "needs": [
+        "docker"
+      ],
+      "about": "AC-016 on a real Compose stack: signed v1 to v2 core swap under load with no failed request; a wrongly signed image and a failing health check are refused and the old core keeps serving."
+    },
+    "backup-e2e": {
+      "command": "sh scripts/ci/test-backup-e2e.sh",
+      "needs": [
+        "docker"
+      ],
+      "about": "AC-018 and AC-040 on a real Compose stack: backup through /api/v1/backups, download, copies to an S3-compatible and a network-path destination, restore with matching record counts and file SHA-256s."
+    },
+    "perf-p95": {
+      "command": "sh scripts/ci/test-perf.sh",
+      "needs": [
+        "db"
+      ],
+      "about": "AC-017: p95 page and API response under 300 ms on seed data of 50 users, 20,000 matters and 1,000,000 time entries."
+    },
+    "desktop-install": {
+      "command": "sh scripts/release/desktop-install.sh",
+      "needs": [
+        "docker"
+      ],
+      "about": "Clean install of the tested revision on Docker Desktop; refuses to pass on any other engine."
+    },
+    "release-signature": {
+      "command": "sh scripts/release/verify-release.sh",
+      "needs": [
+        "docker"
+      ],
+      "about": "cosign verify --key deploy/release/cosign.pub --insecure-ignore-tlog=true of the release tag's ghcr.io core and supervisor images (signed off GitHub, not in the public transparency log), and the supervisor image ships that key; refuses to pass without a published, signed tag."
+    },
+    "debt-audit": {
+      "command": "python3 scripts/release/check_debt.py",
+      "needs": [],
+      "about": "AC-032: PONYTAIL-DEBT.md exists and every ponytail: marker in the repository names an upgrade trigger."
+    },
+    "all-operations-mounted": {
+      "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
+      "needs": [
+        "db"
+      ],
+      "about": "AC-002: every contract operation is served on /api/v1 and offered on /mcp."
+    },
+    "go-identity-access": {
+      "command": "go test -count=1 -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestAuditLogKeepsWallAndRedaction|TestApplicationRoleCannotChangeAuditRows|TestAC004AccountantReadOnly|TestLedgersSealedForApplicationRole)$' ./internal/core/ ./internal/practice/ ./internal/audit/ ./internal/billing/",
+      "needs": [
+        "db"
+      ]
+    },
+    "go-practice-records": {
+      "command": "go test -count=1 -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI|TestEveryMatterFieldIsAuditedBeforeWrite)$' ./internal/core/ ./internal/practice/",
+      "needs": [
+        "db"
+      ]
+    },
+    "go-settings-seed": {
+      "command": "go test -count=1 -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
+      "needs": [
+        "db"
+      ]
+    },
+    "go-finance": {
+      "command": "go test -count=1 -run '^(TestFinanceInvoiceWorkflows|TestFinanceTrustInvariants|TestFinancePermissions|TestFinanceTrustNotices|TestFinanceCrossDomainTransfers|TestAC008InvoiceLifecycle|TestAC009UnpaidInvoiceWarnsOnClose|TestAC026FlatFeeReadyToApply|TestReleaseZeroFeeStaysOutOfARAging)$' ./internal/core/ ./internal/billing/ ./internal/trust/",
+      "needs": [
+        "db"
+      ]
+    },
+    "go-documents": {
+      "command": "go test -count=1 -run '^(TestDocumentsCalendarDeadlines|TestDocumentsStorageVersionsMoves|TestDocumentsDocTenderCorpus|TestDocumentsDocTenderTokensAndMCP|TestAC027AvailableDates|TestAC011UpcomingDeadlinesClickThrough)$' ./internal/core/ ./internal/calendar/",
+      "needs": [
+        "db"
+      ]
+    },
+    "go-doctender": {
+      "command": "go test -count=1 -run '^TestAC0(4[3-9]|5[0-2])' ./internal/doctender/ ./internal/core/",
+      "needs": [
+        "db"
+      ]
+    },
+    "go-lawcraft": {
+      "command": "go test -count=1 -run '^(TestDocumentsLawCraftEditor)$' ./internal/core/",
+      "needs": [
+        "db",
+        "wordcraft"
+      ]
+    },
+    "go-ui": {
+      "command": "go test -count=1 -run '^(TestUIHomeLayouts|TestUIWidgetClickThrough|TestUISidebar|TestUISearch|TestUINotifications|TestUIHelp|TestUIAppearanceAndLLMs|TestUIAdminSettings)$' ./internal/dashboard/compose/ && go test -count=1 -run '^(TestEveryScreenAndAdminTabHasAGuideTopic|TestHelpIconTopicForEachScreenPath)$' ./internal/dashboard/ && go test -count=1 -run '^TestExtensionsUIModules$' ./internal/core/",
+      "needs": [
+        "db"
+      ]
+    },
+    "go-modules": {
+      "command": "go test -count=1 -run '^(TestExtensionsModuleLifecycle|TestReleaseModuleUpdatesViewsAndRollback)$' ./internal/core/ && go test -count=1 -run '^TestSupervisorClientMatchesSupervisorAPI$' ./internal/modules/",
+      "needs": [
+        "db"
+      ]
+    },
+    "go-marketplace": {
+      "command": "go test -count=1 -run '^TestExtensionsMarketplaceAlerts$' ./internal/core/",
+      "needs": [
+        "db"
+      ]
+    },
+    "go-ai": {
+      "command": "go test -count=1 -run '^(TestExtensionsAIMediation|TestAC052LabelingModelAndNoLocalEndpoint)$' ./internal/core/ ./internal/doctender/",
+      "needs": [
+        "db"
+      ]
+    },
+    "go-release-api": {
+      "command": "go test -count=1 -run '^(TestReleaseIdentityRoutes|TestReleaseSystemNotificationsAndMail|TestReleasePracticeBulk|TestContractRoutesFailClosed|TestReleaseAccountantWritesNothing|TestReleaseWallHidesMatterEverywhere|TestReleaseFeeAgreements|TestBackupsAreAdminOnlyAuditedAndOnMCP|TestBackupCreateAuditsIntentBeforeTheSupervisor|TestAdminUserPatchInitialsAndNullClears|TestMeProfileFileID|TestReleaseEveryDomainWriteIsAudited|TestReleaseUpdatesRoutes)$' ./internal/core/",
+      "needs": [
+        "db"
+      ]
+    },
+    "module-stack": {
+      "command": "sh scripts/ci/test-module-stack.sh",
+      "needs": [
+        "docker"
+      ],
+      "about": "AC-012 on a real Compose stack: the Matter Clock image by digest in a supervisor-run container, installed from a local file with its permissions, its widget and tab framed through the core, a time entry event delivered, and uninstall, with the same core container throughout."
+    }
+  },
+  "criteria": {
+    "AC-001": {
+      "checks": [
+        "compose-first-run",
+        "desktop-install"
+      ],
+      "gaps": []
+    },
+    "AC-002": {
+      "checks": [
+        "api-contract",
+        "go-release-api",
+        "all-operations-mounted"
+      ],
+      "gaps": []
+    },
+    "AC-003": {
+      "checks": [
+        "go-identity-access",
+        "go-practice-records",
+        "go-finance",
+        "go-documents",
+        "go-ui",
+        "go-modules",
+        "go-release-api"
+      ],
+      "gaps": []
+    },
+    "AC-004": {
+      "checks": [
+        "go-identity-access",
+        "go-finance",
+        "go-documents",
+        "go-release-api"
+      ],
+      "gaps": []
+    },
+    "AC-005": {
+      "checks": [
+        "go-finance"
+      ],
+      "gaps": []
+    },
+    "AC-006": {
+      "checks": [
+        "go-finance",
+        "go-identity-access",
+        "compose-first-run"
+      ],
+      "gaps": []
+    },
+    "AC-007": {
+      "checks": [
+        "go-finance"
+      ],
+      "gaps": []
+    },
+    "AC-008": {
+      "checks": [
+        "go-finance"
+      ],
+      "gaps": []
+    },
+    "AC-009": {
+      "checks": [
+        "go-finance",
+        "go-practice-records"
+      ],
+      "gaps": []
+    },
+    "AC-010": {
+      "checks": [
+        "go-ui"
+      ],
+      "gaps": []
+    },
+    "AC-011": {
+      "checks": [
+        "go-ui",
+        "go-documents"
+      ],
+      "gaps": []
+    },
+    "AC-012": {
+      "checks": [
+        "go-modules",
+        "module-container",
+        "module-stack"
+      ],
+      "gaps": []
+    },
+    "AC-013": {
+      "checks": [
+        "go-modules"
+      ],
+      "gaps": []
+    },
+    "AC-014": {
+      "checks": [
+        "go-modules",
+        "module-container",
+        "module-stack"
+      ],
+      "gaps": []
+    },
+    "AC-015": {
+      "checks": [
+        "go-marketplace"
+      ],
+      "gaps": []
+    },
+    "AC-016": {
+      "checks": [
+        "update-load",
+        "supervisor-suite"
+      ],
+      "gaps": []
+    },
+    "AC-017": {
+      "checks": [
+        "perf-p95"
+      ],
+      "gaps": []
+    },
+    "AC-018": {
+      "checks": [
+        "backup-e2e",
+        "backup-integration",
+        "go-identity-access",
+        "go-finance",
+        "go-release-api"
+      ],
+      "gaps": []
+    },
+    "AC-019": {
+      "checks": [
+        "go-ui"
+      ],
+      "gaps": []
+    },
+    "AC-020": {
+      "checks": [
+        "go-ui",
+        "go-practice-records"
+      ],
+      "gaps": []
+    },
+    "AC-021": {
+      "checks": [
+        "go-ui",
+        "go-finance"
+      ],
+      "gaps": []
+    },
+    "AC-022": {
+      "checks": [
+        "go-ui"
+      ],
+      "gaps": []
+    },
+    "AC-023": {
+      "checks": [
+        "go-practice-records",
+        "go-finance"
+      ],
+      "gaps": []
+    },
+    "AC-024": {
+      "checks": [
+        "go-identity-access",
+        "compose-first-run"
+      ],
+      "gaps": []
+    },
+    "AC-025": {
+      "checks": [
+        "go-practice-records"
+      ],
+      "gaps": []
+    },
+    "AC-026": {
+      "checks": [
+        "go-finance"
+      ],
+      "gaps": []
+    },
+    "AC-027": {
+      "checks": [
+        "go-documents"
+      ],
+      "gaps": []
+    },
+    "AC-028": {
+      "checks": [
+        "go-ui",
+        "go-ai"
+      ],
+      "gaps": []
+    },
+    "AC-029": {
+      "checks": [
+        "go-settings-seed",
+        "go-ui",
+        "ui-qc"
+      ],
+      "gaps": []
+    },
+    "AC-030": {
+      "checks": [
+        "go-settings-seed"
+      ],
+      "gaps": []
+    },
+    "AC-031": {
+      "checks": [
+        "go-ai"
+      ],
+      "gaps": []
+    },
+    "AC-032": {
+      "checks": [
+        "debt-audit"
+      ],
+      "gaps": []
+    },
+    "AC-033": {
+      "checks": [
+        "go-modules"
+      ],
+      "gaps": []
+    },
+    "AC-034": {
+      "checks": [
+        "go-settings-seed"
+      ],
+      "gaps": []
+    },
+    "AC-035": {
+      "checks": [
+        "go-settings-seed"
+      ],
+      "gaps": []
+    },
+    "AC-036": {
+      "checks": [
+        "go-modules"
+      ],
+      "gaps": []
+    },
+    "AC-037": {
+      "checks": [
+        "go-modules"
+      ],
+      "gaps": []
+    },
+    "AC-038": {
+      "checks": [
+        "go-modules"
+      ],
+      "gaps": []
+    },
+    "AC-039": {
+      "checks": [
+        "go-documents"
+      ],
+      "gaps": []
+    },
+    "AC-040": {
+      "checks": [
+        "go-documents",
+        "backup-e2e"
+      ],
+      "gaps": []
+    },
+    "AC-041": {
+      "checks": [
+        "go-lawcraft",
+        "core-image-cases"
+      ],
+      "gaps": [
+        "external: 'opens in Word with no repair prompt' needs Microsoft Word; CheckDOCX is a package-rules check."
+      ]
+    },
+    "AC-042": {
+      "checks": [
+        "go-lawcraft",
+        "core-image-cases"
+      ],
+      "gaps": []
+    },
+    "AC-043": {
+      "checks": [
+        "go-documents",
+        "go-doctender"
+      ],
+      "gaps": []
+    },
+    "AC-044": {
+      "checks": [
+        "go-documents",
+        "go-doctender"
+      ],
+      "gaps": []
+    },
+    "AC-045": {
+      "checks": [
+        "go-documents",
+        "go-doctender"
+      ],
+      "gaps": []
+    },
+    "AC-046": {
+      "checks": [
+        "go-documents",
+        "go-doctender"
+      ],
+      "gaps": []
+    },
+    "AC-047": {
+      "checks": [
+        "go-documents",
+        "go-doctender"
+      ],
+      "gaps": []
+    },
+    "AC-048": {
+      "checks": [
+        "go-documents",
+        "go-doctender"
+      ],
+      "gaps": []
+    },
+    "AC-049": {
+      "checks": [
+        "go-documents",
+        "go-doctender"
+      ],
+      "gaps": []
+    },
+    "AC-050": {
+      "checks": [
+        "go-documents",
+        "go-doctender",
+        "backup-e2e"
+      ],
+      "gaps": []
+    },
+    "AC-051": {
+      "checks": [
+        "go-documents",
+        "go-doctender"
+      ],
+      "gaps": []
+    },
+    "AC-052": {
+      "checks": [
+        "go-documents",
+        "go-ai"
+      ],
+      "gaps": []
+    }
+  }
+}
