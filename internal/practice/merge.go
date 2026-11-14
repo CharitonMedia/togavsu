@@ -218,6 +218,18 @@ func archivedFilter(r *http.Request) (keep func(bool) bool, err error) {
 	return func(a bool) bool { return a == want }, nil
 }
 
+// keepMatters is the archived filter applied to a matter list, the one rule every
+// default matter list (JSON, CSV and the Matters screen) shares.
+func keepMatters(rows []MatterView, keep func(bool) bool) []MatterView {
+	kept := rows[:0]
+	for _, row := range rows {
+		if keep(row.Matter.Archived) {
+			kept = append(kept, row)
+		}
+	}
+	return kept
+}
+
 func (h *Handler) mergeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/matters/{matter_id}/archive", h.archiveMatterJSON)
 	mux.HandleFunc("POST /api/v1/matters/{matter_id}/merge", h.mergeJSON("matter_id", "merge_matter", h.Svc.MergeMatter))

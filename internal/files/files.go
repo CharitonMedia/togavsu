@@ -322,8 +322,8 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 	}
 	if b := batchOf(ctx); b != nil {
 		// The bulk transaction has not committed yet.
-		b.rollback = append(b.rollback, func() { s.dropObject(context.WithoutCancel(ctx), loc) })
-		b.commit = append(b.commit, func() { s.versionCreated(ctx, f, v) })
+		b.rollback = append(b.rollback, func(after context.Context) { s.dropObject(context.WithoutCancel(after), loc) })
+		b.commit = append(b.commit, func(after context.Context) { s.versionCreated(after, f, v) })
 		return view(f, warnings), nil
 	}
 	s.versionCreated(ctx, f, v)

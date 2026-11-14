@@ -64,6 +64,26 @@ func TestReleaseArchiveAndMergeMatters(t *testing.T) {
 	if r := f.staff.do("GET", "/api/v1/matters?archived=maybe", nil); r.code != http.StatusBadRequest {
 		t.Fatalf("bad archived filter: %d", r.code)
 	}
+	// Codex PR #55: the CSV export and the Matters screen keep the same default and
+	// filter as the JSON list.
+	csv := func(query string) string {
+		return f.staff.must(http.StatusOK, "GET", "/api/v1/matters?format=csv"+query, nil).body
+	}
+	if out := csv(""); strings.Contains(out, "Estate of Archive") || !strings.Contains(out, "Estate of Merged") {
+		t.Fatalf("default CSV export: %s", out)
+	}
+	if out := csv("&archived=true"); !strings.Contains(out, "Estate of Archive") || strings.Contains(out, "Estate of Merged") {
+		t.Fatalf("archived=true CSV export: %s", out)
+	}
+	if r := f.staff.do("GET", "/api/v1/matters?format=csv&archived=maybe", nil); r.code != http.StatusBadRequest {
+		t.Fatalf("bad archived filter on the CSV export: %d", r.code)
+	}
+	if page := f.staff.must(http.StatusOK, "GET", "/practice/matters", nil).body; strings.Contains(page, "Estate of Archive") || !strings.Contains(page, "Estate of Merged") {
+		t.Fatal("the Matters screen lists an archived matter by default")
+	}
+	if page := f.staff.must(http.StatusOK, "GET", "/practice/matters?archived=true", nil).body; !strings.Contains(page, "Estate of Archive") {
+		t.Fatal("the Matters screen hides archived matters when asked for them")
+	}
 
 	// mergeMatter: attorney or admin only, both matters visible, never into itself.
 	merge := func(c *client, from, into string, hdr ...string) resp {

@@ -159,12 +159,14 @@ func (s *Service) IssueGrant(ctx context.Context, p domain.Principal, in GrantRe
 		}
 		if in.ContactID != nil && *in.ContactID != "" {
 			g.ContactID = *in.ContactID
-			ok, err := s.st.contactExists(ctx, g.ContactID)
-			if err != nil {
+			if err := s.contactReachable(ctx, servicePrincipal(p), g.ContactID); err != nil {
 				return GrantView{}, err
 			}
-			if !ok {
-				return GrantView{}, domain.NotFound("contact")
+			if !p.UserID.IsZero() {
+				// A viewer narrows the grant, never widens it.
+				if err := s.contactReachable(ctx, p, g.ContactID); err != nil {
+					return GrantView{}, err
+				}
 			}
 		}
 		if in.Queue != nil {
@@ -336,9 +338,12 @@ type BulkItem struct {
 
 // batch defers what a single publish does after its own commit until the bulk
 // transaction commits: Doc Tender's version callback and removing the staged bytes.
-// rollback drops the objects already stored when the batch fails.
+// rollback drops the objects already stored when the batch fails. Each runs with the
+// context PublishBatch was called with (no batch on it), never the context of the finished bulk
+// transaction: that one still carries the committed or rolled-back *sql.Tx, and a
+// store reading it would query a transaction that is over.
 type batch struct {
-	commit, rollback []func()
+	commit, rollback []func(ctx context.Context)
 }
 
 type batchKey struct{}
@@ -369,6 +374,7 @@ func (s *Service) PublishBatch(ctx context.Context, p domain.Principal, items []
 		seen[it.UploadID] = true
 	}
 	b := &batch{}
+	after := ctx
 	ctx = context.WithValue(ctx, batchKey{}, b)
 	out := make([]FileView, 0, len(items))
 	err = s.tx(ctx, func(ctx context.Context) error {
@@ -389,12 +395,12 @@ func (s *Service) PublishBatch(ctx context.Context, p domain.Principal, items []
 	})
 	if err != nil {
 		for _, f := range b.rollback {
-			f()
+			f(after)
 		}
 		return nil, err
 	}
 	for _, f := range b.commit {
-		f()
+		f(after)
 	}
 	return out, nil
 }
@@ -425,7 +431,7 @@ func itemError(i int, err error) error {
 // removeStaged deletes an upload's staged bytes once its publication commits.
 func (s *Service) removeStaged(ctx context.Context, id domain.ID) {
 	if b := batchOf(ctx); b != nil {
-		b.commit = append(b.commit, func() { _ = os.Remove(s.stagingPath(id)) })
+		b.commit = append(b.commit, func(context.Context) { _ = os.Remove(s.stagingPath(id)) })
 		return
 	}
 	_ = os.Remove(s.stagingPath(id))
@@ -501,6 +507,37 @@ func (s *store) grantUploads(ctx context.Context, grant domain.ID) ([]domain.ID,
 	return out, rows.Err()
 }
 
+// contactReachable is not found unless the contact exists and p may file to it: a
+// contact on no matter is open, as on the practice contact screens; one on matters
+// only through a matter p could file to, the check a matter grant gets. Walled and
+// missing contacts answer alike, so the grant is no contact-ID oracle.
+func (s *Service) contactReachable(ctx context.Context, p domain.Principal, contact domain.ID) error {
+	ok, err := s.st.contactExists(ctx, contact)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.NotFound("contact")
+	}
+	matters, err := s.st.contactMatters(ctx, contact)
+	if err != nil {
+		return err
+	}
+	if len(matters) == int(zero) {
+		return nil
+	}
+	for _, m := range matters {
+		d, err := s.decide(ctx, p, fileRow{File: domain.File{MatterID: m}}, domain.ActionWrite, nil)
+		if err != nil {
+			return err
+		}
+		if d.Allow {
+			return nil
+		}
+	}
+	return domain.NotFound("contact")
+}
+
 func (s *store) contactExists(ctx context.Context, id domain.ID) (bool, error) {
 	if _, err := domain.ParseID(string(id)); err != nil {
 		return false, nil
@@ -508,6 +545,24 @@ func (s *store) contactExists(ctx context.Context, id domain.ID) (bool, error) {
 	var n int
 	err := s.row(ctx, `SELECT COUNT(*) FROM contacts WHERE id = ?`, id).Scan(&n)
 	return n != int(zero), err
+}
+
+// contactMatters is every matter the contact is a party to.
+func (s *store) contactMatters(ctx context.Context, id domain.ID) ([]domain.ID, error) {
+	rows, err := s.query(ctx, `SELECT DISTINCT matter_id FROM matter_parties WHERE contact_id = ? ORDER BY matter_id`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.ID
+	for rows.Next() {
+		var m domain.ID
+		if err := rows.Scan(&m); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }
 
 func isUniqueViolation(err error) bool {

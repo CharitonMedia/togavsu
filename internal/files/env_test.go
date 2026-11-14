@@ -218,6 +218,8 @@ type env struct {
 	reg      *settings.Registry
 	root     string
 	versions []VersionCreated
+	// versionErrs are queries a version callback could not run on its context.
+	versionErrs []error
 
 	admin, attorney, staff, outsider, accountant, client domain.Principal
 	open, walled, closed                                 domain.ID
@@ -305,7 +307,15 @@ VALUES (?,?,?,?,?,?,?,?,'','','','','','','','','hourly',0,0,?)`, m, at, at, sys
 	e.cfg = Config{
 		Pool: pool, Audit: aud, Settings: reg, Directory: e.dir, Walls: e.dir, Mail: e.mail, Key: key,
 		StagingDir: e.root + "/staging", Now: e.clock.now,
-		OnVersion: func(_ context.Context, ev VersionCreated) { e.versions = append(e.versions, ev) },
+		OnVersion: func(ctx context.Context, ev VersionCreated) {
+			e.versions = append(e.versions, ev)
+			// A subscriber (Doc Tender) writes through audit.Conn: the callback must not
+			// carry a transaction that is already over.
+			var one int
+			if err := audit.Conn(ctx, pool).QueryRowContext(ctx, `SELECT 1`).Scan(&one); err != nil {
+				e.versionErrs = append(e.versionErrs, err)
+			}
+		},
 	}
 	e.svc, err = New(e.cfg)
 	if err != nil {

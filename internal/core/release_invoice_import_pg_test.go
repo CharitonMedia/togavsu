@@ -73,22 +73,31 @@ func TestReleaseBulkInvoices(t *testing.T) {
 	if r := bulk(f.staff, importItem(matter, "OLD-2", "draft", 100_00, 0, 0), importItem(matter, "OLD-3", "sent", 100_00, 0, 0)); r.code != http.StatusForbidden {
 		t.Fatalf("staff importing a sent invoice: %d %s", r.code, r.body)
 	}
-	// A batch whose second item does not reconcile writes nothing.
+	// A batch whose second item does not reconcile writes nothing. An item that fails
+	// validation or reconciliation is batch_rejected (422), the bulk contract's code;
+	// Codex PR #55.
+	rejected := func(r resp) bool {
+		return r.code == http.StatusUnprocessableEntity && r.json["code"] == "batch_rejected"
+	}
 	bad := importItem(matter, "OLD-5", "sent", 500_00, 100_00, 0)
 	bad["balance_due_cents"] = 450_00
-	if r := bulk(f.atty, importItem(matter, "OLD-4", "paid", 200_00, 200_00, 0), bad); r.code != http.StatusBadRequest || !strings.Contains(r.body, "balance_due_cents") {
+	if r := bulk(f.atty, importItem(matter, "OLD-4", "paid", 200_00, 200_00, 0), bad); !rejected(r) || !strings.Contains(r.body, "balance_due_cents") {
 		t.Fatalf("unreconciled batch: %d %s", r.code, r.body)
 	}
 	sub := importItem(matter, "OLD-6", "draft", 100_00, 0, 0)
 	sub["subtotal_cents"] = 99_00
-	if r := bulk(f.atty, sub); r.code != http.StatusBadRequest || !strings.Contains(r.body, "subtotal_cents") {
+	if r := bulk(f.atty, sub); !rejected(r) || !strings.Contains(r.body, "subtotal_cents") {
 		t.Fatalf("unreconciled subtotal: %d %s", r.code, r.body)
 	}
-	if r := bulk(f.atty, importItem(matter, "OLD-1", "draft", 100_00, 0, 0)); r.code != http.StatusBadRequest {
+	if r := bulk(f.atty, importItem(matter, "OLD-1", "draft", 100_00, 0, 0)); !rejected(r) {
 		t.Fatalf("a used invoice number: %d %s", r.code, r.body)
 	}
-	if r := bulk(f.atty, importItem(matter, "OLD-7", "draft", 100_00, 50_00, 0)); r.code != http.StatusBadRequest {
+	if r := bulk(f.atty, importItem(matter, "OLD-7", "draft", 100_00, 50_00, 0)); !rejected(r) {
 		t.Fatalf("a draft with a payment: %d %s", r.code, r.body)
+	}
+	// A request-shape error is still an ordinary validation error.
+	if r := bulk(f.atty); r.code != http.StatusBadRequest || r.json["code"] != "validation" {
+		t.Fatalf("an empty batch: %d %s", r.code, r.body)
 	}
 	// The wall: staff outside it, and the admin too, get not_found for the batch.
 	for _, c := range []*client{f.staff, f.admin} {

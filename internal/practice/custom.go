@@ -95,13 +95,19 @@ func (s *Service) CustomFields(ctx context.Context, p domain.Principal, recordTy
 	return s.shownFields(ctx, p, recordType, recordID, area)
 }
 
-// ExportMattersCSV exports visible matters. Applicable custom fields are columns.
+// ExportMattersCSV exports visible matters that are not archived, as the default
+// matter list shows them. Applicable custom fields are columns.
 func (s *Service) ExportMattersCSV(ctx context.Context, p domain.Principal) (string, error) {
+	return s.exportMattersCSV(ctx, p, func(archived bool) bool { return !archived })
+}
+
+// exportMattersCSV exports the visible matters keep accepts by their archived flag.
+func (s *Service) exportMattersCSV(ctx context.Context, p domain.Principal, keep func(bool) bool) (string, error) {
 	views, err := s.ListMatters(ctx, p, "", domain.ID(""))
 	if err != nil {
 		return "", err
 	}
-	return s.mattersCSV(views), nil
+	return s.mattersCSV(keepMatters(views, keep)), nil
 }
 
 func (s *Service) mattersCSV(views []MatterView) string {

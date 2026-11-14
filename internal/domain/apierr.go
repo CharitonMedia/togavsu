@@ -20,6 +20,9 @@ const (
 	CodeDuplicateEmail = "duplicate_email"
 	// CodeFieldLocked is a field the caller's grant or capability does not let it set.
 	CodeFieldLocked = "field_locked"
+	// CodeBatchRejected is a bulk item that rejected its all-or-nothing batch; the
+	// batch wrote nothing.
+	CodeBatchRejected = "batch_rejected"
 )
 
 // APIError is the JSON body the API wave should return.
@@ -57,6 +60,8 @@ func (e *APIError) HTTPStatus() int {
 		return http.StatusConflict
 	case CodeRateLimited:
 		return http.StatusTooManyRequests
+	case CodeBatchRejected:
+		return http.StatusUnprocessableEntity
 	default:
 		return http.StatusInternalServerError
 	}

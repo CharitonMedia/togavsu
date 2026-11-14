@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -102,7 +103,7 @@ func (s *Service) BulkInvoices(ctx context.Context, p domain.Principal, items []
 		for i, in := range items {
 			inv, err := s.importOne(t, in, i, numbers, sources)
 			if err != nil {
-				return err
+				return batchRejected(err)
 			}
 			out = append(out, inv)
 		}
@@ -112,6 +113,25 @@ func (s *Service) BulkInvoices(ctx context.Context, p domain.Principal, items []
 		return nil, err
 	}
 	return out, nil
+}
+
+// batchRejected is how one item's validation or reconciliation failure reaches the
+// caller: batch_rejected (422), the contract's code for an item that rejected the
+// all-or-nothing batch. Not found, forbidden and unauthenticated keep their codes, so a
+// wall still answers not_found; request-shape errors are checked before the batch and
+// stay validation.
+func batchRejected(err error) error {
+	var api *domain.APIError
+	if !errors.As(err, &api) {
+		return err
+	}
+	switch api.Code {
+	case domain.CodeNotFound, domain.CodeForbidden, domain.CodeUnauthenticated:
+		return err
+	}
+	out := *api
+	out.Code = domain.CodeBatchRejected
+	return &out
 }
 
 func (s *Service) importOne(t *txn, in InvoiceImport, i int, numbers map[string]bool, sources map[domain.ID]bool) (Invoice, error) {

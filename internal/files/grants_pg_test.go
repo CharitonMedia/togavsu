@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -90,6 +92,10 @@ func TestPGBulkFilePublishesAllOrNothing(t *testing.T) {
 	if len(e.versions) != 2 || e.uploadStatus(u1) != "published" {
 		t.Fatalf("after commit: %d version callbacks, upload %s", len(e.versions), e.uploadStatus(u1))
 	}
+	// Codex PR #55: the callbacks run after the bulk transaction, not on it.
+	if len(e.versionErrs) != 0 {
+		t.Fatalf("version callbacks ran on the finished transaction: %v", e.versionErrs)
+	}
 	if _, err := os.Stat(e.svc.stagingPath(u1)); !os.IsNotExist(err) {
 		t.Fatalf("staged bytes kept after publication: %v", err)
 	}
@@ -108,11 +114,30 @@ func TestPGBulkFilePublishesAllOrNothing(t *testing.T) {
 	events := e.count(`SELECT COUNT(*) FROM events`)
 	u3 := e.stage(e.outsider, UploadRequest{FileName: "a.txt", MatterID: e.open}, "first")
 	u4 := e.stage(e.outsider, UploadRequest{FileName: "b.txt", MatterID: e.open}, "second")
+	// Objects on the local disk: a rejected batch drops the bytes it already stored.
+	stored := func() int {
+		t.Helper()
+		n := 0
+		err := filepath.WalkDir(e.root+"/local", func(_ string, d fs.DirEntry, err error) error {
+			if err == nil && d.Type().IsRegular() {
+				n++
+			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	bytesStored := stored()
 	unchanged := func(label string, ups ...domain.ID) {
 		t.Helper()
 		if e.count(`SELECT COUNT(*) FROM files`) != files || e.count(`SELECT COUNT(*) FROM file_object_locations`) != objects ||
 			e.count(`SELECT COUNT(*) FROM events`) != events || len(e.versions) != 2 {
 			t.Fatalf("%s wrote something", label)
+		}
+		if got := stored(); got != bytesStored {
+			t.Fatalf("%s left %d stored objects behind", label, got-bytesStored)
 		}
 		for _, u := range ups {
 			if e.uploadStatus(u) != "staged" {
@@ -205,6 +230,37 @@ func TestPGPublicationGrantGovernsBackgroundUploads(t *testing.T) {
 	missing := id(t)
 	if _, err := e.svc.IssueGrant(ctx, mod, GrantRequest{Assignment: "matter", MatterID: &missing, Source: "email"}, ""); !isCode(err, domain.CodeNotFound) {
 		t.Fatalf("missing matter grant = %v", err)
+	}
+	// Codex PR #55: an unassigned grant's contact is checked under the module, not
+	// only for existence. A contact seen only through a walled matter answers like a
+	// missing one, and an admin viewer does not widen it; a contact on a matter the
+	// module reaches is accepted (checked at the end, with a module of its own).
+	party := func(contact, matter domain.ID) {
+		t.Helper()
+		at := domain.UnixMicroUTC(e.clock.t)
+		if err := e.svc.st.exec(ctx, `INSERT INTO contacts (id, created_at, updated_at, created_by, kind, given_name, middle_name, family_name, prefix, suffix, full_name,
+preferred_name, also_known_as, date_of_birth, date_of_death, ssn_ein_ciphertext, entity_type, formation_state, formation_date, archived, source)
+VALUES (?,?,?,?,'person','Walled','','Party','','','Walled Party','','','','','','','','',0,'test')`, contact, at, at, string(domain.SystemUserID)); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.svc.st.exec(ctx, `INSERT INTO matter_parties (id, created_at, updated_at, created_by, matter_id, contact_id, role, is_primary, role_attributes, service_address, notes)
+VALUES (?,?,?,?,?,?,'client',1,'{}','','')`, id(t), at, at, string(domain.SystemUserID), matter, contact); err != nil {
+			t.Fatal(err)
+		}
+	}
+	walledContact, openContact, noContact := id(t), id(t), id(t)
+	party(walledContact, walled)
+	party(openContact, open)
+	_, missingErr := e.svc.IssueGrant(ctx, mod, GrantRequest{Assignment: "unassigned", Source: "email", ContactID: &noContact}, "")
+	if !isCode(missingErr, domain.CodeNotFound) {
+		t.Fatalf("missing contact grant = %v", missingErr)
+	}
+	_, walledErr := e.svc.IssueGrant(ctx, mod, GrantRequest{Assignment: "unassigned", Source: "email", ContactID: &walledContact}, "")
+	if !isCode(walledErr, domain.CodeNotFound) || walledErr.Error() != missingErr.Error() {
+		t.Fatalf("walled contact grant = %v, want the missing contact's %v", walledErr, missingErr)
+	}
+	if _, err := e.svc.IssueGrant(ctx, viaAdmin, GrantRequest{Assignment: "unassigned", Source: "email", ContactID: &walledContact}, ""); !isCode(err, domain.CodeNotFound) {
+		t.Fatalf("an admin viewer widened the contact: %v", err)
 	}
 	if _, err := e.svc.IssueGrant(ctx, mod, GrantRequest{Assignment: "unassigned", Source: "fax"}, ""); !isCode(err, domain.CodeValidation) {
 		t.Fatalf("unknown source = %v", err)
@@ -328,6 +384,10 @@ func TestPGPublicationGrantGovernsBackgroundUploads(t *testing.T) {
 	on["zoom-intake"] = false
 	if _, err := e.svc.PublishBatch(ctx, other, []BulkItem{{UploadID: rec3}}); !isCode(err, domain.CodeForbidden) && !isCode(err, domain.CodeNotFound) {
 		t.Fatalf("publish by a disabled module = %v", err)
+	}
+	on["drop-intake"] = true
+	if g, err := e.svc.IssueGrant(ctx, moduleP("drop-intake"), GrantRequest{Assignment: "unassigned", Source: "drop_folder", ContactID: &openContact}, ""); err != nil || g.ContactID == nil || *g.ContactID != openContact {
+		t.Fatalf("contact on a reachable matter = %+v %v", g, err)
 	}
 }
 

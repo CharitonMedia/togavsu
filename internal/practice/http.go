@@ -209,12 +209,17 @@ func (h *Handler) mattersPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	keep, err := archivedFilter(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	rows, err := h.Svc.ListMatters(r.Context(), p, r.URL.Query().Get("status"), domain.ID(""))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, r, "matters.html", page{Title: "Matters", CSRF: h.csrf(w, r), Matters: rows})
+	h.render(w, r, "matters.html", page{Title: "Matters", CSRF: h.csrf(w, r), Matters: keepMatters(rows, keep)})
 }
 
 // newMatterPage is the create form the Matters list's New button and the shell's New menu
@@ -562,8 +567,13 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	keep, err := archivedFilter(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	if r.URL.Query().Get("format") == "csv" {
-		csv, err := h.Svc.ExportMattersCSV(r.Context(), p)
+		csv, err := h.Svc.exportMattersCSV(r.Context(), p, keep)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -572,23 +582,12 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(csv))
 		return
 	}
-	keep, err := archivedFilter(r)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
 	rows, err := h.Svc.ListMatters(r.Context(), p, r.URL.Query().Get("status"), domain.ID(r.URL.Query().Get("practice_area_id")))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	kept := rows[:0]
-	for _, row := range rows {
-		if keep(row.Matter.Archived) {
-			kept = append(kept, row)
-		}
-	}
-	rows = kept
+	rows = keepMatters(rows, keep)
 	if custom := customQuery(r); len(custom) > 0 {
 		kept := rows[:0]
 		for _, row := range rows {
