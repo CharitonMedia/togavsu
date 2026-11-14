@@ -537,3 +537,46 @@ func TestPendingEntriesCoverOnlyTheirKind(t *testing.T) {
 		}
 	}
 }
+
+// A value the core requires can't be held back alone: removing it leaves the same
+// refusal, so Installable stops with pending_edit after one more pass instead of
+// looping.
+func TestHoldingBackARequiredValueFailsClosed(t *testing.T) {
+	defer modulekit.SetPassHook(func(pass int) {
+		if pass > 3 {
+			t.Fatalf("Installable is still looping at pass %d", pass)
+		}
+	})()
+	for name, tc := range map[string]struct {
+		edit func(map[string][]byte)
+		part string
+	}{
+		"a tab's placement": {func(f map[string][]byte) {
+			replaceIn(f, modulekit.ManifestFile, "    placement: matter\n", "    placement: client\n")
+			f[modulekit.PendingFile] = []byte("pending:\n  - field: tabs[1].placement\n    core: CORE-10\n    reason: A client tab.\n")
+		}, "tabs[1].placement"},
+		"the version": {func(f map[string][]byte) {
+			replaceIn(f, modulekit.ManifestFile, `version: "1.0.0"`, `version: "1.0.0 beta"`)
+			f[modulekit.PendingFile] = []byte("pending:\n  - field: version\n    core: CORE-99\n    reason: A new version form.\n")
+		}, "version"},
+		"the container port": {func(f map[string][]byte) {
+			replaceIn(f, modulekit.ManifestFile, "  port: 8080\n", "  port: 99999\n")
+			f[modulekit.PendingFile] = []byte("pending:\n  - field: container.port\n    core: CORE-99\n    reason: A wider port range.\n")
+		}, "container.port"},
+	} {
+		_, err := modulekit.Installable(edit(sample(t), tc.edit))
+		var refs modulekit.Refusals
+		if !errors.As(err, &refs) || len(refs) != 1 || refs[0].Code != modulekit.RefusePendingEdit || refs[0].Path != tc.part ||
+			!strings.Contains(refs[0].Message, "hold back the whole item") {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	// Holding back the whole tab works.
+	files := edit(sample(t), func(f map[string][]byte) {
+		replaceIn(f, modulekit.ManifestFile, "    placement: matter\n", "    placement: client\n")
+		f[modulekit.PendingFile] = []byte("pending:\n  - field: tabs[1]\n    core: CORE-10\n    reason: A client tab.\n")
+	})
+	if ip, err := modulekit.Installable(files); err != nil || len(ip.Held) != 1 || ip.Held[0].Part != "tabs[1]" {
+		t.Fatalf("whole tab: %v", err)
+	}
+}

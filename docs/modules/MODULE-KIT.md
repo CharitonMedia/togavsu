@@ -259,7 +259,10 @@ those parts, or `Installable` refuses with `pending_edit`. A held part's own com
 go with it: the comment lines directly above it at its indent, with no blank line between
 (a comment block that starts the file stays). Removing the first key of a `- key: value`
 list item moves the dash to the item's next key and keeps the item's comments; an item's
-only key can't be removed, so hold back the item.
+only key can't be removed, so hold back the item. Nor can a value the core requires (a
+tab's `placement` or `path`, `version`, `container.port`): removing it leaves the same
+refusal, so `Installable` stops with `pending_edit` naming the part; hold back the item
+that holds it (`tabs[id=pay]`) instead.
 
 Migrations are held back by whole file, never by statement. A migration a firm has run can
 never change (`CheckUpgrade`), so a statement removed now and restored later would change

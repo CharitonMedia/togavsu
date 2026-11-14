@@ -252,12 +252,29 @@ func Installable(files map[string][]byte) (InstallablePackage, error) {
 	var removed [][]yamlsubset.Segment
 	var removedPaths []string
 	removedFiles := map[string]bool{}
-	for {
-		if len(removedPaths) > zero {
+	// Each pass holds back at least one part not held back before (a refusal of a part
+	// already held back stops with pending_edit) and changes the files, and a part is a
+	// file or a path in the manifest as written, so the passes are bounded by the
+	// package's files and manifest lines. maxPasses is that bound, kept as a guard.
+	maxPasses := len(out) + strings.Count(string(orig), "\n") + one
+	manifestAdded := false
+	for pass := zero; ; pass++ {
+		if passHook != nil {
+			passHook(pass)
+		}
+		if pass > maxPasses {
+			return InstallablePackage{}, Refusals{{Kind: KindPending, Code: RefusePendingEdit, File: ManifestFile,
+				Message: "holding back the pending parts did not settle; the core still refuses the package"}}
+		}
+		if manifestAdded {
 			edited, err := yamlsubset.Remove(orig, removedPaths...)
 			if err != nil {
 				return InstallablePackage{}, Refusals{{Kind: KindPending, Code: RefusePendingEdit, File: ManifestFile,
 					Path: strings.Join(removedPaths, ", "), Message: err.Error()}}
+			}
+			if string(edited) == string(out[ManifestFile]) {
+				return InstallablePackage{}, Refusals{{Kind: KindPending, Code: RefusePendingEdit, File: ManifestFile,
+					Path: strings.Join(removedPaths, ", "), Message: "holding back the pending parts left the manifest unchanged"}}
 			}
 			out[ManifestFile] = edited
 		}
@@ -269,7 +286,7 @@ func Installable(files map[string][]byte) (InstallablePackage, error) {
 		if len(refs) == zero {
 			break
 		}
-		var uncovered Refusals
+		var uncovered, stuck Refusals
 		parts := map[string]*Held{}
 		var order []string
 		for _, r := range refs {
@@ -283,6 +300,10 @@ func Installable(files map[string][]byte) (InstallablePackage, error) {
 				uncovered = append(uncovered, notCovered(r, why))
 				continue
 			}
+			if heldAlready(h, removed, removedFiles) {
+				stuck = append(stuck, stillRefused(h, r))
+				continue
+			}
 			key := h.File + " " + h.Part
 			if prev, ok := parts[key]; ok {
 				prev.Refusals = append(prev.Refusals, r)
@@ -291,29 +312,26 @@ func Installable(files map[string][]byte) (InstallablePackage, error) {
 			parts[key] = &h
 			order = append(order, key)
 		}
-		if len(uncovered) > zero {
-			return InstallablePackage{}, uncovered
+		if len(uncovered) > zero || len(stuck) > zero {
+			return InstallablePackage{}, append(uncovered, stuck...)
 		}
-		progress := false
+		if len(order) == zero {
+			return InstallablePackage{}, Refusals{{Kind: KindPending, Code: RefusePendingEdit, File: ManifestFile,
+				Message: "the core still refuses parts already held back: " + refs.Error()}}
+		}
+		manifestAdded = false
 		for _, key := range order {
 			h := parts[key]
 			if h.Pending.Migration != "" {
-				if removedFiles[h.File] {
-					continue
-				}
 				removedFiles[h.File] = true
 				delete(out, h.File)
 			} else {
 				segs, _ := yamlsubset.ParsePath(h.Part)
 				removed = append(removed, segs)
 				removedPaths = append(removedPaths, h.Part)
+				manifestAdded = true
 			}
-			progress = true
 			held = append(held, *h)
-		}
-		if !progress {
-			return InstallablePackage{}, Refusals{{Kind: KindPending, Code: RefusePendingEdit, File: ManifestFile,
-				Message: "the core still refuses parts already held back: " + refs.Error()}}
 		}
 	}
 	if err := heldLast(out, held); err != nil {
@@ -326,6 +344,34 @@ func Installable(files map[string][]byte) (InstallablePackage, error) {
 		return InstallablePackage{}, err
 	}
 	return InstallablePackage{Files: out, Held: held, Pending: entries, Unused: Unused(entries, held)}, nil
+}
+
+// passHook, when set (by tests), sees each pass of Installable's loop.
+var passHook func(pass int)
+
+// heldAlready reports whether h's part, or a part containing it, was held back in an
+// earlier pass: the refusal survived its removal.
+func heldAlready(h Held, removed [][]yamlsubset.Segment, files map[string]bool) bool {
+	if h.Pending.Migration != "" {
+		return files[h.File]
+	}
+	segs, err := yamlsubset.ParsePath(h.Part)
+	if err != nil {
+		return false
+	}
+	for _, r := range removed {
+		if yamlsubset.HasPrefix(segs, r) {
+			return true
+		}
+	}
+	return false
+}
+
+// stillRefused is the refusal for a part whose removal didn't clear it: a value the core
+// requires, such as a tab's placement or the container's port, can't be held back alone.
+func stillRefused(h Held, r Refusal) Refusal {
+	msg := "holding back " + h.Part + " doesn't clear its refusal (" + r.Message + "): the core requires it, so hold back the whole item that holds it instead"
+	return Refusal{Kind: KindPending, Code: RefusePendingEdit, File: h.File, Path: h.Part, Value: h.Pending.Part(), Message: msg}
 }
 
 // notCovered marks a refusal no pending entry holds back, in its message and its error.
