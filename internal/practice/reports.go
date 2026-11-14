@@ -1,8 +1,8 @@
 package practice
 
 import (
+	"container/heap"
 	"context"
-	"sort"
 	"strconv"
 	"time"
 
@@ -11,64 +11,92 @@ import (
 
 // OpenMattersWidget lists the caller's open matters. A walled matter is absent.
 func (s *Service) OpenMattersWidget(ctx context.Context, p domain.Principal) (Widget, error) {
+	var every int
+	return s.OpenMattersWidgetTop(ctx, p, every)
+}
+
+// OpenMattersWidgetTop is OpenMattersWidget's first max rows in list order (zero is every
+// row); it stops checking matters once it has them.
+func (s *Service) OpenMattersWidgetTop(ctx context.Context, p domain.Principal, max int) (Widget, error) {
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
 		return Widget{}, err
 	}
 	widget := Widget{
 		ID: "my-open-matters", Title: "My open matters", PagePath: "/practice/matters",
-		Query: map[string]string{"status": StatusOpen},
+		Query: map[string]string{"status": StatusOpen}, Rows: []WidgetRow{},
 	}
-	for _, row := range s.mattersInOrder() {
-		if row.Status != StatusOpen {
-			continue
-		}
-		if row.ResponsibleAttorneyID != p.UserID && row.AssignedStaffID != p.UserID {
-			continue
-		}
-		if !s.visibleMatter(ctx, p, row.ID) {
-			continue
+	s.eachMatterInOrder(func(row *domain.Matter) bool {
+		if row.Status != StatusOpen || row.ResponsibleAttorneyID != p.UserID && row.AssignedStaffID != p.UserID || !s.visibleMatter(ctx, p, row.ID) {
+			return true
 		}
 		widget.Rows = append(widget.Rows, WidgetRow{
 			ID: string(row.ID), Title: row.Number + " " + row.Name, Subtitle: row.Status,
 			TargetPath: "/practice/matters/" + string(row.ID),
 		})
-	}
-	if widget.Rows == nil {
-		widget.Rows = []WidgetRow{}
-	}
+		return len(widget.Rows) != max
+	})
 	return widget, nil
 }
 
-// mattersInOrder is every matter in list order (open first, newest opened, number, id), so
-// a widget's rows, and the first ones a screen shows, are the same from one load to the
-// next.
-func (s *Service) mattersInOrder() []domain.Matter {
+// eachMatterInOrder calls fn with every matter in list order (open first, newest opened,
+// number, id) until fn returns false, so a widget's rows are the same from one load to
+// the next. A heap yields the order lazily: a widget that stops after a few rows does not
+// sort every matter.
+func (s *Service) eachMatterInOrder(fn func(*domain.Matter) bool) {
 	rows := s.db.Matters()
-	sort.Slice(rows, func(i, j int) bool { return matterOrder(&rows[i], &rows[j]) })
-	return rows
+	h := &matterHeap{rows: rows, idx: make([]int, len(rows))}
+	for i := range h.idx {
+		h.idx[i] = i
+	}
+	heap.Init(h)
+	for len(h.idx) > 0 {
+		if !fn(&rows[heap.Pop(h).(int)]) {
+			return
+		}
+	}
+}
+
+// matterHeap orders matter indexes by matterOrder.
+type matterHeap struct {
+	rows []domain.Matter
+	idx  []int
+}
+
+func (h *matterHeap) Len() int           { return len(h.idx) }
+func (h *matterHeap) Less(i, j int) bool { return matterOrder(&h.rows[h.idx[i]], &h.rows[h.idx[j]]) }
+func (h *matterHeap) Swap(i, j int)      { h.idx[i], h.idx[j] = h.idx[j], h.idx[i] }
+func (h *matterHeap) Push(x any)         { h.idx = append(h.idx, x.(int)) }
+func (h *matterHeap) Pop() any {
+	last := h.idx[len(h.idx)-1]
+	h.idx = h.idx[:len(h.idx)-1]
+	return last
 }
 
 // ConflictWidget lists matters with an unchecked party.
 func (s *Service) ConflictWidget(ctx context.Context, p domain.Principal) (Widget, error) {
+	var every int
+	return s.ConflictWidgetTop(ctx, p, every)
+}
+
+// ConflictWidgetTop is ConflictWidget's first max rows in list order (zero is every row).
+func (s *Service) ConflictWidgetTop(ctx context.Context, p domain.Principal, max int) (Widget, error) {
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
 		return Widget{}, err
 	}
 	widget := Widget{
 		ID: "pending-conflict-checks", Title: "Pending conflict checks", PagePath: "/practice/matters",
-		Query: map[string]string{"conflicts": "unchecked"},
+		Query: map[string]string{"conflicts": "unchecked"}, Rows: []WidgetRow{},
 	}
-	for _, row := range s.mattersInOrder() {
+	s.eachMatterInOrder(func(row *domain.Matter) bool {
 		if !s.unchecked(row.ID) || !s.visibleMatter(ctx, p, row.ID) {
-			continue
+			return true
 		}
 		widget.Rows = append(widget.Rows, WidgetRow{
 			ID: string(row.ID), Title: row.Number + " " + row.Name, Subtitle: "Unchecked conflicts",
 			TargetPath: "/practice/matters/" + string(row.ID),
 		})
-	}
-	if widget.Rows == nil {
-		widget.Rows = []WidgetRow{}
-	}
+		return len(widget.Rows) != max
+	})
 	return widget, nil
 }
 

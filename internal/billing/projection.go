@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/jackc/pgx/v5"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -221,36 +222,81 @@ func (m *Memory) Aging(ctx context.Context, kind string, w Where) ([]agingRow, e
 	return out, nil
 }
 
-// Aging reads billing_aging (migration 1262), through pgx as text outside a transaction.
+// agingCols are billing_aging's columns as Aging reads them, all text.
+const agingCols = `id, matter_id, invoice_id, number, status, on_date, due_on, amount_cents::TEXT, closed_at, write_offs`
+
+// Aging reads billing_aging (migration 1262): outside a transaction from the kept
+// snapshot (snapshot.go), inside one from the table.
 func (p *Postgres) Aging(ctx context.Context, kind string, w Where) ([]agingRow, error) {
-	q := `SELECT id, matter_id, invoice_id, number, status, on_date, due_on, amount_cents::TEXT, closed_at, write_offs FROM billing_aging WHERE kind = $1`
+	if audit.Tx(ctx, p.pool) == nil {
+		all, err := p.aging.rows(ctx, p, "billing_aging", kind, p.loadAging)
+		if err != nil {
+			return nil, err
+		}
+		var out []agingRow
+		for _, r := range all {
+			if w.ToDate == "" || r.Date <= w.ToDate {
+				out = append(out, r)
+			}
+		}
+		return out, nil
+	}
+	q := `SELECT ` + agingCols + ` FROM billing_aging WHERE kind = $1`
 	args := []any{kind}
 	if w.ToDate != "" {
 		q += ` AND on_date <= $2`
 		args = append(args, w.ToDate)
 	}
 	var out []agingRow
-	err := p.textRows(ctx, q+` ORDER BY id`, args, func(f []string) error {
-		r := agingRow{ID: domain.ID(f[0]), MatterID: domain.ID(f[1]), InvoiceID: domain.ID(f[2]), Number: f[3], Status: f[4], Date: f[5], DueOn: f[6]}
-		amount, err := strconv.ParseInt(f[7], 10, 64)
-		if err != nil {
-			return err
-		}
-		r.AmountCents = domain.Cents(amount)
-		if f[8] != "" {
-			if err := json.Unmarshal([]byte(f[8]), &r.Closed); err != nil {
-				return err
-			}
-		}
-		if f[9] != "" {
-			if err := json.Unmarshal([]byte(f[9]), &r.WriteOffs); err != nil {
-				return err
-			}
-		}
+	err := p.textRows(ctx, q, args, func(f []string) error {
+		r, err := agingFields(f)
 		out = append(out, r)
-		return nil
+		return err
 	})
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, err
+}
+
+// loadAging reads every aging row of both kinds, in id order, for the snapshot.
+func (p *Postgres) loadAging(ctx context.Context, tx pgx.Tx) (map[string][]agingRow, error) {
+	rows, err := tx.Query(ctx, `SELECT kind, `+agingCols+` FROM billing_aging`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]agingRow{}
+	err = scanText(rows, func(f []string) error {
+		r, err := agingFields(f[1:])
+		out[f[0]] = append(out[f[0]], r)
+		return err
+	})
+	// Sorted here, not in SQL: a collation-aware sort of 20,000 ids cost Postgres more
+	// than the whole read, and Go's byte order is the memory store's order.
+	for _, list := range out {
+		sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
+	}
+	return out, err
+}
+
+// agingFields decodes one aging row's text fields in agingCols order.
+func agingFields(f []string) (agingRow, error) {
+	r := agingRow{ID: domain.ID(f[0]), MatterID: domain.ID(f[1]), InvoiceID: domain.ID(f[2]), Number: f[3], Status: f[4], Date: f[5], DueOn: f[6]}
+	amount, err := strconv.ParseInt(f[7], 10, 64)
+	if err != nil {
+		return r, err
+	}
+	r.AmountCents = domain.Cents(amount)
+	if f[8] != "" {
+		if err := json.Unmarshal([]byte(f[8]), &r.Closed); err != nil {
+			return r, err
+		}
+	}
+	if f[9] != "" {
+		if err := json.Unmarshal([]byte(f[9]), &r.WriteOffs); err != nil {
+			return r, err
+		}
+	}
+	return r, nil
 }
 
 // textRows runs a query whose columns are all text and calls fn with each row's fields.
@@ -290,39 +336,45 @@ func (p *Postgres) textRows(ctx context.Context, query string, args []any, fn fu
 			return err
 		}
 		defer rows.Close()
-		n := len(rows.FieldDescriptions())
-		var arena []byte
-		var ends []int
-		flush := func() error {
-			text := string(arena)
-			f := make([]string, n)
-			for at, start := 0, 0; at < len(ends); at += n {
-				for i := range f {
-					f[i], start = text[start:ends[at+i]], ends[at+i]
-				}
-				if err := fn(f); err != nil {
-					return err
-				}
-			}
-			arena, ends = arena[:0], ends[:0]
-			return nil
-		}
-		for rows.Next() {
-			for _, v := range rows.RawValues() {
-				arena = append(arena, v...)
-				ends = append(ends, len(arena))
-			}
-			if len(arena) >= textRowsChunk {
-				if err := flush(); err != nil {
-					return err
-				}
-			}
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		return flush()
+		return scanText(rows, fn)
 	})
+}
+
+// scanText calls fn with each row's text fields, copying a chunk of rows' raw text into
+// one string that the fields slice, so a row costs no allocation of its own.
+func scanText(rows pgx.Rows, fn func([]string) error) error {
+	n := len(rows.FieldDescriptions())
+	var arena []byte
+	var ends []int
+	flush := func() error {
+		text := string(arena)
+		f := make([]string, n)
+		for at, start := 0, 0; at < len(ends); at += n {
+			for i := range f {
+				f[i], start = text[start:ends[at+i]], ends[at+i]
+			}
+			if err := fn(f); err != nil {
+				return err
+			}
+		}
+		arena, ends = arena[:0], ends[:0]
+		return nil
+	}
+	for rows.Next() {
+		for _, v := range rows.RawValues() {
+			arena = append(arena, v...)
+			ends = append(ends, len(arena))
+		}
+		if len(arena) >= textRowsChunk {
+			if err := flush(); err != nil {
+				return err
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return flush()
 }
 
 // textRowsChunk is how many bytes of row text textRows decodes at a time.

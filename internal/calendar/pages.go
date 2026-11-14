@@ -167,11 +167,10 @@ func (h *Handler) pageErr(w http.ResponseWriter, r *http.Request, err error) {
 // chrome loads the reminders and overdue deadlines every calendar page shows.
 func (h *Handler) chrome(r *http.Request, p domain.Principal, v *view) {
 	ctx := r.Context()
-	if rows, err := h.Svc.Overdue(ctx, p); err == nil {
-		// The panel shows a page of them, oldest first, and links to the rest.
-		if n, err := h.Svc.settingInt(ctx, "api.page_size"); err == nil && len(rows) > n {
-			v.OverdueMore, rows = len(rows)-n, rows[:n]
-		}
+	// The panel shows a page of overdue deadlines, oldest first, and counts the rest.
+	n, _ := h.Svc.settingInt(ctx, "api.page_size") // zero on error: the whole list
+	if rows, total, err := h.Svc.OverduePage(ctx, p, n); err == nil {
+		v.OverdueMore = total - len(rows)
 		names := h.rows(r)
 		for _, d := range rows {
 			v.Overdue = append(v.Overdue, names.deadline(d))

@@ -65,6 +65,13 @@ func DeadlineQuery(from, to string, matter domain.ID) (DeadlineFilter, map[strin
 // overdue ones first. Its title opens the deadlines page with the same range and
 // each row opens that deadline. A walled matter's deadline is absent.
 func (s *Service) UpcomingDeadlinesWidget(ctx context.Context, p domain.Principal, from, to string, matter domain.ID) (Widget, error) {
+	var every int
+	return s.UpcomingDeadlinesWidgetTop(ctx, p, from, to, matter, every)
+}
+
+// UpcomingDeadlinesWidgetTop is UpcomingDeadlinesWidget's first max rows (zero is every
+// row); deadlines past them are not checked.
+func (s *Service) UpcomingDeadlinesWidgetTop(ctx context.Context, p domain.Principal, from, to string, matter domain.ID, max int) (Widget, error) {
 	if from == "" || to == "" {
 		f, t, err := s.UpcomingRange(ctx)
 		if err != nil {
@@ -78,6 +85,7 @@ func (s *Service) UpcomingDeadlinesWidget(ctx context.Context, p domain.Principa
 		}
 	}
 	filter, query := DeadlineQuery(from, to, matter)
+	filter.Max = max
 	rows, err := s.ListDeadlines(ctx, p, filter)
 	if err != nil {
 		return Widget{}, err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -102,9 +103,14 @@ func (m *Memory) Unbilled(ctx context.Context, kind string, w Where, fn func(*un
 // UnbilledTotals totals the unbilled rows of kind per matter, ordered by each matter's
 // first row id.
 func (m *Memory) UnbilledTotals(ctx context.Context, kind string, w Where) ([]matterTotal, error) {
+	return totalsOf(func(fn func(*unbilledRow) error) error { return m.Unbilled(ctx, kind, w, fn) })
+}
+
+// totalsOf totals rows in id order per matter, in order of each matter's first row.
+func totalsOf(each func(fn func(*unbilledRow) error) error) ([]matterTotal, error) {
 	at := map[domain.ID]int{}
 	var out []matterTotal
-	err := m.Unbilled(ctx, kind, w, func(r *unbilledRow) error {
+	err := each(func(r *unbilledRow) error {
 		i, ok := at[r.MatterID]
 		if !ok {
 			i = len(out)
@@ -118,8 +124,35 @@ func (m *Memory) UnbilledTotals(ctx context.Context, kind string, w Where) ([]ma
 	return out, err
 }
 
-// UnbilledTotals is one aggregate over billing_unbilled.
+// UnbilledTotals totals the kept snapshot outside a transaction and aggregates the table
+// inside one.
 func (p *Postgres) UnbilledTotals(ctx context.Context, kind string, w Where) ([]matterTotal, error) {
+	if audit.Tx(ctx, p.pool) == nil {
+		if !w.MatterID.IsZero() || !w.UserID.IsZero() || w.FromDate != "" || w.ToDate != "" {
+			return totalsOf(func(fn func(*unbilledRow) error) error { return p.Unbilled(ctx, kind, w, fn) })
+		}
+		// Unfiltered totals are the same for every caller of one snapshot; each caller's
+		// report gate still decides which matters it sees.
+		snap, err := p.unbilled.current(ctx, p, "billing_unbilled", p.loadUnbilled)
+		if err != nil {
+			return nil, err
+		}
+		v, err := snap.derive("totals:"+kind, func() (any, error) {
+			rows := snap.kinds[kind]
+			return totalsOf(func(fn func(*unbilledRow) error) error {
+				for i := range rows {
+					if err := fn(&rows[i]); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+		})
+		if err != nil {
+			return nil, err
+		}
+		return v.([]matterTotal), nil
+	}
 	var q strings.Builder
 	args := []any{kind}
 	arg := func(v any) string {
@@ -139,7 +172,9 @@ func (p *Postgres) UnbilledTotals(ctx context.Context, kind string, w Where) ([]
 	if w.ToDate != "" {
 		q.WriteString(` AND on_date <= ` + arg(w.ToDate))
 	}
-	q.WriteString(` GROUP BY matter_id ORDER BY MIN(id)`)
+	// Ordered here rather than in SQL: a collation-aware sort of 20,000 ids cost Postgres
+	// more than the aggregate (AC-017).
+	q.WriteString(` GROUP BY matter_id`)
 	rows, err := audit.Conn(ctx, p.pool).QueryContext(ctx, q.String(), args...)
 	if err != nil {
 		return nil, err
@@ -156,6 +191,7 @@ func (p *Postgres) UnbilledTotals(ctx context.Context, kind string, w Where) ([]
 		t.MatterID, t.Cents = domain.ID(matter), domain.Cents(cents)
 		out = append(out, t)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].First < out[j].First })
 	return out, rows.Err()
 }
 
@@ -172,12 +208,9 @@ func unbilledSizes() (s struct{ cols, batch, chunk int }) {
 }
 
 // Unbilled reads billing_unbilled (migration 1261) by matter, user and date, in id order.
-// Outside a transaction it streams one query through pgx in a read-only transaction that
-// keeps the planner on the primary key (an in-order scan Go consumes as Postgres produces
-// it, never a sort of the whole set) and decodes raw text a chunk at a time:
-// database/sql's per-value conversion and separate round trips were most of the
-// report's time at the AC-017 seed. Inside a caller's transaction, or with w.Limit set, it
-// reads keyset batches.
+// Outside a transaction it filters the kept snapshot (snapshot.go; fn must not change
+// the shared row); inside a caller's transaction it reads keyset batches of the table, so
+// the transaction sees its own writes.
 func (p *Postgres) Unbilled(ctx context.Context, kind string, w Where, fn func(*unbilledRow) error) error {
 	var q strings.Builder
 	args := []any{kind}
@@ -199,32 +232,21 @@ func (p *Postgres) Unbilled(ctx context.Context, kind string, w Where, fn func(*
 	if w.ToDate != "" {
 		q.WriteString(` AND on_date <= ` + arg(w.ToDate))
 	}
-	if audit.Tx(ctx, p.pool) == nil && !positive(int64(w.Limit)) {
-		query := q.String() + ` ORDER BY id`
-		return p.native(ctx, func(pc *pgx.Conn) error {
-			tx, err := pc.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
-			if err != nil {
-				return err
-			}
-			defer func() { _ = tx.Rollback(ctx) }()
-			for _, set := range []string{`SET LOCAL enable_sort = off`, `SET LOCAL jit = off`} {
-				if _, err := tx.Exec(ctx, set); err != nil {
+	if audit.Tx(ctx, p.pool) == nil {
+		rows, err := p.unbilled.rows(ctx, p, "billing_unbilled", kind, p.loadUnbilled)
+		if err != nil {
+			return err
+		}
+		for i := range rows {
+			if w.matchUnbilled(rows[i]) {
+				if err := fn(&rows[i]); err != nil {
 					return err
 				}
 			}
-			rows, err := tx.Query(ctx, query, args...)
-			if err != nil {
-				return err
-			}
-			defer rows.Close()
-			if err := streamUnbilled(rows, fn); err != nil {
-				return err
-			}
-			return tx.Commit(ctx)
-		})
+		}
+		return nil
 	}
-	// Keyset batches: in a caller's transaction, or when w.Limit says the caller wants only
-	// the first rows (fn stops the walk by returning an error; a batch is never drained).
+	// Keyset batches, w.Limit rows each when set.
 	batch := unbilledBatch
 	if positive(int64(w.Limit)) {
 		batch = w.Limit
@@ -268,6 +290,35 @@ func (p *Postgres) Unbilled(ctx context.Context, kind string, w Where, fn func(*
 		}
 		args[last] = string(buf[len(buf)-1].ID)
 	}
+}
+
+// loadUnbilled reads every unbilled row of both kinds for the snapshot: one in-order scan
+// of the primary key per kind (never a sort of the whole set), decoded from raw values.
+func (p *Postgres) loadUnbilled(ctx context.Context, tx pgx.Tx) (map[string][]unbilledRow, error) {
+	for _, set := range []string{`SET LOCAL enable_sort = off`, `SET LOCAL jit = off`} {
+		if _, err := tx.Exec(ctx, set); err != nil {
+			return nil, err
+		}
+	}
+	out := map[string][]unbilledRow{}
+	for _, kind := range []string{kindTime, kindExpense} {
+		rows, err := tx.Query(ctx, `SELECT id, matter_id, user_id, on_date, description, minutes, rate_cents, amount_cents, markup_percent,
+			total_cents FROM billing_unbilled WHERE kind = $1 ORDER BY id`, kind)
+		if err != nil {
+			return nil, err
+		}
+		list := []unbilledRow{}
+		err = streamUnbilled(rows, func(r *unbilledRow) error {
+			list = append(list, *r)
+			return nil
+		})
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+		out[kind] = list
+	}
+	return out, nil
 }
 
 // streamUnbilled decodes streamed rows a chunk at a time from their raw wire values: the

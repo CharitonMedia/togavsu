@@ -154,6 +154,9 @@ func (m *Memory) List(_ context.Context, kind string) ([][]byte, error) {
 type Postgres struct {
 	pool    *sql.DB
 	publish bool
+	// unbilled and aging keep the report projections' rows (snapshot.go).
+	unbilled projCache[unbilledRow]
+	aging    projCache[agingRow]
 }
 
 // NewPostgres returns a store on pool. pool must be the pool the audit ledger uses.

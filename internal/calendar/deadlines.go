@@ -209,21 +209,33 @@ func (s *Service) ListDeadlines(ctx context.Context, p domain.Principal, f Deadl
 		return nil, domain.NotFound("matter")
 	}
 	today := s.Today(ctx).Format(dateLayout)
-	rows, err := s.d.Store.DeadlinesFor(ctx, f, today)
-	if err != nil {
-		return nil, err
-	}
-	var out []Deadline
-	for _, row := range rows {
-		if !matchDeadline(row, f, today) {
-			continue
+	// With Max set, a first read of a few times Max rows usually fills it; only when walls
+	// hide too many of them is the whole list read.
+	first := f
+	first.limit = f.Max << 2
+	for _, q := range []DeadlineFilter{first, f} {
+		rows, err := s.d.Store.DeadlinesFor(ctx, q, today)
+		if err != nil {
+			return nil, err
 		}
-		if !s.visible(ctx, p, row.MatterID) {
-			continue
+		var out []Deadline
+		for _, row := range rows {
+			if !matchDeadline(row, f, today) {
+				continue
+			}
+			if !s.visible(ctx, p, row.MatterID) {
+				continue
+			}
+			out = append(out, row)
+			if len(out) == f.Max {
+				return out, nil
+			}
 		}
-		out = append(out, row)
+		if !isSet(int64(q.limit)) || len(rows) < q.limit {
+			return out, nil
+		}
 	}
-	return out, nil
+	return nil, nil
 }
 
 func matchDeadline(row Deadline, f DeadlineFilter, today string) bool {
@@ -252,6 +264,27 @@ func matchDeadline(row Deadline, f DeadlineFilter, today string) bool {
 // can see. They stay until done or waived.
 func (s *Service) Overdue(ctx context.Context, p domain.Principal) ([]Deadline, error) {
 	return s.ListDeadlines(ctx, p, DeadlineFilter{Status: StatusOpen, Before: s.Today(ctx).Format(dateLayout)})
+}
+
+// OverduePage is Overdue's first max deadlines (zero is every one) and how many there
+// are; each matter is checked once, through the gate, for the count.
+func (s *Service) OverduePage(ctx context.Context, p domain.Principal, max int) ([]Deadline, int, error) {
+	f := DeadlineFilter{Status: StatusOpen, Before: s.Today(ctx).Format(dateLayout), Max: max}
+	rows, err := s.ListDeadlines(ctx, p, f)
+	if err != nil || !isSet(int64(max)) || len(rows) < max {
+		return rows, len(rows), err
+	}
+	counts, err := s.d.Store.DeadlineCounts(ctx, f, f.Before)
+	if err != nil {
+		return nil, 0, err
+	}
+	var total int
+	for m, c := range counts {
+		if s.visible(ctx, p, m) {
+			total += c
+		}
+	}
+	return rows, total, nil
 }
 
 // IsOverdue reports whether row is open and past due on the firm-local today.

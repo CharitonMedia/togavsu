@@ -406,6 +406,54 @@ func (m *Memory) Matter(_ context.Context, id domain.ID) (domain.Matter, error) 
 	return row, nil
 }
 
+// SearchText is the searched text of one matter (Name, Number, CaseNumber) or contact
+// (FullName, GivenName, FamilyName, PreferredName, AlsoKnownAs).
+type SearchText struct {
+	ID     domain.ID
+	Fields [5]string
+}
+
+// MatterSearchText lists every matter's searched fields: a search over 20,000 matters
+// copies these and reads whole matters only for its hits.
+func (m *Memory) MatterSearchText() []SearchText {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]SearchText, 0, len(m.matters))
+	for id, row := range m.matters {
+		out = append(out, SearchText{ID: id, Fields: [5]string{row.Name, row.Number, row.CaseNumber}})
+	}
+	return out
+}
+
+// ContactSearchText lists every contact's searched name fields.
+func (m *Memory) ContactSearchText() []SearchText {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]SearchText, 0, len(m.contacts))
+	for id, row := range m.contacts {
+		out = append(out, SearchText{ID: id, Fields: [5]string{row.FullName, row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs}})
+	}
+	return out
+}
+
+// MatterKey is the part of a matter a count filters on.
+type MatterKey struct {
+	ID, PracticeAreaID domain.ID
+	Status             string
+}
+
+// MatterKeys lists every matter's key: a count over 20,000 matters copies these, not
+// whole matters.
+func (m *Memory) MatterKeys() []MatterKey {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]MatterKey, 0, len(m.matters))
+	for id, row := range m.matters {
+		out = append(out, MatterKey{ID: id, PracticeAreaID: row.PracticeAreaID, Status: row.Status})
+	}
+	return out
+}
+
 func (m *Memory) Matters() []domain.Matter {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -2,6 +2,7 @@ package billing
 
 import (
 	"bufio"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"sort"
@@ -124,15 +125,43 @@ var jsonPlain = func() (t [256]bool) {
 }()
 
 // appendJSONString quotes s as encoding/json does; plain printable ASCII is copied, and
-// anything else goes through encoding/json so escapes match.
+// anything else goes through encoding/json so escapes match. It tests eight bytes at a
+// time: report rows are mostly ids, dates and short descriptions.
 func appendJSONString(buf []byte, s string) []byte {
-	for i := 0; i < len(s); i++ {
+	i := 0
+	for ; i+8 <= len(s); i += 8 {
+		if !plain8(binary.LittleEndian.Uint64([]byte(s[i : i+8]))) {
+			return appendQuoted(buf, s)
+		}
+	}
+	for ; i < len(s); i++ {
 		if !jsonPlain[s[i]] {
-			enc, _ := json.Marshal(s)
-			return append(buf, enc...)
+			return appendQuoted(buf, s)
 		}
 	}
 	buf = append(buf, '"')
 	buf = append(buf, s...)
 	return append(buf, '"')
+}
+
+func appendQuoted(buf []byte, s string) []byte {
+	enc, _ := json.Marshal(s)
+	return append(buf, enc...)
+}
+
+// plain8 reports whether all eight bytes of x are jsonPlain: none has the high bit, none
+// is below a space, and none is DEL or one of the five characters encoding/json escapes.
+// A byte equal to c shows as a zero byte of x ^ (c in every byte).
+func plain8(x uint64) bool {
+	const ones, highs = 0x0101010101010101, 0x8080808080808080
+	zero := func(v uint64) bool { return (v-ones)&^v&highs != 0 }
+	if x&highs != 0 || (x-ones*0x20)&^x&highs != 0 {
+		return false
+	}
+	for _, c := range []uint64{'"', '\\', '<', '>', '&', 0x7f} {
+		if zero(x ^ ones*c) {
+			return false
+		}
+	}
+	return true
 }

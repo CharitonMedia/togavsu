@@ -122,7 +122,13 @@ func (p *Postgres) DeleteEvent(ctx context.Context, id domain.ID) error {
 const eventCols = `id, created_at, updated_at, created_by, title, kind, starts_at, ends_at, all_day, matter_id, location, travel_minutes, notes`
 
 func (p *Postgres) events(ctx context.Context, where string, args ...any) ([]Event, error) {
-	rows, err := p.q(ctx).QueryContext(ctx, `SELECT `+eventCols+` FROM calendar_events `+where+` ORDER BY starts_at, id`, args...)
+	return p.eventsTail(ctx, where, "", args...)
+}
+
+// eventsTail is events with tail (a LIMIT) after its order; the attendee read covers the
+// same events.
+func (p *Postgres) eventsTail(ctx context.Context, where, tail string, args ...any) ([]Event, error) {
+	rows, err := p.q(ctx).QueryContext(ctx, `SELECT `+eventCols+` FROM calendar_events `+where+` ORDER BY starts_at, id`+tail, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +157,7 @@ func (p *Postgres) events(ctx context.Context, where string, args ...any) ([]Eve
 	attQ, attArgs := `SELECT event_id, user_id FROM calendar_event_attendees ORDER BY created_at, id`, []any(nil)
 	if where != "" {
 		// Only the listed events' attendees (migration 1263 indexes event_id).
-		attQ, attArgs = `SELECT event_id, user_id FROM calendar_event_attendees WHERE event_id IN (SELECT id FROM calendar_events `+where+`) ORDER BY created_at, id`, args
+		attQ, attArgs = `SELECT event_id, user_id FROM calendar_event_attendees WHERE event_id IN (SELECT id FROM calendar_events `+where+` ORDER BY starts_at, id`+tail+`) ORDER BY created_at, id`, args
 	}
 	att, err := p.q(ctx).QueryContext(ctx, attQ, attArgs...)
 	if err != nil {
@@ -205,6 +211,24 @@ func (p *Postgres) EventsBetween(ctx context.Context, from, to time.Time) ([]Eve
 	return p.events(ctx, `WHERE starts_at < $1 AND (ends_at > $2 OR starts_at >= $2)`, hi, lo)
 }
 
+// EventsAfter reads one ordered batch through the start index of migration 1263.
+func (p *Postgres) EventsAfter(ctx context.Context, from, to time.Time, after Event, limit int) ([]Event, error) {
+	lo, hi := int64(math.MinInt64), int64(math.MaxInt64)
+	if !from.IsZero() {
+		lo = from.UnixMicro()
+	}
+	if !to.IsZero() {
+		hi = to.UnixMicro()
+	}
+	where := `WHERE starts_at < $1 AND (ends_at > $2 OR starts_at >= $2)`
+	args := []any{hi, lo}
+	if after.ID != "" {
+		where += ` AND (starts_at > $3 OR starts_at = $3 AND id > $4)`
+		args = append(args, after.StartsAt, string(after.ID))
+	}
+	return p.eventsTail(ctx, where, " LIMIT "+strconv.Itoa(limit), args...)
+}
+
 // PutDeadline upserts a deadline.
 func (p *Postgres) PutDeadline(ctx context.Context, row Deadline) error {
 	d := row.Deadline
@@ -238,8 +262,13 @@ func (p *Postgres) DeleteDeadline(ctx context.Context, id domain.ID) error {
 }
 
 func (p *Postgres) deadlines(ctx context.Context, where string, args ...any) ([]Deadline, error) {
+	return p.deadlinesTail(ctx, where, "", args...)
+}
+
+// deadlinesTail is deadlines with tail (a LIMIT) after its order.
+func (p *Postgres) deadlinesTail(ctx context.Context, where, tail string, args ...any) ([]Deadline, error) {
 	rows, err := p.q(ctx).QueryContext(ctx, `SELECT id, created_at, updated_at, created_by, matter_id, title, due_on, responsible_user_id, status,
-reminder_offsets, done_by, done_at FROM deadlines `+where+` ORDER BY due_on, id`, args...)
+reminder_offsets, done_by, done_at FROM deadlines `+where+` ORDER BY due_on, id`+tail, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -282,6 +311,36 @@ func (p *Postgres) Deadlines(ctx context.Context) ([]Deadline, error) { return p
 // indexes of migration 1264). With IncludeOverdue an open deadline due before today is
 // kept whatever From says, as matchDeadline keeps it.
 func (p *Postgres) DeadlinesFor(ctx context.Context, f DeadlineFilter, today string) ([]Deadline, error) {
+	where, args := deadlineWhere(f, today)
+	if isSet(int64(f.limit)) {
+		args = append(args, f.limit)
+		return p.deadlinesTail(ctx, where, " LIMIT $"+strconv.Itoa(len(args)), args...)
+	}
+	return p.deadlines(ctx, where, args...)
+}
+
+// DeadlineCounts is one aggregate with DeadlinesFor's conditions.
+func (p *Postgres) DeadlineCounts(ctx context.Context, f DeadlineFilter, today string) (map[domain.ID]int, error) {
+	where, args := deadlineWhere(f, today)
+	rows, err := p.q(ctx).QueryContext(ctx, `SELECT matter_id, COUNT(*) FROM deadlines `+where+` GROUP BY matter_id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[domain.ID]int{}
+	for rows.Next() {
+		var m string
+		var n int
+		if err := rows.Scan(&m, &n); err != nil {
+			return nil, err
+		}
+		out[domain.ID(m)] = n
+	}
+	return out, rows.Err()
+}
+
+// deadlineWhere is the SQL form of matchDeadline's conditions.
+func deadlineWhere(f DeadlineFilter, today string) (string, []any) {
 	var conds []string
 	var args []any
 	arg := func(v any) string {
@@ -311,9 +370,9 @@ func (p *Postgres) DeadlinesFor(ctx context.Context, f DeadlineFilter, today str
 		conds = append(conds, c)
 	}
 	if len(conds) == 0 {
-		return p.Deadlines(ctx)
+		return "", args
 	}
-	return p.deadlines(ctx, "WHERE "+strings.Join(conds, " AND "), args...)
+	return "WHERE " + strings.Join(conds, " AND "), args
 }
 
 // PutFeed upserts a feed.

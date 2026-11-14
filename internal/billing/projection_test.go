@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -146,6 +147,23 @@ func projectionReports(f *fx) map[string]any {
 				t.Fatal(err)
 			}
 			out[name+" aging "+asOf] = rep.Rows
+			// The widget's summary is the report's bucket totals and first rows.
+			buckets, top, err := f.svc.ARAgingSummary(f.ctx, p, ReportFilter{AsOf: asOf}, 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]domain.Cents{}
+			for _, r := range rep.Rows {
+				want[r["bucket"].(string)] += domain.Cents(r["balance_cents"].(int64))
+			}
+			if !reflect.DeepEqual(buckets, want) || len(top) != min(2, len(rep.Rows)) {
+				t.Fatalf("%s aging %s: summary %v, %d rows; report %v", name, asOf, buckets, len(top), want)
+			}
+			for i, l := range top {
+				if l.InvoiceID != rep.Rows[i]["invoice_id"] || int64(l.BalanceCents) != rep.Rows[i]["balance_cents"] {
+					t.Fatalf("%s aging %s: summary row %d differs", name, asOf, i)
+				}
+			}
 		}
 	}
 	return out
@@ -273,6 +291,51 @@ func TestReportProjectionsPostgres(t *testing.T) {
 	var left int
 	if err := pool.QueryRowContext(ctx, `SELECT COUNT(*) FROM billing_unbilled WHERE id = $1`, id).Scan(&left); err != nil || left != 0 {
 		t.Fatalf("deleted entry still projected: %d %v", left, err)
+	}
+	// The kept snapshot follows every committed change: the cascade above, and a new entry
+	// written after a read.
+	has := func(id string) bool {
+		rep, err := f.svc.UnbilledReport(ctx, f.attorney, ReportFilter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range rep.Rows {
+			if string(r["id"].(domain.ID)) == id {
+				return true
+			}
+		}
+		return false
+	}
+	if has(id) {
+		t.Fatal("report still lists the deleted entry")
+	}
+	rate := domain.Cents(150_00)
+	added := f.logTime(f.attorney, f.walled, "2026-06-10", 2, &rate)
+	if !has(string(added.ID)) {
+		t.Fatal("report misses an entry written after the last read")
+	}
+	var token1, token2 string
+	_ = pool.QueryRowContext(ctx, `SELECT token FROM billing_projection_versions WHERE name = 'billing_unbilled'`).Scan(&token1)
+	if _, err := f.svc.UpdateTime(ctx, f.attorney, added.ID, TimeInput{Billable: new(bool)}); err != nil {
+		t.Fatal(err)
+	}
+	_ = pool.QueryRowContext(ctx, `SELECT token FROM billing_projection_versions WHERE name = 'billing_unbilled'`).Scan(&token2)
+	if token1 == token2 || has(string(added.ID)) {
+		t.Fatalf("a non-billable edit kept the entry: tokens %q %q", token1, token2)
+	}
+	// A rolled-back write leaves the snapshot alone.
+	if err := f.st.Atomic(ctx, func(ctx context.Context) error {
+		e := added
+		e.Billable = true
+		if err := f.st.Put(ctx, kindTime, string(e.ID), e); err != nil {
+			return err
+		}
+		return errors.New("roll back")
+	}); err == nil {
+		t.Fatal("want the rollback error")
+	}
+	if has(string(added.ID)) {
+		t.Fatal("a rolled-back write reached the report")
 	}
 }
 

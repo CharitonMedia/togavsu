@@ -296,31 +296,9 @@ var (
 
 // page slices rows by an opaque offset cursor.
 func page[T any](s *Service, r *http.Request, rows []T) ([]T, map[string]any, error) {
-	q := r.URL.Query()
-	limit, most, err := s.pageLimits(r.Context())
+	off, limit, err := pageBounds(s, r)
 	if err != nil {
 		return nil, nil, err
-	}
-	if v := q.Get("limit"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || !positiveInt.MatchString(v) {
-			return nil, nil, domain.Invalid("limit", "limit must be a positive integer")
-		}
-		if n > most {
-			return nil, nil, domain.Invalid("limit", "limit must not exceed api.max_page_size ("+strconv.Itoa(most)+")")
-		}
-		limit = n
-	}
-	var off int
-	if c := q.Get("cursor"); c != "" {
-		raw, err := base64.RawURLEncoding.DecodeString(c)
-		m := cursorText.FindStringSubmatch(string(raw))
-		if err != nil || m == nil {
-			return nil, nil, domain.Invalid("cursor", "cursor is not valid")
-		}
-		if off, err = strconv.Atoi(m[len(m)-1]); err != nil {
-			return nil, nil, domain.Invalid("cursor", "cursor is not valid")
-		}
 	}
 	if off > len(rows) {
 		off = len(rows)
@@ -331,6 +309,36 @@ func page[T any](s *Service, r *http.Request, rows []T) ([]T, map[string]any, er
 		next = base64.RawURLEncoding.EncodeToString([]byte("o:" + strconv.Itoa(end)))
 	}
 	return rows[off:end], map[string]any{"limit": limit, "next_cursor": next}, nil
+}
+
+// pageBounds reads a list request's offset (from its cursor) and page size.
+func pageBounds(s *Service, r *http.Request) (off, limit int, err error) {
+	q := r.URL.Query()
+	limit, most, err := s.pageLimits(r.Context())
+	if err != nil {
+		return 0, 0, err
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || !positiveInt.MatchString(v) {
+			return 0, 0, domain.Invalid("limit", "limit must be a positive integer")
+		}
+		if n > most {
+			return 0, 0, domain.Invalid("limit", "limit must not exceed api.max_page_size ("+strconv.Itoa(most)+")")
+		}
+		limit = n
+	}
+	if c := q.Get("cursor"); c != "" {
+		raw, err := base64.RawURLEncoding.DecodeString(c)
+		m := cursorText.FindStringSubmatch(string(raw))
+		if err != nil || m == nil {
+			return 0, 0, domain.Invalid("cursor", "cursor is not valid")
+		}
+		if off, err = strconv.Atoi(m[len(m)-1]); err != nil {
+			return 0, 0, domain.Invalid("cursor", "cursor is not valid")
+		}
+	}
+	return off, limit, nil
 }
 
 // idempotent replays the stored response for a repeated Idempotency-Key from the

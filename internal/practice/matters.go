@@ -157,8 +157,16 @@ func (s *Service) CountMatters(ctx context.Context, p domain.Principal, status s
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
 		return 0, err
 	}
+	var keys []MatterKey
+	if k, ok := s.db.(interface{ MatterKeys() []MatterKey }); ok {
+		keys = k.MatterKeys()
+	} else {
+		for _, row := range s.db.Matters() {
+			keys = append(keys, MatterKey{ID: row.ID, PracticeAreaID: row.PracticeAreaID, Status: row.Status})
+		}
+	}
 	var n int
-	for _, row := range s.db.Matters() {
+	for _, row := range keys {
 		if (status == "" || row.Status == status) && (area.IsZero() || row.PracticeAreaID == area) && s.visibleMatter(ctx, p, row.ID) {
 			n++
 		}

@@ -272,19 +272,41 @@ func (s *Service) ListEvents(ctx context.Context, p domain.Principal, f EventFil
 	if !f.MatterID.IsZero() && !s.visible(ctx, p, f.MatterID) {
 		return nil, domain.NotFound("matter")
 	}
+	keep := func(row Event) bool {
+		return matchEvent(row, f) && (row.MatterID.IsZero() || s.visible(ctx, p, row.MatterID))
+	}
+	var out []Event
+	if isSet(int64(f.Max)) {
+		// Ordered batches until Max readable events: a page of a large calendar does not
+		// read every event.
+		var after Event
+		for {
+			rows, err := s.d.Store.EventsAfter(ctx, f.From, f.To, after, f.Max)
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				if keep(row) {
+					out = append(out, row)
+					if len(out) == f.Max {
+						return out, nil
+					}
+				}
+			}
+			if len(rows) < f.Max {
+				return out, nil
+			}
+			after = rows[len(rows)-1]
+		}
+	}
 	rows, err := s.d.Store.EventsBetween(ctx, f.From, f.To)
 	if err != nil {
 		return nil, err
 	}
-	var out []Event
 	for _, row := range rows {
-		if !matchEvent(row, f) {
-			continue
+		if keep(row) {
+			out = append(out, row)
 		}
-		if !row.MatterID.IsZero() && !s.visible(ctx, p, row.MatterID) {
-			continue
-		}
-		out = append(out, row)
 	}
 	return out, nil
 }

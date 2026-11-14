@@ -235,8 +235,24 @@ func (s *Service) Worklist(ctx context.Context, p domain.Principal) (Worklist, e
 // mattersByNumber returns practice matters in matter-number order.
 func (s *Service) mattersByNumber() []domain.Matter {
 	rows := s.d.Practice.Matters()
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Number < rows[j].Number })
-	return rows
+	// Sort indexes, then copy each matter once: sorting the matters themselves moved
+	// 20,000 large structs around per request (AC-017). The id breaks number ties.
+	idx := make([]int, len(rows))
+	for i := range idx {
+		idx[i] = i
+	}
+	sort.Slice(idx, func(i, j int) bool {
+		a, b := &rows[idx[i]], &rows[idx[j]]
+		if a.Number != b.Number {
+			return a.Number < b.Number
+		}
+		return a.ID < b.ID
+	})
+	out := make([]domain.Matter, len(rows))
+	for i, k := range idx {
+		out[i] = rows[k]
+	}
+	return out
 }
 
 // ApplyFlatFee moves the confirmed flat fee from the client's trust funds to operating at the

@@ -122,11 +122,11 @@ func (c CoreServices) Sources() map[string]Source {
 	src := map[string]Source{}
 	if c.Practice != nil {
 		src["my-open-matters"] = func(ctx context.Context, p domain.Principal, _ map[string]string) (Widget, error) {
-			w, err := c.Practice.OpenMattersWidget(ctx, p)
+			w, err := c.Practice.OpenMattersWidgetTop(ctx, p, fixed.WidgetRows)
 			return practiceWidget(w), err
 		}
 		src["pending-conflict-checks"] = func(ctx context.Context, p domain.Principal, _ map[string]string) (Widget, error) {
-			w, err := c.Practice.ConflictWidget(ctx, p)
+			w, err := c.Practice.ConflictWidgetTop(ctx, p, fixed.WidgetRows)
 			return practiceWidget(w), err
 		}
 		src["recent-activity"] = func(ctx context.Context, p domain.Principal, _ map[string]string) (Widget, error) {
@@ -162,7 +162,7 @@ func (c CoreServices) Sources() map[string]Source {
 	}
 	if c.Calendar != nil {
 		src["upcoming-deadlines"] = func(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
-			w, err := c.Calendar.UpcomingDeadlinesWidget(ctx, p, f["from_date"], f["to_date"], domain.ID(f["matter_id"]))
+			w, err := c.Calendar.UpcomingDeadlinesWidgetTop(ctx, p, f["from_date"], f["to_date"], domain.ID(f["matter_id"]), fixed.WidgetRows)
 			return calendarWidget(w), err
 		}
 		src["todays-calendar"] = func(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
@@ -255,7 +255,7 @@ func filterQuery(f map[string]string) map[string]string {
 }
 
 func (c CoreServices) unbilled(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
-	totals, err := c.Billing.UnbilledSummary(ctx, p, reportFilter(f))
+	totals, err := c.Billing.UnbilledTotals(ctx, p, reportFilter(f))
 	if err != nil {
 		return Widget{}, err
 	}
@@ -272,51 +272,32 @@ func (c CoreServices) unbilled(ctx context.Context, p domain.Principal, f map[st
 		if len(w.Rows) >= fixed.WidgetRows {
 			break
 		}
-		w.Rows = append(w.Rows, WidgetRow{ID: string(t.MatterID), Title: t.MatterNumber + " · " + t.Cents.String(), Subtitle: fmt.Sprintf("%d unbilled items", t.Items), TargetPath: "/practice/matters/" + string(t.MatterID)})
+		w.Rows = append(w.Rows, WidgetRow{ID: string(t.MatterID), Title: c.Billing.MatterNumber(ctx, t.MatterID) + " · " + t.Cents.String(), Subtitle: fmt.Sprintf("%d unbilled items", t.Items), TargetPath: "/practice/matters/" + string(t.MatterID)})
 	}
 	return w, nil
 }
 
-func toInt(v any) (n int64) {
-	switch x := v.(type) {
-	case int64:
-		n = x
-	case int:
-		n = int64(x)
-	case float64:
-		n = int64(x)
-	case domain.Cents:
-		n = int64(x)
-	}
-	return n
-}
-
 func (c CoreServices) arAging(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
-	rep, err := c.Billing.ARAgingReport(ctx, p, reportFilter(f))
+	buckets, top, err := c.Billing.ARAgingSummary(ctx, p, reportFilter(f), fixed.ActivityRows)
 	if err != nil {
 		return Widget{}, err
 	}
-	buckets := map[string]int64{}
-	var names []string
-	for _, r := range rep.Rows {
-		b := fmt.Sprint(r["bucket"])
-		if _, ok := buckets[b]; !ok {
-			names = append(names, b)
-		}
-		buckets[b] += toInt(r["balance_cents"])
+	names := make([]string, 0, len(buckets))
+	for b := range buckets {
+		names = append(names, b)
 	}
 	sort.Strings(names)
 	w := Widget{Title: "AR aging", Target: Target{Path: "/billing/reports/ar-aging", Query: filterQuery(f)}}
 	for _, b := range names {
 		q := filterQuery(f)
-		w.Rows = append(w.Rows, WidgetRow{ID: b, Title: b + ": " + money(buckets[b]), TargetPath: Target{Path: "/billing/reports/ar-aging", Query: q}.URL()})
+		w.Rows = append(w.Rows, WidgetRow{ID: b, Title: b + ": " + money(int64(buckets[b])), TargetPath: Target{Path: "/billing/reports/ar-aging", Query: q}.URL()})
 	}
-	for _, r := range rep.Rows {
+	for _, r := range top {
 		if len(w.Rows) >= fixed.ActivityRows {
 			break
 		}
-		w.Rows = append(w.Rows, WidgetRow{ID: fmt.Sprint(r["invoice_id"]), Title: fmt.Sprint(r["number"]) + " · " + money(r["balance_cents"]),
-			Subtitle: fmt.Sprint(r["matter_number"]) + ", " + fmt.Sprint(r["days_past_due"]) + " days past due", TargetPath: "/billing/invoices/" + fmt.Sprint(r["invoice_id"])})
+		w.Rows = append(w.Rows, WidgetRow{ID: string(r.InvoiceID), Title: r.Number + " · " + money(int64(r.BalanceCents)),
+			Subtitle: r.MatterNumber + ", " + fmt.Sprint(r.DaysPastDue) + " days past due", TargetPath: "/billing/invoices/" + string(r.InvoiceID)})
 	}
 	return w, nil
 }

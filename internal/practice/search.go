@@ -1,10 +1,12 @@
 package practice
 
 import (
+	"bytes"
 	"context"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -100,16 +102,20 @@ func (s *Service) searchMatters(ctx context.Context, p domain.Principal, query s
 	q := strings.ToLower(query)
 	var rows []domain.Matter
 	// The text test comes first: it is cheap, and every matching matter is still checked
-	// for walls and role before it is a hit.
-	for _, row := range s.db.Matters() {
-		hay := strings.ToLower(row.Name + " " + row.Number + " " + row.CaseNumber)
-		if !strings.Contains(hay, q) {
+	// for walls and role before it is a hit. Only matching matters are read whole.
+	var hay []byte
+	qb := []byte(q)
+	for _, t := range s.matterText() {
+		hay = appendLower(hay[:0], t.Fields[0])
+		for _, f := range t.Fields[1:3] {
+			hay = appendLower(append(hay, ' '), f)
+		}
+		if !bytes.Contains(hay, qb) || !s.visibleMatter(ctx, p, t.ID) {
 			continue
 		}
-		if !s.visibleMatter(ctx, p, row.ID) {
-			continue
+		if row, err := s.db.Matter(ctx, t.ID); err == nil {
+			rows = append(rows, row)
 		}
-		rows = append(rows, row)
 	}
 	sortMatterRows(rows)
 	if len(rows) > limit {
@@ -129,23 +135,38 @@ func (s *Service) searchPeople(ctx context.Context, p domain.Principal, query st
 	q := strings.ToLower(query)
 	var rows []domain.Contact
 	// As for matters, the text test comes first and every match is checked for access.
-	for _, row := range s.db.Contacts() {
-		hay := strings.ToLower(strings.Join([]string{
-			row.FullName, row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs,
-		}, " "))
-		for _, email := range s.db.Emails(row.ID) {
-			hay += " " + strings.ToLower(email.Email)
+	// The lowercase text is built in one reused buffer: the same text as joining and
+	// lowering the fields, without new strings per contact.
+	var hay []byte
+	qb := []byte(q)
+	// Every contact's emails and phones in one read each, grouped by contact in id order,
+	// instead of two locked lookups per contact.
+	emails, phones := map[domain.ID][]idText{}, map[domain.ID][]idText{}
+	for _, e := range s.db.Emails("") {
+		emails[e.ContactID] = append(emails[e.ContactID], idText{e.ID, e.Email})
+	}
+	for _, ph := range s.db.Phones("") {
+		phones[ph.ContactID] = append(phones[ph.ContactID], idText{ph.ID, ph.PhoneE164})
+	}
+	for _, t := range s.contactText() {
+		hay = appendLower(hay[:0], t.Fields[0])
+		for _, f := range t.Fields[1:] {
+			hay = appendLower(append(hay, ' '), f)
 		}
-		for _, phone := range s.db.Phones(row.ID) {
-			hay += " " + strings.ToLower(phone.PhoneE164)
+		for _, list := range [][]idText{emails[t.ID], phones[t.ID]} {
+			if len(list) > 1 {
+				sort.Slice(list, func(i, j int) bool { return list[i].id < list[j].id })
+			}
+			for _, v := range list {
+				hay = appendLower(append(hay, ' '), v.text)
+			}
 		}
-		if !strings.Contains(hay, q) {
+		if !bytes.Contains(hay, qb) || s.readableContact(ctx, p, t.ID) != nil {
 			continue
 		}
-		if s.readableContact(ctx, p, row.ID) != nil {
-			continue
+		if row, err := s.db.Contact(ctx, t.ID); err == nil {
+			rows = append(rows, row)
 		}
-		rows = append(rows, row)
 	}
 	sortContacts(rows)
 	if len(rows) > limit {
@@ -199,6 +220,54 @@ func (s *Service) searchInvoices(ctx context.Context, p domain.Principal, query 
 		})
 	}
 	return hits
+}
+
+// idText is one email or phone of a contact, with its id for a stable order.
+type idText struct {
+	id   domain.ID
+	text string
+}
+
+// matterText and contactText are the searched fields, through the memory store's light
+// lists when it has them.
+func (s *Service) matterText() []SearchText {
+	if m, ok := s.db.(interface{ MatterSearchText() []SearchText }); ok {
+		return m.MatterSearchText()
+	}
+	var out []SearchText
+	for _, row := range s.db.Matters() {
+		out = append(out, SearchText{ID: row.ID, Fields: [5]string{row.Name, row.Number, row.CaseNumber}})
+	}
+	return out
+}
+
+func (s *Service) contactText() []SearchText {
+	if m, ok := s.db.(interface{ ContactSearchText() []SearchText }); ok {
+		return m.ContactSearchText()
+	}
+	var out []SearchText
+	for _, row := range s.db.Contacts() {
+		out = append(out, SearchText{ID: row.ID, Fields: [5]string{row.FullName, row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs}})
+	}
+	return out
+}
+
+// appendLower appends strings.ToLower(v): ASCII byte by byte, anything else through
+// strings.ToLower.
+func appendLower(b []byte, v string) []byte {
+	for i := 0; i < len(v); i++ {
+		if v[i] >= utf8.RuneSelf {
+			return append(b, strings.ToLower(v)...)
+		}
+	}
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b = append(b, c)
+	}
+	return b
 }
 
 // sortMatterRows is a stable sort, like the quadratic insertion sort it replaced.

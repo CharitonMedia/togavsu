@@ -2,6 +2,7 @@ package billing
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -53,5 +54,37 @@ func TestReportWriteJSONReportsWriteErrors(t *testing.T) {
 	bad := Report{Report: "x", Rows: []map[string]any{{"a": make(chan int)}}}
 	if err := bad.WriteJSON(&bytes.Buffer{}); err == nil {
 		t.Fatal("want an encoding error for an unsupported value")
+	}
+}
+
+// TestPlain8MatchesTable: the eight-byte test agrees with the per-byte table on every
+// byte value in every position, and on mixed words.
+func TestPlain8MatchesTable(t *testing.T) {
+	check := func(b [8]byte) {
+		want := true
+		for _, c := range b {
+			want = want && jsonPlain[c]
+		}
+		if got := plain8(binary.LittleEndian.Uint64(b[:])); got != want {
+			t.Fatalf("plain8(%q) = %v, want %v", b[:], got, want)
+		}
+	}
+	for pos := 0; pos < 8; pos++ {
+		for c := 0; c < 256; c++ {
+			b := [8]byte{'a', 'b', 'c', '1', '-', ' ', 'z', '~'}
+			b[pos] = byte(c)
+			check(b)
+		}
+	}
+	for _, s := range []string{"01a1dacc", "e853-743", "\x00\x00\x00\x00\x00\x00\x00\x00", "\xff~~~~~~~", "        ", "~~~~~~~~", "!!!!!!!!", "<<<<<<<<"} {
+		var b [8]byte
+		copy(b[:], s)
+		check(b)
+	}
+	for _, s := range []string{"", "a", "0123456789abcdef", "0123456789abcdef<", "Quote \"q\" <b>&</b> café", "\u2028 line"} {
+		want, _ := json.Marshal(s)
+		if got := appendJSONString(nil, s); string(got) != string(want) {
+			t.Fatalf("appendJSONString(%q) = %s, want %s", s, got, want)
+		}
 	}
 }

@@ -76,19 +76,19 @@ type view struct {
 	MatterOptions template.HTML
 	Matter        matterOption
 	Entries       []Entry
-	// OlderEntries links the ledger screen's next page.
-	OlderEntries  string
-	Balances      []map[string]string
-	Flags         []Flag
-	Flag          Flag
-	Repls         []Replenishment
-	Recons        []Reconciliation
-	Notes         []Notification
-	Fee           FlatFee
-	Evergreen     string
-	MatterBalance int64
-	Today, Status string
-	Labels        map[string]string
+	// OlderEntries and MoreBalances link the ledger and balances screens' next pages.
+	OlderEntries, MoreBalances string
+	Balances                   []map[string]string
+	Flags                      []Flag
+	Flag                       Flag
+	Repls                      []Replenishment
+	Recons                     []Reconciliation
+	Notes                      []Notification
+	Fee                        FlatFee
+	Evergreen                  string
+	MatterBalance              int64
+	Today, Status              string
+	Labels                     map[string]string
 }
 
 func (h *Handler) pageRoutes(mux *http.ServeMux) {
@@ -345,7 +345,22 @@ func (h *Handler) balancesPage(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	// A page of balances, by client, with a link to the next; the CSV has every row.
 	v.Balances = rep.Rows
+	if n, err := h.Svc.intSetting(r.Context(), "api.page_size"); err == nil && positive(int64(n)) {
+		var from int
+		if c, err := strconv.Atoi(r.URL.Query().Get("from")); err == nil && positive(int64(c)) && c < len(v.Balances) {
+			from = c
+		}
+		v.Balances = v.Balances[from:]
+		if len(v.Balances) > n {
+			more := url.Values{"from": {strconv.Itoa(from + n)}}
+			if a := qID(r, "trust_account_id"); !a.IsZero() {
+				more.Set("trust_account_id", string(a))
+			}
+			v.Balances, v.MoreBalances = v.Balances[:n], "/trust/balances?"+more.Encode()
+		}
+	}
 	h.render(w, r, "balances.html", v)
 }
 

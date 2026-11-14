@@ -137,7 +137,7 @@ func (s *Service) UnbilledReport(ctx context.Context, p domain.Principal, f Repo
 // the whole report's row count from the per-matter totals; it reads rows only until the
 // page is full.
 func (s *Service) unbilledPage(ctx context.Context, p domain.Principal, f ReportFilter, max int) (Report, error) {
-	totals, err := s.UnbilledSummary(ctx, p, f)
+	totals, err := s.UnbilledTotals(ctx, p, f)
 	if err != nil {
 		return Report{}, err
 	}
@@ -240,6 +240,9 @@ func (s *Service) unbilledRows(ctx context.Context, p domain.Principal, f Report
 		return err
 	}
 	names := s.lookups(ctx)
+	if f.MatterID.IsZero() {
+		names.allMatters()
+	}
 	// Each matter is checked once per report (the gate decides every matter it reaches);
 	// rows come in id order, which mostly keeps a matter's rows together, so the previous
 	// row's matter and user answer most rows without a map lookup.
@@ -347,6 +350,17 @@ func (s *Service) UnbilledJSON(ctx context.Context, p domain.Principal, f Report
 // by their first time row, then matters with only expenses), from one aggregate per kind
 // rather than the report's rows. Every matter is checked through the report gate.
 func (s *Service) UnbilledSummary(ctx context.Context, p domain.Principal, f ReportFilter) ([]UnbilledTotal, error) {
+	out, err := s.UnbilledTotals(ctx, p, f)
+	names := s.lookups(ctx)
+	for i := range out {
+		out[i].MatterNumber = names.matter(out[i].MatterID)
+	}
+	return out, err
+}
+
+// UnbilledTotals is UnbilledSummary without matter numbers, for callers that show only
+// some matters (MatterNumber names those) or only count.
+func (s *Service) UnbilledTotals(ctx context.Context, p domain.Principal, f ReportFilter) ([]UnbilledTotal, error) {
 	ok, err := s.reportGate(ctx, p, f)
 	if err != nil {
 		return nil, err
@@ -361,7 +375,6 @@ func (s *Service) UnbilledSummary(ctx context.Context, p domain.Principal, f Rep
 			return nil, err
 		}
 	}
-	names := s.lookups(ctx)
 	at := map[domain.ID]int{}
 	var out []UnbilledTotal
 	for _, list := range [][]matterTotal{times, costs} {
@@ -377,7 +390,7 @@ func (s *Service) UnbilledSummary(ctx context.Context, p domain.Principal, f Rep
 			if !seen {
 				i = len(out)
 				at[t.MatterID] = i
-				out = append(out, UnbilledTotal{MatterID: t.MatterID, MatterNumber: names.matter(t.MatterID)})
+				out = append(out, UnbilledTotal{MatterID: t.MatterID})
 			}
 			out[i].Items += t.Items
 			out[i].Cents += t.Cents
@@ -394,6 +407,11 @@ type UnbilledTotal struct {
 	Cents        domain.Cents
 }
 
+// MatterNumber is the matter's number, or "" for none; a label, not an access decision.
+func (s *Service) MatterNumber(ctx context.Context, id domain.ID) string {
+	return s.matterNumber(ctx, id)
+}
+
 // lookups names matters and users for one report, reading each once. They are display
 // labels, not access decisions: the report gate checks every matter itself.
 type lookups struct {
@@ -407,9 +425,20 @@ func (s *Service) lookups(ctx context.Context) *lookups {
 	return &lookups{s: s, ctx: ctx, matters: map[domain.ID]string{}, users: map[domain.ID]string{}}
 }
 
+// allMatters reads every matter's number in one pass, for a report that names most of
+// them: one copy of the matter list instead of a lookup per matter.
+func (l *lookups) allMatters() *lookups {
+	ms := l.s.d.Practice.Matters()
+	l.matters = make(map[domain.ID]string, len(ms))
+	for i := range ms {
+		l.matters[ms[i].ID] = ms[i].Number
+	}
+	return l
+}
+
 func (l *lookups) matter(id domain.ID) string {
 	n, ok := l.matters[id]
-	if !ok {
+	if !ok && !id.IsZero() {
 		n = l.s.matterNumber(l.ctx, id)
 		l.matters[id] = n
 	}
@@ -501,9 +530,48 @@ func agingBucket(days int) string {
 // Payments received after as_of, and write-offs after it, still count as owed. Zero-fee
 // matters are omitted.
 func (s *Service) ARAgingReport(ctx context.Context, p domain.Principal, f ReportFilter) (Report, error) {
-	ok, err := s.reportGate(ctx, p, f)
+	r := Report{Report: "ar-aging", Columns: []string{"invoice_id", "number", "matter_id", "matter_number", "issued_on", "due_on", "days_past_due", "bucket", "balance_cents"}, Rows: []map[string]any{}}
+	err := s.agingEach(ctx, p, f, func(l AgingLine) error {
+		r.Rows = append(r.Rows, map[string]any{"invoice_id": l.InvoiceID, "number": l.Number, "matter_id": l.MatterID,
+			"matter_number": l.MatterNumber, "issued_on": l.IssuedOn, "due_on": l.DueOn,
+			"days_past_due": l.DaysPastDue, "bucket": l.Bucket, "balance_cents": int64(l.BalanceCents)})
+		return nil
+	})
 	if err != nil {
 		return Report{}, err
+	}
+	return r, nil
+}
+
+// AgingLine is one AR aging row.
+type AgingLine struct {
+	InvoiceID, MatterID     domain.ID
+	Number, MatterNumber    string
+	IssuedOn, DueOn, Bucket string
+	DaysPastDue             int
+	BalanceCents            domain.Cents
+}
+
+// ARAgingSummary totals the AR aging report per bucket and keeps its first rows, for the
+// home widget, without building a map per row.
+func (s *Service) ARAgingSummary(ctx context.Context, p domain.Principal, f ReportFilter, first int) (map[string]domain.Cents, []AgingLine, error) {
+	buckets := map[string]domain.Cents{}
+	var top []AgingLine
+	err := s.agingEach(ctx, p, f, func(l AgingLine) error {
+		buckets[l.Bucket] += l.BalanceCents
+		if len(top) < first {
+			top = append(top, l)
+		}
+		return nil
+	})
+	return buckets, top, err
+}
+
+// agingEach calls fn with each AR aging row p may read, in invoice id order.
+func (s *Service) agingEach(ctx context.Context, p domain.Principal, f ReportFilter, fn func(AgingLine) error) error {
+	ok, err := s.reportGate(ctx, p, f)
+	if err != nil {
+		return err
 	}
 	asOf := f.AsOf
 	if asOf == "" {
@@ -511,18 +579,17 @@ func (s *Service) ARAgingReport(ctx context.Context, p domain.Principal, f Repor
 	}
 	invs, err := s.d.Store.Aging(ctx, kindInvoice, Where{ToDate: asOf})
 	if err != nil {
-		return Report{}, err
+		return err
 	}
 	pays, err := s.d.Store.Aging(ctx, kindPayment, Where{})
 	if err != nil {
-		return Report{}, err
+		return err
 	}
 	paidOn := map[domain.ID][]agingRow{}
 	for _, pay := range pays {
 		paidOn[pay.InvoiceID] = append(paidOn[pay.InvoiceID], pay)
 	}
-	names := s.lookups(ctx)
-	r := Report{Report: "ar-aging", Columns: []string{"invoice_id", "number", "matter_id", "matter_number", "issued_on", "due_on", "days_past_due", "bucket", "balance_cents"}, Rows: []map[string]any{}}
+	names := s.lookups(ctx).allMatters()
 	for _, inv := range invs {
 		if inv.Status == StatusDraft || inv.Date > asOf || s.zeroFee(inv.MatterID) {
 			continue
@@ -531,7 +598,7 @@ func (s *Service) ARAgingReport(ctx context.Context, p domain.Principal, f Repor
 			continue
 		}
 		if vis, err := ok(inv.MatterID); err != nil {
-			return Report{}, err
+			return err
 		} else if !vis {
 			continue
 		}
@@ -544,7 +611,7 @@ func (s *Service) ARAgingReport(ctx context.Context, p domain.Principal, f Repor
 				continue
 			}
 			if owed, err = owed.Sub(pay.AmountCents); err != nil {
-				return Report{}, err
+				return err
 			}
 		}
 		for _, wo := range inv.WriteOffs {
@@ -552,18 +619,19 @@ func (s *Service) ARAgingReport(ctx context.Context, p domain.Principal, f Repor
 				continue
 			}
 			if owed, err = owed.Sub(wo.AmountCents); err != nil {
-				return Report{}, err
+				return err
 			}
 		}
 		if !positive(int64(owed)) {
 			continue
 		}
 		days := daysBetween(inv.DueOn, asOf)
-		r.Rows = append(r.Rows, map[string]any{"invoice_id": inv.ID, "number": inv.Number, "matter_id": inv.MatterID,
-			"matter_number": names.matter(inv.MatterID), "issued_on": inv.Date, "due_on": inv.DueOn,
-			"days_past_due": max(days, int(0)), "bucket": agingBucket(days), "balance_cents": int64(owed)})
+		if err := fn(AgingLine{InvoiceID: inv.ID, Number: inv.Number, MatterID: inv.MatterID, MatterNumber: names.matter(inv.MatterID),
+			IssuedOn: inv.Date, DueOn: inv.DueOn, DaysPastDue: max(days, int(0)), Bucket: agingBucket(days), BalanceCents: owed}); err != nil {
+			return err
+		}
 	}
-	return r, nil
+	return nil
 }
 
 // PaymentsReport lists completed payments received in the range.

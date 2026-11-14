@@ -612,12 +612,13 @@ func fixedSite(path, fn string) bool {
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/billing/projection.go"):
-		// billing_aging column indexes in its reader.
-		return fn == "Aging"
+		// billing_aging column indexes in its readers.
+		return fn == "Aging" || fn == "loadAging" || fn == "agingFields"
 	case strings.HasSuffix(slash, "internal/billing/reportjson.go"):
-		// Report JSON writer (AC-017): decimal base, write-buffer sizes and separators.
+		// Report JSON writer (AC-017): decimal base, write-buffer sizes, separators, and
+		// the eight-byte word masks of its plain-ASCII test.
 		switch fn {
-		case "WriteJSON", "appendJSONValue":
+		case "WriteJSON", "appendJSONValue", "appendJSONString", "plain8":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/billing/reports.go"):
@@ -642,10 +643,10 @@ func fixedSite(path, fn string) bool {
 		// AES-256-GCM keys are 32 bytes.
 		return fn == "openIdentifier"
 	case strings.HasSuffix(slash, "internal/practice/search.go"):
-		// Scope counter, weekday calendar, and result sort indexes.
-		// Character and hit limits are the search registry keys.
+		// Scope counter, weekday calendar, result sort indexes, and searched-field
+		// indexes. Character and hit limits are the search registry keys.
 		switch fn {
-		case "Search", "groupActivity", "searchInvoices", "sortMatterRows":
+		case "Search", "groupActivity", "searchInvoices", "sortMatterRows", "searchMatters", "searchPeople":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/calendar/ical.go"):
