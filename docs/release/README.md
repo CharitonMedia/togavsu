@@ -30,6 +30,17 @@ Subset mode: `TOGAVSU_ACCEPTANCE_IDS=AC-013,AC-016 sh scripts/ci/full-acceptance
 
 `scripts/release/write_report.py PHASE_DIR` writes the report from one subset run per phase case of the release assignment in docs/build/tasks.json. It refuses runs that aren't exact subset runs of the mapped ids, ran on a dirty tree, or ran at different revisions.
 
+### Operator evidence
+
+A few criteria have a part no runner can check, such as AC-041's "opens in Word with no repair prompt". That part stays a gap until the integration lead runs it by hand and records it. A reviewed change then replaces the gap with an `operator_evidence` entry naming:
+
+- `record`: a note under docs/release/evidence/ with the command, its integer exit code and its output, for the passing run and the failure paths;
+- `artifact`: the file the manual check ran on, committed beside the note, and its `sha256`;
+- `tested_revision`: the full commit SHA the artifact came from;
+- `watch`: the paths whose change makes the evidence stale.
+
+The runner refuses an entry missing any of these. It passes the criterion only while the evidence holds at HEAD: the record and artifact exist, the artifact has that SHA-256, `tested_revision` is an ancestor of HEAD, and `git diff` shows no change under `watch` since then. Otherwise the criterion is pending with the reason, and the manual check must be repeated. AC-041's record is [evidence/AC-041-word.md](evidence/AC-041-word.md), run with `scripts/release/word-check.ps1`.
+
 ## Release gates
 
 The gates are decided only by the full run (release-final and main). The first two can't pass from a lane runner (below); the third is the product CI suites.
