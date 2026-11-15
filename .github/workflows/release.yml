@@ -1,5 +1,4 @@
-# Proposed .github/workflows/release.yml (the integration lead lands it through a
-# reviewed control PR; lanes cannot change .github/).
+# The release workflow (landed by control PR #61; lanes cannot change .github/).
 #
 # Release signing, as Patrick decided on 2026-11-12: the release private key is kept off
 # GitHub, on the integration lead's machine. No repository secret holds it, this
@@ -84,9 +83,10 @@ jobs:
         run: |
           printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' \
             || { echo "not a release tag: $TAG" >&2; exit 1; }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
       - name: Refuse to replace recorded digests
         # Fail closed: only gh's "release not found" counts as no release yet. Any other
         # lookup failure (auth, API, network) stops before an image tag is pushed.
@@ -165,9 +165,10 @@ jobs:
       PAYLOAD: ${{ github.event.inputs.payload }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
       - name: Download the tag's recorded digests
         run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern digests.json --dir "$RUNNER_TEMP/release"
       - name: Install cosign

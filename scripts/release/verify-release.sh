@@ -7,7 +7,7 @@
 #
 # Signing, as decided on 2026-11-12: the release private key is kept off GitHub, on the
 # integration lead's machine. No repository secret holds it; the release workflow
-# (docs/release/proposed-ci/release.yml) only builds, pushes and records digests, and
+# (.github/workflows/release.yml) only builds, pushes and records digests, and
 # attaches signatures made elsewhere. Release signatures are not written to the public
 # transparency log, so verification passes --insecure-ignore-tlog=true; that skips only
 # the log lookup, never the signature check against the release key.
