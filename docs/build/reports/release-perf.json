@@ -1,7 +1,7 @@
 {
   "task_id": "release-perf",
   "status": "pass",
-  "tested_revision": "e099d1b9fe8aadc8a4c72c0e5a85da8aa50d18df",
+  "tested_revision": "4fca0078d21562b335f314c19a984907a505e527",
   "command": "TOGAVSU_PERF_N=20 sh scripts/ci/test-perf.sh",
   "exit_code": 0,
   "tests": [
@@ -9,31 +9,31 @@
       "name": "perf",
       "command": "TOGAVSU_PERF_RESEED=1 TOGAVSU_PERF_N=20 sh scripts/ci/test-perf.sh",
       "exit_code": 0,
-      "seconds": 446
+      "seconds": 437
     },
     {
       "name": "core",
       "command": "sh scripts/ci/test-core.sh",
       "exit_code": 0,
-      "seconds": 890
+      "seconds": 877
     },
     {
       "name": "compose-first-run",
       "command": "sh scripts/ci/test-compose-first-run.sh",
       "exit_code": 0,
-      "seconds": 35
+      "seconds": 36
     },
     {
       "name": "api",
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 28
+      "seconds": 29
     },
     {
       "name": "supervisor",
       "command": "sh scripts/ci/test-supervisor.sh",
       "exit_code": 0,
-      "seconds": 400
+      "seconds": 385
     },
     {
       "name": "supervisor-go",
@@ -69,19 +69,19 @@
       "name": "ui-qc",
       "command": "sh scripts/ci/ui-qc.sh",
       "exit_code": 0,
-      "seconds": 149
+      "seconds": 136
     },
     {
       "name": "update-load",
       "command": "sh scripts/ci/update-load.sh",
       "exit_code": 0,
-      "seconds": 107
+      "seconds": 114
     },
     {
       "name": "backup",
       "command": "sh scripts/ci/test-backup-integration.sh",
       "exit_code": 0,
-      "seconds": 51
+      "seconds": 50
     },
     {
       "name": "compose-config",
@@ -93,7 +93,13 @@
       "name": "supervisor-image",
       "command": "docker build -f Dockerfile -t togavsu-supervisor:local . && docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp'",
       "exit_code": 0,
-      "seconds": 2
+      "seconds": 1
+    },
+    {
+      "name": "core-image",
+      "command": "sh scripts/ci/build-core-image.sh",
+      "exit_code": 0,
+      "seconds": 1
     },
     {
       "name": "core-smoke",
@@ -105,7 +111,7 @@
       "name": "qa-image",
       "command": "docker build -t togavsu-qa:local scripts/ci/qa-image && docker run --rm -v \"$PWD:/src\" -w /src togavsu-qa:local sh scripts/ci/test-qa.sh",
       "exit_code": 0,
-      "seconds": 47
+      "seconds": 89
     }
   ],
   "phase_cases": [
@@ -117,7 +123,7 @@
       "status": "pass",
       "command": "TOGAVSU_PERF_N=20 sh scripts/ci/test-perf.sh",
       "exit_code": 0,
-      "revision": "e099d1b9fe8aadc8a4c72c0e5a85da8aa50d18df"
+      "revision": "4fca0078d21562b335f314c19a984907a505e527"
     }
   ],
   "passed_acceptance_ids": [
@@ -133,9 +139,9 @@
   "target_ms": 300,
   "overall": {
     "requests": 1420,
-    "p50_ms": 38.5,
-    "p95_ms": 129.6,
-    "max_ms": 190.1
+    "p50_ms": 40.1,
+    "p95_ms": 163.4,
+    "max_ms": 232.7
   },
   "baseline": {
     "overall_p95_ms": 5490.8,
@@ -147,621 +153,621 @@
       "as": "staff",
       "endpoint": "page home",
       "n": 20,
-      "p50_ms": 127.8,
-      "p95_ms": 162.8,
-      "max_ms": 190.1,
+      "p50_ms": 134.6,
+      "p95_ms": 186.4,
+      "max_ms": 194.2,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page matters",
       "n": 20,
-      "p50_ms": 54.4,
-      "p95_ms": 95.6,
-      "max_ms": 108.7,
+      "p50_ms": 47.4,
+      "p95_ms": 101.9,
+      "max_ms": 114.3,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page matter",
       "n": 20,
-      "p50_ms": 45.8,
-      "p95_ms": 88.7,
-      "max_ms": 96.2,
+      "p50_ms": 47.8,
+      "p95_ms": 106.9,
+      "max_ms": 114.3,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page activity",
       "n": 20,
-      "p50_ms": 51.9,
-      "p95_ms": 89.9,
-      "max_ms": 91.6,
+      "p50_ms": 60.2,
+      "p95_ms": 117.3,
+      "max_ms": 122.4,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page notes",
       "n": 20,
-      "p50_ms": 37.0,
-      "p95_ms": 53.2,
-      "max_ms": 54.3,
+      "p50_ms": 50.7,
+      "p95_ms": 78.5,
+      "max_ms": 95.0,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page search",
       "n": 20,
-      "p50_ms": 29.8,
-      "p95_ms": 55.7,
-      "max_ms": 73.3,
+      "p50_ms": 27.8,
+      "p95_ms": 44.4,
+      "max_ms": 46.3,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page time",
       "n": 20,
-      "p50_ms": 105.9,
-      "p95_ms": 165.4,
-      "max_ms": 177.4,
+      "p50_ms": 150.7,
+      "p95_ms": 195.0,
+      "max_ms": 213.2,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page time matter",
       "n": 20,
-      "p50_ms": 106.8,
-      "p95_ms": 145.0,
-      "max_ms": 147.6,
+      "p50_ms": 132.0,
+      "p95_ms": 209.0,
+      "max_ms": 221.9,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page invoices",
       "n": 20,
-      "p50_ms": 59.1,
-      "p95_ms": 70.5,
-      "max_ms": 71.2,
+      "p50_ms": 48.9,
+      "p95_ms": 82.2,
+      "max_ms": 82.6,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page invoice",
       "n": 20,
-      "p50_ms": 35.1,
+      "p50_ms": 29.6,
       "p95_ms": 46.0,
-      "max_ms": 50.1,
+      "max_ms": 46.6,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page unbilled",
       "n": 20,
-      "p50_ms": 60.1,
-      "p95_ms": 108.4,
-      "max_ms": 121.2,
+      "p50_ms": 70.4,
+      "p95_ms": 113.9,
+      "max_ms": 128.0,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page ar aging",
       "n": 20,
-      "p50_ms": 100.3,
-      "p95_ms": 130.1,
-      "max_ms": 130.4,
+      "p50_ms": 117.1,
+      "p95_ms": 170.7,
+      "max_ms": 191.1,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page trust ledger",
       "n": 20,
-      "p50_ms": 121.5,
-      "p95_ms": 142.9,
-      "max_ms": 149.9,
+      "p50_ms": 136.6,
+      "p95_ms": 156.7,
+      "max_ms": 170.4,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page trust balances",
       "n": 20,
-      "p50_ms": 89.8,
-      "p95_ms": 130.1,
-      "max_ms": 149.7,
+      "p50_ms": 110.4,
+      "p95_ms": 151.6,
+      "max_ms": 197.5,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page trust matter",
       "n": 20,
-      "p50_ms": 28.1,
-      "p95_ms": 39.1,
-      "max_ms": 41.4,
+      "p50_ms": 22.8,
+      "p95_ms": 35.7,
+      "max_ms": 42.3,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "page calendar",
       "n": 20,
-      "p50_ms": 93.0,
-      "p95_ms": 134.9,
-      "max_ms": 141.4,
+      "p50_ms": 93.4,
+      "p95_ms": 129.5,
+      "max_ms": 175.0,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api matters",
       "n": 20,
-      "p50_ms": 41.9,
-      "p95_ms": 87.1,
-      "max_ms": 89.0,
+      "p50_ms": 34.8,
+      "p95_ms": 95.6,
+      "max_ms": 96.6,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api matter",
       "n": 20,
-      "p50_ms": 2.5,
-      "p95_ms": 10.6,
-      "max_ms": 11.4,
+      "p50_ms": 2.9,
+      "p95_ms": 11.0,
+      "max_ms": 16.1,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api matter timeline",
       "n": 20,
-      "p50_ms": 4.6,
-      "p95_ms": 11.4,
-      "max_ms": 11.9,
+      "p50_ms": 18.2,
+      "p95_ms": 36.7,
+      "max_ms": 41.5,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api time",
       "n": 20,
-      "p50_ms": 7.5,
-      "p95_ms": 15.3,
-      "max_ms": 24.7,
+      "p50_ms": 7.2,
+      "p95_ms": 16.5,
+      "max_ms": 16.5,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api time matter",
       "n": 20,
-      "p50_ms": 4.9,
-      "p95_ms": 12.5,
-      "max_ms": 13.7,
+      "p50_ms": 6.7,
+      "p95_ms": 16.4,
+      "max_ms": 21.5,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api time user+dates",
       "n": 20,
-      "p50_ms": 9.8,
-      "p95_ms": 44.8,
-      "max_ms": 52.3,
+      "p50_ms": 10.6,
+      "p95_ms": 40.1,
+      "max_ms": 52.9,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api search number",
       "n": 20,
-      "p50_ms": 5.9,
-      "p95_ms": 16.3,
-      "max_ms": 18.0,
+      "p50_ms": 7.6,
+      "p95_ms": 16.2,
+      "max_ms": 21.9,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api search phone",
       "n": 20,
-      "p50_ms": 7.5,
-      "p95_ms": 14.2,
-      "max_ms": 16.9,
+      "p50_ms": 7.3,
+      "p95_ms": 19.1,
+      "max_ms": 20.2,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api search invoice",
       "n": 20,
-      "p50_ms": 6.3,
-      "p95_ms": 16.9,
-      "max_ms": 17.1,
+      "p50_ms": 8.3,
+      "p95_ms": 15.5,
+      "max_ms": 21.2,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api unbilled",
       "n": 20,
-      "p50_ms": 119.3,
-      "p95_ms": 154.1,
-      "max_ms": 154.9,
+      "p50_ms": 127.2,
+      "p95_ms": 174.1,
+      "max_ms": 182.2,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api ar aging",
       "n": 20,
-      "p50_ms": 99.2,
-      "p95_ms": 123.2,
-      "max_ms": 130.4,
+      "p50_ms": 119.8,
+      "p95_ms": 173.3,
+      "max_ms": 183.1,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api trust balances",
       "n": 20,
-      "p50_ms": 61.2,
-      "p95_ms": 82.3,
-      "max_ms": 89.3,
+      "p50_ms": 76.3,
+      "p95_ms": 117.9,
+      "max_ms": 123.1,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api trust ledger",
       "n": 20,
-      "p50_ms": 4.2,
-      "p95_ms": 10.6,
-      "max_ms": 11.3,
+      "p50_ms": 3.5,
+      "p95_ms": 10.4,
+      "max_ms": 12.2,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api nav context",
       "n": 20,
-      "p50_ms": 8.3,
-      "p95_ms": 17.9,
-      "max_ms": 18.3,
+      "p50_ms": 11.5,
+      "p95_ms": 18.3,
+      "max_ms": 19.2,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api invoices",
       "n": 20,
-      "p50_ms": 52.8,
-      "p95_ms": 69.1,
-      "max_ms": 78.7,
+      "p50_ms": 62.4,
+      "p95_ms": 88.1,
+      "max_ms": 97.6,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api expenses matter",
       "n": 20,
-      "p50_ms": 3.6,
-      "p95_ms": 10.7,
-      "max_ms": 11.3,
+      "p50_ms": 3.9,
+      "p95_ms": 12.2,
+      "max_ms": 13.6,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api notes matter",
       "n": 20,
-      "p50_ms": 9.6,
-      "p95_ms": 48.9,
-      "max_ms": 49.7,
+      "p50_ms": 7.0,
+      "p95_ms": 20.3,
+      "max_ms": 23.7,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api calendar",
       "n": 20,
-      "p50_ms": 8.9,
-      "p95_ms": 14.8,
-      "max_ms": 15.9,
+      "p50_ms": 6.8,
+      "p95_ms": 18.1,
+      "max_ms": 24.2,
       "result": "ok"
     },
     {
       "as": "staff",
       "endpoint": "api widget open matters",
       "n": 20,
-      "p50_ms": 32.8,
-      "p95_ms": 40.5,
-      "max_ms": 45.1,
+      "p50_ms": 46.5,
+      "p95_ms": 72.7,
+      "max_ms": 81.8,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page home",
       "n": 20,
-      "p50_ms": 130.2,
-      "p95_ms": 154.1,
-      "max_ms": 155.6,
+      "p50_ms": 170.5,
+      "p95_ms": 205.0,
+      "max_ms": 222.7,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page matters",
       "n": 20,
-      "p50_ms": 46.0,
-      "p95_ms": 78.4,
-      "max_ms": 87.6,
+      "p50_ms": 52.2,
+      "p95_ms": 112.8,
+      "max_ms": 121.9,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page matter",
       "n": 20,
-      "p50_ms": 44.4,
-      "p95_ms": 95.5,
-      "max_ms": 102.9,
+      "p50_ms": 46.5,
+      "p95_ms": 102.9,
+      "max_ms": 125.5,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page activity",
       "n": 20,
-      "p50_ms": 59.5,
-      "p95_ms": 100.0,
-      "max_ms": 118.7,
+      "p50_ms": 61.2,
+      "p95_ms": 119.2,
+      "max_ms": 127.8,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page notes",
       "n": 20,
-      "p50_ms": 42.1,
-      "p95_ms": 78.7,
-      "max_ms": 86.5,
+      "p50_ms": 37.0,
+      "p95_ms": 55.5,
+      "max_ms": 62.3,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page search",
       "n": 20,
-      "p50_ms": 29.7,
-      "p95_ms": 40.5,
-      "max_ms": 47.0,
+      "p50_ms": 27.8,
+      "p95_ms": 43.1,
+      "max_ms": 44.4,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page time",
       "n": 20,
-      "p50_ms": 107.9,
-      "p95_ms": 150.6,
-      "max_ms": 160.0,
+      "p50_ms": 138.7,
+      "p95_ms": 201.9,
+      "max_ms": 232.7,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page time matter",
       "n": 20,
-      "p50_ms": 113.6,
-      "p95_ms": 131.3,
-      "max_ms": 159.4,
+      "p50_ms": 138.0,
+      "p95_ms": 204.2,
+      "max_ms": 204.2,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page invoices",
       "n": 20,
-      "p50_ms": 61.1,
-      "p95_ms": 74.7,
-      "max_ms": 94.9,
+      "p50_ms": 59.6,
+      "p95_ms": 78.0,
+      "max_ms": 79.0,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page invoice",
       "n": 20,
-      "p50_ms": 33.0,
-      "p95_ms": 43.8,
-      "max_ms": 45.7,
+      "p50_ms": 34.5,
+      "p95_ms": 47.5,
+      "max_ms": 50.2,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page unbilled",
       "n": 20,
-      "p50_ms": 71.3,
-      "p95_ms": 107.2,
-      "max_ms": 126.7,
+      "p50_ms": 67.1,
+      "p95_ms": 136.6,
+      "max_ms": 152.8,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page ar aging",
       "n": 20,
-      "p50_ms": 104.4,
-      "p95_ms": 130.4,
-      "max_ms": 155.9,
+      "p50_ms": 118.4,
+      "p95_ms": 170.5,
+      "max_ms": 173.6,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page trust ledger",
       "n": 20,
-      "p50_ms": 124.8,
-      "p95_ms": 138.7,
-      "max_ms": 139.5,
+      "p50_ms": 129.1,
+      "p95_ms": 178.6,
+      "max_ms": 179.3,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page trust balances",
       "n": 20,
-      "p50_ms": 90.2,
-      "p95_ms": 122.4,
-      "max_ms": 139.7,
+      "p50_ms": 103.6,
+      "p95_ms": 161.3,
+      "max_ms": 201.3,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page trust matter",
       "n": 20,
-      "p50_ms": 26.1,
-      "p95_ms": 33.2,
-      "max_ms": 34.9,
+      "p50_ms": 28.1,
+      "p95_ms": 36.1,
+      "max_ms": 36.3,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page calendar",
       "n": 20,
-      "p50_ms": 95.1,
-      "p95_ms": 116.6,
-      "max_ms": 132.3,
+      "p50_ms": 101.7,
+      "p95_ms": 124.0,
+      "max_ms": 124.4,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "page admin",
       "n": 20,
-      "p50_ms": 87.5,
-      "p95_ms": 102.6,
-      "max_ms": 107.1,
+      "p50_ms": 78.2,
+      "p95_ms": 90.1,
+      "max_ms": 93.4,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api matters",
       "n": 20,
-      "p50_ms": 30.1,
-      "p95_ms": 72.9,
-      "max_ms": 76.5,
+      "p50_ms": 39.0,
+      "p95_ms": 83.2,
+      "max_ms": 94.4,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api matter",
       "n": 20,
-      "p50_ms": 2.4,
-      "p95_ms": 9.8,
-      "max_ms": 11.1,
+      "p50_ms": 2.5,
+      "p95_ms": 8.6,
+      "max_ms": 9.6,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api matter timeline",
       "n": 20,
-      "p50_ms": 11.6,
-      "p95_ms": 33.6,
-      "max_ms": 36.7,
+      "p50_ms": 7.6,
+      "p95_ms": 14.1,
+      "max_ms": 19.2,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api time",
       "n": 20,
-      "p50_ms": 6.0,
-      "p95_ms": 15.2,
-      "max_ms": 23.3,
+      "p50_ms": 6.2,
+      "p95_ms": 14.4,
+      "max_ms": 21.4,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api time matter",
       "n": 20,
-      "p50_ms": 6.0,
-      "p95_ms": 14.8,
-      "max_ms": 23.2,
+      "p50_ms": 8.3,
+      "p95_ms": 12.8,
+      "max_ms": 15.4,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api time user+dates",
       "n": 20,
-      "p50_ms": 8.7,
-      "p95_ms": 44.6,
-      "max_ms": 56.3,
+      "p50_ms": 9.8,
+      "p95_ms": 27.2,
+      "max_ms": 38.4,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api search number",
       "n": 20,
-      "p50_ms": 7.4,
-      "p95_ms": 14.6,
-      "max_ms": 14.7,
+      "p50_ms": 7.8,
+      "p95_ms": 21.0,
+      "max_ms": 23.0,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api search phone",
       "n": 20,
-      "p50_ms": 8.4,
-      "p95_ms": 15.1,
-      "max_ms": 18.5,
+      "p50_ms": 8.8,
+      "p95_ms": 16.1,
+      "max_ms": 21.3,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api search invoice",
       "n": 20,
-      "p50_ms": 5.7,
-      "p95_ms": 16.5,
-      "max_ms": 17.6,
+      "p50_ms": 7.4,
+      "p95_ms": 14.6,
+      "max_ms": 19.8,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api unbilled",
       "n": 20,
-      "p50_ms": 121.8,
-      "p95_ms": 167.2,
-      "max_ms": 168.0,
+      "p50_ms": 134.4,
+      "p95_ms": 156.4,
+      "max_ms": 175.2,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api ar aging",
       "n": 20,
-      "p50_ms": 103.5,
-      "p95_ms": 125.2,
-      "max_ms": 128.6,
+      "p50_ms": 111.8,
+      "p95_ms": 173.1,
+      "max_ms": 174.5,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api trust balances",
       "n": 20,
-      "p50_ms": 58.6,
-      "p95_ms": 86.0,
-      "max_ms": 125.5,
+      "p50_ms": 80.7,
+      "p95_ms": 110.1,
+      "max_ms": 124.0,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api trust ledger",
       "n": 20,
-      "p50_ms": 3.0,
-      "p95_ms": 11.3,
-      "max_ms": 11.8,
+      "p50_ms": 2.9,
+      "p95_ms": 9.4,
+      "max_ms": 13.8,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api nav context",
       "n": 20,
-      "p50_ms": 10.3,
-      "p95_ms": 21.9,
-      "max_ms": 23.2,
+      "p50_ms": 12.8,
+      "p95_ms": 20.0,
+      "max_ms": 21.8,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api invoices",
       "n": 20,
-      "p50_ms": 53.8,
-      "p95_ms": 71.8,
-      "max_ms": 73.2,
+      "p50_ms": 60.0,
+      "p95_ms": 73.4,
+      "max_ms": 76.4,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api expenses matter",
       "n": 20,
-      "p50_ms": 3.7,
-      "p95_ms": 13.1,
-      "max_ms": 21.4,
+      "p50_ms": 3.9,
+      "p95_ms": 11.1,
+      "max_ms": 11.4,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api notes matter",
       "n": 20,
-      "p50_ms": 15.3,
-      "p95_ms": 43.4,
-      "max_ms": 44.0,
+      "p50_ms": 10.1,
+      "p95_ms": 45.1,
+      "max_ms": 55.4,
       "result": "ok"
     },
     {
@@ -769,17 +775,17 @@
       "endpoint": "api calendar",
       "n": 20,
       "p50_ms": 7.4,
-      "p95_ms": 15.1,
-      "max_ms": 23.8,
+      "p95_ms": 16.9,
+      "max_ms": 19.6,
       "result": "ok"
     },
     {
       "as": "admin",
       "endpoint": "api widget open matters",
       "n": 20,
-      "p50_ms": 22.3,
-      "p95_ms": 33.8,
-      "max_ms": 33.8,
+      "p50_ms": 27.2,
+      "p95_ms": 36.8,
+      "max_ms": 38.8,
       "result": "ok"
     }
   ],
@@ -899,10 +905,11 @@
     "Full acceptance concluded success on this branch only because its Scope step skips every step outside release-final and main; AC-017 evidence is this local run",
     "the perf check first failed on this runner at the quoting fix (7c6a120) and on two reruns (staff and admin reads at 304-546 ms, a different set each run); that is why the fixes above were made, and no run was repeated until it passed",
     "the first full core run after the fixes (at e43ffff) failed TestModuleClean (AC-030: bare numeric literals in concatLess and the session touch); fixed in e099d1b, and every suite and the reseeded perf check were rerun there",
-    "after the fixes: two kept-seed runs passed (overall p95 129.1 and 128.5 ms, max 176.0 and 172.9 ms) before the recorded reseeded run"
+    "after the fixes: two kept-seed runs passed (overall p95 129.1 and 128.5 ms, max 176.0 and 172.9 ms) before the recorded reseeded run",
+    "the merge of main 79b122f (4aed35a) made the e099d1b report stale; at 4aed35a the reseeded perf check passed (overall p95 168.4 ms) but core tests failed TestReleasePerfPagingKeepsWalls: the test dated its overdue deadlines from the UTC date while the overdue panel uses the firm-local date, so after UTC midnight the newest deadline was not yet overdue. Reproduced at 00:37 UTC, fixed in the test only (4fca007), and every suite and the reseeded perf check were rerun at 4fca007"
   ],
   "simplification": {
-    "net_lines": "branch vs main 0e111ca: +5697 / -469 across 72 files; this correction (a21363a..e099d1b): +770 / -28 across 13 files, of which non-test +275 / -28 across 10 files",
+    "net_lines": "branch 4fca007 vs main 79b122f: +5732 / -469 across 72 files (before this report commit); this correction (a21363a..e099d1b): +770 / -28 across 13 files, of which non-test +275 / -28 across 10 files; date fix 4aed35a..4fca007: +3 / -1 in one test file, no non-test change",
     "debt_count": 67
   }
 }
