@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -161,6 +162,7 @@ type page struct {
 	Scope         string
 	Notice        string
 	Matters       []MatterView
+	MattersNext   string
 	Matter        MatterView
 	History       []HistoryRow
 	Timeline      []TimelineEntry
@@ -214,12 +216,32 @@ func (h *Handler) mattersPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	rows, err := h.Svc.ListMatters(r.Context(), p, r.URL.Query().Get("status"), domain.ID(""))
+	from, limit, err := h.pageArgs(r)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, r, "matters.html", page{Title: "Matters", CSRF: h.csrf(w, r), Matters: keepMatters(rows, keep)})
+	// The screen shows a page of matters, as the notes and invoices screens do, with a link
+	// to the next; the list shows number, name and status, so its rows need no parties.
+	q := r.URL.Query()
+	rows, more, err := h.Svc.ListMattersPage(r.Context(), p, MatterQuery{Status: q.Get("status"), Bare: true, Offset: from, Max: limit,
+		Keep: func(m domain.Matter) bool { return keep(m.Archived) }})
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	pg := page{Title: "Matters", CSRF: h.csrf(w, r), Matters: rows}
+	if more {
+		next := url.Values{}
+		for _, k := range []string{"status", "archived", "limit"} {
+			if v := q.Get(k); v != "" {
+				next.Set(k, v)
+			}
+		}
+		next.Set("cursor", pageInfo(limit, from+len(rows), true)["next_cursor"].(string))
+		pg.MattersNext = "/practice/matters?" + next.Encode()
+	}
+	h.render(w, r, "matters.html", pg)
 }
 
 // newMatterPage is the create form the Matters list's New button and the shell's New menu
@@ -582,22 +604,23 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(csv))
 		return
 	}
-	rows, err := h.Svc.ListMatters(r.Context(), p, r.URL.Query().Get("status"), domain.ID(r.URL.Query().Get("practice_area_id")))
+	from, limit, err := h.pageArgs(r)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	rows = keepMatters(rows, keep)
-	if custom := customQuery(r); len(custom) > 0 {
-		kept := rows[:0]
-		for _, row := range rows {
-			if h.Svc.matchesCustom(row.Matter.ID, custom) {
-				kept = append(kept, row)
-			}
-		}
-		rows = kept
+	custom := customQuery(r)
+	rows, more, err := h.Svc.ListMattersPage(r.Context(), p, MatterQuery{
+		Status: r.URL.Query().Get("status"), Area: domain.ID(r.URL.Query().Get("practice_area_id")), Offset: from, Max: limit,
+		Keep: func(m domain.Matter) bool {
+			return keep(m.Archived) && (len(custom) == 0 || h.Svc.matchesCustom(m.ID, custom))
+		},
+	})
+	if err != nil {
+		writeErr(w, err)
+		return
 	}
-	writeJSON(w, http.StatusOK, listEnvelope(matterItems(rows), len(rows), ""))
+	writeJSON(w, http.StatusOK, map[string]any{"data": matterItems(rows), "page": pageInfo(limit, from+len(rows), more)})
 }
 
 func (h *Handler) matterJSON(w http.ResponseWriter, r *http.Request) {

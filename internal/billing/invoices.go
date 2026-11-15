@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -27,6 +28,13 @@ type InvoiceFilter struct {
 	Heads bool
 	// Max stops the list after that many readable invoices; zero lists every one.
 	Max int
+	// Statuses keeps invoices in any of these statuses; DueBefore those due before it.
+	Statuses  []string
+	DueBefore string
+	// Newest lists newest first (by id); ByDue by due date, then id. Otherwise id order.
+	Newest, ByDue bool
+	// Keep, when set, drops invoices before they count toward Max.
+	Keep func(Invoice) bool
 }
 
 // DraftRequest selects what to draft: one matter, several, or a date range across matters.
@@ -149,39 +157,45 @@ func (s *Service) markViewed(ctx context.Context, p domain.Principal, id domain.
 // Invoices lists invoices the caller can see. A client sees only shared invoices on its matters,
 // each narrowed to the client allowlist.
 func (s *Service) Invoices(ctx context.Context, p domain.Principal, f InvoiceFilter) ([]Invoice, error) {
-	rows, err := invoiceHeads(ctx, s.d.Store, Where{MatterID: f.MatterID, FromDate: f.FromDate, ToDate: f.ToDate})
-	if err != nil {
-		return nil, err
-	}
 	if err := s.gate.Allow(ctx, p, domain.ResourceRef{Resource: domain.ResInvoice, Action: domain.ActionRead}); err != nil && !ClientOnly(p) {
 		return nil, err
 	}
+	w := Where{MatterID: f.MatterID, FromDate: f.FromDate, ToDate: f.ToDate, Head: true, Desc: f.Newest, ByDue: f.ByDue, DueBefore: f.DueBefore}
+	if f.Status != "" {
+		w.Status = []string{f.Status}
+	}
+	if f.Statuses != nil {
+		w.Status = f.Statuses
+	}
 	var out []Invoice
-	for _, r := range rows {
+	err := scanFind(ctx, s.d.Store, kindInvoice, w, f.Max, func(h invoiceHead) (bool, error) {
+		r := h.Invoice
 		if !f.MatterID.IsZero() && r.MatterID != f.MatterID || f.Status != "" && r.Status != f.Status ||
+			f.Statuses != nil && !slices.Contains(f.Statuses, r.Status) || f.DueBefore != "" && r.DueOn >= f.DueBefore ||
 			f.FromDate != "" && r.IssuedOn < f.FromDate || f.ToDate != "" && r.IssuedOn > f.ToDate {
-			continue
+			return false, nil
+		}
+		if f.Keep != nil && !f.Keep(r) {
+			return false, nil
 		}
 		err := s.readInvoice(ctx, p, r)
 		if err == nil {
 			if !f.Heads {
 				// The header decode skipped the lines; read the whole invoice back.
 				if r, err = s.invoice(ctx, r.ID); err != nil {
-					return nil, err
+					return false, err
 				}
 			}
 			out = append(out, forReader(p, r))
-			if positive(int64(f.Max)) && len(out) >= f.Max {
-				break
-			}
-			continue
+			return true, nil
 		}
 		var api *domain.APIError
 		if !errors.As(err, &api) {
-			return nil, err
+			return false, err
 		}
-	}
-	return out, nil
+		return false, nil
+	})
+	return out, err
 }
 
 func recompute(inv *Invoice) error {
@@ -267,8 +281,18 @@ func (s *Service) nextNumber(ctx context.Context, issuedOn string) (string, erro
 	return fmt.Sprintf("%s%0*d%s", prefix, width, high+1, suffix), nil
 }
 
-func hours(minutes int64) string {
-	return fmt.Sprintf("%d.%02d", minutes/60, (minutes%60)*100/60)
+func hours(minutes int64) string { return string(appendHours(nil, minutes)) }
+
+// appendHours appends hours(minutes) to b: whole hours, a point, then two digits of the
+// fraction (truncated), as fmt's "%d.%02d" writes them.
+func appendHours(b []byte, minutes int64) []byte {
+	b = strconv.AppendInt(b, minutes/60, 10)
+	b = append(b, '.')
+	f := (minutes % 60) * 100 / 60
+	if f >= 0 && f < 10 {
+		b = append(b, '0')
+	}
+	return strconv.AppendInt(b, f, 10)
 }
 
 func (s *Service) userName(ctx context.Context, id domain.ID) string {

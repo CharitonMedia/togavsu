@@ -53,9 +53,14 @@ func (c CoreServices) zone(ctx context.Context) *time.Location {
 	return time.UTC
 }
 
+// practiceWidget and trustWidget convert a widget, keeping its first widget_rows rows as
+// the other sources do; the title opens the full list.
 func practiceWidget(w practice.Widget) Widget {
 	out := Widget{ID: w.ID, Title: w.Title, Target: Target{Path: w.PagePath, Query: w.Query}, PagePath: w.PagePath}
 	for _, r := range w.Rows {
+		if len(out.Rows) >= fixed.WidgetRows {
+			break
+		}
 		out.Rows = append(out.Rows, WidgetRow{ID: r.ID, Title: r.Title, Subtitle: r.Subtitle, TargetPath: r.TargetPath})
 	}
 	return out
@@ -64,14 +69,22 @@ func practiceWidget(w practice.Widget) Widget {
 func trustWidget(w trust.Widget) Widget {
 	out := Widget{ID: w.ID, Title: w.Title, Target: Target{Path: w.Target.Path, Query: w.Target.Query}, PagePath: w.PagePath}
 	for _, r := range w.Rows {
+		if len(out.Rows) >= fixed.WidgetRows {
+			break
+		}
 		out.Rows = append(out.Rows, WidgetRow{ID: r.ID, Title: r.Title, Subtitle: r.Subtitle, TargetPath: r.TargetPath})
 	}
 	return out
 }
 
+// calendarWidget converts a calendar widget, keeping the first widget_rows rows as every
+// other source does; its title opens the full list.
 func calendarWidget(w calendar.Widget) Widget {
 	out := Widget{ID: w.ID, Title: w.Title, Target: Target{Path: w.Target.Path, Query: w.Target.Query}, PagePath: w.PagePath}
 	for _, r := range w.Rows {
+		if len(out.Rows) >= fixed.WidgetRows {
+			break
+		}
 		out.Rows = append(out.Rows, WidgetRow{ID: r.ID, Title: r.Title, Subtitle: r.Subtitle, TargetPath: r.TargetPath})
 	}
 	return out
@@ -109,11 +122,11 @@ func (c CoreServices) Sources() map[string]Source {
 	src := map[string]Source{}
 	if c.Practice != nil {
 		src["my-open-matters"] = func(ctx context.Context, p domain.Principal, _ map[string]string) (Widget, error) {
-			w, err := c.Practice.OpenMattersWidget(ctx, p)
+			w, err := c.Practice.OpenMattersWidgetTop(ctx, p, fixed.WidgetRows)
 			return practiceWidget(w), err
 		}
 		src["pending-conflict-checks"] = func(ctx context.Context, p domain.Principal, _ map[string]string) (Widget, error) {
-			w, err := c.Practice.ConflictWidget(ctx, p)
+			w, err := c.Practice.ConflictWidgetTop(ctx, p, fixed.WidgetRows)
 			return practiceWidget(w), err
 		}
 		src["recent-activity"] = func(ctx context.Context, p domain.Principal, _ map[string]string) (Widget, error) {
@@ -149,7 +162,7 @@ func (c CoreServices) Sources() map[string]Source {
 	}
 	if c.Calendar != nil {
 		src["upcoming-deadlines"] = func(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
-			w, err := c.Calendar.UpcomingDeadlinesWidget(ctx, p, f["from_date"], f["to_date"], domain.ID(f["matter_id"]))
+			w, err := c.Calendar.UpcomingDeadlinesWidgetTop(ctx, p, f["from_date"], f["to_date"], domain.ID(f["matter_id"]), fixed.WidgetRows)
 			return calendarWidget(w), err
 		}
 		src["todays-calendar"] = func(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
@@ -241,85 +254,72 @@ func filterQuery(f map[string]string) map[string]string {
 	return q
 }
 
+// largestTotals is the first n of totals in a stable sort by amount, largest first,
+// without sorting every matter.
+func largestTotals(totals []billing.UnbilledTotal, n int) []billing.UnbilledTotal {
+	var top []billing.UnbilledTotal
+	for _, t := range totals {
+		var at int // after every kept total at least as large: ties stay in order
+		for at < len(top) && top[at].Cents >= t.Cents {
+			at++
+		}
+		if at >= n {
+			continue
+		}
+		top = append(top, billing.UnbilledTotal{})
+		copy(top[at+1:], top[at:])
+		top[at] = t
+		if len(top) > n {
+			top = top[:n]
+		}
+	}
+	return top
+}
+
 func (c CoreServices) unbilled(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
-	rep, err := c.Billing.UnbilledReport(ctx, p, reportFilter(f))
+	totals, err := c.Billing.UnbilledTotals(ctx, p, reportFilter(f))
 	if err != nil {
 		return Widget{}, err
 	}
-	type agg struct {
-		label string
-		cents int64
-		n     int
-	}
-	by := map[string]*agg{}
-	var order []string
 	var total int64
-	for _, r := range rep.Rows {
-		m := fmt.Sprint(r["matter_id"])
-		if by[m] == nil {
-			by[m] = &agg{label: fmt.Sprint(r["matter_number"])}
-			order = append(order, m)
-		}
-		cents := toInt(r["amount_cents"])
-		by[m].cents += cents
-		by[m].n++
-		total += cents
+	for _, t := range totals {
+		total += int64(t.Cents)
 	}
 	w := Widget{Title: "Unbilled time", Target: Target{Path: "/billing/reports/unbilled-time", Query: filterQuery(f)}}
-	if len(order) > 0 {
-		w.Rows = append(w.Rows, WidgetRow{ID: "total", Title: "Total unbilled " + domain.Cents(total).String(), Subtitle: fmt.Sprintf("%d matters", len(order)), TargetPath: Target{Path: "/billing/reports/unbilled-time", Query: filterQuery(f)}.URL()})
+	if len(totals) > 0 {
+		w.Rows = append(w.Rows, WidgetRow{ID: "total", Title: "Total unbilled " + domain.Cents(total).String(), Subtitle: fmt.Sprintf("%d matters", len(totals)), TargetPath: Target{Path: "/billing/reports/unbilled-time", Query: filterQuery(f)}.URL()})
 	}
-	sort.SliceStable(order, func(i, j int) bool { return by[order[i]].cents > by[order[j]].cents })
-	for _, m := range order {
+	top := largestTotals(totals, fixed.WidgetRows)
+	for _, t := range top {
 		if len(w.Rows) >= fixed.WidgetRows {
 			break
 		}
-		a := by[m]
-		w.Rows = append(w.Rows, WidgetRow{ID: m, Title: a.label + " · " + domain.Cents(a.cents).String(), Subtitle: fmt.Sprintf("%d unbilled items", a.n), TargetPath: "/practice/matters/" + m})
+		w.Rows = append(w.Rows, WidgetRow{ID: string(t.MatterID), Title: c.Billing.MatterNumber(ctx, t.MatterID) + " · " + t.Cents.String(), Subtitle: fmt.Sprintf("%d unbilled items", t.Items), TargetPath: "/practice/matters/" + string(t.MatterID)})
 	}
 	return w, nil
 }
 
-func toInt(v any) (n int64) {
-	switch x := v.(type) {
-	case int64:
-		n = x
-	case int:
-		n = int64(x)
-	case float64:
-		n = int64(x)
-	case domain.Cents:
-		n = int64(x)
-	}
-	return n
-}
-
 func (c CoreServices) arAging(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
-	rep, err := c.Billing.ARAgingReport(ctx, p, reportFilter(f))
+	buckets, top, err := c.Billing.ARAgingSummary(ctx, p, reportFilter(f), fixed.ActivityRows)
 	if err != nil {
 		return Widget{}, err
 	}
-	buckets := map[string]int64{}
-	var names []string
-	for _, r := range rep.Rows {
-		b := fmt.Sprint(r["bucket"])
-		if _, ok := buckets[b]; !ok {
-			names = append(names, b)
-		}
-		buckets[b] += toInt(r["balance_cents"])
+	names := make([]string, 0, len(buckets))
+	for b := range buckets {
+		names = append(names, b)
 	}
 	sort.Strings(names)
 	w := Widget{Title: "AR aging", Target: Target{Path: "/billing/reports/ar-aging", Query: filterQuery(f)}}
 	for _, b := range names {
 		q := filterQuery(f)
-		w.Rows = append(w.Rows, WidgetRow{ID: b, Title: b + ": " + money(buckets[b]), TargetPath: Target{Path: "/billing/reports/ar-aging", Query: q}.URL()})
+		w.Rows = append(w.Rows, WidgetRow{ID: b, Title: b + ": " + money(int64(buckets[b])), TargetPath: Target{Path: "/billing/reports/ar-aging", Query: q}.URL()})
 	}
-	for _, r := range rep.Rows {
+	for _, r := range top {
 		if len(w.Rows) >= fixed.ActivityRows {
 			break
 		}
-		w.Rows = append(w.Rows, WidgetRow{ID: fmt.Sprint(r["invoice_id"]), Title: fmt.Sprint(r["number"]) + " · " + money(r["balance_cents"]),
-			Subtitle: fmt.Sprint(r["matter_number"]) + ", " + fmt.Sprint(r["days_past_due"]) + " days past due", TargetPath: "/billing/invoices/" + fmt.Sprint(r["invoice_id"])})
+		w.Rows = append(w.Rows, WidgetRow{ID: string(r.InvoiceID), Title: r.Number + " · " + money(int64(r.BalanceCents)),
+			Subtitle: r.MatterNumber + ", " + fmt.Sprint(r.DaysPastDue) + " days past due", TargetPath: "/billing/invoices/" + string(r.InvoiceID)})
 	}
 	return w, nil
 }

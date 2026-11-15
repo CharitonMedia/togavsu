@@ -2,18 +2,26 @@ package billing
 
 import (
 	"math"
-	"math/big"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
 // product multiplies exactly in integer cents, or fails with domain.ErrOverflow.
+// It runs once per report row, so it checks overflow with integer arithmetic rather than
+// math/big: a product that wraps does not divide back to its factor, and MinInt64 * -1 is
+// the one case where it does.
 func product(a, b int64) (int64, error) {
-	n := new(big.Int).Mul(big.NewInt(a), big.NewInt(b))
-	if !n.IsInt64() {
+	if a == 0 || b == 0 {
+		return 0, nil
+	}
+	if a == -1 && b == math.MinInt64 || b == -1 && a == math.MinInt64 {
 		return 0, domain.ErrOverflow
 	}
-	return n.Int64(), nil
+	n := a * b
+	if n/b != a {
+		return 0, domain.ErrOverflow
+	}
+	return n, nil
 }
 
 // Exact-cent division rounded once, half away from zero. p/d truncates toward zero, and

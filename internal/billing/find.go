@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,8 +24,15 @@ type Where struct {
 	ToDate    string
 	// Unbilled keeps rows with no invoice.
 	Unbilled bool
+	// Status keeps rows whose indexed status (migration 1260: an invoice's or payment's
+	// status) is one of these.
+	Status []string
+	// DueBefore keeps invoices due before this date (migration 1260).
+	DueBefore string
 	// Newest orders by date, newest first, then id; otherwise rows come in id order.
 	Newest bool
+	// Desc orders by id, newest first. ByDue orders by due date, then id.
+	Desc, ByDue bool
 	// After continues a batch from the cursor the previous batch ended on (Cursor).
 	After string
 	// Limit caps the batch; zero is no cap.
@@ -52,30 +60,30 @@ func headOf(v any) (string, error) {
 }
 
 // cols are the indexed columns of one document.
-type cols struct{ matter, user, date, invoice string }
+type cols struct{ matter, user, date, invoice, status, due string }
 
 // indexOf extracts the indexed columns of a billing document. Kinds without them index
 // as empty strings, which Where only matches when it filters on nothing.
 func indexOf(v any) cols {
 	switch r := v.(type) {
 	case TimeEntry:
-		return cols{string(r.MatterID), string(r.UserID), r.WorkedOn, string(r.InvoiceID)}
+		return cols{matter: string(r.MatterID), user: string(r.UserID), date: r.WorkedOn, invoice: string(r.InvoiceID)}
 	case *TimeEntry:
 		return indexOf(*r)
 	case Expense:
-		return cols{string(r.MatterID), "", r.IncurredOn, string(r.InvoiceID)}
+		return cols{matter: string(r.MatterID), date: r.IncurredOn, invoice: string(r.InvoiceID)}
 	case *Expense:
 		return indexOf(*r)
 	case Invoice:
-		return cols{string(r.MatterID), "", r.IssuedOn, ""}
+		return cols{matter: string(r.MatterID), date: r.IssuedOn, status: r.Status, due: r.DueOn}
 	case *Invoice:
 		return indexOf(*r)
 	case Payment:
-		return cols{string(r.MatterID), "", r.ReceivedOn, string(r.InvoiceID)}
+		return cols{matter: string(r.MatterID), date: r.ReceivedOn, invoice: string(r.InvoiceID), status: r.Status}
 	case *Payment:
 		return indexOf(*r)
 	case Timer:
-		return cols{string(r.MatterID), string(r.UserID), "", ""}
+		return cols{matter: string(r.MatterID), user: string(r.UserID)}
 	case *Timer:
 		return indexOf(*r)
 	}
@@ -135,7 +143,9 @@ func (w Where) match(c cols) bool {
 		!w.InvoiceID.IsZero() && c.invoice != string(w.InvoiceID),
 		w.Unbilled && c.invoice != "",
 		w.FromDate != "" && c.date < w.FromDate,
-		w.ToDate != "" && c.date > w.ToDate:
+		w.ToDate != "" && c.date > w.ToDate,
+		w.DueBefore != "" && c.due >= w.DueBefore,
+		w.Status != nil && !slices.Contains(w.Status, c.status):
 		return false
 	}
 	return true
@@ -143,10 +153,39 @@ func (w Where) match(c cols) bool {
 
 // cursorOf is the After value that continues a batch after a row with columns c and id.
 func cursorOf(w Where, c cols, id string) string {
-	if w.Newest {
+	switch {
+	case w.Newest:
 		return c.date + "|" + id
+	case w.ByDue:
+		return c.due + "|" + id
 	}
 	return id
+}
+
+// before reports whether row a sorts before row b in w's order.
+func (w Where) before(a cols, aid string, b cols, bid string) bool {
+	switch {
+	case w.Newest && a.date != b.date:
+		return a.date > b.date
+	case w.ByDue && a.due != b.due:
+		return a.due < b.due
+	case w.Desc:
+		return aid > bid
+	}
+	return aid < bid
+}
+
+// pastCursor reports whether a row sorts after the cursor w.After.
+func (w Where) pastCursor(c cols, id string) bool {
+	if w.After == "" {
+		return true
+	}
+	key, aid, _ := strings.Cut(w.After, "|")
+	at := cols{date: key, due: key}
+	if !w.Newest && !w.ByDue {
+		aid = w.After
+	}
+	return w.before(at, aid, c, id)
 }
 
 func (m *Memory) Find(_ context.Context, kind string, w Where) ([][]byte, []string, error) {
@@ -164,20 +203,12 @@ func (m *Memory) Find(_ context.Context, kind string, w Where) ([][]byte, []stri
 		}
 	}
 	m.mu.Unlock()
-	sort.Slice(rows, func(i, j int) bool {
-		if w.Newest {
-			if rows[i].c.date != rows[j].c.date {
-				return rows[i].c.date > rows[j].c.date
-			}
-		}
-		return rows[i].id < rows[j].id
-	})
-	afterDate, afterID, _ := strings.Cut(w.After, "|")
+	sort.Slice(rows, func(i, j int) bool { return w.before(rows[i].c, rows[i].id, rows[j].c, rows[j].id) })
 	var out [][]byte
 	var cursors []string
 	for _, r := range rows {
 		cur := cursorOf(w, r.c, r.id)
-		if w.After != "" && (w.Newest && (r.c.date > afterDate || r.c.date == afterDate && r.id <= afterID) || !w.Newest && r.id <= w.After) {
+		if !w.pastCursor(r.c, r.id) {
 			continue
 		}
 		if positive(int64(w.Limit)) && len(out) == w.Limit {
@@ -198,9 +229,9 @@ func (p *Postgres) Find(ctx context.Context, kind string, w Where) ([][]byte, []
 		return "$" + strconv.Itoa(len(args))
 	}
 	if w.Head {
-		q.WriteString(`SELECT id, on_date, CASE WHEN head <> '' THEN head ELSE body END FROM billing_records WHERE kind = $1`)
+		q.WriteString(`SELECT id, on_date, due_on, CASE WHEN head <> '' THEN head ELSE body END FROM billing_records WHERE kind = $1`)
 	} else {
-		q.WriteString(`SELECT id, on_date, body FROM billing_records WHERE kind = $1`)
+		q.WriteString(`SELECT id, on_date, due_on, body FROM billing_records WHERE kind = $1`)
 	}
 	if !w.MatterID.IsZero() {
 		q.WriteString(` AND matter_id = ` + arg(string(w.MatterID)))
@@ -220,18 +251,42 @@ func (p *Postgres) Find(ctx context.Context, kind string, w Where) ([][]byte, []
 	if w.ToDate != "" {
 		q.WriteString(` AND on_date <= ` + arg(w.ToDate))
 	}
+	if w.DueBefore != "" {
+		q.WriteString(` AND due_on < ` + arg(w.DueBefore))
+	}
+	if w.Status != nil {
+		in := make([]string, len(w.Status))
+		for i, st := range w.Status {
+			in[i] = arg(st)
+		}
+		if len(in) == 0 {
+			in = []string{"NULL"}
+		}
+		q.WriteString(` AND status IN (` + strings.Join(in, ", ") + `)`)
+	}
 	if w.After != "" {
-		if w.Newest {
-			date, id, _ := strings.Cut(w.After, "|")
-			d := arg(date)
+		key, id, _ := strings.Cut(w.After, "|")
+		switch {
+		case w.Newest:
+			d := arg(key)
 			q.WriteString(` AND (on_date < ` + d + ` OR (on_date = ` + d + ` AND id > ` + arg(id) + `))`)
-		} else {
+		case w.ByDue:
+			d := arg(key)
+			q.WriteString(` AND (due_on > ` + d + ` OR (due_on = ` + d + ` AND id > ` + arg(id) + `))`)
+		case w.Desc:
+			q.WriteString(` AND id < ` + arg(w.After))
+		default:
 			q.WriteString(` AND id > ` + arg(w.After))
 		}
 	}
-	if w.Newest {
+	switch {
+	case w.Newest:
 		q.WriteString(` ORDER BY on_date DESC, id`)
-	} else {
+	case w.ByDue:
+		q.WriteString(` ORDER BY due_on, id`)
+	case w.Desc:
+		q.WriteString(` ORDER BY id DESC`)
+	default:
 		q.WriteString(` ORDER BY id`)
 	}
 	if positive(int64(w.Limit)) {
@@ -245,12 +300,12 @@ func (p *Postgres) Find(ctx context.Context, kind string, w Where) ([][]byte, []
 	var out [][]byte
 	var cursors []string
 	for rows.Next() {
-		var id, date, body string
-		if err := rows.Scan(&id, &date, &body); err != nil {
+		var id, date, due, body string
+		if err := rows.Scan(&id, &date, &due, &body); err != nil {
 			return nil, nil, err
 		}
 		out = append(out, []byte(body))
-		cursors = append(cursors, cursorOf(w, cols{date: date}, id))
+		cursors = append(cursors, cursorOf(w, cols{date: date, due: due}, id))
 	}
 	return out, cursors, rows.Err()
 }
@@ -270,6 +325,7 @@ func (p *Postgres) IndexRows(ctx context.Context) error {
 				id   string
 				c    cols
 				head string
+				doc  any
 			}
 			var batch []fill
 			for rows.Next() {
@@ -288,7 +344,12 @@ func (p *Postgres) IndexRows(ctx context.Context) error {
 					rows.Close()
 					return err
 				}
-				batch = append(batch, fill{id, c, head})
+				doc, err := decodeKind(kind, []byte(body))
+				if err != nil {
+					rows.Close()
+					return err
+				}
+				batch = append(batch, fill{id, c, head, doc})
 			}
 			rows.Close()
 			if err := rows.Err(); err != nil {
@@ -304,14 +365,22 @@ func (p *Postgres) IndexRows(ctx context.Context) error {
 				args := []any{kind}
 				for i, f := range batch {
 					n := len(args)
-					vals[i] = fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d)", n+1, n+2, n+3, n+4, n+5, n+6)
-					args = append(args, f.id, f.c.matter, f.c.user, f.c.date, f.c.invoice, f.head)
+					vals[i] = fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)", n+1, n+2, n+3, n+4, n+5, n+6, n+7, n+8)
+					args = append(args, f.id, f.c.matter, f.c.user, f.c.date, f.c.invoice, f.head, f.c.status, f.c.due)
 				}
 				_, err := tx.ExecContext(ctx, `UPDATE billing_records SET matter_id = v.matter_id, user_id = v.user_id, on_date = v.on_date,
-					invoice_id = v.invoice_id, head = v.head, indexed = 1
-					FROM (VALUES `+strings.Join(vals, ",")+`) AS v (id, matter_id, user_id, on_date, invoice_id, head)
+					invoice_id = v.invoice_id, head = v.head, status = v.status, due_on = v.due_on, indexed = 1
+					FROM (VALUES `+strings.Join(vals, ",")+`) AS v (id, matter_id, user_id, on_date, invoice_id, head, status, due_on)
 					WHERE billing_records.kind = $1 AND billing_records.id = v.id`, args...)
-				return err
+				if err != nil {
+					return err
+				}
+				// The report projections (migrations 1261 and 1262) of the same documents.
+				ids, docs := make([]string, len(batch)), make([]any, len(batch))
+				for i, f := range batch {
+					ids[i], docs[i] = f.id, f.doc
+				}
+				return fillProjections(ctx, tx, kind, ids, docs)
 			})
 			if err != nil {
 				return err

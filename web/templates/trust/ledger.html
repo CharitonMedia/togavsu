@@ -9,7 +9,7 @@
   <label>Account
     <select name="trust_account_id" required>{{range .Accounts}}<option value="{{.ID}}">{{.Name}} ****{{.LastFour}}</option>{{end}}</select></label>
   <label>Matter
-    <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
+    <select name="matter_id" required>{{.MatterOptions}}</select></label>
   <label>Type
     <select name="entry_type">
       <option value="deposit">Deposit</option>
@@ -32,4 +32,5 @@
 <section>
 <h2>Entries</h2>
 {{template "entries" .}}
+{{if .OlderEntries}}<p><a href="{{.OlderEntries}}">Older entries</a></p>{{end}}
 </section>

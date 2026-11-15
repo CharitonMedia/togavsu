@@ -27,7 +27,7 @@ const (
 	perfTimePer      = 50 // 20,000 x 50 = 1,000,000 time entries
 	perfWalled       = 400
 	perfTrustMatters = 5000
-	perfSeedVersion  = "ac017-v2"
+	perfSeedVersion  = "ac017-v3"
 )
 
 // perfAccount is a signed-in harness user whose secrets live in perf.harness, so a
@@ -390,7 +390,7 @@ func seedPerfTables(t *testing.T, pool *sql.DB) {
 		 WHERE e.id LIKE 'perf-ce-%' AND m.responsible_attorney_id IS NOT NULL`,
 		`INSERT INTO deadlines (id, created_at, updated_at, created_by, matter_id, title, due_on, responsible_user_id, status, reminder_offsets, done_by, done_at)
 		 SELECT 'perf-dl-' || m.id, $1, $1, $2, m.id, 'Answer due', TO_CHAR(DATE '2026-01-01' + (m.n % 500)::int, 'YYYY-MM-DD'), COALESCE(m.responsible_attorney_id, $2),
-		 CASE WHEN m.n % 3 = 0 THEN 'done' ELSE 'open' END, '7,1', NULL, 0
+		 CASE WHEN m.n % 3 = 0 THEN 'done' ELSE 'open' END, '[7,1]', NULL, 0
 		 FROM (SELECT id, responsible_attorney_id, ROW_NUMBER() OVER (ORDER BY id) AS n FROM matters) m`,
 	}
 	day0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).UnixMicro()

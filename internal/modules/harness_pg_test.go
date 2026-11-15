@@ -78,7 +78,7 @@ func newEnv(t *testing.T) *env {
 	e := &env{t: t, ctx: ctx, dsn: testDSN(t), users: map[string]domain.Principal{}}
 	// The core keeps upload staging and its default local-disk file store in DataDir;
 	// empty means the image's /var/lib/togavsu-core, which a test runner cannot write.
-	app, err := core.Open(ctx, core.Config{DatabaseURL: e.dsn, Key: testKey, Domain: "firm.example", MailEvery: -1, DataDir: t.TempDir()})
+	app, err := core.Open(ctx, core.Config{DatabaseURL: e.dsn, Key: testKey, Domain: "firm.example", MailEvery: -1, DataDir: t.TempDir(), NoBackground: true})
 	if err != nil {
 		t.Fatal(err)
 	}

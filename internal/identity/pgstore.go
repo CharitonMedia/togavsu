@@ -235,14 +235,54 @@ func (s pgSessions) Update(ctx context.Context, row domain.Session) error {
 		domain.UnixMicroUTC(row.UpdatedAt), row.TokenHash, domain.UnixMicroUTC(row.ExpiresAt), domain.UnixMicroUTC(row.IdleExpiresAt), nullTime(row.RevokedAt), string(row.ID))
 }
 
+const touchSQL = `UPDATE sessions SET idle_expires_at=?, expires_at=?, updated_at=? WHERE id=? AND revoked_at IS NULL`
+
 // Touch slides idle time only while revoked_at is still null.
+//
+// Every signed-in request touches its session, so on its own transaction the touch
+// commits with synchronous_commit off: the update applies and is visible at once, and
+// whether it matched a live session is decided as before, but the request does not wait
+// for the WAL flush (AC-017: a slow disk flush stalled whichever requests were
+// committing). A crash in the following moment can lose only this slide of idle time,
+// so the session ends sooner, never later. Revocation, sign-in and every other write keep
+// synchronous commits; a touch inside a caller's transaction leaves that transaction's
+// setting alone.
 func (s pgSessions) Touch(ctx context.Context, id domain.ID, idle, expires, updated time.Time) error {
-	err := s.execOne(ctx, `UPDATE sessions SET idle_expires_at=?, expires_at=?, updated_at=? WHERE id=? AND revoked_at IS NULL`,
-		domain.UnixMicroUTC(idle), domain.UnixMicroUTC(expires), domain.UnixMicroUTC(updated), string(id))
+	args := []any{domain.UnixMicroUTC(idle), domain.UnixMicroUTC(expires), domain.UnixMicroUTC(updated), string(id)}
+	var err error
+	if audit.Tx(ctx, s.db) != nil {
+		err = s.execOne(ctx, touchSQL, args...)
+	} else {
+		err = s.touchAsync(ctx, args)
+	}
 	if errors.Is(err, repository.ErrNotFound) {
 		return repository.ErrConflict
 	}
 	return err
+}
+
+func (s pgSessions) touchAsync(ctx context.Context, args []any) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `SET LOCAL synchronous_commit TO off`); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, db.Rebind(touchSQL, "postgres"), args...)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	var none int64
+	if n == none {
+		return repository.ErrNotFound
+	}
+	return tx.Commit()
 }
 
 // Claim revokes a challenge only while revoked_at is still null.

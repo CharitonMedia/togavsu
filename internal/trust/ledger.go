@@ -67,26 +67,79 @@ func (s *Service) visibleEntries(ctx context.Context, who domain.Principal, f En
 	return out, nil
 }
 
+// ledgerPage is the ledger screen's page: the entries p may read, newest first, after
+// skipping from of them, at most n, and whether more follow. It reads newest-first
+// batches until it has them rather than the whole ledger.
+func (s *Service) ledgerPage(ctx context.Context, who domain.Principal, f EntryFilter, from, n int) ([]Entry, bool, error) {
+	rd, err := s.reader(ctx, who)
+	if err != nil {
+		return nil, false, err
+	}
+	f.newest = from + n + 1
+	skip := from
+	var out []Entry
+	for {
+		batch, err := s.entries(ctx, f)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, e := range batch {
+			ok, err := rd.ok(ctx, e.MatterID)
+			if err != nil {
+				return nil, false, err
+			}
+			if !ok {
+				continue
+			}
+			if positive(int64(skip)) {
+				skip--
+				continue
+			}
+			out = append(out, e)
+			if len(out) > n {
+				return out[:n], true, nil
+			}
+		}
+		if len(batch) < f.newest {
+			if len(out) == 0 && positive(int64(from)) {
+				// Past the end: the first page, as an out-of-range offset always gave.
+				var first int
+				return s.ledgerPage(ctx, who, EntryFilter{MatterID: f.MatterID, ClientID: f.ClientID, TrustAccountID: f.TrustAccountID}, first, n)
+			}
+			return out, false, nil
+		}
+		f.before = string(batch[len(batch)-1].ID)
+	}
+}
+
 // Balances returns identified balance rows computed from the ledger: one per client per
 // matter per account, one per client, one per account. Rows for a walled matter are
 // absent and do not count toward the client and account rows the caller sees.
 func (s *Service) Balances(ctx context.Context, who domain.Principal, f EntryFilter) ([]BalanceRow, error) {
-	entries, err := s.visibleEntries(ctx, who, EntryFilter{MatterID: f.MatterID, ClientID: f.ClientID, TrustAccountID: f.TrustAccountID})
+	rd, err := s.reader(ctx, who)
 	if err != nil {
 		return nil, err
 	}
-	type key struct{ a, c, m domain.ID }
-	matter := map[key]int64{}
+	// One ledger sum per (account, client, matter) group, then the same per-matter read
+	// check every entry of that group would get: the sums are those of the visible entries.
+	sums, err := s.balanceSums(ctx, EntryFilter{MatterID: f.MatterID, ClientID: f.ClientID, TrustAccountID: f.TrustAccountID})
+	if err != nil {
+		return nil, err
+	}
 	client := map[domain.ID]int64{}
 	account := map[domain.ID]int64{}
-	for _, e := range entries {
-		matter[key{e.TrustAccountID, e.ClientID, e.MatterID}] += int64(e.Signed)
-		client[e.ClientID] += int64(e.Signed)
-		account[e.TrustAccountID] += int64(e.Signed)
-	}
 	var rows []BalanceRow
-	for k, v := range matter {
-		rows = append(rows, BalanceRow{Scope: ScopeMatter, TrustAccountID: k.a, ClientID: k.c, MatterID: k.m, BalanceCents: v})
+	for _, g := range sums {
+		ok, err := rd.ok(ctx, g.matter)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		rows = append(rows, BalanceRow{Scope: ScopeMatter, TrustAccountID: g.account, ClientID: g.client, MatterID: g.matter, BalanceCents: g.cents})
+		client[g.client] += g.cents
+		account[g.account] += g.cents
 	}
 	for k, v := range client {
 		rows = append(rows, BalanceRow{Scope: ScopeClient, ClientID: k, BalanceCents: v})
@@ -95,13 +148,44 @@ func (s *Service) Balances(ctx context.Context, who domain.Principal, f EntryFil
 		rows = append(rows, BalanceRow{Scope: ScopeAccount, TrustAccountID: k, BalanceCents: v})
 	}
 	sort.Slice(rows, func(i, j int) bool {
-		a, b := rows[i], rows[j]
+		a, b := &rows[i], &rows[j]
 		if a.Scope != b.Scope {
 			return scopeRank(a.Scope) < scopeRank(b.Scope)
 		}
-		return string(a.TrustAccountID)+string(a.ClientID)+string(a.MatterID) < string(b.TrustAccountID)+string(b.ClientID)+string(b.MatterID)
+		return concatLess([3]domain.ID{a.TrustAccountID, a.ClientID, a.MatterID}, [3]domain.ID{b.TrustAccountID, b.ClientID, b.MatterID})
 	})
 	return rows, nil
+}
+
+// concatLess reports whether a's parts joined end to end sort before b's joined, without
+// building either string: the balance order compares account, client and matter ids as one
+// string, and a sort over thousands of rows must not allocate two strings per comparison.
+func concatLess(a, b [3]domain.ID) bool {
+	var k int // byte offset into the joined strings
+	for ; ; k++ {
+		ca, aok := concatAt(&a, k)
+		cb, bok := concatAt(&b, k)
+		switch {
+		case !aok:
+			return bok // a ended: less only if b goes on
+		case !bok:
+			return false
+		case ca != cb:
+			return ca < cb
+		}
+	}
+}
+
+// concatAt is the byte at offset k of p's parts joined, and whether the join is that long.
+func concatAt(p *[3]domain.ID, k int) (byte, bool) {
+	for i := range p {
+		if k < len(p[i]) {
+			return p[i][k], true
+		}
+		k -= len(p[i])
+	}
+	var none byte
+	return none, false
 }
 
 // scopeRank orders balance rows matter, client, account.

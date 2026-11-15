@@ -316,4 +316,7 @@ type EntryFilter struct {
 	TrustAccountID domain.ID
 	FromDate       string
 	ToDate         string
+	// newest, when set, reads that many entries newest first, before the id before.
+	newest int
+	before string
 }

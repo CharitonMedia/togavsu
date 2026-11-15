@@ -53,7 +53,9 @@ func (s *Service) entry(ctx context.Context, id domain.ID) (Entry, error) {
 	return e, notFound(err, "trust_entry")
 }
 
-func (s *Service) entries(ctx context.Context, f EntryFilter) ([]Entry, error) {
+// entryWhere is the WHERE conditions and arguments for f's matter, client, account and
+// date filters.
+func entryWhere(f EntryFilter) ([]string, []any) {
 	var where []string
 	var args []any
 	add := func(cond string, v any) {
@@ -75,11 +77,60 @@ func (s *Service) entries(ctx context.Context, f EntryFilter) ([]Entry, error) {
 	if f.ToDate != "" {
 		add("created_at <", dayEnd(f.ToDate))
 	}
+	return where, args
+}
+
+// balanceSum is one (account, client, matter) group's ledger sum.
+type balanceSum struct {
+	account, client, matter domain.ID
+	cents                   int64
+}
+
+// balanceSums sums the ledger rows f selects per account, client and matter in Postgres,
+// so a balance report reads one row per group instead of every entry. The ledger is still
+// the only source; each group's matter is checked by the caller.
+func (s *Service) balanceSums(ctx context.Context, f EntryFilter) ([]balanceSum, error) {
+	where, args := entryWhere(f)
+	q := `SELECT trust_account_id, client_id, matter_id, SUM(amount_cents) FROM trust_ledger`
+	if len(where) > 0 {
+		q += ` WHERE ` + strings.Join(where, " AND ")
+	}
+	rows, err := s.q(ctx).QueryContext(ctx, q+` GROUP BY trust_account_id, client_id, matter_id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []balanceSum
+	for rows.Next() {
+		var b balanceSum
+		if err := rows.Scan(&b.account, &b.client, &b.matter, &b.cents); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+func (s *Service) entries(ctx context.Context, f EntryFilter) ([]Entry, error) {
+	where, args := entryWhere(f)
+	add := func(cond string, v any) {
+		args = append(args, v)
+		where = append(where, cond+" $"+strconv.Itoa(len(args)))
+	}
+	order := ` ORDER BY id`
+	if positive(int64(f.newest)) {
+		// Newest first, one batch (ledgerPage): the posting order reversed.
+		if f.before != "" {
+			add("id <", f.before)
+		}
+		args = append(args, f.newest)
+		order = ` ORDER BY id DESC LIMIT $` + strconv.Itoa(len(args))
+	}
 	q := `SELECT ` + entryCols + ` FROM trust_ledger`
 	if len(where) > 0 {
 		q += ` WHERE ` + strings.Join(where, " AND ")
 	}
-	rows, err := s.q(ctx).QueryContext(ctx, q+` ORDER BY id`, args...)
+	rows, err := s.q(ctx).QueryContext(ctx, q+order, args...)
 	if err != nil {
 		return nil, err
 	}

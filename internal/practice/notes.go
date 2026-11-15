@@ -115,11 +115,12 @@ func (s *Service) ListNotes(ctx context.Context, p domain.Principal, filter Note
 		limit = s.intSetting(ctx, "notes.page_size", domain.NotesPageSize)
 	}
 	query := strings.ToLower(strings.TrimSpace(filter.Query))
-	var out []domain.Note
-	for _, row := range s.db.Notes() {
-		if err := s.gateNote(ctx, p, row.MatterID, row.ContactID, domain.ActionRead); err != nil {
-			continue
-		}
+	// The filters come first and the note gate (role, wall, contact) runs only on the notes
+	// this page reaches, in list order: every note returned is still checked.
+	rows := s.db.Notes()
+	idx := make([]int, 0, len(rows))
+	for i := range rows {
+		row := &rows[i]
 		if !filter.MatterID.IsZero() && row.MatterID != filter.MatterID {
 			continue
 		}
@@ -138,16 +139,33 @@ func (s *Service) ListNotes(ctx context.Context, p domain.Principal, filter Note
 		if filter.Tag != "" && !s.noteHasTag(row.ID, filter.Tag) {
 			continue
 		}
-		out = append(out, row)
+		idx = append(idx, i)
 	}
-	sortNotes(out)
+	sort.Slice(idx, func(i, j int) bool { return noteOrder(&rows[idx[i]], &rows[idx[j]]) })
+	readable := func(row *domain.Note) bool {
+		return s.gateNote(ctx, p, row.MatterID, row.ContactID, domain.ActionRead) == nil
+	}
+	// A cursor continues after its note when the caller can read that note; otherwise
+	// the list starts over, as it always has.
+	from := 0
 	if filter.Cursor != "" {
-		cut := 0
-		for cut < len(out) && string(out[cut].ID) != filter.Cursor {
-			cut++
+		for k, i := range idx {
+			if string(rows[i].ID) == filter.Cursor {
+				if readable(&rows[i]) {
+					from = k + 1
+				}
+				break
+			}
 		}
-		if cut < len(out) {
-			out = out[cut+1:]
+	}
+	var out []domain.Note
+	for _, i := range idx[from:] {
+		if !readable(&rows[i]) {
+			continue
+		}
+		out = append(out, rows[i])
+		if len(out) > limit {
+			break
 		}
 	}
 	next := ""
@@ -270,11 +288,18 @@ func sortNotes(rows []domain.Note) {
 	sort.SliceStable(rows, func(i, j int) bool { return noteLess(rows[i], rows[j]) })
 }
 
-func noteLess(a, b domain.Note) bool {
+func noteLess(a, b domain.Note) bool { return noteOrder(&a, &b) }
+
+// noteOrder is pinned first, newest first, then id, so notes created together keep one
+// order from page to page.
+func noteOrder(a, b *domain.Note) bool {
 	if a.Pinned != b.Pinned {
 		return a.Pinned
 	}
-	return a.CreatedAt.After(b.CreatedAt)
+	if !a.CreatedAt.Equal(b.CreatedAt) {
+		return a.CreatedAt.After(b.CreatedAt)
+	}
+	return a.ID > b.ID
 }
 
 // NoteTags returns tags for a note the caller can read.

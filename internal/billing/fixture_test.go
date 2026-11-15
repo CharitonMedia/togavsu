@@ -199,6 +199,8 @@ type fx struct {
 	admin, attorney, staff, staff2, accountant domain.Principal
 	activity, expType, area, account           domain.ID
 	n                                          uint64
+	// walled is a matter projectionScenario walls to the attorney.
+	walled domain.ID
 }
 
 func tid(n uint64) domain.ID {

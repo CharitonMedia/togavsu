@@ -214,6 +214,62 @@ func (s *Service) clientMatter(ctx context.Context, p domain.Principal, matterID
 	return false
 }
 
+// batchWalls answers WallReader for one principal from one read of every wall and of the
+// principal's client parties, so a check across all matters does not lock the store
+// several times per matter. It lives for one call (CountMatters builds a new one each
+// time) and holds the rows it read, never a decision: each matter is still decided by
+// Policy.Authorize, exactly as visibleMatter decides it.
+type batchWalls struct {
+	user                   domain.ID
+	walled, allows, client map[domain.ID]bool
+}
+
+var errBatchPrincipal = errors.New("practice: wall batch read for another user")
+
+func (b *batchWalls) View(_ context.Context, p domain.Principal, matterID domain.ID) (domain.WallView, error) {
+	if p.UserID != b.user {
+		return domain.WallView{}, errBatchPrincipal // fail closed: the rows are p's alone
+	}
+	return domain.WallView{Walled: b.walled[matterID], Allows: b.allows[matterID], ClientMatter: b.client[matterID]}, nil
+}
+
+// batchWallsFor reads what viewWall and clientMatter read for p, for every matter at
+// once. ok is false when the store cannot list walls in one read, or when Policy reads
+// walls from somewhere other than this service's store.
+func (s *Service) batchWallsFor(ctx context.Context, p domain.Principal) (*batchWalls, bool) {
+	if w, own := s.Policy.Walls.(wallSource); !own || w.s != s {
+		return nil, false
+	}
+	src, ok := s.db.(interface {
+		WallMembers(user domain.ID) (walled, allows map[domain.ID]bool)
+	})
+	if !ok {
+		return nil, false
+	}
+	b := &batchWalls{user: p.UserID, client: map[domain.ID]bool{}}
+	b.walled, b.allows = src.WallMembers(p.UserID)
+	if user, err := s.db.User(ctx, p.UserID); err == nil && !user.ContactID.IsZero() {
+		for _, party := range s.db.Parties(domain.ID(""), user.ContactID) {
+			if party.Role == "client" || party.Role == "authorized user" {
+				b.client[party.MatterID] = true
+			}
+		}
+	}
+	return b, true
+}
+
+// visibleIn is visibleMatter with the walls read from b: the same reference, the same
+// Policy.Authorize, so the same decision.
+func (s *Service) visibleIn(ctx context.Context, b *batchWalls, p domain.Principal, id domain.ID) bool {
+	d, err := domain.Policy{Walls: b}.Authorize(ctx, p, domain.ResourceRef{
+		Resource:         domain.ResMatter,
+		Action:           domain.ActionRead,
+		MatterID:         id,
+		SharedWithClient: b.client[id],
+	})
+	return err == nil && d.Allow
+}
+
 func (s *Service) visibleMatter(ctx context.Context, p domain.Principal, id domain.ID) bool {
 	return s.gateMatter(ctx, p, id, domain.ActionRead) == nil
 }

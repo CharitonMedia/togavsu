@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"html"
 	"html/template"
 	"mime"
 	"net/http"
@@ -85,45 +87,48 @@ func dateOf(micros int64) string {
 
 // page is the data every billing screen renders from.
 type page struct {
-	Title        string
-	Path         string // the screen's path, for the area tabs
-	CSRF         string
-	Notice       string
-	Error        string
-	OpenNew      bool // ?new=1: open the page's New panel, as the shell's New menu links
-	CanWrite     bool
-	CanApprove   bool
-	CanTrust     bool
-	Today        string
-	Worklist     Worklist
-	Invoices     []Invoice
-	Overdue      []Invoice
-	Invoice      Invoice
-	Collections  Collections
-	Clients      map[domain.ID]string
-	Payments     []Payment
-	History      []historyRow
-	Staff        bool
-	Time         []TimeEntry
-	Timers       []Timer
-	Matters      []domain.Matter
-	MatterNames  map[domain.ID]string
-	Activities   []NamedType
-	Report       Report
-	Reports      []string
-	ReportTitles map[string]string
-	Entry        TimeEntry
-	Cost         Expense
-	Receipts     []ReceiptFile
-	ReceiptsOn   bool
-	Expenses     []Expense
-	ExpenseTypes []NamedType
-	TypeNames    map[string]string
-	Markup       int
-	DraftLines   []draftLineRow
-	FeeItems     []FeeItem
-	Unbilled     []unbilledSource
-	InterestOn   bool
+	Title       string
+	Path        string // the screen's path, for the area tabs
+	CSRF        string
+	Notice      string
+	Error       string
+	OpenNew     bool // ?new=1: open the page's New panel, as the shell's New menu links
+	CanWrite    bool
+	CanApprove  bool
+	CanTrust    bool
+	Today       string
+	Worklist    Worklist
+	Invoices    []Invoice
+	Overdue     []Invoice
+	Invoice     Invoice
+	Collections Collections
+	Clients     map[domain.ID]string
+	Payments    []Payment
+	History     []historyRow
+	Staff       bool
+	Time        []TimeEntry
+	Timers      []Timer
+	Matters     []domain.Matter
+	// MatterOptions is Matters as <option> elements, built once per page so a form with
+	// several matter pickers does not range over every matter in each (AC-017).
+	MatterOptions template.HTML
+	MatterNames   map[domain.ID]string
+	Activities    []NamedType
+	Report        Report
+	Reports       []string
+	ReportTitles  map[string]string
+	Entry         TimeEntry
+	Cost          Expense
+	Receipts      []ReceiptFile
+	ReceiptsOn    bool
+	Expenses      []Expense
+	ExpenseTypes  []NamedType
+	TypeNames     map[string]string
+	Markup        int
+	DraftLines    []draftLineRow
+	FeeItems      []FeeItem
+	Unbilled      []unbilledSource
+	InterestOn    bool
 }
 
 var reportNames = []string{"unbilled-time", "time-by-user", "ar-aging", "payments-received", "write-offs"}
@@ -148,6 +153,16 @@ func (h *Handler) pageRoutes(mux *http.ServeMux) {
 			if err != nil {
 				writeErr(w, err)
 				return
+			}
+			if pg.MatterOptions == "" && len(pg.Matters) > 0 {
+				var sel domain.ID
+				switch {
+				case pg.Entry.ID != "":
+					sel = pg.Entry.MatterID
+				case pg.Cost.ID != "":
+					sel = pg.Cost.MatterID
+				}
+				pg.MatterOptions = matterOptions(pg.Matters, sel)
 			}
 			var buf bytes.Buffer
 			if err := h.Templates.ExecuteTemplate(&buf, name, pg); err != nil {
@@ -378,22 +393,16 @@ func (h *Handler) worklistPage(_ http.ResponseWriter, r *http.Request, p domain.
 }
 
 func (h *Handler) invoicesPage(_ http.ResponseWriter, r *http.Request, p domain.Principal, pg *page) (string, error) {
-	invs, err := h.Svc.Invoices(r.Context(), p, InvoiceFilter{Status: q(r, "status"), MatterID: domain.ID(q(r, "matter_id")), Heads: true})
-	if err != nil {
-		return "", err
-	}
-	sort.SliceStable(invs, func(i, j int) bool { return invs[i].ID > invs[j].ID })
-	over, err := h.Svc.Overdue(r.Context(), p)
-	if err != nil {
-		return "", err
-	}
 	// The screen shows the newest invoices and the oldest overdue ones, a page each, as
 	// the time screen does; the API and CSV export page through all of them.
-	if n := h.Svc.settingInt(r.Context(), "api.page_size"); len(invs) > n {
-		invs = invs[:n]
+	n := h.Svc.settingInt(r.Context(), "api.page_size")
+	invs, err := h.Svc.Invoices(r.Context(), p, InvoiceFilter{Status: q(r, "status"), MatterID: domain.ID(q(r, "matter_id")), Heads: true, Newest: true, Max: n})
+	if err != nil {
+		return "", err
 	}
-	if n := h.Svc.settingInt(r.Context(), "api.page_size"); len(over) > n {
-		over = over[:n]
+	over, err := h.Svc.overdue(r.Context(), p, n)
+	if err != nil {
+		return "", err
 	}
 	pg.Title, pg.Invoices, pg.Overdue = "Invoices", invs, over
 	return "invoices.html", nil
@@ -458,6 +467,25 @@ func (h *Handler) timePage(_ http.ResponseWriter, r *http.Request, p domain.Prin
 
 func boolPtr(b bool) *bool { return &b }
 
+// matterOptions writes one <option> per matter, number and name as the label, selecting
+// the matter selected.
+func matterOptions(list []domain.Matter, selected domain.ID) template.HTML {
+	var b strings.Builder
+	b.Grow(len(list) * 96)
+	for _, m := range list {
+		b.WriteString(`<option value="`)
+		b.WriteString(html.EscapeString(string(m.ID)))
+		if m.ID == selected {
+			b.WriteString(`" selected>`)
+		} else {
+			b.WriteString(`">`)
+		}
+		b.WriteString(html.EscapeString(m.Number + " " + m.Name))
+		b.WriteString(`</option>`)
+	}
+	return template.HTML(b.String())
+}
+
 func (h *Handler) paymentsPage(_ http.ResponseWriter, r *http.Request, p domain.Principal, pg *page) (string, error) {
 	pays, err := h.Svc.Payments(r.Context(), p, PaymentFilter{})
 	if err != nil {
@@ -477,7 +505,7 @@ func (h *Handler) reportPage(_ http.ResponseWriter, r *http.Request, p domain.Pr
 	var err error
 	switch r.PathValue("report") {
 	case "unbilled-time":
-		rep, err = h.Svc.UnbilledReport(r.Context(), p, f)
+		rep, err = h.Svc.unbilledPage(r.Context(), p, f, h.Svc.settingInt(r.Context(), "api.page_size"))
 	case "time-by-user":
 		rep, err = h.Svc.TimeByUserReport(r.Context(), p, f)
 	case "ar-aging":
@@ -491,6 +519,21 @@ func (h *Handler) reportPage(_ http.ResponseWriter, r *http.Request, p domain.Pr
 	}
 	if err != nil {
 		return "", err
+	}
+	// The screen shows the first page of rows, as the invoices and time screens do; the
+	// API and the CSV export carry every row.
+	n := h.Svc.settingInt(r.Context(), "api.page_size")
+	total := len(rep.Rows)
+	if rep.total > total {
+		total = rep.total
+	}
+	if positive(int64(n)) && total > n {
+		if pg.Notice == "" {
+			pg.Notice = fmt.Sprintf("Showing the first %d of %d rows. Export CSV for every row.", n, total)
+		}
+		if len(rep.Rows) > n {
+			rep.Rows = rep.Rows[:n]
+		}
 	}
 	pg.Title, pg.Report = reportTitles[rep.Report], rep
 	return "report.html", nil

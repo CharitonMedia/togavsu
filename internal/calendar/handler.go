@@ -136,6 +136,14 @@ func (h *Handler) listEvents(w http.ResponseWriter, r *http.Request) {
 			f.From, f.To = start, end
 		}
 	}
+	// Only this page and one row past it are needed to answer it and say whether more
+	// follow, so the read stops there.
+	off, limit, err := pageBounds(h.Svc, r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	f.Max = off + limit + 1
 	rows, err := h.Svc.ListEvents(r.Context(), p, f)
 	if err != nil {
 		writeErr(w, err)

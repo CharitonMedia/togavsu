@@ -34,6 +34,14 @@ type Store interface {
 	List(ctx context.Context, kind string) ([][]byte, error)
 	// Find reads the rows of kind matching w's indexed columns, with a cursor per row.
 	Find(ctx context.Context, kind string, w Where) ([][]byte, []string, error)
+	// Unbilled calls fn with each billable, unbilled time entry or expense (kind) matching
+	// w's matter, user and dates, in id order. fn must not keep the row.
+	Unbilled(ctx context.Context, kind string, w Where, fn func(*unbilledRow) error) error
+	// UnbilledTotals totals those rows per matter, ordered by each matter's first id.
+	UnbilledTotals(ctx context.Context, kind string, w Where) ([]matterTotal, error)
+	// Aging lists what AR aging reads of the invoices or payments (kind) dated on or
+	// before w.ToDate, in id order.
+	Aging(ctx context.Context, kind string, w Where) ([]agingRow, error)
 }
 
 // Memory is the in-process store used by tests and by a core without a database.
@@ -146,6 +154,9 @@ func (m *Memory) List(_ context.Context, kind string) ([][]byte, error) {
 type Postgres struct {
 	pool    *sql.DB
 	publish bool
+	// unbilled and aging keep the report projections' rows (snapshot.go).
+	unbilled projCache[unbilledRow]
+	aging    projCache[agingRow]
 }
 
 // NewPostgres returns a store on pool. pool must be the pool the audit ledger uses.
@@ -185,11 +196,15 @@ func (p *Postgres) Put(ctx context.Context, kind, id string, v any) error {
 	if err != nil {
 		return err
 	}
-	_, err = audit.Conn(ctx, p.pool).ExecContext(ctx, `INSERT INTO billing_records (kind, id, body, matter_id, user_id, on_date, invoice_id, indexed, head)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8)
+	_, err = audit.Conn(ctx, p.pool).ExecContext(ctx, `INSERT INTO billing_records (kind, id, body, matter_id, user_id, on_date, invoice_id, indexed, head, status, due_on)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, $9, $10)
 		ON CONFLICT (kind, id) DO UPDATE SET body = EXCLUDED.body, matter_id = EXCLUDED.matter_id, user_id = EXCLUDED.user_id,
-		on_date = EXCLUDED.on_date, invoice_id = EXCLUDED.invoice_id, indexed = 1, head = EXCLUDED.head`, kind, id, string(b), c.matter, c.user, c.date, c.invoice, head)
+		on_date = EXCLUDED.on_date, invoice_id = EXCLUDED.invoice_id, indexed = 1, head = EXCLUDED.head, status = EXCLUDED.status,
+		due_on = EXCLUDED.due_on`, kind, id, string(b), c.matter, c.user, c.date, c.invoice, head, c.status, c.due)
 	if err != nil {
+		return err
+	}
+	if err := syncProjections(ctx, audit.Conn(ctx, p.pool), kind, id, v); err != nil {
 		return err
 	}
 	// Billing's events also go to core.events in the same transaction, so the module
