@@ -36,8 +36,10 @@ func TestReleasePerfPagingKeepsWalls(t *testing.T) {
 			admin.must(http.StatusCreated, "POST", "/api/v1/calendar-events", map[string]any{"title": fmt.Sprintf("Hearing %d.%d", i, k), "kind": "court_date",
 				"starts_at": at.Format(time.RFC3339), "ends_at": at.Add(time.Hour).Format(time.RFC3339), "matter_id": m})
 		}
+		// Due two or more UTC days back: overdue is judged on the firm-local date, which
+		// can still be yesterday's UTC date just after UTC midnight.
 		admin.must(http.StatusCreated, "POST", "/api/v1/deadlines", map[string]any{"matter_id": m, "title": fmt.Sprintf("Overdue %d", i),
-			"due_on": day(-i - 1).Format("2006-01-02"), "responsible_user_id": attyID})
+			"due_on": day(-i - 2).Format("2006-01-02"), "responsible_user_id": attyID})
 	}
 
 	// walk follows next_cursor at limit 2 and returns every id it saw, in order.
