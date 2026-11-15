@@ -69,7 +69,7 @@ Patrick decided on 2026-11-12:
 
 This is release-final's work, not the release candidate's. These steps need the integration lead and credentials no lane has:
 
-1. Land `docs/release/proposed-ci/release.yml` as `.github/workflows/release.yml` through a reviewed control PR.
+1. Land `docs/release/proposed-ci/release.yml` as `.github/workflows/release.yml`, and `docs/release/proposed-ci/product-ci.yml` over `.github/workflows/product-ci.yml`, through a reviewed control PR.
 2. Tag the revision on which `sh scripts/ci/full-acceptance.sh` exits 0, except for the two gates below, and push the tag. The workflow publishes both images and `digests.json`.
 3. Off GitHub, for each recorded digest: `cosign generate ghcr.io/charitonmedia/<image>@<digest> > payload.json`, then `cosign sign-blob --key <release key> --tlog-upload=false payload.json`. Dispatch the workflow with `operation=attach-signature`, the tag, the digest, the base64 signature and `base64 -w0 payload.json`.
 4. Run `sh scripts/release/verify-release.sh` at the tag; it passes only when both images verify and the supervisor image ships the committed key.
@@ -81,3 +81,11 @@ This is release-final's work, not the release candidate's. These steps need the 
 The Full acceptance job is in `.github/workflows/product-ci.yml` (control PRs #46 and #50). It runs all 52 criteria and every gate on release-final and on main, and reports not applicable on the release candidate, which is proven by its subset runs instead. The release candidate proposes no product-ci.yml change. The earlier full-acceptance patch is removed because it is obsolete.
 
 The release workflow, [proposed-ci/release.yml](proposed-ci/release.yml), is still only a proposal. It belongs to the signed release, so it is for release-final to land, not this candidate: copy it to `.github/workflows/release.yml` unchanged.
+
+[proposed-ci/product-ci.yml](proposed-ci/product-ci.yml) is the whole Product CI workflow with the release-final change applied, so it can be copied over `.github/workflows/product-ci.yml` as is. Without it the Full acceptance job cannot pass the signed-release gate even after signing: today its checkout is shallow with no tags and it installs no cosign, so `verify-release.sh` stops at PENDING. The proposal adds only:
+
+- a `v*` tag trigger on `push` (the scope step already runs Full acceptance on every push);
+- `fetch-depth: 0` and `fetch-tags: true` on the Full acceptance checkout, so `git describe --tags --exact-match HEAD` finds the tag;
+- an Install cosign step with the same version and SHA-256 pin as `release.yml`, and `COSIGN_BIN` for the Full acceptance step.
+
+`tests/test_release_ci.py` fails if the proposal ever differs from the live workflow by anything other than those lines, or if the cosign pin drifts from `release.yml`. When the live workflow changes, refresh the proposal from it. The same file runs the real `verify-release.sh` against fake cosign and docker: PENDING on an untagged revision, pass on a git tag with both images verified through `COSIGN_BIN`, and failure for an unsigned image, a missing cosign, a missing key or a supervisor image that ships a different key. Even with this change, the docker-desktop gate and AC-001 cannot pass on a GitHub-hosted Linux runner.
