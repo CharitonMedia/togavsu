@@ -5,6 +5,7 @@ criteria and checks, so it proves which checks ran and what the exit code was wi
 Docker, Postgres or the product suites.
 """
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -42,7 +43,9 @@ EVIDENCE = {
 }
 
 
-class FullAcceptanceSubset(unittest.TestCase):
+class SyntheticRepo(unittest.TestCase):
+    """A throwaway git repository holding the real script and runner and synthetic evidence."""
+
     def setUp(self):
         self.repo = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.repo)
@@ -78,6 +81,8 @@ class FullAcceptanceSubset(unittest.TestCase):
         ran = sorted(n[len("ran-"):] for n in os.listdir(self.repo) if n.startswith("ran-"))
         return proc, results, ran
 
+
+class FullAcceptanceSubset(SyntheticRepo):
     def test_subset_runs_exactly_the_listed_criteria_and_passes(self):
         proc, res, ran = self.run_script(" AC-002,AC-001,AC-002 ")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
@@ -129,6 +134,106 @@ class FullAcceptanceSubset(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertTrue(res["working_tree_dirty"])
         self.assertEqual(res["status"], "pending")
+
+
+class OperatorEvidence(SyntheticRepo):
+    """A criterion closed by a recorded manual check passes only while the record still holds."""
+
+    def setUp(self):
+        super().setUp()
+        self.write("docs/release/evidence/check.md", "manual check record\n")
+        self.write("docs/release/evidence/artifact.bin", "artifact bytes\n")
+        self.write("watched/code.txt", "v1\n")
+        self.write("other/notes.txt", "v1\n")
+        self.commit("evidence")
+        self.rev = self.git("rev-parse", "HEAD")
+        self.oe = {"record": "docs/release/evidence/check.md", "artifact": "docs/release/evidence/artifact.bin",
+                   "sha256": hashlib.sha256(b"artifact bytes\n").hexdigest(),
+                   "tested_revision": self.rev, "watch": ["watched/"]}
+        self.set_evidence(self.oe)
+
+    def write(self, rel, text):
+        path = os.path.join(self.repo, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(text)
+
+    def git(self, *args):
+        return subprocess.run(GIT + list(args), cwd=self.repo, check=True, capture_output=True, text=True).stdout.strip()
+
+    def commit(self, msg):
+        self.git("add", "-A")
+        self.git("commit", "-qm", msg)
+
+    def set_evidence(self, oe):
+        ev = json.loads(json.dumps(EVIDENCE))
+        ev["criteria"]["AC-006"] = {"checks": ["ok-a"], "gaps": [], "operator_evidence": oe}
+        self.write("docs/release/acceptance-evidence.json", json.dumps(ev))
+        self.write("docs/build/acceptance.json", json.dumps([{"id": i} for i in ev["criteria"]]))
+        self.commit("operator evidence")
+
+    def decide(self):
+        proc, res, _ = self.run_script("AC-006")
+        return proc, res, (res or {}).get("criteria", {}).get("AC-006", {}).get("reasons")
+
+    def test_evidence_that_still_holds_passes(self):
+        proc, res, why = self.decide()
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(res["passed_acceptance_ids"], ["AC-006"])
+        self.assertEqual(why, [])
+
+    def test_a_change_outside_the_watched_paths_keeps_it_passing(self):
+        self.write("other/notes.txt", "v2\n")
+        self.commit("unrelated")
+        proc, _, why = self.decide()
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(why, [])
+
+    def test_a_change_under_a_watched_path_makes_it_stale(self):
+        self.write("watched/code.txt", "v2\n")
+        self.commit("change the code the manual check covered")
+        proc, res, why = self.decide()
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(res["pending_acceptance_ids"], ["AC-006"])
+        self.assertEqual(len(why), 1)
+        self.assertIn("stale: watched/code.txt changed since", why[0])
+
+    def test_a_changed_or_missing_artifact_does_not_pass(self):
+        self.write("docs/release/evidence/artifact.bin", "other bytes\n")
+        self.commit("swap the artifact")
+        proc, _, why = self.decide()
+        self.assertEqual(proc.returncode, 1)
+        self.assertTrue(any("not the recorded one" in w for w in why), why)
+        os.remove(os.path.join(self.repo, "docs/release/evidence/check.md"))
+        self.commit("drop the record")
+        proc, _, why = self.decide()
+        self.assertEqual(proc.returncode, 1)
+        self.assertTrue(any("record docs/release/evidence/check.md is not tracked at HEAD" in w for w in why), why)
+
+    def test_an_untracked_record_does_not_count(self):
+        self.git("rm", "-q", "--cached", "docs/release/evidence/check.md")
+        self.write(".gitignore", "ran-*\nout/\ndocs/release/evidence/check.md\n")
+        self.commit("stop tracking the record but keep the local file")
+        self.assertTrue(os.path.isfile(os.path.join(self.repo, "docs/release/evidence/check.md")))
+        proc, _, why = self.decide()
+        self.assertEqual(proc.returncode, 1)
+        self.assertTrue(any("not tracked at HEAD" in w for w in why), why)
+
+    def test_a_revision_that_is_not_an_ancestor_does_not_pass(self):
+        self.set_evidence(dict(self.oe, tested_revision="0" * 40))
+        proc, _, why = self.decide()
+        self.assertEqual(proc.returncode, 1)
+        self.assertTrue(any("not an ancestor of HEAD" in w for w in why), why)
+
+    def test_malformed_evidence_is_refused_before_anything_runs(self):
+        for bad in ({k: v for k, v in self.oe.items() if k != "watch"}, dict(self.oe, sha256="abc"),
+                    dict(self.oe, watch=[]), dict(self.oe, extra=1), "docs/x.md",
+                    dict(self.oe, record="notes/check.md"), dict(self.oe, artifact="docs/release/evidence/../x.bin")):
+            self.set_evidence(bad)
+            proc, res, ran = self.run_script("AC-006")
+            self.assertEqual(proc.returncode, 2, repr(bad))
+            self.assertIsNone(res, repr(bad))
+            self.assertEqual(ran, [], repr(bad))
 
 
 def _load_writer():
