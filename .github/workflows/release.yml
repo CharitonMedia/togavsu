@@ -156,7 +156,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: read
+      # contents: write only so GITHUB_TOKEN can see the tag's release while it is still a
+      # draft (a read-only token gets "release not found"); this job writes no repository content.
+      contents: write
       packages: write
     env:
       TAG: ${{ github.event.inputs.tag }}
