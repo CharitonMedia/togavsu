@@ -68,6 +68,7 @@ def load():
 
 
 OPERATOR_KEYS = ("record", "artifact", "sha256", "tested_revision", "watch")
+EVIDENCE_DIR = "docs/release/evidence/"
 
 
 def operator_shape(oe):
@@ -80,6 +81,10 @@ def operator_shape(oe):
         out.append("sha256 must be 64 lowercase hex digits")
     if not re.fullmatch(r"[0-9a-f]{40}", str(oe.get("tested_revision", ""))):
         out.append("tested_revision must be a full 40-character commit SHA")
+    for k in ("record", "artifact"):
+        v = oe.get(k)
+        if not isinstance(v, str) or not v.startswith(EVIDENCE_DIR) or ".." in v.split("/"):
+            out.append(k + " must be a file under " + EVIDENCE_DIR)
     w = oe.get("watch")
     if not isinstance(w, list) or not w or not all(isinstance(x, str) and x for x in w):
         out.append("watch must list the paths whose change makes the evidence stale")
@@ -90,12 +95,12 @@ def operator_reasons(oe):
     """Why operator evidence does not hold at HEAD; empty when it does. Anything unproven is a reason."""
     why = []
     for k in ("record", "artifact"):
-        if not os.path.isfile(os.path.join(ROOT, oe[k])):
-            why.append("operator evidence " + k + " " + oe[k] + " is missing")
-    art = os.path.join(ROOT, oe["artifact"])
-    if os.path.isfile(art):
-        with open(art, "rb") as f:
-            got = hashlib.sha256(f.read()).hexdigest()
+        # Only what HEAD records counts: an untracked or ignored local file proves nothing.
+        if subprocess.run(["git", "cat-file", "-e", "HEAD:" + oe[k]], cwd=ROOT, capture_output=True).returncode != 0:
+            why.append("operator evidence " + k + " " + oe[k] + " is not tracked at HEAD")
+    art = subprocess.run(["git", "show", "HEAD:" + oe["artifact"]], cwd=ROOT, capture_output=True)
+    if art.returncode == 0:
+        got = hashlib.sha256(art.stdout).hexdigest()
         if got != oe["sha256"]:
             why.append("operator evidence artifact " + oe["artifact"] + " has sha256 " + got + ", not the recorded one")
     rev = oe["tested_revision"]

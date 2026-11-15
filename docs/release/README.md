@@ -39,7 +39,7 @@ A few criteria have a part no runner can check, such as AC-041's "opens in Word 
 - `tested_revision`: the full commit SHA the artifact came from;
 - `watch`: the paths whose change makes the evidence stale.
 
-The runner refuses an entry missing any of these. It passes the criterion only while the evidence holds at HEAD: the record and artifact exist, the artifact has that SHA-256, `tested_revision` is an ancestor of HEAD, and `git diff` shows no change under `watch` since then. Otherwise the criterion is pending with the reason, and the manual check must be repeated. AC-041's record is [evidence/AC-041-word.md](evidence/AC-041-word.md), run with `scripts/release/word-check.ps1`.
+The runner refuses an entry missing any of these. It passes the criterion only while the evidence holds at HEAD: the record and artifact are tracked at HEAD under docs/release/evidence/, the artifact as committed has that SHA-256, `tested_revision` is an ancestor of HEAD, and `git diff` shows no change under `watch` since then. Otherwise the criterion is pending with the reason, and the manual check must be repeated. AC-041's record is [evidence/AC-041-word.md](evidence/AC-041-word.md), run with `scripts/release/word-check.ps1`.
 
 ## Release gates
 

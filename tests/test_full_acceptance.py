@@ -141,13 +141,13 @@ class OperatorEvidence(SyntheticRepo):
 
     def setUp(self):
         super().setUp()
-        self.write("evidence/check.md", "manual check record\n")
-        self.write("evidence/artifact.bin", "artifact bytes\n")
+        self.write("docs/release/evidence/check.md", "manual check record\n")
+        self.write("docs/release/evidence/artifact.bin", "artifact bytes\n")
         self.write("watched/code.txt", "v1\n")
         self.write("other/notes.txt", "v1\n")
         self.commit("evidence")
         self.rev = self.git("rev-parse", "HEAD")
-        self.oe = {"record": "evidence/check.md", "artifact": "evidence/artifact.bin",
+        self.oe = {"record": "docs/release/evidence/check.md", "artifact": "docs/release/evidence/artifact.bin",
                    "sha256": hashlib.sha256(b"artifact bytes\n").hexdigest(),
                    "tested_revision": self.rev, "watch": ["watched/"]}
         self.set_evidence(self.oe)
@@ -199,16 +199,25 @@ class OperatorEvidence(SyntheticRepo):
         self.assertIn("stale: watched/code.txt changed since", why[0])
 
     def test_a_changed_or_missing_artifact_does_not_pass(self):
-        self.write("evidence/artifact.bin", "other bytes\n")
+        self.write("docs/release/evidence/artifact.bin", "other bytes\n")
         self.commit("swap the artifact")
         proc, _, why = self.decide()
         self.assertEqual(proc.returncode, 1)
         self.assertTrue(any("not the recorded one" in w for w in why), why)
-        os.remove(os.path.join(self.repo, "evidence/check.md"))
+        os.remove(os.path.join(self.repo, "docs/release/evidence/check.md"))
         self.commit("drop the record")
         proc, _, why = self.decide()
         self.assertEqual(proc.returncode, 1)
-        self.assertTrue(any("record evidence/check.md is missing" in w for w in why), why)
+        self.assertTrue(any("record docs/release/evidence/check.md is not tracked at HEAD" in w for w in why), why)
+
+    def test_an_untracked_record_does_not_count(self):
+        self.git("rm", "-q", "--cached", "docs/release/evidence/check.md")
+        self.write(".gitignore", "ran-*\nout/\ndocs/release/evidence/check.md\n")
+        self.commit("stop tracking the record but keep the local file")
+        self.assertTrue(os.path.isfile(os.path.join(self.repo, "docs/release/evidence/check.md")))
+        proc, _, why = self.decide()
+        self.assertEqual(proc.returncode, 1)
+        self.assertTrue(any("not tracked at HEAD" in w for w in why), why)
 
     def test_a_revision_that_is_not_an_ancestor_does_not_pass(self):
         self.set_evidence(dict(self.oe, tested_revision="0" * 40))
@@ -218,7 +227,8 @@ class OperatorEvidence(SyntheticRepo):
 
     def test_malformed_evidence_is_refused_before_anything_runs(self):
         for bad in ({k: v for k, v in self.oe.items() if k != "watch"}, dict(self.oe, sha256="abc"),
-                    dict(self.oe, watch=[]), dict(self.oe, extra=1), "docs/x.md"):
+                    dict(self.oe, watch=[]), dict(self.oe, extra=1), "docs/x.md",
+                    dict(self.oe, record="notes/check.md"), dict(self.oe, artifact="docs/release/evidence/../x.bin")):
             self.set_evidence(bad)
             proc, res, ran = self.run_script("AC-006")
             self.assertEqual(proc.returncode, 2, repr(bad))
