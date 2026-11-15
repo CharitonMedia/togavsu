@@ -28,7 +28,19 @@ Patrick approved splitting the core release on 2026-11-13 (control PR #50):
 
 Subset mode: `TOGAVSU_ACCEPTANCE_IDS=AC-013,AC-016 sh scripts/ci/full-acceptance.sh` (it passes `--ids` to the runner) runs the checks of exactly the listed criteria and decides only those. It decides no release gate, since the gates belong to the full run on release-final. It exits 0 only when every listed criterion passes on a clean tree, 1 otherwise, and 2 when the list is empty or names an id that is not in docs/build/acceptance.json. With the variable unset the script runs all 52 criteria and every gate, as before. `tests/test_full_acceptance.py` covers both modes. `--check ID` runs single checks; `--list` prints them.
 
-`scripts/release/write_report.py PHASE_DIR` writes the report from one subset run per phase case of the release assignment in docs/build/tasks.json. It refuses runs that aren't exact subset runs of the mapped ids, ran on a dirty tree, or ran at different revisions.
+`scripts/release/write_report.py PHASE_DIR [--task ID]` writes the report from one subset run per phase case of a release assignment in docs/build/tasks.json (default `release`) to its `report_path`. It refuses runs that aren't exact subset runs of the mapped ids, ran on a dirty tree, or ran at different revisions.
+
+For `release-final` (`--task release-final`, a `full_acceptance` assignment) the `full-acceptance` phase must be the full run (`sh scripts/ci/full-acceptance.sh`, all 52 criteria and every gate), not a subset; its other phases (`desktop-install`, `signed-images-updater-load`, `backup-restore`) are subset runs at the same clean revision. The report carries the full run's `release_gates`, and its status is pass only when every phase exited 0, no criterion is pending and every gate passed. `tests/test_full_acceptance.py` (`FinalReleaseReport`) covers it.
+
+## What release-final still needs from the integration lead
+
+On a GitHub-hosted lane runner the full run at the release-final revision passes 50 of 52 criteria and the product-suites gate. These are left, and none can be closed from a lane:
+
+- AC-001 and the docker-desktop gate: `sh scripts/release/desktop-install.sh` on a clean Windows machine and a clean Mac with Docker Desktop. The script refuses any other engine. Attach its output to the release.
+- AC-041: the evidence map's gap, "opens in Word with no repair prompt", needs Microsoft Word. Save a DOCX from the browser editor (the `core-image-cases` check does the save), open it in Word on the integration lead's machine, and record the result. Only then may a reviewed change to acceptance-evidence.json replace the gap with that evidence. A lane never drops the gap.
+- The signed-release gate: steps 1 to 4 under "Cutting the release" below, with the off-GitHub signatures.
+
+Until all of these are in, release-final.json stays `pending` with AC-001 and AC-041 in `pending_acceptance_ids`, and nothing is tagged or published.
 
 ## Release gates
 

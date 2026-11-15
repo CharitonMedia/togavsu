@@ -29,6 +29,14 @@ PRD 11 asks for a whole-repository audit before the phase 7 tag: apply only cuts
 - Twelve packages each have their own `writeJSON` and `writeErr`. Each maps its own domain errors to HTTP. Collapsing them changes a shared interface across about twelve domain packages, the supervisor and the marketplace. That is an integration-lead change with its own review, not a release-time cut. It isn't a shortcut, so it carries no ponytail marker.
 - The practice and billing document stores (`practice_records`, `billing_records`) are recorded ceilings (PONYTAIL-DEBT.md Practice 1, Finance 12) with concrete triggers. Their migrations are frozen by checksums, so their markers point at the ledger entries that name the triggers.
 
+## release-final audit (2026-11-15)
+
+Reviewed the release-api-coverage (#55) and release-perf (#58) merges and the module kit (#57, #59) that landed after the candidate's audit, against the same rules.
+
+- Applied: `scripts/release/write_report.py` now takes `--task` and writes the assignment's own `report_path`, with full-run handling for a `full_acceptance` assignment. The alternative was a second report writer for release-final.
+- Reviewed and not cut: the release-perf projections and paged reads (billing_unbilled, billing_aging, calendar windows, cached matter keys). Each is the measured fix for one AC-017 cause in release-perf.json, and cutting any of them brings back a measured p95 failure. The module kit's pending list (pkg/modulekit/pending.go) is the public kit module repositories build against, and module-core owns its next changes. The per-package `writeJSON`/`writeErr` stays as recorded above: it is not a shortcut, and consolidating it at release time changes twelve domains' error mapping for no requirement.
+- No new shortcut, so no new ponytail entry. `python3 scripts/release/check_debt.py`: 108 markers, 67 ledger entries.
+
 ## Numbers
 
 The report records the final values at its `tested_revision`: net line count against the release base 47e73ee1616933ac18707cc9c30912edc313f3ac, the debt ledger count, and the number of `ponytail:` markers. Most added lines are tests: the release adds executable acceptance for every criterion it closed.

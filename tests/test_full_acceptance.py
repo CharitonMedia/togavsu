@@ -200,5 +200,73 @@ class ReleaseReport(unittest.TestCase):
             self.writer.build(self.TASK, self.dir)
 
 
+
+class FinalReleaseReport(unittest.TestCase):
+    TASK = {"id": "release-final", "full_acceptance": True, "acceptance_ids": ["AC-001", "AC-013", "AC-018"],
+            "phase_acceptance": {"full-acceptance": ["AC-001", "AC-013", "AC-018"], "desktop-install": ["AC-001"],
+                                 "signed-images-updater-load": ["AC-013"], "backup-restore": ["AC-018"]}}
+    REV = "c" * 40
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir)
+        self.writer = _load_writer()
+
+    def write_phase(self, phase, ids, failing=(), mode=None, gates=None):
+        whole = phase == "full-acceptance"
+        gates = gates if gates is not None else ({"signed-release": "pass", "docker-desktop": "pass"} if whole else {})
+        ok = not failing and all(v == "pass" for v in gates.values())
+        res = {"mode": mode or ("full" if whole else "subset"), "acceptance_ids": ids, "tested_revision": self.REV,
+               "working_tree_dirty": False, "status": "pass" if ok else "pending",
+               "passed_acceptance_ids": [i for i in ids if i not in failing],
+               "pending_acceptance_ids": [i for i in ids if i in failing],
+               "release_gates": gates,
+               "criteria": {i: {"reasons": ["chk fail"] if i in failing else []} for i in ids},
+               "checks": {"chk": {"command": "true", "exit_code": 0, "status": "pass"}}}
+        with open(os.path.join(self.dir, phase + ".json"), "w") as f:
+            json.dump(res, f)
+        with open(os.path.join(self.dir, phase + ".exit"), "w") as f:
+            f.write("0" if ok else "1")
+
+    def write_all(self, **over):
+        for phase, ids in self.TASK["phase_acceptance"].items():
+            self.write_phase(phase, ids, **over.get(phase, {}))
+
+    def test_full_run_and_passing_phases_give_a_passing_final_report(self):
+        self.write_all()
+        r = self.writer.build(self.TASK, self.dir)
+        self.assertEqual((r["task_id"], r["status"], r["exit_code"]), ("release-final", "pass", 0))
+        self.assertEqual(r["command"], "sh scripts/ci/full-acceptance.sh")
+        self.assertEqual(r["pending_acceptance_ids"], [])
+        self.assertEqual(r["release_gates"], {"signed-release": "pass", "docker-desktop": "pass"})
+        self.assertEqual([c["id"] for c in r["phase_cases"]], list(self.TASK["phase_acceptance"]))
+
+    def test_the_whole_phase_must_be_the_full_run_not_a_subset(self):
+        self.write_all(**{"full-acceptance": {"mode": "subset"}})
+        with self.assertRaises(SystemExit):
+            self.writer.build(self.TASK, self.dir)
+
+    def test_pending_desktop_and_gates_keep_the_final_report_pending(self):
+        self.write_all(**{"full-acceptance": {"failing": ["AC-001"], "gates": {"signed-release": "pending"}},
+                          "desktop-install": {"failing": ["AC-001"]}})
+        r = self.writer.build(self.TASK, self.dir)
+        self.assertEqual(r["status"], "pending")
+        self.assertEqual(r["pending_acceptance_ids"], ["AC-001"])
+        self.assertEqual(sorted(r["passed_acceptance_ids"] + r["pending_acceptance_ids"]), self.TASK["acceptance_ids"])
+        cases = {c["id"]: c for c in r["phase_cases"]}
+        self.assertEqual((cases["desktop-install"]["status"], cases["desktop-install"]["exit_code"]), ("fail", 1))
+        self.assertEqual(cases["backup-restore"]["status"], "pass")
+
+    def test_a_failing_gate_alone_keeps_the_final_report_pending(self):
+        self.write_all(**{"full-acceptance": {"gates": {"signed-release": "pending", "docker-desktop": "pass"}}})
+        r = self.writer.build(self.TASK, self.dir)
+        self.assertEqual(r["status"], "pending")
+        self.assertEqual(r["release_gates"]["signed-release"], "pending")
+
+    def test_unknown_assignment_is_refused(self):
+        with self.assertRaises(SystemExit):
+            self.writer.assignment("no-such-task")
+
+
 if __name__ == "__main__":
     unittest.main()
