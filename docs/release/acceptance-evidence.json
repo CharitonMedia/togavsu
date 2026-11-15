@@ -497,9 +497,8 @@
         "go-lawcraft",
         "core-image-cases"
       ],
-      "gaps": [
-        "external: 'opens in Word with no repair prompt' needs Microsoft Word; CheckDOCX is a package-rules check."
-      ]
+      "gaps": [],
+      "operator_evidence": "docs/release/evidence/AC-041-word.md"
     },
     "AC-042": {
       "checks": [
