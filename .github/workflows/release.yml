@@ -1,5 +1,4 @@
-# Proposed .github/workflows/release.yml (the integration lead lands it through a
-# reviewed control PR; lanes cannot change .github/).
+# The release workflow (landed by control PR #61; lanes cannot change .github/).
 #
 # Release signing, as Patrick decided on 2026-11-12: the release private key is kept off
 # GitHub, on the integration lead's machine. No repository secret holds it, this
@@ -84,13 +83,25 @@ jobs:
         run: |
           printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' \
             || { echo "not a release tag: $TAG" >&2; exit 1; }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
       - name: Refuse to replace recorded digests
+        # Fail closed: only gh's "release not found" counts as no release yet. Any other
+        # lookup failure (auth, API, network) stops before an image tag is pushed.
         run: |
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx digests.json; then
-            echo "release $TAG already records digests.json; publish a new tag instead" >&2
+          set -eu
+          if assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>"$RUNNER_TEMP/view.err"); then
+            if printf '%s\n' "$assets" | grep -qx digests.json; then
+              echo "release $TAG already records digests.json; publish a new tag instead" >&2
+              exit 1
+            fi
+          elif grep -qi 'release not found' "$RUNNER_TEMP/view.err"; then
+            echo "no release for $TAG yet"
+          else
+            cat "$RUNNER_TEMP/view.err" >&2
+            echo "could not look up release $TAG; refusing to push images" >&2
             exit 1
           fi
       - name: Log in to ghcr.io
@@ -99,12 +110,14 @@ jobs:
         run: |
           set -eu
           version=${TAG#v}
+          # The checked-out tag, not GITHUB_SHA: a manual run's GITHUB_SHA is the ref it was dispatched from.
+          rev=$(git rev-parse HEAD)
           docker buildx create --use --name release >/dev/null
           build() { # image, dockerfile
             docker buildx build --platform linux/amd64 --push --provenance=false \
               --build-arg "TOGAVSU_VERSION=$version" \
               --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
-              --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+              --label "org.opencontainers.image.revision=$rev" \
               -f "$2" -t "$REGISTRY/$1:$TAG" --metadata-file "$RUNNER_TEMP/$1.json" .
             digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/$1.json")
             printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$' || { echo "no digest for $1" >&2; exit 1; }
@@ -112,7 +125,7 @@ jobs:
           }
           build togavsu-core deploy/core.Dockerfile
           build togavsu-supervisor Dockerfile
-          jq -n --arg tag "$TAG" --arg rev "$GITHUB_SHA" --arg reg "$REGISTRY" \
+          jq -n --arg tag "$TAG" --arg rev "$rev" --arg reg "$REGISTRY" \
             --arg core "$(cat "$RUNNER_TEMP/togavsu-core.digest")" \
             --arg sup "$(cat "$RUNNER_TEMP/togavsu-supervisor.digest")" \
             '{tag: $tag, revision: $rev, signed: false, transparency_log: false,
@@ -152,9 +165,10 @@ jobs:
       PAYLOAD: ${{ github.event.inputs.payload }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
       - name: Download the tag's recorded digests
         run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern digests.json --dir "$RUNNER_TEMP/release"
       - name: Install cosign
