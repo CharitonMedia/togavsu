@@ -3142,6 +3142,45 @@ class LaneBackendTests(unittest.TestCase):
         with self.assertRaises(AgentNotFound):
             self.remote.agent(legacy)
 
+    def test_cursor_backend_launches_new_agents_on_cursor_and_finishes_existing_lanes(self):
+        self.launch()  # A lane launched before the switch back to Cursor.
+        cursor_agent = "bc-c1cb681b-2606-42d3-b619-5750b5561c4a"
+        seen = []
+        def cursor(remote, method, path, body=None):
+            seen.append((method, path))
+            if method == "POST":
+                return {"agent": {"id": body["agentId"]}, "run": {"id": "run-cursor"}}
+            if path == "/agents/" + cursor_agent:
+                return {"id": cursor_agent, "status": "ACTIVE", "latestRunId": "run-cursor"}
+            return {"id": "run-cursor", "agentId": cursor_agent, "status": "RUNNING", "git": {}}
+        self.remote.new_on_cursor = True  # No CURSOR_API_KEY: only new_on_cursor can route these to Cursor.
+        self.assertNotIn("CURSOR_API_KEY", os.environ)
+        dispatches = len([c for c in self.remote.calls if c[1].endswith("/dispatches")])
+        with patch.object(Remote, "cursor", cursor):
+            self.remote.cursor("POST", "/agents", {"agentId": cursor_agent, "name": "Togavsu two",
+                "prompt": {"text": "Implement Togavsu assignment two."},
+                "repos": [{"url": "https://github.com/CharitonMedia/togavsu", "startingRef": self.base}]})
+            self.assertEqual(self.remote.agent({"agent_id": cursor_agent})["status"], "RUNNING")
+            self.assertEqual(self.remote.agent(self.record)["status"], "CREATING")  # Still the lane workflow.
+        self.assertEqual(seen, [("POST", "/agents"), ("GET", "/agents/" + cursor_agent),
+                                ("GET", "/agents/" + cursor_agent + "/runs/run-cursor")])
+        self.assertNotIn(cursor_agent, self.remote.load())
+        self.assertEqual(len([c for c in self.remote.calls if c[1].endswith("/dispatches")]), dispatches)
+
+    def test_plan_backend_selects_the_remote(self):
+        select = build_controller.select_remote
+        actions = select({"worker_backend": "claude-actions"}, self.state)
+        self.assertIsInstance(actions, build_controller.ActionsRemote)
+        self.assertFalse(actions.new_on_cursor)
+        for plan in ({"worker_backend": "cursor"}, {}):
+            with self.subTest(plan=plan):
+                self.assertIs(type(select(plan, self.state)), Remote)  # No lanes ever ran: plain Cursor.
+                (self.state / "lane-agents.json").write_text("{}")
+                mixed = select(plan, self.state)
+                self.assertIsInstance(mixed, build_controller.ActionsRemote)
+                self.assertTrue(mixed.new_on_cursor)  # Lanes finish on Actions; new work goes to Cursor.
+                (self.state / "lane-agents.json").unlink()
+
     def test_lane_cannot_publish_control_or_unsafe_workflow_changes(self):
         safe = "name: Product CI\non: [push]\npermissions:\n  contents: read\njobs: {}\n"
         cases = {
