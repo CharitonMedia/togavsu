@@ -269,7 +269,6 @@ cs = sub(cs, 'assert rows == [x["requirement"] for x in acceptance], "Acceptance
          'acceptance2 = json.loads((root / "docs/build/acceptance-batch2.json").read_text())\n'
          'rows2 = [{"id": i, "requirement": r} for i, r in re.findall(r"^((?:CU2|IMP|MKT)-\\d\\d) (.+)$", changes2, re.M)]\n'
          'assert rows2 == acceptance2 and len(rows2) == 23, "Batch 2 acceptance index drift"\n'
-         'core_ids = ids\n'
          'ids = ids | {x["id"] for x in acceptance2}\n')
 cs = sub(cs, 'import re\nmprd =', 'mprd =')
 cs = sub(cs, '        assert s in headings, (t["id"], "unknown modules PRD section", s)\n',
@@ -292,7 +291,21 @@ cs = sub(cs, '"docs/modules/CORE-CHANGES.md"]', '"docs/modules/CORE-CHANGES.md",
 cs = sub(cs, 'print("PASS: 52 criteria indexed,', 'print("PASS: 52 core and 23 batch 2 criteria indexed, batch2 plan matches,')
 write("scripts/check_setup.py", cs)
 
-# 8. The reviewer reads the batch 2 scope for batch 2 assignments.
+# 8. A second controller instance drives the batch2 plan, with its own pinned copy, state and timer.
+svc = (root / "deploy/controller/togavsu-build-controller.service").read_text()
+svc = sub(svc, "Description=Togavsu cloud build integration controller",
+          "Description=Togavsu cloud build integration controller for the batch2 branch")
+svc = sub(svc, "/home/patrick/.local/share/togavsu-controller", "/home/patrick/.local/share/togavsu-controller-batch2", 3)
+svc = sub(svc, "--state /mnt/claude-workspace/nolan-pms/togavsu/.build-state",
+          "--state /mnt/claude-workspace/nolan-pms/togavsu/.build-state-batch2")
+write("deploy/controller/togavsu-build-controller-batch2.service", svc)
+tmr = (root / "deploy/controller/togavsu-build-controller.timer").read_text()
+tmr = sub(tmr, "Description=Continue Togavsu build without an open chat",
+          "Continue the Togavsu batch2 build without an open chat".join(["Description=", ""]))
+tmr = sub(tmr, "Unit=togavsu-build-controller.service", "Unit=togavsu-build-controller-batch2.service")
+write("deploy/controller/togavsu-build-controller-batch2.timer", tmr)
+
+# 9. The reviewer reads the batch 2 scope for batch 2 assignments.
 rv = (root / "docs/build/prompts/codex-review.md").read_text()
 rv = sub(rv, "and the trusted docs/modules files it names. ",
          "and the trusted docs/modules files it names. For an assignment with batch2_sections, also read trusted root "
