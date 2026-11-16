@@ -190,7 +190,7 @@ class VerifyRelease(unittest.TestCase):
         self.assertIn("ships a different cosign.pub", r.stderr)
 
     def test_missing_cosign_fails_rather_than_pending(self):
-        # The live Full acceptance job today: tag present but no cosign installed.
+        # A tag is present but the cosign binary is missing (COSIGN_BIN points nowhere).
         self.tag()
         r = self.run_verify(COSIGN_BIN=os.path.join(self.bin, "absent"))
         self.assertEqual(r.returncode, 1)

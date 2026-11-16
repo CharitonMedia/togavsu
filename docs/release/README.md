@@ -34,13 +34,12 @@ For `release-final` (`--task release-final`, a `full_acceptance` assignment) the
 
 ## What release-final still needs from the integration lead
 
-On a GitHub-hosted lane runner the full run at the release-final revision passes 50 of 52 criteria and the product-suites gate. These are left, and none can be closed from a lane:
+On a GitHub-hosted lane runner the full run at the release-final revision passes every criterion but AC-001, and the product-suites gate. AC-041's Word check is recorded as operator evidence (#62). These are left, and none can be closed from a lane:
 
 - AC-001 and the docker-desktop gate: `sh scripts/release/desktop-install.sh` on a clean Windows machine and a clean Mac with Docker Desktop. The script refuses any other engine. Attach its output to the release.
-- AC-041: the evidence map's gap, "opens in Word with no repair prompt", needs Microsoft Word. Save a DOCX from the browser editor (the `core-image-cases` check does the save), open it in Word on the integration lead's machine, and record the result. Only then may a reviewed change to acceptance-evidence.json replace the gap with that evidence. A lane never drops the gap.
-- The signed-release gate: steps 1 to 4 under "Cutting the release" below, with the off-GitHub signatures.
+- The signed-release gate: steps 1 to 4 under "Cutting the release" below, with the off-GitHub signatures, verifiable by `verify-release.sh` in CI.
 
-Until all of these are in, release-final.json stays `pending` with AC-001 and AC-041 in `pending_acceptance_ids`, and nothing is tagged or published.
+Until all of these are in, release-final.json stays `pending` with AC-001 in `pending_acceptance_ids`, and nothing is published.
 
 ### Operator evidence
 
