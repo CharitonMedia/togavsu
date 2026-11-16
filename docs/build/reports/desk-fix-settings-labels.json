@@ -1,0 +1,40 @@
+{
+  "task_id": "desk-fix-settings-labels",
+  "status": "pass",
+  "scope": "Desk fix: plain labels on every settings.Definition, admin Settings rows, and the settings API JSON/OpenAPI Setting schema. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
+  "tested_revision": "b4c93c42d59d09f6575ad16a8a16224fb65eedea",
+  "prd_sections": ["8.7"],
+  "acceptance_ids": [],
+  "tests": [
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "seconds": 12
+    },
+    {
+      "command": "go test -count=1 ./internal/settings/ ./internal/dashboard/ ./internal/core/",
+      "exit_code": 0,
+      "seconds": 97
+    },
+    {
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "seconds": 15
+    }
+  ],
+  "implemented": [
+    "settings.Definition.Label on every catalog key from docs/build/desk-fixes/settings-labels.md",
+    "ValidateCatalog refuses an empty label",
+    "Admin and core settings rows lead with label, help under it, key last muted; column heading Name; visually hidden form label and save/reset/error copy use the label",
+    "settingJSON and OpenAPI Setting include required label; listSettings description lists setting fields including label"
+  ],
+  "pending": [
+    "GitHub CI on claude/togavsu-desk-fix-settings-labels-ce8de139 (Core tests, API contract tests, Codex checkpoint) — branch not published from this read-only lane; controller publishes commits and opens/updates the PR",
+    "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
+  ],
+  "simplification": {
+    "net_lines": 249,
+    "ponytail_debt_sections": 13,
+    "note": "No new PONYTAIL-DEBT entries. Reused Definition embedding on Entry for templates and settingJSON; LabelOf for UI notices."
+  }
+}
