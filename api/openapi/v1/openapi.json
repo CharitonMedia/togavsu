@@ -37842,7 +37842,7 @@
       "post": {
         "operationId": "publishFile",
         "summary": "Publish a staged upload as a file",
-        "description": "Creates the file and its first version from one staged upload in one transaction, then marks the upload published. completeFileUpload must have run first. A failed publish leaves the upload staged, creates no file, and emits no file.version_created. After the transaction commits, the new first version emits file.version_created.",
+        "description": "Creates the file and its first version from one staged upload in one transaction, then marks the upload published. completeFileUpload must have run first. A failed publish leaves the upload staged, creates no file, and emits no file.version_created. After the transaction commits, the new first version emits file.version_created. Optional origin (firm or received) is accepted only from a module token; omitted keeps the current receivedSource and grant rules. A client-only delegated viewer forces source client_upload and may not pass origin firm.",
         "tags": [
           "Files"
         ],
@@ -71012,12 +71012,20 @@
           },
           "shared_with_client": {
             "type": "boolean"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "firm",
+              "received"
+            ],
+            "description": "Optional. firm or received. Accepted only from a module token. Omitted, receivedSource (and an email/zoom/drop grant) still marks the file received. A module may not pass firm for a client-only delegated viewer (validation_failed)."
           }
         },
         "required": [
           "upload_id"
         ],
-        "description": "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event."
+        "description": "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event. Optional origin (firm or received) is accepted only from a module token (CORE-16)."
       },
       "BackgroundFileGrantRequest": {
         "description": "Matter publication names one authorized matter. Unassigned ingestion names no matter. The body cannot name a module id, a role, or an expiry.",

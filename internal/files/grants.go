@@ -334,6 +334,8 @@ type BulkItem struct {
 	Name             string     `json:"name"`
 	AttorneyOnly     bool       `json:"attorney_only"`
 	SharedWithClient bool       `json:"shared_with_client"`
+	// Origin is firm or received. Only a module token may set it (CORE-16).
+	Origin string `json:"origin,omitempty"`
 }
 
 // batch defers what a single publish does after its own commit until the bulk
@@ -385,7 +387,7 @@ func (s *Service) PublishBatch(ctx context.Context, p domain.Principal, items []
 		}
 		for i, it := range items {
 			v, err := s.PublishUpload(ctx, p, Publish{UploadID: it.UploadID, MatterID: it.MatterID, ContactID: it.ContactID,
-				Name: it.Name, AttorneyOnly: it.AttorneyOnly, SharedWithClient: it.SharedWithClient})
+				Name: it.Name, AttorneyOnly: it.AttorneyOnly, SharedWithClient: it.SharedWithClient, Origin: it.Origin})
 			if err != nil {
 				return itemError(i, err)
 			}

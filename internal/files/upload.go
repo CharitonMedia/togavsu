@@ -318,6 +318,8 @@ type Publish struct {
 	AttorneyOnly     bool       `json:"attorney_only"`
 	SharedWithClient bool       `json:"shared_with_client"`
 	FolderID         domain.ID  `json:"folder_id"`
+	// Origin is firm or received. Only a module token may set it (CORE-16).
+	Origin string `json:"origin,omitempty"`
 }
 
 // PublishUpload creates a file from a staged upload.
@@ -331,6 +333,10 @@ func (s *Service) PublishUpload(ctx context.Context, p domain.Principal, in Publ
 	}
 	if u.Status != "staged" {
 		return FileView{}, domain.Conflict("complete the upload before publishing it")
+	}
+	origin, err := modulePublishOrigin(p, in.Origin)
+	if err != nil {
+		return FileView{}, err
 	}
 	var grant grantRow
 	if u.GrantID != "" {
@@ -354,9 +360,9 @@ func (s *Service) PublishUpload(ctx context.Context, p domain.Principal, in Publ
 	nf := NewFile{
 		Name: name, MatterID: matter, ContactID: contact, FolderID: in.FolderID, AttorneyOnly: in.AttorneyOnly,
 		SharedWithClient: in.SharedWithClient, MediaType: u.MediaType, Source: sourceFor(p), How: "upload",
-		created: true, unassigned: grant.Assignment == "unassigned",
+		Origin: origin, created: true, unassigned: grant.Assignment == "unassigned",
 	}
-	if grant.ID != "" && grant.Source != "importer" {
+	if origin == "" && grant.ID != "" && grant.Source != "importer" {
 		nf.Origin = "received"
 	}
 	staged, err := os.Open(s.stagingPath(u.ID))
@@ -454,9 +460,9 @@ func (s *Service) replayVersion(ctx context.Context, p domain.Principal, fileID,
 	return s.Version(ctx, p, fileID, u.VersionID)
 }
 
-// sourceFor is the file's source: a client's upload (directly, or through the client
-// portal module's frame, PRD 8.19) is client_upload, a module's own write is the module
-// id, and a staff upload is upload.
+// sourceFor is the file's source: a client's upload (directly, or through a module's
+// delegated client-only viewer, CORE-16 / PRD 8.19) is client_upload even when the
+// caller's channel is the module; a module's own write is the module id; staff is upload.
 func sourceFor(p domain.Principal) string {
 	switch {
 	case clientOnly(p):
@@ -466,6 +472,24 @@ func sourceFor(p domain.Principal) string {
 	default:
 		return "upload"
 	}
+}
+
+// modulePublishOrigin accepts optional origin on publishFile and bulkFile. Only a
+// module principal may set it. A client-only delegated viewer may not set firm.
+func modulePublishOrigin(p domain.Principal, origin string) (string, error) {
+	if origin == "" {
+		return "", nil
+	}
+	if p.Source != domain.SourceModule || p.ModuleID == "" {
+		return "", domain.Invalid("origin", "origin is only accepted from a module token")
+	}
+	if origin != "firm" && origin != "received" {
+		return "", domain.Invalid("origin", "origin is firm or received")
+	}
+	if origin == "firm" && clientOnly(p) {
+		return "", domain.Invalid("origin", "a client viewer cannot publish with origin firm")
+	}
+	return origin, nil
 }
 
 func (s *Service) duplicateWarnings(ctx context.Context, p domain.Principal, matter domain.ID, sha string) ([]string, error) {
