@@ -29,15 +29,24 @@ type Manifest struct {
 	Help        HelpGuide     `json:"help"`
 	Tabs        []Tab         `json:"tabs"`
 	MatterItems []MatterItem  `json:"matter_items"`
-	Sidebar     []Link        `json:"sidebar"`
-	QuickCreate []Link        `json:"quick_create"`
-	Search      []Link        `json:"search_scopes"`
-	Events      []string      `json:"events"`
-	Emits       []string      `json:"emits"`
-	Data        Data          `json:"data"`
-	Replaces    string        `json:"replaces"`
-	Settings    []SettingSpec `json:"settings"`
-	AITasks     []AITask      `json:"ai_tasks"`
+	Sidebar       []Link             `json:"sidebar"`
+	QuickCreate   []Link             `json:"quick_create"`
+	Search        []Link             `json:"search_scopes"`
+	Notifications []NotificationKind `json:"notifications"`
+	Events        []string           `json:"events"`
+	Emits         []string           `json:"emits"`
+	Data          Data               `json:"data"`
+	Replaces      string             `json:"replaces"`
+	Settings      []SettingSpec      `json:"settings"`
+	AITasks       []AITask           `json:"ai_tasks"`
+}
+
+// NotificationKind is one module notification kind (CORE-03). The core names it
+// {module_id}.{kind} in preferences and createNotification.
+type NotificationKind struct {
+	Kind            string   `json:"kind"`
+	Label           string   `json:"label"`
+	DefaultChannels []string `json:"default_channels"`
 }
 
 // Container is the image the supervisor runs, pinned by digest.
@@ -207,6 +216,8 @@ var (
 	eventRe   = regexp.MustCompile(`^[a-z_]+\.([a-z_]+|\*)$`)
 	digestRe  = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	versionRe = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$`)
+	// notifyKind is CORE-03: short kind in the manifest before the module id is prefixed.
+	notifyKind = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
 )
 
 // forbiddenScopes are scopes a module can't hold: they would let it mint tokens, approve
@@ -383,6 +394,50 @@ func (m Manifest) validate(report func(error) bool) {
 	if len(m.AITasks) > 0 && !seen["ai:use"] {
 		ok(invalid("ai_tasks", "AI tasks need the ai:use permission"))
 	}
+	if !m.validateNotifications(ok) {
+		return
+	}
+}
+
+func (m Manifest) validateNotifications(ok func(error) bool) bool {
+	seen := map[string]bool{}
+	for i, n := range m.Notifications {
+		f := fmt.Sprintf("notifications[%d]", i)
+		if !notifyKind.MatchString(n.Kind) || seen[n.Kind] {
+			if !ok(invalid(f+".kind", "kind is a unique lower-case name up to 48 characters")) {
+				return false
+			}
+			continue
+		}
+		seen[n.Kind] = true
+		if strings.TrimSpace(n.Label) == "" {
+			if !ok(invalid(f+".label", "label is required")) {
+				return false
+			}
+		}
+		if len(n.DefaultChannels) == 0 {
+			if !ok(invalid(f+".default_channels", "default_channels is a non-empty subset of in_app and email")) {
+				return false
+			}
+			continue
+		}
+		ch := map[string]bool{}
+		for j, c := range n.DefaultChannels {
+			if c != "in_app" && c != "email" || ch[c] {
+				if !ok(invalid(fmt.Sprintf("%s.default_channels[%d]", f, j), "default_channels is a non-empty subset of in_app and email")) {
+					return false
+				}
+				break
+			}
+			ch[c] = true
+		}
+	}
+	return true
+}
+
+// FullNotificationKind is the preference and createNotification kind for a short manifest kind.
+func FullNotificationKind(moduleID, kind string) string {
+	return moduleID + "." + kind
 }
 
 func contains(list []string, s string) bool {

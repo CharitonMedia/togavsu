@@ -61,7 +61,7 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 	raw := samplePackage(t, func(f map[string][]byte) {
 		replace(f, modules.ManifestFile, "  events: /events\n", "  events: /events\n  system_mail: true\n")
 		replace(f, modules.ManifestFile, "    placement: home\n", "    placement: home\n    params: [matter_id]\n")
-		replace(f, modules.ManifestFile, "tabs:\n", "notifications:\n  - kind: a\n    label: A\ntabs:\n")
+		replace(f, modules.ManifestFile, "tabs:\n", "inbound_webhooks:\n  - id: pay\n    path: /hook\ntabs:\n")
 		replace(f, modules.ManifestFile, "      h: 2\n    sizes:", "      h: 2\n      d: 1\n    sizes:")
 	})
 	_, _, refs := modules.CheckAll(raw)
@@ -72,7 +72,7 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 		}
 		got[r.Path] = r.Value
 	}
-	want := map[string]string{"container.system_mail": "system_mail", "tabs[0].params": "params", "notifications": "notifications", "widgets[0].size.d": "d"}
+	want := map[string]string{"container.system_mail": "system_mail", "tabs[0].params": "params", "inbound_webhooks": "inbound_webhooks", "widgets[0].size.d": "d"}
 	if len(got) != len(want) {
 		t.Fatalf("refusals %v, want %v", got, want)
 	}
@@ -87,7 +87,7 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 		t.Fatal("the install check passed an unknown field")
 	}
 	one := samplePackage(t, func(f map[string][]byte) {
-		replace(f, modules.ManifestFile, "tabs:\n", "notifications:\n  - kind: a\ntabs:\n")
+		replace(f, modules.ManifestFile, "tabs:\n", "inbound_webhooks:\n  - id: pay\ntabs:\n")
 	})
 	_, _, refs = modules.CheckAll(one)
 	_, _, err = modules.CheckPackage(one)
@@ -206,12 +206,12 @@ func TestAccepts(t *testing.T) {
 		t.Fatal(a.ManifestSchema)
 	}
 	fields := strings.Join(a.ManifestFields, " ")
-	for _, f := range []string{"id", "sidebar[*].path", "widgets[*].target.params", "data.extends[*].columns[*].attorney_only", "permissions[*].required"} {
+	for _, f := range []string{"id", "sidebar[*].path", "widgets[*].target.params", "data.extends[*].columns[*].attorney_only", "permissions[*].required", "notifications[*].kind", "notifications[*].label", "notifications[*].default_channels"} {
 		if !strings.Contains(" "+fields+" ", " "+f+" ") {
 			t.Fatalf("%s missing from %s", f, fields)
 		}
 	}
-	if strings.Contains(fields, "notifications") || len(a.Scopes) != len(identity.Scopes()) || len(a.ForbiddenScopes) != 3 {
+	if len(a.Scopes) != len(identity.Scopes()) || len(a.ForbiddenScopes) != 3 {
 		t.Fatalf("accepts: %+v", a)
 	}
 	if !strings.Contains(strings.Join(a.CoreRelations, " "), "core.matters") || !strings.Contains(strings.Join(a.CoreRecords, " "), "time_entry") {
