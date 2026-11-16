@@ -5278,6 +5278,9 @@ class ContractTest(unittest.TestCase):
                     "createModuleMarker",
                     "updateModuleMarker",
                     "revokeModuleMarker",
+                    "putModuleSecret",
+                    "getModuleSecret",
+                    "deleteModuleSecret",
                 },
                 "issuance": {"createApiToken"},
                 "trust_debit": {"applyTrustToInvoice", "applyFlatFee"},
@@ -5353,6 +5356,10 @@ class ContractTest(unittest.TestCase):
             arguments = {"path": {"module_id": module_id}}
             if scope == "help:write":
                 arguments["body"] = {"heading": module_id}
+            elif scope == "module_secrets:write":
+                arguments["path"]["name"] = "qbo/access_token"
+                if operation_id == "putModuleSecret":
+                    arguments["body"] = {"value": "synthetic-secret"}
             else:
                 arguments["body"] = {"marker_id": "018f1a00-7b3c-7d4e-8a11-111111111111", "label": "After hours", "color": "#336699"}
                 arguments["path"]["marker_id"] = "018f1a00-7b3c-7d4e-8a11-111111111111"
@@ -7436,12 +7443,26 @@ class ContractTest(unittest.TestCase):
                 arguments["path"]["marker_id"] = "018f1a00-7b3c-7d4e-8a11-111111111111"
             if "{page_id}" in path:
                 arguments["path"]["page_id"] = "start"
+            if "{name}" in path:
+                arguments["path"]["name"] = "qbo/access_token"
+            if operation_id == "putModuleSecret":
+                arguments["body"] = {"value": "synthetic-secret"}
             held = {"viewer_present": False, "module_id": module_id, "installed": True, "approved_scopes": [scope], "module_scopes": [scope]}
             cases.append({"family": "module_principal", "name": operation_id + " empty token", "result": "scope_denied", "call": {**bearer(**held, token_scopes=[]), "tool": operation_id, "arguments": arguments}})
             cases.append({"family": "module_principal", "name": operation_id + " empty current approval", "result": "scope_denied", "call": {**bearer(**held, token_scopes=[scope], current_approved_scopes=[]), "tool": operation_id, "arguments": arguments}})
         self.assertEqual(
             set(principal_ids),
-            {"createModuleHelpPage", "replaceModuleHelpPages", "deleteModuleHelpPage", "createModuleMarker", "updateModuleMarker", "revokeModuleMarker"},
+            {
+                "createModuleHelpPage",
+                "replaceModuleHelpPages",
+                "deleteModuleHelpPage",
+                "createModuleMarker",
+                "updateModuleMarker",
+                "revokeModuleMarker",
+                "putModuleSecret",
+                "getModuleSecret",
+                "deleteModuleSecret",
+            },
         )
         cases.append({"family": "module_principal", "name": "help bearer matches current approval", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="matter-clock", installed=True, approved_scopes=["help:write"], token_scopes=["help:write"], current_approved_scopes=["help:write"]), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}})
         grant_body = {"assignment": "matter", "matter_id": visible, "source": "email"}

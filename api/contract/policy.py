@@ -1163,6 +1163,8 @@ def _principal_code(operation: dict, call: dict) -> str | None:
         if isinstance(call.get("stored_definitions"), list):
             rows.extend(dict(row) for row in call["stored_definitions"] if isinstance(row, dict))
         return module_marker_registration(operation, {"definitions": rows, "attachments": []}, adapted)["result"]
+    if scope == "module_secrets:write":
+        return module_secret_access(operation, adapted)
     return "forbidden"
 
 
@@ -2822,6 +2824,26 @@ def issue_api_token(operation: dict, call: dict) -> dict:
         },
         "secret": "issued-once",
     }
+
+
+def module_secret_access(operation: dict, call: dict) -> str:
+    """module_secrets:write is the calling module's own sealed secret store only (CORE-06)."""
+    principal = operation["x-togavsu-access"].get("module_principal") or {}
+    if (
+        not principal.get("own_secrets_only")
+        or principal.get("grants_admin")
+        or principal.get("scope") != "module_secrets:write"
+    ):
+        return "forbidden"
+    if call.get("actor") != "module" or call.get("human_session"):
+        return "forbidden"
+    if "module_secrets:write" not in set(call.get("scopes") or []):
+        return "scope_denied"
+    if not module_id_slug(call.get("module_id")) or not module_id_slug(call.get("path_module_id")):
+        return "forbidden"
+    if call.get("module_id") != call.get("path_module_id"):
+        return "forbidden"
+    return "allowed"
 
 
 def module_help_registration(operation: dict, call: dict) -> str:

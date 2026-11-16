@@ -1533,6 +1533,12 @@ func (s *Service) Uninstall(ctx context.Context, p domain.Principal, id string, 
 		reason = "uninstalled; data deleted after backup " + backup
 	}
 	if err := s.commit(ctx, func(ctx context.Context) error {
+		// CORE-06: delete removes sealed secrets; keep leaves them for a later reinstall.
+		if in.Data == "delete" {
+			if err := s.deleteModuleSecrets(ctx, id); err != nil {
+				return err
+			}
+		}
 		if err := s.saveRow(ctx, r); err != nil {
 			return err
 		}

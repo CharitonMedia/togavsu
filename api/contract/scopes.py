@@ -65,6 +65,7 @@ SCOPES = {
     "updates:admin": "Read update history and start an update.",
     "modules:read": "Read modules, marketplace listings, and domain handlers.",
     "modules:write": "Install, configure, and remove modules.",
+    "module_secrets:write": "Store and read the calling module's own sealed secrets.",
 }
 
 SCOPE_PATTERNS = [

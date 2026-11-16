@@ -17198,6 +17198,7 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -17432,6 +17433,7 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -17710,6 +17712,7 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -17944,6 +17947,7 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -18724,6 +18728,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "module_delegation": "delegated_viewer",
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -18936,7 +18941,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -20613,6 +20619,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "module_delegation": "delegated_viewer",
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -20825,7 +20832,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -61326,6 +61334,430 @@
         }
       }
     },
+    "/api/v1/modules/{module_id}/secrets/{name}": {
+      "put": {
+        "operationId": "putModuleSecret",
+        "summary": "Store a module secret",
+        "description": "The calling module's own bearer stores one sealed secret under name. The path module_id must match the token's module. A context token is ignored. At most 512 secrets per module, 16 KiB each; names match ^[a-z0-9/_-]{1,128}$. The audit log records the name only. Uninstall with keep-data keeps secrets; delete removes them.",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [
+          {
+            "name": "module_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "description": "Path parameter module_id."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9/_-]{1,128}$",
+              "description": "Module secret name (CORE-06). May include slashes."
+            },
+            "description": "Path parameter name."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "modules"
+        ],
+        "x-togavsu-access": {
+          "roles": [],
+          "scopes": [
+            "module_secrets:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_principal": {
+            "actor_kind": "module",
+            "scope": "module_secrets:write",
+            "module_id_param": "module_id",
+            "own_secrets_only": true,
+            "grants_admin": false,
+            "other_module": "forbidden",
+            "human_session": "forbidden"
+          },
+          "module_delegation": "service_principal",
+          "event_exemption": "Sealed module credentials. The audit log records the secret name only; no activity-stream event carries a secret name or value (CORE-06).",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "putModuleSecret",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "empty"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "not_found"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleSecretWrite"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getModuleSecret",
+        "summary": "Read a module secret",
+        "description": "Returns the clear value of one sealed secret for the calling module. A missing name is not_found. A context token is ignored.",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [
+          {
+            "name": "module_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "description": "Path parameter module_id."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9/_-]{1,128}$",
+              "description": "Module secret name (CORE-06). May include slashes."
+            },
+            "description": "Path parameter name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleSecret"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "modules"
+        ],
+        "x-togavsu-access": {
+          "roles": [],
+          "scopes": [
+            "module_secrets:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_principal": {
+            "actor_kind": "module",
+            "scope": "module_secrets:write",
+            "module_id_param": "module_id",
+            "own_secrets_only": true,
+            "grants_admin": false,
+            "other_module": "forbidden",
+            "human_session": "forbidden"
+          },
+          "module_delegation": "service_principal"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getModuleSecret",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "not_found"
+        ]
+      },
+      "delete": {
+        "operationId": "deleteModuleSecret",
+        "summary": "Delete a module secret",
+        "description": "Removes one sealed secret for the calling module. A missing name is not_found. A context token is ignored.",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [
+          {
+            "name": "module_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "description": "Path parameter module_id."
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9/_-]{1,128}$",
+              "description": "Module secret name (CORE-06). May include slashes."
+            },
+            "description": "Path parameter name."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "modules"
+        ],
+        "x-togavsu-access": {
+          "roles": [],
+          "scopes": [
+            "module_secrets:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_principal": {
+            "actor_kind": "module",
+            "scope": "module_secrets:write",
+            "module_id_param": "module_id",
+            "own_secrets_only": true,
+            "grants_admin": false,
+            "other_module": "forbidden",
+            "human_session": "forbidden"
+          },
+          "module_delegation": "service_principal",
+          "event_exemption": "Removes a sealed module credential. The audit log records the secret name only; no activity-stream event is emitted (CORE-06).",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "deleteModuleSecret",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "empty"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "not_found"
+        ]
+      }
+    },
     "/api/v1/modules/{module_id}/context-tokens": {
       "post": {
         "operationId": "createModuleContextToken",
@@ -74651,6 +75083,44 @@
         },
         "description": "The viewer is the authenticated caller. user_id and roles are not accepted."
       },
+      "ModuleSecret": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9/_-]{1,128}$",
+            "description": "Secret name. Matches the path; slash names are allowed."
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "description": "Clear secret value for the calling module only."
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "description": "One sealed secret opened for the calling module (CORE-06)."
+      },
+      "ModuleSecretWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "description": "Clear secret value; sealed at rest with the core key."
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "description": "Body for putModuleSecret."
+      },
       "ManifestMigration": {
         "type": "object",
         "additionalProperties": false,
@@ -80223,6 +80693,19 @@
         },
         "description": "Empty module_id restores the core. Patch: every field is optional."
       },
+      "ModuleSecretWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "description": "Clear secret value; sealed at rest with the core key."
+          }
+        },
+        "description": "Body for putModuleSecret. Patch: every field is optional."
+      },
       "ProblemReportWritePatch": {
         "type": "object",
         "additionalProperties": false,
@@ -83352,6 +83835,10 @@
     {
       "scope": "matters:write",
       "description": "Write matters, parties, walls, and fee agreements."
+    },
+    {
+      "scope": "module_secrets:write",
+      "description": "Store and read the calling module's own sealed secrets."
     },
     {
       "scope": "modules:read",

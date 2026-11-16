@@ -46,6 +46,7 @@ func (a *App) routes() {
 	m.HandleFunc("POST /api/v1/api-tokens", a.issueTokenJSON)
 	m.HandleFunc("DELETE /api/v1/api-tokens/{token_id}", a.revokeTokenJSON)
 	a.identityRoutes(m)
+	a.directoryRoutes(m)
 	a.systemRoutes(m)
 	a.eventRoutes(m)
 	a.aiProviderRoutes(m)
@@ -242,14 +243,13 @@ func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 	return c, nil
 }
 
-// moduleRuntimeRoute reports a module token calling the runtime's module-facing routes,
-// which the contract does not list as operations: verifying its frame's context token,
-// reading its own settings, and reading a published view. The module handler enforces
-// their rules itself (its own id only; a view only after the admin approved its scope),
-// so the contract scope gate does not apply.
-// ponytail: ceiling: three routes held outside the published contract. Upgrade path: the
-// API owner adds them to api/openapi/v1 with module-only access. Trigger: the next
-// contract revision.
+// moduleRuntimeRoute reports a module token calling the runtime's module-facing routes
+// that either sit outside the published contract (verify, own settings, published view)
+// or need a trailing path wildcard the contract's single-segment {name} cannot express
+// (module secrets with / in the name, CORE-06). The module handler still enforces own-id
+// and scope rules.
+// ponytail: ceiling: verify/settings/views plus secrets wildcard. Upgrade path: contract
+// path params that span segments. Trigger: OpenAPI gains a multi-segment secret name form.
 func moduleRuntimeRoute(r *http.Request, p domain.Principal) bool {
 	if p.ModuleID == "" || p.Source != domain.SourceModule {
 		return false
@@ -260,6 +260,10 @@ func moduleRuntimeRoute(r *http.Request, p domain.Principal) bool {
 		return moduleIDOf(r.URL.Path) == p.ModuleID
 	case "GET /api/v1/modules/{module_id}/views/{view}":
 		return true
+	case "PUT /api/v1/modules/{module_id}/secrets/{name...}",
+		"GET /api/v1/modules/{module_id}/secrets/{name...}",
+		"DELETE /api/v1/modules/{module_id}/secrets/{name...}":
+		return moduleIDOf(r.URL.Path) == p.ModuleID
 	}
 	return false
 }
@@ -267,8 +271,14 @@ func moduleRuntimeRoute(r *http.Request, p domain.Principal) bool {
 // moduleRuntimeRoutes matches moduleRuntimeRoute's patterns.
 var moduleRuntimeRoutes = func() *http.ServeMux {
 	m := http.NewServeMux()
-	for _, p := range []string{"POST /api/v1/modules/{module_id}/context-tokens/verify", "GET /api/v1/modules/{module_id}/settings",
-		"GET /api/v1/modules/{module_id}/views/{view}"} {
+	for _, p := range []string{
+		"POST /api/v1/modules/{module_id}/context-tokens/verify",
+		"GET /api/v1/modules/{module_id}/settings",
+		"GET /api/v1/modules/{module_id}/views/{view}",
+		"PUT /api/v1/modules/{module_id}/secrets/{name...}",
+		"GET /api/v1/modules/{module_id}/secrets/{name...}",
+		"DELETE /api/v1/modules/{module_id}/secrets/{name...}",
+	} {
 		m.Handle(p, http.NotFoundHandler())
 	}
 	return m

@@ -11,6 +11,7 @@ STAFF = ["admin", "attorney", "staff"]
 BILLING = ["admin", "attorney", "staff", "accountant"]
 FIRM = ["admin", "attorney", "staff", "accountant"]
 ANY = ["admin", "attorney", "staff", "accountant", "client"]
+VIEWER = {"module_delegation": "delegated_viewer"}
 
 WALL = {"matter_wall": True, "access_inherits": "matter"}
 FILE_ACCESS_CASES = [
@@ -92,6 +93,20 @@ MODULE_MARKER = {
         "other_module": "forbidden",
         "caller_supplied_owner": "ignored",
     },
+}
+MODULE_SECRET = {
+    "client": "deny",
+    "module_principal": {
+        "actor_kind": "module",
+        "scope": "module_secrets:write",
+        "module_id_param": "module_id",
+        "own_secrets_only": True,
+        "grants_admin": False,
+        "other_module": "forbidden",
+        "human_session": "forbidden",
+    },
+    # Module bearer only; no viewer. A context token is ignored at the handler.
+    "module_delegation": "service_principal",
 }
 OWN = {"client": "own"}
 NOTIFICATION_RECIPIENT = {
@@ -1450,6 +1465,19 @@ def _admin_lists(api: Contract) -> None:
             filters=["active"] if schema != "CustomFieldDefinition" else ["record_type", "practice_area_id"],
             events={"created": "setting.updated", "updated": "setting.updated"},
         )
+    # CORE-20: settings catalog reads are viewer-delegable; writes stay undelegated.
+    for operation_id in (
+        "listCounty",
+        "getCounty",
+        "listPracticeArea",
+        "getPracticeArea",
+        "listPartyRole",
+        "getPartyRole",
+        "listCustomFieldDefinition",
+        "getCustomFieldDefinition",
+    ):
+        method, path = api.operation_ids[operation_id].split(" ", 1)
+        api.spec["paths"][path][method]["x-togavsu-access"]["module_delegation"] = "delegated_viewer"
     api.add(
         "post",
         "/api/v1/custom-field-definitions/{definition_id}/retire",
@@ -4485,6 +4513,63 @@ def _modules(api: Contract) -> None:
         body_schema={"type": "object", "additionalProperties": True},
         response_schema={"type": "object", "additionalProperties": True},
         events=["setting.updated"],
+    )
+    api.add(
+        "put",
+        "/api/v1/modules/{module_id}/secrets/{name}",
+        operation_id="putModuleSecret",
+        summary="Store a module secret",
+        description=(
+            "The calling module's own bearer stores one sealed secret under name. "
+            "The path module_id must match the token's module. A context token is ignored. "
+            "At most 512 secrets per module, 16 KiB each; names match ^[a-z0-9/_-]{1,128}$. "
+            "The audit log records the name only. Uninstall with keep-data keeps secrets; delete removes them."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["module_secrets:write"],
+        body="ModuleSecretWrite",
+        success="204",
+        response_content={},
+        error_codes=["forbidden", "scope_denied", "not_found"],
+        extra_access=MODULE_SECRET,
+    )
+    api.add(
+        "get",
+        "/api/v1/modules/{module_id}/secrets/{name}",
+        operation_id="getModuleSecret",
+        summary="Read a module secret",
+        description=(
+            "Returns the clear value of one sealed secret for the calling module. "
+            "A missing name is not_found. A context token is ignored."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["module_secrets:write"],
+        response="ModuleSecret",
+        writes=False,
+        error_codes=["forbidden", "scope_denied", "not_found"],
+        extra_access=MODULE_SECRET,
+    )
+    api.add(
+        "delete",
+        "/api/v1/modules/{module_id}/secrets/{name}",
+        operation_id="deleteModuleSecret",
+        summary="Delete a module secret",
+        description=(
+            "Removes one sealed secret for the calling module. "
+            "A missing name is not_found. A context token is ignored."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["module_secrets:write"],
+        success="204",
+        response_content={},
+        error_codes=["forbidden", "scope_denied", "not_found"],
+        extra_access=MODULE_SECRET,
     )
     api.add(
         "post",

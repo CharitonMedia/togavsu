@@ -428,6 +428,9 @@ It does not claim the handlers or the MCP server are implemented.
 | modules | `POST` | `/api/v1/modules/{module_id}/update` | `updateModule` | required:updateModule | admin | modules:write |
 | modules | `GET` | `/api/v1/modules/{module_id}/settings` | `getModuleSettings` | required:getModuleSettings | admin | modules:read |
 | modules | `PUT` | `/api/v1/modules/{module_id}/settings` | `putModuleSettings` | required:putModuleSettings | admin | modules:write |
+| modules | `PUT` | `/api/v1/modules/{module_id}/secrets/{name}` | `putModuleSecret` | required:putModuleSecret | public | module_secrets:write |
+| modules | `GET` | `/api/v1/modules/{module_id}/secrets/{name}` | `getModuleSecret` | required:getModuleSecret | public | module_secrets:write |
+| modules | `DELETE` | `/api/v1/modules/{module_id}/secrets/{name}` | `deleteModuleSecret` | required:deleteModuleSecret | public | module_secrets:write |
 | modules | `POST` | `/api/v1/modules/{module_id}/context-tokens` | `createModuleContextToken` | required:createModuleContextToken | admin, attorney, staff, accountant, client | modules:read |
 | marketplace | `GET` | `/api/v1/marketplace/listings` | `listMarketplaceListings` | required:listMarketplaceListings | admin | modules:read |
 | marketplace | `GET` | `/api/v1/marketplace/listings/{listing_id}` | `getMarketplaceListing` | required:getMarketplaceListing | admin | modules:read |
@@ -441,4 +444,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 435.
+Operations: 438.

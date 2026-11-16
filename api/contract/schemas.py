@@ -2513,6 +2513,35 @@ SCHEMAS = _register(
             {"matter_id": _null(_uuid())},
             description="The viewer is the authenticated caller. user_id and roles are not accepted.",
         ),
+        "ModuleSecret": _obj(
+            {
+                "name": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9/_-]{1,128}$",
+                    "description": "Secret name. Matches the path; slash names are allowed.",
+                },
+                "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16384,
+                    "description": "Clear secret value for the calling module only.",
+                },
+            },
+            ["name", "value"],
+            "One sealed secret opened for the calling module (CORE-06).",
+        ),
+        "ModuleSecretWrite": _obj(
+            {
+                "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16384,
+                    "description": "Clear secret value; sealed at rest with the core key.",
+                },
+            },
+            ["value"],
+            "Body for putModuleSecret.",
+        ),
         "ManifestMigration": _obj(
             {
                 "version": {"type": "integer", "minimum": 1},
@@ -3307,6 +3336,13 @@ QUERY = {
 PARAM_SCHEMA = {
     "setting_key": _ref("SettingKey"),
     "module_id": _module_id(),
+    "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-z0-9/_-]{1,128}$",
+        "description": "Module secret name. May include / (for example qbo/client_secret).",
+    },
     "domain": _enum(["time", "trust", "calendar"]),
     "provider": _enum(["anthropic", "openai", "openai_compatible", "local"]),
     "role": _ROLE,
@@ -3341,6 +3377,11 @@ PARAM_SCHEMA = {
         ]
     ),
     "secret": {"type": "string", "minLength": 20},
+    "name": {
+        "type": "string",
+        "pattern": "^[a-z0-9/_-]{1,128}$",
+        "description": "Module secret name (CORE-06). May include slashes.",
+    },
     "page_id": {"type": "string", "minLength": 1},
     "listing_id": {"type": "string", "minLength": 1},
     "topic_id": {"type": "string", "minLength": 1},

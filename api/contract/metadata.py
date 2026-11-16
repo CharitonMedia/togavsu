@@ -855,6 +855,14 @@ EVENT_EXEMPTIONS = {
         "A file and file.version_created are emitted only after publish commits. "
         "A failed chunk emits nothing."
     ),
+    "putModuleSecret": (
+        "Sealed module credentials. The audit log records the secret name only; "
+        "no activity-stream event carries a secret name or value (CORE-06)."
+    ),
+    "deleteModuleSecret": (
+        "Removes a sealed module credential. The audit log records the secret name only; "
+        "no activity-stream event is emitted (CORE-06)."
+    ),
 }
 
 MUTATION_EVENTS = {

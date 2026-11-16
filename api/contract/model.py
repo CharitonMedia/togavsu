@@ -307,8 +307,8 @@ def _delegated_viewer(access: dict, public: bool, mcp: str) -> bool:
     scopes = access.get("scopes") or []
     if not scopes or not all(scope in DELEGABLE_SCOPES for scope in scopes):
         return False
-    # Firm help and firm markers stay admin-only. These two scopes are own-namespace principals, not viewer delegation.
-    if scopes == ["help:write"] or scopes == ["markers:write"]:
+    # Firm help, firm markers, and module secrets stay own-namespace principals, not viewer delegation.
+    if scopes == ["help:write"] or scopes == ["markers:write"] or scopes == ["module_secrets:write"]:
         return False
     return True
 

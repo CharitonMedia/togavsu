@@ -73,6 +73,10 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("POST /api/v1/modules/{module_id}/update", h.write("modules:write", h.update))
 	m.HandleFunc("GET /api/v1/modules/{module_id}/settings", h.scoped("", h.getSettings))
 	m.HandleFunc("PUT /api/v1/modules/{module_id}/settings", h.write("modules:write", h.putSettings))
+	// {name...} so names may contain / (qbo/client_secret, account/<id>/kind).
+	m.HandleFunc("PUT /api/v1/modules/{module_id}/secrets/{name...}", h.write("module_secrets:write", h.putSecret))
+	m.HandleFunc("GET /api/v1/modules/{module_id}/secrets/{name...}", h.scoped("module_secrets:write", h.getSecret))
+	m.HandleFunc("DELETE /api/v1/modules/{module_id}/secrets/{name...}", h.write("module_secrets:write", h.deleteSecret))
 	m.HandleFunc("POST /api/v1/modules/{module_id}/context-tokens", h.write("", h.contextToken))
 	m.HandleFunc("POST /api/v1/modules/{module_id}/context-tokens/verify", h.scoped("", h.verifyContext))
 	m.HandleFunc("GET /api/v1/modules/{module_id}/views/{view}", h.scoped("", h.readView))
@@ -142,7 +146,8 @@ func (h *Handler) caller(r *http.Request) (Caller, error) {
 	if err != nil {
 		return Caller{}, err
 	}
-	if tok := r.Header.Get(ContextHeader); tok != "" {
+	// CORE-06: module secret routes use the module bearer; a context token is ignored.
+	if tok := r.Header.Get(ContextHeader); tok != "" && !moduleSecretPath(r.URL.Path) {
 		p, err := h.Svc.Delegate(r.Context(), c.Principal, tok)
 		if err != nil {
 			return Caller{}, err
@@ -150,6 +155,16 @@ func (h *Handler) caller(r *http.Request) (Caller, error) {
 		c.Principal = p
 	}
 	return c, nil
+}
+
+// moduleSecretPath is /api/v1/modules/{module_id}/secrets/{name...}.
+func moduleSecretPath(path string) bool {
+	rest, ok := strings.CutPrefix(path, "/api/v1/modules/")
+	if !ok {
+		return false
+	}
+	_, after, ok := strings.Cut(rest, "/secrets/")
+	return ok && after != ""
 }
 
 type handlerFunc func(w http.ResponseWriter, r *http.Request, c Caller)
@@ -441,6 +456,41 @@ func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request, c Caller) 
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// putSecret is putModuleSecret (CORE-06).
+func (h *Handler) putSecret(w http.ResponseWriter, r *http.Request, c Caller) {
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := decode(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := h.Svc.PutSecret(r.Context(), c.Principal, r.PathValue("module_id"), r.PathValue("name"), body.Value); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// getSecret is getModuleSecret (CORE-06).
+func (h *Handler) getSecret(w http.ResponseWriter, r *http.Request, c Caller) {
+	v, err := h.Svc.GetSecret(r.Context(), c.Principal, r.PathValue("module_id"), r.PathValue("name"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// deleteSecret is deleteModuleSecret (CORE-06).
+func (h *Handler) deleteSecret(w http.ResponseWriter, r *http.Request, c Caller) {
+	if err := h.Svc.DeleteSecret(r.Context(), c.Principal, r.PathValue("module_id"), r.PathValue("name")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) contextToken(w http.ResponseWriter, r *http.Request, c Caller) {
