@@ -1,0 +1,228 @@
+name: Lane
+run-name: Lane ${{ inputs.task }} ${{ inputs.run_id }}
+# One build pass for this module, dispatched only by the integration lead. Cursor's CLI runs headless in
+# the first job with a read-only token. The second job checks the result and publishes it to the lane
+# branch and its pull request; CI and the Claude Code check then run on that exact revision.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        required: true
+        type: string
+      task:
+        required: true
+        type: string
+      branch:
+        required: true
+        type: string
+      base:
+        description: Commit the pass starts from (main for a first pass, the lane branch head for a fix pass)
+        required: true
+        type: string
+      prompt_z:
+        description: zlib-compressed, base64-encoded assignment
+        required: true
+        type: string
+      model:
+        required: false
+        type: string
+        default: auto
+permissions:
+  contents: read
+concurrency:
+  group: lane-${{ inputs.branch }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Cursor pass
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      LANE_RUN: ${{ inputs.run_id }}
+      LANE_TASK: ${{ inputs.task }}
+      LANE_BRANCH: ${{ inputs.branch }}
+      LANE_BASE: ${{ inputs.base }}
+      LANE_MODEL: ${{ inputs.model }}
+    steps:
+      - name: Validate dispatch
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          rules = {"LANE_RUN": r"run-[0-9a-f]{8}", "LANE_TASK": r"[a-z0-9][a-z0-9-]{0,40}",
+                   "LANE_BRANCH": r"lane/[a-z0-9][a-z0-9-]{0,60}", "LANE_BASE": r"[0-9a-f]{40}",
+                   "LANE_MODEL": r"[A-Za-z0-9][A-Za-z0-9.-]{0,60}"}
+          bad = [k for k, rule in rules.items() if not re.fullmatch(rule, os.environ.get(k, ""))]
+          if bad or os.environ["GITHUB_ACTOR"] != "pattalkslaw-del":
+              sys.exit("Rejected dispatch: " + ", ".join(bad or ["actor"]))
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.base }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch the reference branch
+        run: |
+          git fetch --quiet --no-tags "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" reference:refs/remotes/origin/reference || true
+          mkdir -p "$RUNNER_TEMP/reference"
+          if git rev-parse --verify --quiet refs/remotes/origin/reference >/dev/null; then
+            git archive refs/remotes/origin/reference | tar -x -C "$RUNNER_TEMP/reference"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version: '1.24'
+      - name: Install Cursor CLI
+        env:
+          CURSOR_CLI_VERSION: 2026.11.13-eacade1
+          CURSOR_CLI_SHA256: c02e4321f20d691ee03af94d29948dc3a81c6c34e7328da7bb1afade4c75812f
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cursor-cli.tar.gz" \
+            "https://downloads.cursor.com/lab/$CURSOR_CLI_VERSION/linux/x64/agent-cli-package.tar.gz"
+          echo "$CURSOR_CLI_SHA256  $RUNNER_TEMP/cursor-cli.tar.gz" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/cursor-cli"
+          tar --strip-components=1 -xzf "$RUNNER_TEMP/cursor-cli.tar.gz" -C "$RUNNER_TEMP/cursor-cli"
+          rm "$RUNNER_TEMP/cursor-cli.tar.gz"
+          echo "$RUNNER_TEMP/cursor-cli" >> "$GITHUB_PATH"
+      - name: Prepare assignment
+        env:
+          PROMPT_Z: ${{ inputs.prompt_z }}
+        run: |
+          git switch --quiet -c lane
+          git config user.name "Togavsu lane agent"
+          git config user.email "lane-agent@users.noreply.github.com"
+          mkdir -p "$RUNNER_TEMP/lane-out"
+          python3 - <<'PY'
+          import base64, os, pathlib, zlib
+          temp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          out = temp / "lane-out"
+          assignment = zlib.decompress(base64.b64decode(os.environ["PROMPT_Z"])).decode()
+          preamble = f"""You are the Togavsu module implementation worker for assignment {os.environ['LANE_TASK']}.
+          You run headless in an isolated GitHub-hosted VM on local branch `lane`, checked out at
+          {os.environ['LANE_BASE']} of {os.environ['GITHUB_REPOSITORY']}. Go, Node, Python and Docker are available;
+          use Docker for Postgres 17 and synthetic data only. Read AGENTS.md first and follow it.
+          Read-only reference material for this module (the approved PRD and the source of the working system
+          this module is rebuilt from) is in {temp / 'reference'}; read it, never copy it into this repository,
+          and never commit anything under docs/reference/. This VM has a read-only GitHub token: you cannot push,
+          open or edit pull requests, and must not try. Commit all finished work to the current local branch,
+          early and often, with clear messages and explicit paths. The integration lead publishes your commits
+          to {os.environ['LANE_BRANCH']} and opens or updates its pull request. Before you finish, write the PR
+          title (one line) to {out}/pr-title.txt and the complete current PR body to {out}/pr-body.md: the
+          tested commit, every test command and its result, each acceptance criterion of your assignment with
+          passed or pending and why, and any gap filed in your PR body under "Contributor gaps". Never write
+          credentials, tokens or environment values into files, commits or the PR body. A commit that changes
+          anything under .github/, AGENTS.md, docs/SPEC.md or docforge/SOURCE.sha256 makes the whole result rejected; propose such a
+          change in the PR body under "Proposed change" instead.
+
+          """
+          (out / "prompt.md").write_text(preamble + assignment)
+          PY
+      - name: Run assignment
+        id: worker
+        continue-on-error: true
+        # Below GitHub's own six-hour job limit, so the packaging step always keeps committed work.
+        timeout-minutes: 330
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          cursor-agent -p --force --trust --model "$LANE_MODEL" --output-format json \
+            < "$RUNNER_TEMP/lane-out/prompt.md" > "$RUNNER_TEMP/lane-result.json"
+      - name: Package result
+        env:
+          WORKER_OUTCOME: ${{ steps.worker.outcome }}
+          SECRET_CURSOR: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          python3 -I - <<'PY'
+          import base64, json, os, pathlib, re, subprocess, sys
+          temp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          out, pack = temp / "lane-out", temp / "lane-pack"
+          pack.mkdir()
+          def git(*args):
+              return subprocess.run(["git"] + list(args), check=True, capture_output=True).stdout.decode("utf-8", "replace").strip()
+          base, head = os.environ["LANE_BASE"], git("rev-parse", "refs/heads/lane")
+          if git("merge-base", base, head) != base:
+              sys.exit("Lane head does not descend from its base")
+          read = lambda name: (out / name).read_text(errors="replace") if (out / name).exists() else ""
+          title, body = read("pr-title.txt").strip()[:200], read("pr-body.md")[:60000]
+          summary = ""
+          try:
+              summary = str(json.loads((temp / "lane-result.json").read_text()).get("result", ""))[:4000]
+          except (OSError, ValueError):
+              pass
+          history = git("log", "-p", "-m", "--text", "--no-textconv", "--no-ext-diff", "--format=%H%n%B", base + ".." + head) if head != base else ""
+          value = os.environ.get("SECRET_CURSOR", "")
+          forms = set()
+          if value:
+              forms.update({value, value[::-1], base64.b64encode(value.encode()).decode().rstrip("=")})
+              forms.update(value[i:i + 16] for i in range(0, max(len(value) - 15, 1), 4))
+          shaped = re.compile(r"sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|crsr_[0-9a-f]{20,}|key_[0-9a-f]{40,}")
+          text = "\n".join([title, body, summary, history])
+          if any(len(f) >= 16 and f in text for f in forms) or shaped.search(text):
+              sys.exit("Lane output contains a credential or token-shaped text; result withheld. Build fake tokens at runtime.")
+          changed = git("diff", "--name-only", base, head).splitlines() if head != base else []
+          blocked = [p for p in changed if p.startswith((".github/", "docs/reference/")) or p in ("AGENTS.md", "docs/SPEC.md", "docforge/SOURCE.sha256")]
+          if blocked:
+              sys.exit("Lane changed protected paths: " + ", ".join(blocked[:20]))
+          if head != base:
+              git("bundle", "create", str(pack / "lane.bundle"), "refs/heads/lane", "^" + base)
+          (pack / "lane-result.json").write_text(json.dumps({
+              "run_id": os.environ["LANE_RUN"], "task": os.environ["LANE_TASK"], "branch": os.environ["LANE_BRANCH"],
+              "base": base, "head": head, "pr_title": title, "pr_body": body, "outcome": os.environ["WORKER_OUTCOME"],
+              "uncommitted": bool(git("status", "--porcelain")), "summary": summary}))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lane-${{ inputs.run_id }}
+          path: ${{ runner.temp }}/lane-pack/
+          retention-days: 14
+          if-no-files-found: error
+  publish:
+    name: Publish pass
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: lane-${{ inputs.run_id }}
+          path: ${{ runner.temp }}/lane-pack
+      - name: Push the pass and update its pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_BRANCH: ${{ inputs.branch }}
+          LANE_BASE: ${{ inputs.base }}
+        run: |
+          python3 -I - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          pack = pathlib.Path(os.environ["RUNNER_TEMP"]) / "lane-pack"
+          result = json.loads((pack / "lane-result.json").read_text())
+          def run(*args, check=True):
+              return subprocess.run(list(args), check=check, capture_output=True, text=True)
+          if result["head"] == result["base"]:
+              print("The pass made no commits; nothing to publish.")
+              sys.exit(0)
+          run("git", "fetch", "--quiet", str(pack / "lane.bundle"), "refs/heads/lane:refs/lane/result")
+          head = run("git", "rev-parse", "refs/lane/result").stdout.strip()
+          if head != result["head"]:
+              sys.exit("Bundle head differs from the reported head")
+          branch = os.environ["LANE_BRANCH"]
+          remote = run("git", "ls-remote", "origin", "refs/heads/" + branch).stdout.split()
+          if remote and remote[0] != os.environ["LANE_BASE"]:
+              sys.exit("The lane branch moved since this pass started; not publishing over it")
+          run("git", "push", "origin", head + ":refs/heads/" + branch)
+          title = result["pr_title"] or ("Build " + result["task"])
+          body = result["pr_body"] or "The pass wrote no PR body."
+          existing = json.loads(run("gh", "pr", "list", "--head", branch, "--state", "open", "--json", "number").stdout)
+          (pack / "body.md").write_text(body)
+          if existing:
+              run("gh", "pr", "edit", str(existing[0]["number"]), "--title", title, "--body-file", str(pack / "body.md"))
+          else:
+              run("gh", "pr", "create", "--head", branch, "--base", "main", "--title", title, "--body-file", str(pack / "body.md"))
+          print("Published", head, "to", branch)
+          PY
