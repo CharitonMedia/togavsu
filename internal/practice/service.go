@@ -29,6 +29,7 @@ type Service struct {
 	key []byte
 	// moduleOn is the module runtime's installed-and-enabled check (SetModuleCheck).
 	moduleOn func(ctx context.Context, module string) (bool, error)
+	mailFiling func(ctx context.Context, p domain.Principal, matter domain.ID) error
 }
 
 type wallSource struct{ s *Service }

@@ -190,8 +190,13 @@ type callerMemo struct {
 type callerKey struct{}
 
 // memoCaller gives r a fresh callerMemo. A request is served on one goroutine.
+// A presented task authorization is stashed for mail_filing / mail_matching checks.
 func memoCaller(r *http.Request) *http.Request {
-	return r.WithContext(context.WithValue(r.Context(), callerKey{}, &callerMemo{}))
+	ctx := context.WithValue(r.Context(), callerKey{}, &callerMemo{})
+	if g := r.Header.Get(modules.TaskAuthorizationHeader); g != "" {
+		ctx = modules.WithTaskAuth(ctx, g)
+	}
+	return r.WithContext(ctx)
 }
 
 // caller authenticates a cookie session or a bearer token, once per memoized request.

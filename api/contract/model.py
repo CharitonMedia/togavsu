@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from contract.metadata import (
     BACKGROUND_FILE_PUBLICATION,
+    MAIL_FILING,
+    MAIL_MATCHING,
     MALWARE_DELIVERY,
     NONINTERACTIVE_OPERATIONS,
     PAYMENT_PROCESSOR,
@@ -154,6 +156,8 @@ MODULE_DELEGATION_POLICY = {
         "payment_processor": PAYMENT_PROCESSOR,
         "payment_refund": PAYMENT_REFUND,
         "background_file_publication": BACKGROUND_FILE_PUBLICATION,
+        "mail_filing": MAIL_FILING,
+        "mail_matching": MAIL_MATCHING,
         "operations": sorted(NONINTERACTIVE_OPERATIONS),
     },
     "service_principal_issuance": {

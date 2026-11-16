@@ -8,11 +8,6 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/trust"
 )
 
-// moduleMailRoutes mounts CORE-04 sendModuleMail beside the admin mail test route.
-func (a *App) moduleMailRoutes(m *http.ServeMux) {
-	m.HandleFunc("POST /api/v1/mail/messages", a.sendModuleMailJSON)
-}
-
 // sendModuleMailJSON is POST /api/v1/mail/messages (CORE-04). Delivery uses the
 // SMTP/outbox path (MailSender); CORE-05 systemMailer will route through the email
 // module when that setting is on.

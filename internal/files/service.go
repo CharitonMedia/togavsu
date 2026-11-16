@@ -111,6 +111,8 @@ type Service struct {
 	// moduleOn reports whether a module is installed and enabled; nil refuses every
 	// module principal (SetModuleCheck).
 	moduleOn func(ctx context.Context, module string) (bool, error)
+	// mailFiling checks a mail_filing task authorization on module writes (CORE-27).
+	mailFiling func(ctx context.Context, p domain.Principal, matter domain.ID) error
 	// feeSignedFile reports whether fileID is the signed copy for module's fee agreement
 	// (CORE-25 markFileStatus service call). Nil refuses every signature service mark.
 	feeSignedFile func(ctx context.Context, module string, fileID domain.ID) (bool, error)
@@ -256,6 +258,11 @@ func (s *Service) SetModuleCheck(fn func(ctx context.Context, module string) (bo
 	s.moduleOn = fn
 }
 
+// SetMailFilingCheck wires CORE-27 mail_filing grant verification for module writes.
+func (s *Service) SetMailFilingCheck(fn func(ctx context.Context, p domain.Principal, matter domain.ID) error) {
+	s.mailFiling = fn
+}
+
 // SetFeeSignatureFile gives the service billing's signed-copy check for CORE-25.
 func (s *Service) SetFeeSignatureFile(fn func(ctx context.Context, module string, fileID domain.ID) (bool, error)) {
 	s.feeSignedFile = fn
@@ -264,13 +271,13 @@ func (s *Service) SetFeeSignatureFile(fn func(ctx context.Context, module string
 // moduleOnly is a module's own token with no viewer (PRD 9.3): no user and no roles, only
 // the approved scopes the core checked on the route.
 func moduleOnly(p domain.Principal) bool {
-	return p.Source == domain.SourceModule && p.ModuleID != "" && p.UserID.IsZero()
+	return (p.Source == domain.SourceModule || p.Source == domain.SourceService) && p.ModuleID != "" && p.UserID.IsZero()
 }
 
 // clientViaModule is a client user acting through a module's frame (a context token):
 // the client portal module (PRD 8.19).
 func clientViaModule(p domain.Principal) bool {
-	return p.Source == domain.SourceModule && p.ModuleID != "" && !p.UserID.IsZero() && clientOnly(p)
+	return (p.Source == domain.SourceModule || p.Source == domain.SourceService) && p.ModuleID != "" && !p.UserID.IsZero() && clientOnly(p)
 }
 
 // moduleDecision applies the file rule for a module's own token and for a client's
@@ -399,6 +406,11 @@ func (s *Service) canWriteTo(ctx context.Context, p domain.Principal, matter, co
 			return domain.NotFound("matter")
 		}
 		return domain.Forbidden("this role cannot add files here")
+	}
+	if moduleOnly(p) && s.mailFiling != nil && matter != "" {
+		if err := s.mailFiling(ctx, p, matter); err != nil {
+			return err
+		}
 	}
 	return nil
 }

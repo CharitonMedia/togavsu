@@ -87184,6 +87184,47 @@
           "file.version_created"
         ]
       },
+      "mail_filing": {
+        "sequence": [
+          "createNote",
+          "createFileUpload",
+          "getFileUpload",
+          "putFileChunk",
+          "completeFileUpload",
+          "publishFile",
+          "bulkFile",
+          "createFileLink"
+        ],
+        "issued_by": "core",
+        "registered_module": true,
+        "viewer_context_required": false,
+        "scopes": [
+          "notes:write",
+          "files:write"
+        ],
+        "grants_admin": false,
+        "firmwide_bypass": false,
+        "expired": "forbidden",
+        "wrong_module": "forbidden",
+        "wrong_matter": "not_found",
+        "operation_outside_grant": "forbidden",
+        "event_type": "mail.filing_authorized"
+      },
+      "mail_matching": {
+        "sequence": [
+          "createAiCall"
+        ],
+        "issued_by": "core",
+        "viewer_context_required": false,
+        "scopes": [
+          "ai:use"
+        ],
+        "grants_admin": false,
+        "firmwide_bypass": false,
+        "expired": "forbidden",
+        "wrong_module": "forbidden",
+        "without_matter_id": true
+      },
       "operations": [
         "bulkFile",
         "completeFileUpload",

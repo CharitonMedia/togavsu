@@ -180,6 +180,18 @@ func (s *Service) gateNote(ctx context.Context, p domain.Principal, matter, cont
 	if matter.IsZero() && contact.IsZero() {
 		return domain.Invalid("note", "a note needs a matter or a contact")
 	}
+	moduleOwn := (p.Source == domain.SourceModule || p.Source == domain.SourceService) && p.ModuleID != "" && p.UserID.IsZero()
+	if moduleOwn && action == domain.ActionWrite && s.mailFiling != nil && !matter.IsZero() {
+		if err := s.mailFiling(ctx, p, matter); err != nil {
+			return err
+		}
+		if !contact.IsZero() {
+			if err := s.readableContact(ctx, p, contact); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	if !matter.IsZero() {
 		if err := s.gateMatterShared(ctx, p, matter, action, false); err != nil {
 			return err

@@ -382,6 +382,9 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.Modules = ext.Modules
+	docs.Files.SetMailFilingCheck(app.optionalMailFilingFromContext)
+	app.Practice.SetMailFilingCheck(app.requireMailFilingFromContext)
+	ext.Modules.SetMailMatchingCheck(app.verifyMailMatchingGrant)
 	if app.sysMail != nil {
 		app.sysMail.Modules = ext.Modules
 	}

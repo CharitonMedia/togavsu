@@ -83,7 +83,18 @@ type Service struct {
 
 	inboundOnce sync.Once
 	inbound     *inboundRate
+
+	// mailMatchingCheck verifies a match_token on createAiCall (CORE-27).
+	mailMatchingCheck func(ctx context.Context, p domain.Principal, credential string) error
 }
+
+// SetMailMatchingCheck wires CORE-27 mail_matching grant verification for AI calls.
+func (s *Service) SetMailMatchingCheck(fn func(ctx context.Context, p domain.Principal, credential string) error) {
+	s.mailMatchingCheck = fn
+}
+
+// MailAuthKey is the HMAC key for mail match tokens and filing grants (CORE-26, CORE-27).
+func (s *Service) MailAuthKey() []byte { return s.subkey("mail-task-auth") }
 
 // Installed is an installed module as the runtime serves it.
 type Installed struct {

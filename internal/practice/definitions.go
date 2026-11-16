@@ -29,6 +29,11 @@ func (s *Service) SetModuleCheck(fn func(ctx context.Context, module string) (bo
 	s.moduleOn = fn
 }
 
+// SetMailFilingCheck wires CORE-27 mail_filing grant verification for module note writes.
+func (s *Service) SetMailFilingCheck(fn func(ctx context.Context, p domain.Principal, matter domain.ID) error) {
+	s.mailFiling = fn
+}
+
 // MarkerWrite patches or creates a marker definition. Nil leaves a field as it is.
 type MarkerWrite struct {
 	Label  *string

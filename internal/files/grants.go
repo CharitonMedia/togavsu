@@ -116,7 +116,8 @@ func (s *Service) moduleEnabled(ctx context.Context, module string) (bool, error
 // grant for the same module and target replaces the one before it, which is revoked.
 // The same Idempotency-Key and body replay the grant; another body is a conflict.
 func (s *Service) IssueGrant(ctx context.Context, p domain.Principal, in GrantRequest, idemKey string) (GrantView, error) {
-	if p.Source != domain.SourceModule || p.ModuleID == "" {
+	// Module bearer (own or with a viewer that only narrows). principal() may set SourceService.
+	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) {
 		return GrantView{}, domain.Forbidden("a background publication grant is issued to an installed module's token")
 	}
 	on, err := s.moduleEnabled(ctx, p.ModuleID)
@@ -294,7 +295,7 @@ func grantPlacement(g grantRow, in *Publish) error {
 // its own upload with no matter. Another module's upload, a human caller, or a file
 // that has since been given a matter is not found. It assigns nothing.
 func (s *Service) ReviewUnassigned(ctx context.Context, p domain.Principal, upload domain.ID) (FileView, error) {
-	if p.Source != domain.SourceModule || p.ModuleID == "" {
+	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) {
 		return FileView{}, domain.Forbidden("unassigned review belongs to the module that published the file")
 	}
 	u, err := s.ownUpload(ctx, servicePrincipal(p), upload, false)
