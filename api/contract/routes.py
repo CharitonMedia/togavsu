@@ -3929,7 +3929,7 @@ def _admin(api: Contract) -> None:
         "/api/v1/settings",
         operation_id="listSettings",
         summary="List settings",
-        description="Every registry setting with its tab, value, default, and help. Secret values are not returned; configured is.",
+        description="Every registry setting with its key, label, type, tab, value, default, configured, locked, help, and optional allowed. Secret values are not returned; configured is.",
         tag="Settings",
         features=["settings"],
         roles=ADMIN,

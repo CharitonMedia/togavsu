@@ -198,12 +198,12 @@
 
 {{if .Settings}}
 <section class="card settings"><h2>Settings</h2>
-<table class="settings-table"><thead><tr><th>Setting</th><th>Current value</th><th>Default</th><th></th></tr></thead><tbody>
+<table class="settings-table"><thead><tr><th>Name</th><th>Current value</th><th>Default</th><th></th></tr></thead><tbody>
 {{range .Settings}}<tr id="s-{{.Key}}"{{if .Changed}} class="changed"{{end}}>
-  <td><code>{{.Key}}</code><p class="help-text">{{.Help}}</p></td>
+  <td>{{.Label}}<p class="help-text">{{.Help}}</p><p class="setting-key">{{.Key}}</p></td>
   <td>{{if .Locked}}<span>{{.Value}}</span> <span class="tag">read only</span>{{else}}
     <form method="post" action="/admin/settings/{{.Key}}" class="setting-form"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Page.Tab}}"><input type="hidden" name="kind" value="{{.Kind}}">
-    <label class="visually-hidden" for="v-{{.Key}}">{{.Key}}</label>
+    <label class="visually-hidden" for="v-{{.Key}}">{{.Label}}</label>
     {{if eq .Kind "bool"}}<select id="v-{{.Key}}" name="value"><option value="true"{{if eq .Value "true"}} selected{{end}}>On</option><option value="false"{{if eq .Value "false"}} selected{{end}}>Off</option></select>
     {{else if .Allowed}}<select id="v-{{.Key}}" name="value">{{if .Optional}}<option value="">(none)</option>{{end}}{{$v := .Value}}{{range .Allowed}}<option{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}</select>
     {{else if eq .Kind "json"}}<textarea id="v-{{.Key}}" name="value" rows="3">{{.Value}}</textarea>

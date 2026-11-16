@@ -2012,6 +2012,7 @@ SCHEMAS = _register(
         "Setting": _obj(
             {
                 "key": {"type": "string"},
+                "label": {"type": "string", "description": "Plain name shown on the admin Settings page."},
                 "type": _enum(["string", "integer", "number", "boolean", "json", "uuid"]),
                 "tab": {"type": "string"},
                 "value": {"description": "Current value. A secret setting returns null and sets configured instead."},
@@ -2021,8 +2022,8 @@ SCHEMAS = _register(
                 "help": {"type": "string"},
                 "allowed": {"description": "Allowed values when the setting has a closed set."},
             },
-            ["key", "type", "tab", "configured", "locked", "help"],
-            "One settings-registry row.",
+            ["key", "label", "type", "tab", "configured", "locked", "help"],
+            "One settings-registry row with key, label, type, tab, value, default, configured, locked, help, and optional allowed.",
         ),
         "SettingKey": _enum(setting_keys()),
         "SettingUpdate": _obj({"value": {"description": "New value, checked against the registry type and allowed set."}}, ["value"]),

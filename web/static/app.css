@@ -78,6 +78,7 @@ th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertic
 .tabs a.active{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700}
 .settings-table code{font-size:.82rem}
 .help-text{margin:2px 0 0;color:var(--muted);font-size:.85rem}
+.setting-key{margin:2px 0 0;color:var(--muted);font-size:.75rem}
 .setting-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .setting-form textarea{min-width:280px}
 tr.changed td:first-child{border-left:3px solid var(--accent)}

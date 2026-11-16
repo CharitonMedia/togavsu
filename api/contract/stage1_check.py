@@ -428,6 +428,16 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json", "docs/api/coverage.md"],
                 "change": "The core's Doc Tender routes join the contract so tokens and /mcp reach them: getDocTenderStatus (GET /api/v1/files/{file_id}/doc-tender-status, staff, doc_tender:read), reprocessDocTenderFile (POST /api/v1/files/{file_id}/doc-tender-reprocess, admin or attorney, doc_tender:write, 202 with the queued DocTenderJob, emits doc_tender.retry_scheduled) and getDocTenderModelChoices (GET /api/v1/doc-tender/model-choices, admin, doc_tender:read). The two file routes carry the file wall. The settings catalog adds ai.model_prices (json, AI tab, default {}), the price table AI call costs read.",
             },
+            {
+                "id": "ai-call-log-filters",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "listAiCalls (GET /api/v1/ai/calls) gains the task, provider and module_id query filters the AI tab's call log uses, and its description says the log is newest first and omits calls on matters behind a wall the admin is not on. The MCP catalog still describes query as one object, and coverage does not list parameters, so their bytes stay the same.",
+            },
+            {
+                "id": "settings-plain-labels",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "Setting gains required label (plain admin name). listSettings description lists key, label, type, tab, value, default, configured, locked, help, and optional allowed. The MCP catalog still describes query as one object, and coverage does not list schema fields, so their bytes stay the same.",
+            },
         ],
         "intentional_corrections": [
             {

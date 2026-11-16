@@ -55,9 +55,10 @@ var (
 	ErrForbidden = errors.New("settings: admin role required")
 )
 
-// Definition is one registry entry: key, type, default, range, tab, and help.
+// Definition is one registry entry: key, plain label, type, default, range, tab, and help.
 type Definition struct {
 	Key      string
+	Label    string
 	Kind     string
 	Default  string
 	Min      int64
@@ -151,7 +152,7 @@ func Definitions() []Definition {
 	return out
 }
 
-// ValidateCatalog checks keys, help, and that every default is a legal value.
+// ValidateCatalog checks keys, labels, help, and that every default is a legal value.
 func ValidateCatalog() error {
 	seen := map[string]bool{}
 	for _, def := range definitions {
@@ -159,6 +160,9 @@ func ValidateCatalog() error {
 			return fmt.Errorf("%w: duplicate or empty key %q", ErrInvalid, def.Key)
 		}
 		seen[def.Key] = true
+		if def.Label == "" {
+			return fmt.Errorf("%w: %s missing label", ErrInvalid, def.Key)
+		}
 		if def.Tab == "" || def.Help == "" || def.Kind == "" {
 			return fmt.Errorf("%w: %s missing kind, tab, or help", ErrInvalid, def.Key)
 		}
@@ -167,6 +171,16 @@ func ValidateCatalog() error {
 		}
 	}
 	return nil
+}
+
+// LabelOf returns the plain label for a setting key, or the key when unknown.
+func LabelOf(key string) string {
+	for _, def := range definitions {
+		if def.Key == key {
+			return def.Label
+		}
+	}
+	return key
 }
 
 // Get returns the stored value or the default.

@@ -1178,7 +1178,7 @@ func (h *Handler) settingPost(r *http.Request, p domain.Principal) (string, stri
 	if err != nil {
 		return back, "", settingErr(err)
 	}
-	return back, fmt.Sprintf("Saved %s: %s → %s.", key, ch.Old, ch.New), nil
+	return back, fmt.Sprintf("Saved %s: %s → %s.", settings.LabelOf(key), ch.Old, ch.New), nil
 }
 
 func (h *Handler) settingResetPost(r *http.Request, p domain.Principal) (string, string, error) {
@@ -1190,7 +1190,7 @@ func (h *Handler) settingResetPost(r *http.Request, p domain.Principal) (string,
 	if _, err := h.Svc.d.Settings.Reset(r.Context(), key, p); err != nil {
 		return back, "", settingErr(err)
 	}
-	return back, "Reset " + key + " to its default.", nil
+	return back, "Reset " + settings.LabelOf(key) + " to its default.", nil
 }
 
 func (h *Handler) appearancePost(r *http.Request, p domain.Principal) (string, string, error) {
