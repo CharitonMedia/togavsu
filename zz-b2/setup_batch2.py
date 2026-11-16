@@ -143,14 +143,11 @@ CORE_EXCLUDED = ["internal/db/ranges.go", "internal/frame/frame_test.go", "tests
 mc = copy.deepcopy(by_id["module-core"])
 mc["depends_on"] = []
 p = mc["prompt"]
-p = sub(p, "You start from main after release-perf merged. The release-final assignment (PR 60) is still open on "
-           "operator evidence and touches only release reports, docs/release/, scripts/release/, "
-           "tests/test_full_acceptance.py and tests/test_release_ci.py; never edit those. ",
+p = sub(p, "You start from the released core (the release-final assignment is merged). ",
         "You start from the batch2 branch, main after release-perf merged, and your PR targets batch2, not main. The "
         "release-final assignment (PR 60) is still open on main and touches only release reports, docs/release/, "
-        "scripts/release/, tests/test_full_acceptance.py and tests/test_release_ci.py; never edit those. ")
-p = sub(p, "Schema migrations: use versions 1300-1399 only; add a module-core block for them to internal/db/ranges.go "
-           "and renumber nothing. ", migrations("module-core", 1300, 1399))
+        "scripts/release/, tests/test_full_acceptance.py and tests/test_release_ci.py; never edit those. "
+        + migrations("module-core", 1300, 1399))
 p = sub(p, "Never edit docs/modules/, the PRDs,", "Never edit docs/modules/, the PRDs, internal/db/ranges.go,")
 mc["prompt"] = p
 mc["excluded_paths"] = sorted(set(mc.get("excluded_paths", [])) | {"internal/db/ranges.go"})
@@ -239,9 +236,6 @@ m = {"id": "marketplace-paid", "wave": "marketplace-2", "phase": 9, "depends_on"
 
 rel = copy.deepcopy(by_id["release-module-api"])
 rel["depends_on"] = ["core-update-2c"]
-rel["acceptance_ids"] = ["AC-016", "CU2-08"]
-rel["phase_acceptance"] = {"signed-core-update": ["AC-016", "CU2-08"]}
-rel["batch2_sections"] = ["4"]
 
 batch2 = [mc, a, b, c, m, rel]
 ids2 = {t["id"] for t in batch2}
