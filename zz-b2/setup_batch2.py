@@ -150,7 +150,7 @@ p = sub(p, "You start from the released core (the release-final assignment is me
         + migrations("module-core", 1300, 1399))
 p = sub(p, "Never edit docs/modules/, the PRDs,", "Never edit docs/modules/, the PRDs, internal/db/ranges.go,")
 mc["prompt"] = p
-mc["excluded_paths"] = sorted(set(mc.get("excluded_paths", [])) | {"internal/db/ranges.go"})
+mc["excluded_paths"] = CORE_EXCLUDED
 
 a = {"id": "core-update-2a", "wave": "module-api-2a", "phase": 9, "depends_on": ["module-core"],
      "owned_paths": CORE_PATHS, "excluded_paths": CORE_EXCLUDED, "prd_sections": ["8", "9"],
@@ -239,7 +239,15 @@ rel["depends_on"] = ["core-update-2c"]
 
 batch2 = [mc, a, b, c, m, rel]
 ids2 = {t["id"] for t in batch2}
-merged = [t for t in plan["tasks"] if t["id"] not in ids2] + batch2
+merged = []
+for t in plan["tasks"]:
+    if t["id"] == "module-core":
+        merged.append(mc)
+    elif t["id"] == "release-module-api":
+        merged += [rel, a, b, c, m]
+    else:
+        merged.append(t)
+assert {t["id"] for t in merged} >= ids2 and len(merged) == len({t["id"] for t in merged})
 plan["tasks"] = merged
 tasks["tasks"] = merged
 write("docs/build/controller-plan.json", json.dumps(plan, indent=2) + "\n")
