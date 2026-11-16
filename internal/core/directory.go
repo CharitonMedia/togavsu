@@ -209,7 +209,7 @@ func directoryIDs(r *http.Request) (map[domain.ID]bool, error) {
 	if len(raw) == 0 {
 		return nil, nil
 	}
-	if len(raw) > 100 {
+	if len(raw) > domain.DirectoryIDsMax {
 		return nil, domain.Invalid("ids", "ids accepts at most 100 values")
 	}
 	out := make(map[domain.ID]bool, len(raw))

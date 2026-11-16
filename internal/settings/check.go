@@ -649,6 +649,36 @@ func fixedSite(path, fn string) bool {
 		case "Search", "groupActivity", "searchInvoices", "sortMatterRows", "searchMatters", "searchPeople":
 			return true
 		}
+	case strings.HasSuffix(slash, "internal/modules/inbound.go"):
+		// Per-hook rate window and Retry-After floor; byte/rate ceilings are settings.
+		switch fn {
+		case "allow", "inboundWebhook":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/modules/nav.go"):
+		// Badge cache TTL and fetch timeout; order default is domain.SidebarDefaultOrder.
+		switch fn {
+		case "NavEntries", "badgeCounter", "fetchBadge":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/modules/secrets.go"):
+		// RowsAffected zero means missing; max counts are domain.ModuleSecret*.
+		switch fn {
+		case "PutSecret", "GetSecret", "DeleteSecret":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/trust/create_notification.go"):
+		// Exactly-one recipient rule; title max is domain.NotificationTitleMaxChars.
+		return fn == "CreateNotification"
+	case strings.HasSuffix(slash, "internal/trust/module_mail.go"):
+		// Recipient and body ceilings are domain.ModuleMail*; exactly-one recipient rule.
+		return fn == "SendModuleMail"
+	case strings.HasSuffix(slash, "internal/core/directory.go"):
+		// Positive limit and non-negative cursor offset checks; ids max is domain.DirectoryIDsMax.
+		switch fn {
+		case "directoryIDs", "directoryPageArgs", "directoryRoleFilter":
+			return true
+		}
 	case strings.HasSuffix(slash, "internal/calendar/ical.go"):
 		// RFC 5545 folds content lines at 75 octets. A protocol width, not a firm setting.
 		return fn == "foldWidth"

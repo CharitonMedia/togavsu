@@ -34,6 +34,20 @@ const (
 	KeyHintMinChars        = 8
 )
 
+// Module API update bounds (CORE-03 to CORE-07). Contract ceilings, not firm settings.
+const (
+	NotificationTitleMaxChars = 200
+	ModuleMailSubjectMaxChars = 200
+	ModuleMailTextMaxChars    = 20000
+	ModuleMailRecipientMax    = 20
+	ModuleSecretMaxPerModule  = 512
+	ModuleSecretMaxBytes      = 16 << 10
+	DirectoryIDsMax           = 100
+	SidebarDefaultOrder       = 1000
+	InboundWebhookMaxBytes    = 1048576
+	InboundWebhookRatePerMin  = 120
+)
+
 // DocCategory is one default filing category.
 type DocCategory struct {
 	Meta

@@ -20,8 +20,6 @@ import (
 const (
 	inboundWebhookMaxBytesKey      = "modules.inbound_webhook_max_bytes"
 	inboundWebhookRatePerMinuteKey = "modules.inbound_webhook_rate_per_minute"
-	defaultInboundWebhookMaxBytes  = 1048576
-	defaultInboundWebhookRate      = 120
 )
 
 // inboundRate limits POST /hooks/{module}/{hook} to modules.inbound_webhook_rate_per_minute.
@@ -81,7 +79,7 @@ func (h *Handler) inboundWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if maxBytes <= 0 {
-		maxBytes = defaultInboundWebhookMaxBytes
+		maxBytes = domain.InboundWebhookMaxBytes
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, int64(maxBytes))
 	body, err := io.ReadAll(r.Body)
@@ -103,7 +101,7 @@ func (h *Handler) inboundWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rate <= 0 {
-		rate = defaultInboundWebhookRate
+		rate = domain.InboundWebhookRatePerMin
 	}
 	if wait, ok := h.Svc.inboundHits().allow(moduleID+"/"+hookID, rate, h.Svc.now(), time.Minute); !ok {
 		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())))

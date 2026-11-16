@@ -66,7 +66,7 @@ func TestCreatedTables(t *testing.T) {
 func TestValidateAll(t *testing.T) {
 	m := Manifest{ID: "Bad Id", Version: "1.0.0", Name: "n", Author: "a",
 		Container: Container{Image: "i", Digest: "sha256:x", Port: 1},
-		Tabs:      []Tab{{ID: "a", Title: "A", Placement: "client", Path: "/a"}, {ID: "b", Title: "B", Placement: "home", Path: "/b"}},
+		Tabs:      []Tab{{ID: "a", Title: "A", Placement: "desk", Path: "/a"}, {ID: "b", Title: "B", Placement: "home", Path: "/b"}},
 		Settings:  []SettingSpec{{Key: "k", Type: "number"}},
 	}
 	all := m.ValidateAll()

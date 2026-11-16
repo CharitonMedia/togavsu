@@ -13,8 +13,8 @@ import (
 
 // Secret limits (CORE-06).
 const (
-	maxSecretsPerModule = 512
-	maxSecretBytes      = 16 << 10
+	maxSecretsPerModule = domain.ModuleSecretMaxPerModule
+	maxSecretBytes      = domain.ModuleSecretMaxBytes
 )
 
 var secretName = regexp.MustCompile(`^[a-z0-9/_-]{1,128}$`)

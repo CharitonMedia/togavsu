@@ -53,9 +53,9 @@ func (s *Service) SendModuleMail(ctx context.Context, who domain.Principal, in M
 	text := in.Text
 	linkPath := strings.TrimSpace(in.LinkPath)
 	switch {
-	case subject == "" || utf8.RuneCountInString(subject) > 200 || strings.ContainsAny(subject, "\r\n"):
+	case subject == "" || utf8.RuneCountInString(subject) > domain.ModuleMailSubjectMaxChars || strings.ContainsAny(subject, "\r\n"):
 		return ModuleMailResult{}, domain.Invalid("subject", "subject is 1 to 200 characters on one line")
-	case strings.TrimSpace(text) == "" || utf8.RuneCountInString(text) > 20000:
+	case strings.TrimSpace(text) == "" || utf8.RuneCountInString(text) > domain.ModuleMailTextMaxChars:
 		return ModuleMailResult{}, domain.Invalid("text", "text is 1 to 20000 characters of plain text")
 	}
 	if linkPath != "" {
@@ -74,9 +74,9 @@ func (s *Service) SendModuleMail(ctx context.Context, who domain.Principal, in M
 	switch {
 	case hasUsers == hasContacts:
 		return ModuleMailResult{}, domain.Invalid("recipient", "exactly one of to_user_ids or to_contact_ids is required")
-	case hasUsers && len(in.ToUserIDs) > 20:
+	case hasUsers && len(in.ToUserIDs) > domain.ModuleMailRecipientMax:
 		return ModuleMailResult{}, domain.Invalid("to_user_ids", "to_user_ids is 1 to 20 user ids")
-	case hasContacts && len(in.ToContactIDs) > 20:
+	case hasContacts && len(in.ToContactIDs) > domain.ModuleMailRecipientMax:
 		return ModuleMailResult{}, domain.Invalid("to_contact_ids", "to_contact_ids is 1 to 20 contact ids")
 	}
 	serviceCall := who.Source == domain.SourceService && who.UserID.IsZero()

@@ -46,7 +46,7 @@ func (s *Service) CreateNotification(ctx context.Context, who domain.Principal, 
 	switch {
 	case kind == "" || strings.ContainsAny(kind, " \r\n"):
 		return CreateNotificationResult{}, domain.Invalid("kind", "kind is required")
-	case title == "" || utf8.RuneCountInString(title) > 200 || strings.ContainsAny(title, "\r\n"):
+	case title == "" || utf8.RuneCountInString(title) > domain.NotificationTitleMaxChars || strings.ContainsAny(title, "\r\n"):
 		return CreateNotificationResult{}, domain.Invalid("title", "title is 1 to 200 characters on one line")
 	case !strings.HasPrefix(link, "/") || strings.HasPrefix(link, "//") || strings.ContainsAny(link, "\\\r\n"):
 		return CreateNotificationResult{}, domain.Invalid("link", "link is a path on this site")

@@ -53,7 +53,7 @@ func NavEntries(m Manifest) []dashboard.ModuleNavEntry {
 		if !ok {
 			continue
 		}
-		order := 1000
+		order := domain.SidebarDefaultOrder
 		if l.Order != nil {
 			order = *l.Order
 		}
@@ -65,7 +65,7 @@ func NavEntries(m Manifest) []dashboard.ModuleNavEntry {
 	}
 	for _, t := range m.Tabs {
 		if t.Placement == "home" {
-			add(t.ID, t.Title, t.ID, dashboard.SectionActivity, "", "puzzle", 1000+len(out), "")
+			add(t.ID, t.Title, t.ID, dashboard.SectionActivity, "", "puzzle", domain.SidebarDefaultOrder+len(out), "")
 		}
 	}
 	return out
