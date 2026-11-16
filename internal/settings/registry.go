@@ -203,7 +203,9 @@ func UIError(key string, err error) string {
 			}
 			return "invalid value: " + label + " " + rest
 		}
-		return "That value is not allowed for " + label + "."
+		// Domain specials (naming_pattern, model_prices, …) wrap reasons without the
+		// key; keep that hint so the admin still sees what to fix.
+		return "That value is not allowed for " + label + ": " + reason + "."
 	default:
 		return err.Error()
 	}

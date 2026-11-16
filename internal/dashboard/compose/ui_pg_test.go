@@ -707,6 +707,13 @@ func TestUIAdminSettingsLabels(t *testing.T) {
 	if errText := queryParam(bad.loc, "error"); !strings.Contains(errText, label) || strings.Contains(errText, key) {
 		t.Fatalf("error text: %q", errText)
 	}
+	// Special validations wrap a domain reason without the key; the UI keeps that hint.
+	const patternKey = "doctender.naming_pattern"
+	patternLabel := settings.LabelOf(patternKey)
+	patternBad := e.admin.form("/admin/settings/"+patternKey, url.Values{"value": {"no-ext-token"}, "tab": {"doc_tender"}, "kind": {"string"}})
+	if errText := queryParam(patternBad.loc, "error"); !strings.Contains(errText, patternLabel) || !strings.Contains(errText, "needs <ext>") || strings.Contains(errText, patternKey) {
+		t.Fatalf("naming pattern error should keep the domain reason: %q", errText)
+	}
 	// API validation bodies still name the key (contract), while the page uses the label.
 	if r := e.admin.do("PATCH", "/api/v1/settings/"+key, map[string]any{"value": 7}); r.code != http.StatusBadRequest || !strings.Contains(r.body, key) || strings.Contains(r.body, label) {
 		t.Fatalf("API error should keep the key: %d %s", r.code, r.body)

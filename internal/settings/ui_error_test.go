@@ -36,8 +36,18 @@ func TestUIErrorNamesSettingByLabel(t *testing.T) {
 		},
 		{
 			key:  "doctender.naming_pattern",
-			err:  fmt.Errorf("%w: pattern needs a placeholder", settings.ErrInvalid),
-			want: "That value is not allowed for File Naming Pattern.",
+			err:  fmt.Errorf("%w: invalid naming pattern: needs <ext>", settings.ErrInvalid),
+			want: "That value is not allowed for File Naming Pattern: invalid naming pattern: needs <ext>.",
+		},
+		{
+			key:  "doctender.naming_pattern",
+			err:  fmt.Errorf("%w: invalid naming pattern: status token is refused", settings.ErrInvalid),
+			want: "That value is not allowed for File Naming Pattern: invalid naming pattern: status token is refused.",
+		},
+		{
+			key:  "ai.model_prices",
+			err:  fmt.Errorf("%w: model prices are a JSON object of model to {\"input\", \"output\"} cents per million tokens", settings.ErrInvalid),
+			want: "That value is not allowed for Model Prices: model prices are a JSON object of model to {\"input\", \"output\"} cents per million tokens.",
 		},
 	}
 	for _, tc := range cases {
