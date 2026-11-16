@@ -517,6 +517,10 @@ Doc Tender is the core's file processor. It receives every file that lands in a 
 
 API: /api/v1/doc-tender/jobs (list, status, retry), /api/v1/doc-tender/exceptions (list, resolve), /api/v1/doc-tender/categories and /api/v1/doc-tender/naming (admins write), all also through /mcp. Events: doc\_tender.published and doc\_tender.exception\_opened.
 
+### 8.22 Migration import
+
+A firm moving onto Togavsu brings its open balances with it. The admin page's Migration import tab takes opening invoices from a single form or a CSV upload and writes them as real sent invoices that keep their historical numbers, never touch the invoice number sequence, carry the original invoice PDF as the document of record and post any amount paid to date as one imported payment. Importer modules use the same endpoint. The full requirement and its acceptance criteria (IMP-01 to IMP-08) are in docs/modules/CORE-CHANGES-2.md, section 6, which Patrick approved on 2026-11-16 as part of the batch 2 modules PRD. Opening trust balances go in through ordinary trust deposit entries.
+
 ## 9. Module interface
 
 ### 9.1 What a module is
