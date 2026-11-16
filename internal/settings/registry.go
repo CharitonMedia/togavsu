@@ -183,6 +183,32 @@ func LabelOf(key string) string {
 	return key
 }
 
+// UIError returns a short user-facing message for a settings mutation failure,
+// naming the setting by its plain label. API handlers keep the registry error
+// wording (which still names the key) so contract bodies stay unchanged.
+func UIError(key string, err error) string {
+	label := LabelOf(key)
+	switch {
+	case errors.Is(err, ErrReadOnly):
+		return label + " is read only"
+	case errors.Is(err, ErrInvalid):
+		reason := strings.TrimSpace(strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": "))
+		if reason == "" || reason == key {
+			return "That value is not allowed for " + label + "."
+		}
+		if strings.HasPrefix(reason, key) {
+			rest := strings.TrimSpace(strings.TrimPrefix(reason, key))
+			if rest == "" {
+				return "That value is not allowed for " + label + "."
+			}
+			return "invalid value: " + label + " " + rest
+		}
+		return "That value is not allowed for " + label + "."
+	default:
+		return err.Error()
+	}
+}
+
 // Get returns the stored value or the default.
 func (r *Registry) Get(ctx context.Context, key string) (string, error) {
 	def, err := r.definition(key)

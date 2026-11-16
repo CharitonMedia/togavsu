@@ -319,7 +319,8 @@ func (a *App) settingsChange(w http.ResponseWriter, r *http.Request, change func
 		return
 	}
 	if err := change(p); err != nil {
-		v, verr := a.settingsView(r, "That value is not allowed for "+settings.LabelOf(r.PathValue("setting_key"))+". "+strings.TrimPrefix(message(settingErr(err)), "settings: "))
+		key := r.PathValue("setting_key")
+		v, verr := a.settingsView(r, settings.UIError(key, err))
 		if verr != nil {
 			writeErr(w, verr)
 			return

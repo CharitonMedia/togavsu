@@ -628,6 +628,8 @@ func TestUIAdminSettings(t *testing.T) {
 	// An invalid value is refused with its reason; a non-admin cannot write.
 	if loc := e.admin.form("/admin/settings/billing.time_increment_minutes", url.Values{"value": {"7"}, "tab": {"time_billing"}}).loc; !strings.Contains(loc, "error=") {
 		t.Fatalf("invalid increment accepted: %s", loc)
+	} else if errText := queryParam(loc, "error"); !strings.Contains(errText, "Time Increment") || strings.Contains(errText, "billing.time_increment_minutes") {
+		t.Fatalf("invalid increment error names the key, not the label: %q", errText)
 	}
 	if loc := e.atty.do("POST", "/admin/settings/billing.time_increment_minutes", url.Values{"csrf": {e.atty.csrf}, "value": {"15"}}).loc; !strings.Contains(loc, "error=") {
 		t.Fatalf("attorney changed a setting: %s", loc)
@@ -653,6 +655,74 @@ func TestUIAdminSettings(t *testing.T) {
 	if r := e.admin.must(http.StatusOK, "GET", "/admin?tab=notifications_mail", nil); strings.Contains(r.body, "synthetic-secret-value") {
 		t.Fatal("secret shown on the admin page")
 	}
+}
+
+// TestUIAdminSettingsLabels covers the desk-fix plain names: each row leads with the
+// label, help, then muted key; the Name heading and visually hidden label use it; save
+// and error notices name the setting by label; GET /api/v1/settings includes label.
+func TestUIAdminSettingsLabels(t *testing.T) {
+	e := newEnv(t)
+	const key = "billing.time_increment_minutes"
+	label := settings.LabelOf(key)
+	page := e.admin.must(http.StatusOK, "GET", "/admin?tab=time_billing", nil).body
+	if !strings.Contains(page, "<th>Name</th>") || strings.Contains(page, "<th>Setting</th>") {
+		t.Fatalf("settings table heading is not Name")
+	}
+	row := between(page, `<tr id="s-`+key+`"`, "</tr>")
+	if row == "" {
+		t.Fatalf("row for %s missing", key)
+	}
+	labelAt := strings.Index(row, label)
+	helpAt := strings.Index(row, `<p class="help-text">`)
+	keyAt := strings.Index(row, `<p class="setting-key">`+key+`</p>`)
+	if labelAt < 0 || helpAt < 0 || keyAt < 0 || !(labelAt < helpAt && helpAt < keyAt) {
+		t.Fatalf("row order want label, help, muted key; got label=%d help=%d key=%d in %s", labelAt, helpAt, keyAt, row)
+	}
+	if !strings.Contains(row, `<label class="visually-hidden" for="v-`+key+`">`+label+`</label>`) {
+		t.Fatalf("visually hidden label is not %q: %s", label, row)
+	}
+	api := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/"+key, nil)
+	if api.json["label"] != label || api.json["key"] != key {
+		t.Fatalf("GET setting JSON: %s", api.body)
+	}
+	list := e.admin.must(http.StatusOK, "GET", "/api/v1/settings", nil)
+	found := false
+	for _, item := range items(t, list) {
+		if item["key"] == key {
+			found = true
+			if item["label"] != label {
+				t.Fatalf("listSettings label for %s: %v", key, item["label"])
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("%s missing from listSettings", key)
+	}
+	save := e.admin.form("/admin/settings/"+key, url.Values{"value": {"15"}, "tab": {"time_billing"}, "kind": {"int"}})
+	if notice := queryParam(save.loc, "notice"); !strings.Contains(notice, "Saved "+label+":") || strings.Contains(notice, key) {
+		t.Fatalf("save notice: %q", notice)
+	}
+	bad := e.admin.form("/admin/settings/"+key, url.Values{"value": {"7"}, "tab": {"time_billing"}, "kind": {"int"}})
+	if errText := queryParam(bad.loc, "error"); !strings.Contains(errText, label) || strings.Contains(errText, key) {
+		t.Fatalf("error text: %q", errText)
+	}
+	// API validation bodies still name the key (contract), while the page uses the label.
+	if r := e.admin.do("PATCH", "/api/v1/settings/"+key, map[string]any{"value": 7}); r.code != http.StatusBadRequest || !strings.Contains(r.body, key) || strings.Contains(r.body, label) {
+		t.Fatalf("API error should keep the key: %d %s", r.code, r.body)
+	}
+	reset := e.admin.form("/admin/settings/"+key+"/reset", url.Values{"tab": {"time_billing"}})
+	if notice := queryParam(reset.loc, "notice"); !strings.Contains(notice, "Reset "+label+" to its default.") || strings.Contains(notice, key) {
+		t.Fatalf("reset notice: %q", notice)
+	}
+}
+
+func queryParam(loc, name string) string {
+	u, err := url.Parse(loc)
+	if err != nil {
+		return ""
+	}
+	return u.Query().Get(name)
 }
 
 // TestUIProblemReportAndSettings covers Report a problem, My settings and the role
