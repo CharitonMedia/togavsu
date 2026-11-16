@@ -1,5 +1,5 @@
 #!/bin/sh
-# Attach one release signature made off GitHub (docs/release/proposed-ci/release.yml,
+# Attach one release signature made off GitHub (.github/workflows/release.yml,
 # job attach-signature). The release private key never reaches GitHub and signatures
 # are not in the public transparency log. Refuses, before anything is attached, unless:
 #   - TAG is a release tag and DIGEST an image digest;

@@ -3,7 +3,10 @@
 once and decide each of the 52 criteria from the results.
 
 A criterion passes only when it has at least one check, every one of its checks exited 0,
-and it lists no gap. A go test check passes only when each test its -run pattern names
+and it lists no gap. A criterion with operator evidence (a manual check no runner can make,
+recorded in the repository) passes only while that evidence still holds at HEAD: its record
+and artifact exist, the artifact has the recorded SHA-256, the recorded revision is an
+ancestor of HEAD, and nothing under its watched paths has changed since that revision. A go test check passes only when each test its -run pattern names
 printed "--- PASS" and none was skipped, so a pattern that matches nothing never passes.
 The full run passes only when all 52 criteria pass and every release gate's check passed.
 The exit code is 0 only then; anything not executed or not proven is pending, never pass.
@@ -18,6 +21,7 @@ or an id that is not in docs/build/acceptance.json.
 """
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -52,6 +56,8 @@ def load():
         for ch in c.get("checks", []):
             if ch not in ev["checks"]:
                 problems.append(cid + " names unknown check " + ch)
+        if "operator_evidence" in c:
+            problems += [cid + " operator_evidence: " + p for p in operator_shape(c["operator_evidence"])]
     for gid, g in ev["release_gates"].items():
         if not g.get("checks"):
             problems.append("gate " + gid + " has no check")
@@ -59,6 +65,58 @@ def load():
             if ch not in ev["checks"]:
                 problems.append("gate " + gid + " names unknown check " + ch)
     return ev, ids, problems
+
+
+OPERATOR_KEYS = ("record", "artifact", "sha256", "tested_revision", "watch")
+EVIDENCE_DIR = "docs/release/evidence/"
+
+
+def operator_shape(oe):
+    """Problems with an operator_evidence entry's shape; it must name everything the runner checks."""
+    if not isinstance(oe, dict):
+        return ["must be an object"]
+    out = ["missing " + k for k in OPERATOR_KEYS if k not in oe]
+    out += ["unknown key " + k for k in oe if k not in OPERATOR_KEYS]
+    if not re.fullmatch(r"[0-9a-f]{64}", str(oe.get("sha256", ""))):
+        out.append("sha256 must be 64 lowercase hex digits")
+    if not re.fullmatch(r"[0-9a-f]{40}", str(oe.get("tested_revision", ""))):
+        out.append("tested_revision must be a full 40-character commit SHA")
+    for k in ("record", "artifact"):
+        v = oe.get(k)
+        if not isinstance(v, str) or not v.startswith(EVIDENCE_DIR) or ".." in v.split("/"):
+            out.append(k + " must be a file under " + EVIDENCE_DIR)
+    w = oe.get("watch")
+    if not isinstance(w, list) or not w or not all(isinstance(x, str) and x for x in w):
+        out.append("watch must list the paths whose change makes the evidence stale")
+    return out
+
+
+def operator_reasons(oe):
+    """Why operator evidence does not hold at HEAD; empty when it does. Anything unproven is a reason."""
+    why = []
+    for k in ("record", "artifact"):
+        # Only what HEAD records counts: an untracked or ignored local file proves nothing.
+        if subprocess.run(["git", "cat-file", "-e", "HEAD:" + oe[k]], cwd=ROOT, capture_output=True).returncode != 0:
+            why.append("operator evidence " + k + " " + oe[k] + " is not tracked at HEAD")
+    art = subprocess.run(["git", "show", "HEAD:" + oe["artifact"]], cwd=ROOT, capture_output=True)
+    if art.returncode == 0:
+        got = hashlib.sha256(art.stdout).hexdigest()
+        if got != oe["sha256"]:
+            why.append("operator evidence artifact " + oe["artifact"] + " has sha256 " + got + ", not the recorded one")
+    rev = oe["tested_revision"]
+    anc = subprocess.run(["git", "merge-base", "--is-ancestor", rev, "HEAD"], cwd=ROOT, capture_output=True)
+    if anc.returncode != 0:
+        why.append("operator evidence revision " + rev + " is not an ancestor of HEAD (or is not fetched)")
+        return why
+    changed = subprocess.run(["git", "diff", "--name-only", rev, "HEAD", "--"] + oe["watch"], cwd=ROOT,
+                             capture_output=True, text=True)
+    if changed.returncode != 0:
+        why.append("could not compare the watched paths with " + rev)
+    elif changed.stdout.strip():
+        files = changed.stdout.split()
+        why.append("operator evidence is stale: " + ", ".join(files[:5]) + (" and more" if len(files) > 5 else "")
+                   + " changed since " + rev[:12] + "; repeat the manual check and update the record")
+    return why
 
 
 def go_expectations(command):
@@ -185,6 +243,8 @@ def main():
             elif r["status"] != "pass":
                 why.append(ch + " " + r["status"])
         why += ["gap: " + g for g in c.get("gaps", [])]
+        if "operator_evidence" in c:
+            why += operator_reasons(c["operator_evidence"])
         decided[cid] = {"status": "pass" if not why else "pending", "checks": c["checks"], "reasons": why}
         (passed if not why else pending).append(cid)
     gates = {}

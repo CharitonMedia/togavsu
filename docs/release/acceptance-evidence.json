@@ -497,9 +497,19 @@
         "go-lawcraft",
         "core-image-cases"
       ],
-      "gaps": [
-        "external: 'opens in Word with no repair prompt' needs Microsoft Word; CheckDOCX is a package-rules check."
-      ]
+      "gaps": [],
+      "operator_evidence": {
+        "record": "docs/release/evidence/AC-041-word.md",
+        "artifact": "docs/release/evidence/AC-041-word.docx",
+        "sha256": "6b682ce27a331c3089ea6323a22e6fb47a7e24a6efb5f36e94d0d6d9c187589b",
+        "tested_revision": "a3f40353d2faaf7a72a04e4d1560d49b5cd40a4b",
+        "watch": [
+          "internal/editor/",
+          "web/editor/",
+          "internal/domain/defaults.go",
+          "deploy/core.Dockerfile"
+        ]
+      }
     },
     "AC-042": {
       "checks": [

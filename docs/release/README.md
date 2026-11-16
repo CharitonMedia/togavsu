@@ -42,6 +42,17 @@ On a GitHub-hosted lane runner the full run at the release-final revision passes
 
 Until all of these are in, release-final.json stays `pending` with AC-001 and AC-041 in `pending_acceptance_ids`, and nothing is tagged or published.
 
+### Operator evidence
+
+A few criteria have a part no runner can check, such as AC-041's "opens in Word with no repair prompt". That part stays a gap until the integration lead runs it by hand and records it. A reviewed change then replaces the gap with an `operator_evidence` entry naming:
+
+- `record`: a note under docs/release/evidence/ with the command, its integer exit code and its output, for the passing run and the failure paths;
+- `artifact`: the file the manual check ran on, committed beside the note, and its `sha256`;
+- `tested_revision`: the full commit SHA the artifact came from;
+- `watch`: the paths whose change makes the evidence stale.
+
+The runner refuses an entry missing any of these. It passes the criterion only while the evidence holds at HEAD: the record and artifact are tracked at HEAD under docs/release/evidence/, the artifact as committed has that SHA-256, `tested_revision` is an ancestor of HEAD, and `git diff` shows no change under `watch` since then. Otherwise the criterion is pending with the reason, and the manual check must be repeated. AC-041's record is [evidence/AC-041-word.md](evidence/AC-041-word.md), run with `scripts/release/word-check.ps1`.
+
 ## Release gates
 
 The gates are decided only by the full run (release-final and main). The first two can't pass from a lane runner (below); the third is the product CI suites.
@@ -62,17 +73,17 @@ Patrick decided on 2026-11-12:
 - The release private key is kept off GitHub, on the integration lead's machine. No repository secret holds it, ever, and no workflow signs.
 - The release public key is committed at [deploy/release/cosign.pub](../../deploy/release/cosign.pub). The supervisor image copies it to `/usr/share/togavsu/cosign.pub`, and compose.yaml points `COSIGN_KEY` there, so no install creates or edits a key file.
 - Release signatures are not written to the public transparency log. compose.yaml therefore defaults `COSIGN_VERIFY_FLAGS` to `--insecure-ignore-tlog=true`. The supervisor still runs `cosign verify --key` against the release key before every update; nothing skips the signature check (`TestUpdate*` in internal/supervisor, `tests/update/load.sh`).
-- The release workflow, [proposed-ci/release.yml](proposed-ci/release.yml), passes actionlint 1.7.7. On a `v*` tag, or a manual run with `operation=publish`, it builds `deploy/core.Dockerfile` and `Dockerfile` at the tag, pushes `ghcr.io/charitonmedia/togavsu-core:<tag>` and `togavsu-supervisor:<tag>`, and records both digests in the job summary and in a `digests.json` asset on a draft release for the tag. It never signs and holds no private key.
+- The release workflow, [.github/workflows/release.yml](../../.github/workflows/release.yml) (control PR #61), passes actionlint 1.7.7. On a `v*` tag, or a manual run with `operation=publish`, it builds `deploy/core.Dockerfile` and `Dockerfile` at the tag, pushes `ghcr.io/charitonmedia/togavsu-core:<tag>` and `togavsu-supervisor:<tag>`, and records both digests in the job summary and in a `digests.json` asset on a draft release for the tag. It never signs and holds no private key.
 - Its second job runs only when dispatched by hand with `operation=attach-signature`. It takes one image digest plus a base64 signature and a base64 payload made off GitHub. It runs [scripts/release/attach-signature.sh](../../scripts/release/attach-signature.sh), which refuses unless the digest is one of that tag's recorded images, the payload names that digest, and the signature verifies over the payload with `deploy/release/cosign.pub`. Only then does it run `cosign attach signature` with `GITHUB_TOKEN` (`packages: write`) and verify the image. `scripts/ci/test-release-attach.sh` checks every refusal and the good path against a local registry with throwaway keys; `scripts/ci/update-load.sh` runs it.
 
 ## Cutting the release
 
 This is release-final's work, not the release candidate's. These steps need the integration lead and credentials no lane has:
 
-1. Land `docs/release/proposed-ci/release.yml` as `.github/workflows/release.yml`, and `docs/release/proposed-ci/product-ci.yml` over `.github/workflows/product-ci.yml`, through a reviewed control PR.
-2. Tag the revision on which `sh scripts/ci/full-acceptance.sh` exits 0, except for the two gates below, and push the tag. The workflow publishes both images and `digests.json`.
+1. Land the release workflow and the Product CI tag run through a reviewed control PR (done: control PR #61).
+2. Tag the revision on which `sh scripts/ci/full-acceptance.sh` exits 0, except for the two gates below, and push the tag. The workflow publishes both images and `digests.json`. The tag push also starts Product CI on the tag; its Full acceptance run fails there by design, because nothing is signed yet, so it is not release evidence and not a regression.
 3. Off GitHub, for each recorded digest: `cosign generate ghcr.io/charitonmedia/<image>@<digest> > payload.json`, then `cosign sign-blob --key <release key> --tlog-upload=false payload.json`. Dispatch the workflow with `operation=attach-signature`, the tag, the digest, the base64 signature and `base64 -w0 payload.json`.
-4. Run `sh scripts/release/verify-release.sh` at the tag; it passes only when both images verify and the supervisor image ships the committed key.
+4. Run `sh scripts/release/verify-release.sh` at the tag; it passes only when both images verify and the supervisor image ships the committed key. Then re-run Product CI's Full acceptance job on the tag; this run, after the signatures are attached, is the signed-release gate's CI evidence.
 5. Run `sh scripts/release/desktop-install.sh` on a clean Windows machine and a clean Mac with Docker Desktop, and attach the output to the release.
 6. Publish the draft release.
 
@@ -80,12 +91,6 @@ This is release-final's work, not the release candidate's. These steps need the 
 
 The Full acceptance job is in `.github/workflows/product-ci.yml` (control PRs #46 and #50). It runs all 52 criteria and every gate on release-final and on main, and reports not applicable on the release candidate, which is proven by its subset runs instead. The release candidate proposes no product-ci.yml change. The earlier full-acceptance patch is removed because it is obsolete.
 
-The release workflow, [proposed-ci/release.yml](proposed-ci/release.yml), is still only a proposal. It belongs to the signed release, so it is for release-final to land, not this candidate: copy it to `.github/workflows/release.yml` unchanged.
+The release workflow is live at `.github/workflows/release.yml` (control PR #61), which also added the `v*` tag trigger, the tag-fetching checkout and the pinned cosign install to Product CI's Full acceptance job. The earlier proposal copy under `docs/release/proposed-ci/` is removed.
 
-[proposed-ci/product-ci.yml](proposed-ci/product-ci.yml) is the whole Product CI workflow with the release-final change applied, so it can be copied over `.github/workflows/product-ci.yml` as is. Without it the Full acceptance job cannot pass the signed-release gate even after signing: today its checkout is shallow with no tags and it installs no cosign, so `verify-release.sh` stops at PENDING. The proposal adds only:
-
-- a `v*` tag trigger on `push` (the scope step already runs Full acceptance on every push);
-- `fetch-depth: 0` and `fetch-tags: true` on the Full acceptance checkout, so `git describe --tags --exact-match HEAD` finds the tag;
-- an Install cosign step with the same version and SHA-256 pin as `release.yml`, and `COSIGN_BIN` for the Full acceptance step.
-
-`tests/test_release_ci.py` fails if the proposal ever differs from the live workflow by anything other than those lines, or if the cosign pin drifts from `release.yml`. When the live workflow changes, refresh the proposal from it. The same file runs the real `verify-release.sh` against fake cosign and docker: PENDING on an untagged revision, pass on a git tag with both images verified through `COSIGN_BIN`, and failure for an unsigned image, a missing cosign, a missing key or a supervisor image that ships a different key. Even with this change, the docker-desktop gate and AC-001 cannot pass on a GitHub-hosted Linux runner.
+`tests/test_release_ci.py` checks the live workflows: the `v*` tag trigger, the tag-fetching Full acceptance checkout, the Install cosign step before Full acceptance with `COSIGN_BIN`, a cosign pin that matches `release.yml`, and no new permissions or secrets in Product CI. The same file runs the real `verify-release.sh` against fake cosign and docker: PENDING on an untagged revision, pass on a git tag with both images verified through `COSIGN_BIN`, and failure for an unsigned image, a missing cosign, a missing key or a supervisor image that ships a different key. The docker-desktop gate and AC-001 still cannot pass on a GitHub-hosted Linux runner.

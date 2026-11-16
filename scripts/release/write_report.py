@@ -32,6 +32,12 @@ def assignment(task_id="release"):
     return found[0]
 
 
+def configured_gates():
+    """Release gates that docs/release/acceptance-evidence.json requires of a full run."""
+    with open(os.path.join(ROOT, "docs", "release", "acceptance-evidence.json")) as f:
+        return list(json.load(f)["release_gates"])
+
+
 def build(task, phase_dir):
     assigned = task["acceptance_ids"]
     full = bool(task.get("full_acceptance"))
@@ -95,7 +101,10 @@ def build(task, phase_dir):
     if full:
         gates = main_run.get("release_gates", {})
         report["release_gates"] = gates
-        if not gates or any(v != "pass" for v in gates.values()):
+        missing = sorted(set(configured_gates()) - set(gates))
+        if missing:
+            report["missing_release_gates"] = missing
+        if missing or not gates or any(v != "pass" for v in gates.values()):
             report["status"] = "pending"
     return report
 

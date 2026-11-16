@@ -3,13 +3,11 @@
 scripts/release/verify-release.sh is the signed-release check that Full acceptance runs. These
 tests run the real script in a throwaway git repository, with fake cosign and docker, and prove
 it finds the release tag from git, verifies through COSIGN_BIN, and fails or stays PENDING
-otherwise. docs/release/proposed-ci/product-ci.yml is the exact Product CI the integration lead
-lands for that: the live workflow plus a v* tag trigger, a full checkout with tags and a pinned
-cosign. The lane may not edit .github/, so the proposed copy is checked against the live file
-here: it must be the live workflow plus exactly those lines.
+otherwise. Control PR #61 landed the release workflow and the Product CI tag run that the
+release-final lane proposed; the tests below pin what that run needs in the live workflows: a
+v* tag trigger, a full checkout with tags and a cosign pinned to the release workflow's.
 """
 
-import difflib
 import os
 import re
 import shutil
@@ -20,13 +18,12 @@ import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIVE = os.path.join(ROOT, ".github", "workflows", "product-ci.yml")
-PROPOSED = os.path.join(ROOT, "docs", "release", "proposed-ci", "product-ci.yml")
-RELEASE = os.path.join(ROOT, "docs", "release", "proposed-ci", "release.yml")
+RELEASE = os.path.join(ROOT, ".github", "workflows", "release.yml")
 GIT = ["git", "-c", "user.name=test", "-c", "user.email=test@example.invalid",
        "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"]
 
-# The only lines the proposed workflow adds to the live one, in order.
-ADDED = [
+# The lines the release-final lane asked Product CI to carry, in order (control PR #61).
+RELEASE_LINES = [
     "    tags: ['v*']",
     "          fetch-depth: 0",
     "          fetch-tags: true",
@@ -48,27 +45,27 @@ def _load(path):
         return f.read()
 
 
-class ProposedProductCI(unittest.TestCase):
-    # Text checks only: the QA venv has no YAML parser, and the exact-diff test below already
-    # pins every line the proposal adds.
+class LiveProductCI(unittest.TestCase):
+    # Text checks only: the QA venv has no YAML parser.
 
     def setUp(self):
         self.live = _load(LIVE)
-        self.proposed = _load(PROPOSED)
-        lines = self.proposed.splitlines()
+        lines = self.live.splitlines()
         start = lines.index("  full-acceptance:")
         end = next((i for i in range(start + 1, len(lines)) if re.match(r"^  \S", lines[i])), len(lines))
         self.job = lines[start:end]
 
-    def test_proposed_is_the_live_workflow_plus_only_the_release_lines(self):
-        diff = list(difflib.ndiff(self.live.splitlines(), self.proposed.splitlines()))
-        removed = [d[2:] for d in diff if d.startswith("- ")]
-        added = [d[2:] for d in diff if d.startswith("+ ")]
-        self.assertEqual(removed, [], "the proposed workflow must not drop or change a live line; refresh it from the live file")
-        self.assertEqual(added, ADDED)
+    def test_live_workflow_carries_every_release_line_in_order(self):
+        lines = self.live.splitlines()
+        at = 0
+        for want in RELEASE_LINES:
+            try:
+                at = lines.index(want, at) + 1
+            except ValueError:
+                self.fail("Product CI is missing, or has out of order, the release line: %s" % want)
 
     def test_tag_pushes_trigger_product_ci(self):
-        self.assertIn("on:\n  push:\n    branches: [main]\n    tags: ['v*']\n  pull_request:\n", self.proposed)
+        self.assertIn("on:\n  push:\n    branches: [main]\n    tags: ['v*']\n  pull_request:\n", self.live)
 
     def test_full_acceptance_job_can_find_and_verify_a_signed_tag(self):
         job = self.job
@@ -97,8 +94,8 @@ class ProposedProductCI(unittest.TestCase):
             self.assertIn("          %s: %s" % (name, pinned), self.job)
 
     def test_no_new_permissions_or_secrets(self):
-        self.assertIn("\npermissions:\n  contents: read\njobs:\n", self.proposed)
-        for line in ADDED:
+        self.assertIn("\npermissions:\n  contents: read\njobs:\n", self.live)
+        for line in RELEASE_LINES:
             self.assertNotIn("secrets", line)
             self.assertNotIn("permissions", line)
 
