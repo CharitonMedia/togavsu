@@ -1,40 +1,63 @@
 {
   "task_id": "desk-fix-settings-labels",
   "status": "pass",
-  "scope": "Desk fix: plain labels on every settings.Definition, admin Settings rows, and the settings API JSON/OpenAPI Setting schema. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
-  "tested_revision": "b4c93c42d59d09f6575ad16a8a16224fb65eedea",
-  "prd_sections": ["8.7"],
+  "scope": "Desk fix: plain labels on every settings.Definition, admin Settings rows, and the settings API JSON/OpenAPI Setting schema. Codex P1/P2 follow-up: UI error text names settings by label; regression tests for layout, notices, errors, and API label. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
+  "tested_revision": "a86e6330fc2e348e70b1ebf097067e66cb2f2570",
+  "prd_sections": [
+    "8.7"
+  ],
   "acceptance_ids": [],
   "tests": [
     {
       "command": "go vet ./...",
       "exit_code": 0,
-      "seconds": 12
+      "seconds": 17
     },
     {
       "command": "go test -count=1 ./internal/settings/ ./internal/dashboard/ ./internal/core/",
       "exit_code": 0,
-      "seconds": 97
+      "seconds": 118
+    },
+    {
+      "command": "go test -count=1 ./internal/dashboard/...",
+      "exit_code": 0,
+      "seconds": 30,
+      "note": "Includes compose UI regression TestUIAdminSettingsLabels"
     },
     {
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 15
+      "seconds": 27
+    }
+  ],
+  "codex_resolutions": [
+    {
+      "finding": "P1 dashboard error text still named the setting by key",
+      "resolution": "settingErr(key, err) uses settings.UIError so admin ?error= names the label"
+    },
+    {
+      "finding": "P1 core settingsChange appended key-bearing registry text after the label sentence",
+      "resolution": "settingsChange renders settings.UIError only; API settingErr unchanged"
+    },
+    {
+      "finding": "P2 missing layout/API/notice/error tests",
+      "resolution": "TestUIErrorNamesSettingByLabel; TestUIAdminSettingsLabels; tightened TestUIAdminSettings invalid-path assertion"
     }
   ],
   "implemented": [
     "settings.Definition.Label on every catalog key from docs/build/desk-fixes/settings-labels.md",
     "ValidateCatalog refuses an empty label",
     "Admin and core settings rows lead with label, help under it, key last muted; column heading Name; visually hidden form label and save/reset/error copy use the label",
+    "settings.UIError rewrites mutation failures for UI display by label; API error bodies still name the key",
     "settingJSON and OpenAPI Setting include required label; listSettings description lists setting fields including label"
   ],
   "pending": [
-    "GitHub CI on claude/togavsu-desk-fix-settings-labels-ce8de139 (Core tests, API contract tests, Codex checkpoint) — branch not published from this read-only lane; controller publishes commits and opens/updates the PR",
+    "GitHub CI and Codex checkpoint on the controller-published head of claude/togavsu-desk-fix-settings-labels-ce8de139 (this lane cannot push)",
     "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
   ],
   "simplification": {
-    "net_lines": 249,
+    "net_lines": 436,
     "ponytail_debt_sections": 13,
-    "note": "No new PONYTAIL-DEBT entries. Reused Definition embedding on Entry for templates and settingJSON; LabelOf for UI notices."
+    "note": "No new PONYTAIL-DEBT entries. Added settings.UIError shared by dashboard and core HTML; API path unchanged."
   }
 }
