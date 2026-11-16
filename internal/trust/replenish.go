@@ -275,6 +275,7 @@ func (s *Service) closeRepl(ctx context.Context, who domain.Principal, id domain
 }
 
 // Replenishment returns one request the caller may see.
+// A client sees only a request naming their linked contact (CORE-12).
 func (s *Service) Replenishment(ctx context.Context, who domain.Principal, id domain.ID) (Replenishment, error) {
 	r, err := s.replenishment(ctx, id)
 	if err != nil {
@@ -283,10 +284,14 @@ func (s *Service) Replenishment(ctx context.Context, who domain.Principal, id do
 	if err := s.allow(ctx, who, domain.ResTrust, domain.ActionRead, r.MatterID); err != nil {
 		return Replenishment{}, err
 	}
+	if clientOnly(who) {
+		return s.replenishmentForClient(ctx, who, r)
+	}
 	return r, nil
 }
 
 // Replenishments lists requests the caller may see. A walled matter is absent.
+// A client sees only requests naming their linked contact on readable matters (CORE-12).
 func (s *Service) Replenishments(ctx context.Context, who domain.Principal, matter domain.ID, status, cursor string, limit int) (Page[Replenishment], error) {
 	rows, err := s.visibleRepls(ctx, who, matter, status)
 	if err != nil {
@@ -307,8 +312,21 @@ func (s *Service) visibleRepls(ctx context.Context, who domain.Principal, matter
 	if err != nil {
 		return nil, err
 	}
+	var contact domain.ID
+	if clientOnly(who) {
+		contact, err = s.linkedContact(ctx, who)
+		if err != nil {
+			return nil, err
+		}
+		if contact.IsZero() {
+			return nil, nil
+		}
+	}
 	var rows []Replenishment
 	for _, r := range all {
+		if !contact.IsZero() && r.ClientID != contact {
+			continue
+		}
 		if ok, err := rd.ok(ctx, r.MatterID); err != nil {
 			return nil, err
 		} else if ok {

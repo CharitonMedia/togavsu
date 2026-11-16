@@ -24,6 +24,8 @@ It does not claim the handlers or the MCP server are implemented.
 | profile | `GET` | `/api/v1/me` | `getMe` | required:getMe | admin, attorney, staff, accountant, client | profile:read |
 | profile | `PATCH` | `/api/v1/me` | `updateMe` | required:updateMe | admin, attorney, staff, accountant, client | profile:write |
 | calendar | `GET` | `/api/v1/me/appointments` | `listMeAppointments` | required:listMeAppointments | client | calendar:read |
+| trust-replenishment | `GET` | `/api/v1/me/trust` | `getMeTrust` | required:getMeTrust | client | trust:read |
+| trust-ledger | `GET` | `/api/v1/me/trust-ledger` | `getMeTrustLedger` | required:getMeTrustLedger | client | trust:read |
 | profile | `GET` | `/api/v1/me/contact` | `getMeContact` | required:getMeContact | client | profile:read |
 | profile | `PATCH` | `/api/v1/me/contact` | `updateMeContact` | required:updateMeContact | client | profile:write |
 | profile | `POST` | `/api/v1/me/email-change` | `requestEmailChange` | required:requestEmailChange | admin, attorney, staff, accountant, client | profile:write |
@@ -47,6 +49,11 @@ It does not claim the handlers or the MCP server are implemented.
 | users | `POST` | `/api/v1/users/{user_id}/deactivate` | `deactivateUser` | required:deactivateUser | admin | users:write |
 | firm-profile | `GET` | `/api/v1/firm-profile` | `getFirmProfile` | required:getFirmProfile | admin, attorney, staff, accountant, client | firm:read |
 | user-directory | `GET` | `/api/v1/user-directory` | `listUserDirectory` | required:listUserDirectory | admin, attorney, staff, client | users:directory |
+| client-access | `GET` | `/api/v1/client-access` | `getClientAccess` | required:getClientAccess | admin, attorney, staff | client_access:read |
+| client-access | `POST` | `/api/v1/client-access` | `grantClientAccess` | required:grantClientAccess | admin, attorney, staff | client_access:write |
+| client-access | `POST` | `/api/v1/client-access/{user_id}/temporary-password` | `resetClientAccessPassword` | required:resetClientAccessPassword | admin, attorney, staff | client_access:write |
+| client-access | `POST` | `/api/v1/client-access/{user_id}/deactivate` | `deactivateClientAccess` | required:deactivateClientAccess | admin, attorney, staff | client_access:write |
+| client-access | `POST` | `/api/v1/client-access/{user_id}/reactivate` | `reactivateClientAccess` | required:reactivateClientAccess | admin, attorney, staff | client_access:write |
 | api-tokens, profile | `GET` | `/api/v1/api-tokens` | `listApiToken` | required:listApiToken | admin, attorney, staff, accountant, client | tokens:read |
 | api-tokens | `POST` | `/api/v1/api-tokens` | `createApiToken` | required:createApiToken | admin | tokens:write |
 | api-tokens, profile | `GET` | `/api/v1/api-tokens/{token_id}` | `getApiToken` | required:getApiToken | admin, attorney, staff, accountant, client | tokens:read |
@@ -235,9 +242,9 @@ It does not claim the handlers or the MCP server are implemented.
 | trust-flags | `GET` | `/api/v1/trust-flags` | `listTrustFlag` | required:listTrustFlag | admin, attorney, staff, accountant | trust:read |
 | trust-flags | `GET` | `/api/v1/trust-flags/{trust_flag_id}` | `getTrustFlag` | required:getTrustFlag | admin, attorney, staff, accountant | trust:read |
 | trust-flags | `POST` | `/api/v1/trust-flags/{trust_flag_id}/resolve` | `resolveTrustFlag` | required:resolveTrustFlag | admin, attorney | trust:write |
-| trust-replenishment | `GET` | `/api/v1/trust-replenishment-requests` | `listTrustReplenishment` | required:listTrustReplenishment | admin, attorney, staff, accountant | trust:read |
+| trust-replenishment | `GET` | `/api/v1/trust-replenishment-requests` | `listTrustReplenishment` | required:listTrustReplenishment | admin, attorney, staff, accountant, client | trust:read |
 | trust-replenishment | `POST` | `/api/v1/trust-replenishment-requests` | `createTrustReplenishment` | required:createTrustReplenishment | admin, attorney, staff | trust:write |
-| trust-replenishment | `GET` | `/api/v1/trust-replenishment-requests/{replenishment_id}` | `getTrustReplenishment` | required:getTrustReplenishment | admin, attorney, staff, accountant | trust:read |
+| trust-replenishment | `GET` | `/api/v1/trust-replenishment-requests/{replenishment_id}` | `getTrustReplenishment` | required:getTrustReplenishment | admin, attorney, staff, accountant, client | trust:read |
 | trust-replenishment, bulk | `POST` | `/api/v1/trust-replenishment-requests:bulk` | `bulkTrustReplenishment` | required:bulkTrustReplenishment | admin, attorney, staff | trust:write |
 | trust-replenishment | `POST` | `/api/v1/trust-replenishment-requests/{replenishment_id}/cancel` | `cancelTrustReplenishment` | required:cancelTrustReplenishment | admin, attorney, staff | trust:write |
 | trust-replenishment | `POST` | `/api/v1/trust-replenishment-requests/{replenishment_id}/satisfy` | `satisfyTrustReplenishment` | required:satisfyTrustReplenishment | admin, attorney, staff | trust:write |
@@ -452,4 +459,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 | modules, inbound-webhooks | `POST` | `/hooks/{module_id}/{hook_id}` | `postInboundWebhook` | required:postInboundWebhook | public | none |
 
-Operations: 446.
+Operations: 453.

@@ -48,6 +48,7 @@ func (a *App) routes() {
 	a.identityRoutes(m)
 	a.meContactRoutes(m)
 	a.meAppointmentsRoutes(m)
+	a.meTrustRoutes(m)
 	a.directoryRoutes(m)
 	a.portalRoutes(m)
 	a.systemRoutes(m)

@@ -151,8 +151,12 @@ type readable struct {
 }
 
 func (s *Service) reader(ctx context.Context, who domain.Principal) (*readable, error) {
-	if err := s.allow(ctx, who, domain.ResTrust, domain.ActionRead, ""); err != nil {
-		return nil, err
+	// A client-only principal skips the firm-wide trust gate and is filtered per matter
+	// (and to the linked contact) by the list methods that use this reader (CORE-12).
+	if !clientOnly(who) {
+		if err := s.allow(ctx, who, domain.ResTrust, domain.ActionRead, ""); err != nil {
+			return nil, err
+		}
 	}
 	return &readable{s: s, who: who, seen: map[domain.ID]bool{}}, nil
 }

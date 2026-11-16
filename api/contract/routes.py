@@ -557,6 +557,54 @@ def _identity(api: Contract) -> None:
     )
     api.add(
         "get",
+        "/api/v1/me/trust",
+        operation_id="getMeTrust",
+        summary="List the client's trust balances and active replenishment requests",
+        description=(
+            "For each matter the client can read, returns the client's own trust balance in cents "
+            "and the active replenishment requests naming the client's linked contact. "
+            "No other client's figures and no account numbers."
+        ),
+        tag="Trust",
+        features=["trust-replenishment"],
+        roles=CLIENT,
+        scopes=["trust:read"],
+        response_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["data"],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/MeTrustMatter"},
+                }
+            },
+        },
+        writes=False,
+        extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "get",
+        "/api/v1/me/trust-ledger",
+        operation_id="getMeTrustLedger",
+        summary="List the client's trust ledger entries for one matter",
+        description=(
+            "Returns ledger entries naming the client's linked contact on the given matter "
+            "(date, type, amount, description). No other client's figures and no account numbers. "
+            "matter_id is required."
+        ),
+        tag="Trust",
+        features=["trust-ledger"],
+        roles=CLIENT,
+        scopes=["trust:read"],
+        query=["matter_id"],
+        response_schema=_page("ClientTrustLedgerEntry"),
+        paginate=True,
+        writes=False,
+        extra_access={**VIEWER, "client": "own", "matter_wall": True},
+    )
+    api.add(
+        "get",
         "/api/v1/me/contact",
         operation_id="getMeContact",
         summary="Get linked contact details",
@@ -885,6 +933,95 @@ def _identity(api: Contract) -> None:
         query=["ids", "role", "active"],
         writes=False,
         extra_access={**VIEWER, "client": "own", "client_schema": "UserDirectoryClient"},
+    )
+    api.add(
+        "get",
+        "/api/v1/client-access",
+        operation_id="getClientAccess",
+        summary="Get client portal access for a contact",
+        description=(
+            "Returns portal access status for the client user linked to contact_id: user_id, email, active, "
+            "must_change_password, last_sign_in_at and granted_at. 404 when no client user exists or the contact "
+            "is not a client party on a matter the caller can read. Refuses a user holding any role besides client (409)."
+        ),
+        tag="Identity",
+        features=["client-access"],
+        roles=STAFF,
+        scopes=["client_access:read"],
+        response="ClientAccess",
+        query=["contact_id"],
+        writes=False,
+        error_codes=["not_found", "conflict", "forbidden", "scope_denied", "validation_failed"],
+        extra_access=VIEWER,
+    )
+    api.add(
+        "post",
+        "/api/v1/client-access",
+        operation_id="grantClientAccess",
+        summary="Grant or refresh client portal access",
+        description=(
+            "Creates or finds the client user linked to contact_id, sets a temporary password with "
+            "must_change_password, mails the sign-in address by system mail, and returns "
+            "{user_id, created, email, mail_status}. Never returns the password. Email defaults to the "
+            "contact's primary email (400 when there is none)."
+        ),
+        tag="Identity",
+        features=["client-access"],
+        roles=STAFF,
+        scopes=["client_access:write"],
+        body="ClientAccessGrant",
+        response="ClientAccessGrantResult",
+        error_codes=["not_found", "conflict", "forbidden", "scope_denied", "validation_failed"],
+        events=["client_access.granted"],
+        extra_access=VIEWER,
+    )
+    api.add(
+        "post",
+        "/api/v1/client-access/{user_id}/temporary-password",
+        operation_id="resetClientAccessPassword",
+        summary="Set a temporary client portal password",
+        description=(
+            "Sets a new temporary password with must_change_password, revokes the user's sessions, and "
+            "returns {temporary_password} once. Temporary passwords never reach logs, the audit log or events."
+        ),
+        tag="Identity",
+        features=["client-access"],
+        roles=STAFF,
+        scopes=["client_access:write"],
+        response="ClientAccessTemporaryPassword",
+        error_codes=["not_found", "conflict", "forbidden", "scope_denied"],
+        events=["client_access.password_reset"],
+        extra_access=VIEWER,
+    )
+    api.add(
+        "post",
+        "/api/v1/client-access/{user_id}/deactivate",
+        operation_id="deactivateClientAccess",
+        summary="Deactivate client portal access",
+        description="Deactivates a client-only portal user so they can no longer sign in.",
+        tag="Identity",
+        features=["client-access"],
+        roles=STAFF,
+        scopes=["client_access:write"],
+        response="ClientAccessStatus",
+        error_codes=["not_found", "conflict", "forbidden", "scope_denied"],
+        events=["client_access.deactivated"],
+        extra_access=VIEWER,
+    )
+    api.add(
+        "post",
+        "/api/v1/client-access/{user_id}/reactivate",
+        operation_id="reactivateClientAccess",
+        summary="Reactivate client portal access",
+        description="Reactivates a previously deactivated client-only portal user.",
+        tag="Identity",
+        features=["client-access"],
+        roles=STAFF,
+        scopes=["client_access:write"],
+        response="ClientAccessStatus",
+        error_codes=["not_found", "conflict", "forbidden", "scope_denied"],
+        events=["client_access.reactivated"],
+        extra_access=VIEWER,
     )
     api.resource(
         collection="/api/v1/api-tokens",
@@ -2351,7 +2488,7 @@ def _trust(api: Contract) -> None:
         tag="Trust",
         feature="trust-replenishment",
         singular="replenishment request",
-        read_roles=BILLING,
+        read_roles=BILLING + CLIENT,
         write_roles=STAFF,
         read_scope="trust:read",
         write_scope="trust:write",
@@ -2361,8 +2498,9 @@ def _trust(api: Contract) -> None:
         filters=["matter_id", "status"],
         events={"created": "trust.replenishment_requested"},
         replaceable="trust",
-        extra_access=WALL,
+        extra_access={**WALL, "client": "own", "client_schema": "TrustReplenishmentClient"},
     )
+    _project_client_replenishment(api)
     api.add(
         "post",
         "/api/v1/trust-replenishment-requests/{replenishment_id}/cancel",
@@ -4923,6 +5061,35 @@ def _modules(api: Contract) -> None:
         },
     )
 
+
+
+
+def _project_client_replenishment(api: Contract) -> None:
+    staff_item = {"$ref": "#/components/schemas/TrustReplenishment"}
+    client_item = {"$ref": "#/components/schemas/TrustReplenishmentClient"}
+    mixed = {"oneOf": [staff_item, client_item]}
+    page = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["data", "page"],
+        "properties": {
+            "data": {"type": "array", "items": mixed},
+            "page": {"$ref": "#/components/schemas/Page"},
+        },
+    }
+    list_op = api.spec["paths"]["/api/v1/trust-replenishment-requests"]["get"]
+    get_op = api.spec["paths"]["/api/v1/trust-replenishment-requests/{replenishment_id}"]["get"]
+    list_op["responses"]["200"]["content"]["application/json"]["schema"] = page
+    get_op["responses"]["200"]["content"]["application/json"]["schema"] = mixed
+    for operation in (list_op, get_op):
+        operation["x-togavsu-access"]["client"] = "own"
+        operation["x-togavsu-access"]["client_schema"] = "TrustReplenishmentClient"
+        operation["x-togavsu-access"]["staff_schema"] = "TrustReplenishment"
+        operation["x-togavsu-access"]["client_projection"] = "allowlist"
+    # Writes stay staff-only.
+    for method in ("post",):
+        if method in api.spec["paths"]["/api/v1/trust-replenishment-requests"]:
+            api.spec["paths"]["/api/v1/trust-replenishment-requests"][method]["x-togavsu-access"]["client"] = "deny"
 
 def _project_client_matters(api: Contract) -> None:
     staff_item = {"$ref": "#/components/schemas/Matter"}

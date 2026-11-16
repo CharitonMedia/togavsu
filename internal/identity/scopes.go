@@ -106,7 +106,7 @@ func roleScopes(role domain.Role) map[string]struct{} {
 		return scopeSet(
 			"profile:read", "profile:write", "sessions:read", "sessions:write", "tokens:read",
 			"matters:read", "files:read", "invoices:read", "notes:read", "calendar:read", "deadlines:read",
-			"firm:read", "users:directory",
+			"trust:read", "firm:read", "users:directory",
 		)
 	default:
 		return map[string]struct{}{}

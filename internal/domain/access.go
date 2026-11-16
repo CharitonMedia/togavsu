@@ -180,7 +180,13 @@ func clientDenied(p Principal, in AccessInput) bool {
 	if !p.HasRole(RoleClient) || p.HasRole(RoleAdmin) || p.HasRole(RoleAttorney) || p.HasRole(RoleStaff) {
 		return false
 	}
-	return in.Action == ActionRead && (!in.ClientMatter || !in.SharedWithClient)
+	if in.Action != ActionRead {
+		return false
+	}
+	if in.Resource == ResTrust {
+		return !in.ClientMatter
+	}
+	return !in.ClientMatter || !in.SharedWithClient
 }
 
 func roleAllows(p Principal, in AccessInput) bool {
@@ -232,14 +238,17 @@ func roleAllowsOne(role Role, in AccessInput) bool {
 			return false
 		}
 	case RoleClient:
-		if in.Action != ActionRead || !in.ClientMatter || !in.SharedWithClient {
+		if in.Action != ActionRead || !in.ClientMatter {
 			return false
 		}
 		switch in.Resource {
-		case ResSettings, ResUser, ResTrust, ResBillingReport, ResConflictReason, ResSensitiveContact:
+		case ResSettings, ResUser, ResBillingReport, ResConflictReason, ResSensitiveContact:
 			return false
-		default:
+		case ResTrust:
+			// CORE-12: a client reads own trust on a readable matter; SharedWithClient is not used.
 			return true
+		default:
+			return in.SharedWithClient
 		}
 	default:
 		return false

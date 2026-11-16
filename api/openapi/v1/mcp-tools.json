@@ -473,6 +473,92 @@
       }
     },
     {
+      "name": "getMeTrust",
+      "method": "GET",
+      "path": "/api/v1/me/trust",
+      "features": [
+        "trust-replenishment"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "client"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "getMeTrustLedger",
+      "method": "GET",
+      "path": "/api/v1/me/trust-ledger",
+      "features": [
+        "trust-ledger"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "client"
+      ],
+      "module_delegation": "delegated_viewer",
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 50
+      },
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
       "name": "getMeContact",
       "method": "GET",
       "path": "/api/v1/me/contact",
@@ -1316,6 +1402,225 @@
         "arguments": [
           "path",
           "query",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "getClientAccess",
+      "method": "GET",
+      "path": "/api/v1/client-access",
+      "features": [
+        "client-access"
+      ],
+      "scopes": [
+        "client_access:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "grantClientAccess",
+      "method": "POST",
+      "path": "/api/v1/client-access",
+      "features": [
+        "client-access"
+      ],
+      "scopes": [
+        "client_access:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "context_token",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "resetClientAccessPassword",
+      "method": "POST",
+      "path": "/api/v1/client-access/{user_id}/temporary-password",
+      "features": [
+        "client-access"
+      ],
+      "scopes": [
+        "client_access:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "deactivateClientAccess",
+      "method": "POST",
+      "path": "/api/v1/client-access/{user_id}/deactivate",
+      "features": [
+        "client-access"
+      ],
+      "scopes": [
+        "client_access:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "reactivateClientAccess",
+      "method": "POST",
+      "path": "/api/v1/client-access/{user_id}/reactivate",
+      "features": [
+        "client-access"
+      ],
+      "scopes": [
+        "client_access:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
           "context_token"
         ]
       }
@@ -9595,7 +9900,8 @@
         "admin",
         "attorney",
         "staff",
-        "accountant"
+        "accountant",
+        "client"
       ],
       "module_delegation": "delegated_viewer",
       "limit": {
@@ -9692,7 +9998,8 @@
         "admin",
         "attorney",
         "staff",
-        "accountant"
+        "accountant",
+        "client"
       ],
       "module_delegation": "delegated_viewer",
       "transfer": {

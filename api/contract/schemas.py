@@ -42,6 +42,7 @@ PROBLEM_CODES = [
     "field_locked",
     "matter_mismatch",
     "duplicate_email",
+    "password_change_required",
 ]
 
 
@@ -1269,6 +1270,37 @@ SCHEMAS = _register(
             ["matter_id", "client_id", "amount_requested_cents", "message", "status"],
             "A replenishment request from the evergreen minimum or from collections.",
         ),
+        "TrustReplenishmentClient": _obj(
+            {
+                "id": _uuid(),
+                "matter_id": _uuid(),
+                "amount_cents": _cents("Requested amount. Renamed from amount_requested_cents for the client allowlist."),
+                "message": {"type": "string"},
+                "status": _enum(["active", "satisfied", "cancelled"]),
+                "created_at": _dt(),
+            },
+            ["id", "matter_id", "amount_cents", "message", "status", "created_at"],
+            "The client allowlist for replenishment JSON and MCP. A field that is not here is not returned.",
+        ),
+        "MeTrustMatter": _obj(
+            {
+                "matter_id": _uuid(),
+                "balance_cents": _signed_cents("The calling client's own trust balance on the matter across every account."),
+                "replenishment_requests": _arr(_ref("TrustReplenishmentClient")),
+            },
+            ["matter_id", "balance_cents", "replenishment_requests"],
+            "One readable matter's trust summary for the calling client: own balance and active replenishment requests naming the client.",
+        ),
+        "ClientTrustLedgerEntry": _obj(
+            {
+                "date": _date("Calendar date of the ledger entry (UTC date of created_at)."),
+                "type": {"type": "string", "description": "Ledger entry_type as shown to the client."},
+                "amount_cents": _signed_cents("Ledger amount for this entry."),
+                "description": {"type": "string"},
+            },
+            ["date", "type", "amount_cents", "description"],
+            "One ledger entry naming the calling client. No account numbers and no other client's figures.",
+        ),
         "TrustReplenishmentWrite": _obj(
             {
                 "matter_id": _uuid(),
@@ -2241,6 +2273,51 @@ SCHEMAS = _register(
             },
             ["id", "name"],
             "Client projection of a directory row: active staff, attorney or admin users only.",
+        ),
+        "ClientAccess": _obj(
+            {
+                "user_id": _uuid(),
+                "email": {"type": "string"},
+                "active": {"type": "boolean"},
+                "must_change_password": {"type": "boolean"},
+                "last_sign_in_at": _null(_dt()),
+                "granted_at": _dt(),
+            },
+            ["user_id", "email", "active", "must_change_password", "last_sign_in_at", "granted_at"],
+            "Portal access status for a client-only user linked to a contact.",
+        ),
+        "ClientAccessGrant": _obj(
+            {
+                "contact_id": _uuid(),
+                "email": {"type": "string", "description": "Sign-in email. Defaults to the contact's primary email."},
+            },
+            ["contact_id"],
+            "Create or refresh client portal access for a contact.",
+        ),
+        "ClientAccessGrantResult": _obj(
+            {
+                "user_id": _uuid(),
+                "created": {"type": "boolean"},
+                "email": {"type": "string"},
+                "mail_status": _enum(["sent", "failed", "skipped"]),
+            },
+            ["user_id", "created", "email", "mail_status"],
+            "Grant result. Never includes the temporary password.",
+        ),
+        "ClientAccessTemporaryPassword": _obj(
+            {"temporary_password": {"type": "string", "minLength": 12}},
+            ["temporary_password"],
+            "Temporary password shown once. Never logged or audited.",
+        ),
+        "ClientAccessStatus": _obj(
+            {
+                "user_id": _uuid(),
+                "email": {"type": "string"},
+                "active": {"type": "boolean"},
+                "must_change_password": {"type": "boolean"},
+            },
+            ["user_id", "email", "active", "must_change_password"],
+            "Active flag after deactivate or reactivate.",
         ),
         "Me": _ref("User"),
         "MeSettings": _obj(

@@ -501,6 +501,14 @@ func (h *Handler) listRepl(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	if clientOnly(p) {
+		rows := make([]ClientReplenishment, 0, len(page.Items))
+		for _, item := range page.Items {
+			rows = append(rows, clientReplenishment(item))
+		}
+		listJSON(w, Page[ClientReplenishment]{Items: rows, Limit: page.Limit, NextCursor: page.NextCursor})
+		return
+	}
 	listJSON(w, page)
 }
 
@@ -550,6 +558,10 @@ func (h *Handler) getRepl(w http.ResponseWriter, r *http.Request) {
 	out, err := h.Svc.Replenishment(r.Context(), p, pathID(r, "replenishment_id"))
 	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if clientOnly(p) {
+		writeJSON(w, http.StatusOK, clientReplenishment(out))
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

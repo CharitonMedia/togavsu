@@ -24,6 +24,9 @@
       "name": "Calendar"
     },
     {
+      "name": "Trust"
+    },
+    {
       "name": "Settings"
     },
     {
@@ -49,9 +52,6 @@
     },
     {
       "name": "Reports"
-    },
-    {
-      "name": "Trust"
     },
     {
       "name": "Files"
@@ -1835,6 +1835,261 @@
         "x-togavsu-mcp": {
           "parity": "required",
           "tool": "listMeAppointments",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/trust": {
+      "get": {
+        "operationId": "getMeTrust",
+        "summary": "List the client's trust balances and active replenishment requests",
+        "description": "For each matter the client can read, returns the client's own trust balance in cents and the active replenishment requests naming the client's linked contact. No other client's figures and no account numbers.",
+        "tags": [
+          "Trust"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MeTrustMatter"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "trust-replenishment"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "client"
+          ],
+          "scopes": [
+            "trust:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "own",
+          "module_delegation": "delegated_viewer"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getMeTrust",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/trust-ledger": {
+      "get": {
+        "operationId": "getMeTrustLedger",
+        "summary": "List the client's trust ledger entries for one matter",
+        "description": "Returns ledger entries naming the client's linked contact on the given matter (date, type, amount, description). No other client's figures and no account numbers. matter_id is required.",
+        "tags": [
+          "Trust"
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from page.next_cursor."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 50
+            },
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
+          },
+          {
+            "name": "matter_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Matter filter."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ClientTrustLedgerEntry"
+                      }
+                    },
+                    "page": {
+                      "$ref": "#/components/schemas/Page"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "trust-ledger"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "client"
+          ],
+          "scopes": [
+            "trust:read"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "own",
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getMeTrustLedger",
           "transfer": {
             "shape": "path_query_body",
             "path": "Object of path parameters.",
@@ -4646,6 +4901,655 @@
           {
             "bearerAuth": []
           }
+        ]
+      }
+    },
+    "/api/v1/client-access": {
+      "get": {
+        "operationId": "getClientAccess",
+        "summary": "Get client portal access for a contact",
+        "description": "Returns portal access status for the client user linked to contact_id: user_id, email, active, must_change_password, last_sign_in_at and granted_at. 404 when no client user exists or the contact is not a client party on a matter the caller can read. Refuses a user holding any role besides client (409).",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Contact filter."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientAccess"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "client-access"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "client_access:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getClientAccess",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "not_found",
+          "conflict",
+          "forbidden",
+          "scope_denied",
+          "validation_failed"
+        ]
+      },
+      "post": {
+        "operationId": "grantClientAccess",
+        "summary": "Grant or refresh client portal access",
+        "description": "Creates or finds the client user linked to contact_id, sets a temporary password with must_change_password, mails the sign-in address by system mail, and returns {user_id, created, email, mail_status}. Never returns the password. Email defaults to the contact's primary email (400 when there is none).",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientAccessGrantResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "client-access"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "client_access:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "client_access.granted"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "grantClientAccess",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "not_found",
+          "conflict",
+          "forbidden",
+          "scope_denied",
+          "validation_failed"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientAccessGrant"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/client-access/{user_id}/temporary-password": {
+      "post": {
+        "operationId": "resetClientAccessPassword",
+        "summary": "Set a temporary client portal password",
+        "description": "Sets a new temporary password with must_change_password, revokes the user's sessions, and returns {temporary_password} once. Temporary passwords never reach logs, the audit log or events.",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter user_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientAccessTemporaryPassword"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "client-access"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "client_access:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "client_access.password_reset"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "resetClientAccessPassword",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "not_found",
+          "conflict",
+          "forbidden",
+          "scope_denied"
+        ]
+      }
+    },
+    "/api/v1/client-access/{user_id}/deactivate": {
+      "post": {
+        "operationId": "deactivateClientAccess",
+        "summary": "Deactivate client portal access",
+        "description": "Deactivates a client-only portal user so they can no longer sign in.",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter user_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientAccessStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "client-access"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "client_access:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "client_access.deactivated"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "deactivateClientAccess",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "not_found",
+          "conflict",
+          "forbidden",
+          "scope_denied"
+        ]
+      }
+    },
+    "/api/v1/client-access/{user_id}/reactivate": {
+      "post": {
+        "operationId": "reactivateClientAccess",
+        "summary": "Reactivate client portal access",
+        "description": "Reactivates a previously deactivated client-only portal user.",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter user_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientAccessStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "client-access"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "client_access:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "client_access.reactivated"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "reactivateClientAccess",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "not_found",
+          "conflict",
+          "forbidden",
+          "scope_denied"
         ]
       }
     },
@@ -34048,7 +34952,14 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/TrustReplenishment"
+                        "oneOf": [
+                          {
+                            "$ref": "#/components/schemas/TrustReplenishment"
+                          },
+                          {
+                            "$ref": "#/components/schemas/TrustReplenishmentClient"
+                          }
+                        ]
                       }
                     },
                     "page": {
@@ -34083,22 +34994,34 @@
             "admin",
             "attorney",
             "staff",
-            "accountant"
+            "accountant",
+            "client"
           ],
           "scopes": [
             "trust:read"
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "own",
           "access_inherits": "matter",
+          "client_schema": "TrustReplenishmentClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "staff_schema": "TrustReplenishment",
+          "client_projection": "allowlist",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
           },
+          "client_fields": [
+            "id",
+            "matter_id",
+            "amount_cents",
+            "message",
+            "status",
+            "created_at"
+          ],
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -34212,6 +35135,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "client_schema": "TrustReplenishmentClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "extension_include": {
@@ -34222,7 +35146,16 @@
           "events_on": "commit",
           "events_on_failure": "none",
           "admin_bypasses_wall": false,
-          "effect_order": "authorize_before_external_effect"
+          "effect_order": "authorize_before_external_effect",
+          "client_projection": "allowlist",
+          "client_fields": [
+            "id",
+            "matter_id",
+            "amount_cents",
+            "message",
+            "status",
+            "created_at"
+          ]
         },
         "x-togavsu-events": [
           "trust.replenishment_requested"
@@ -34323,7 +35256,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TrustReplenishment"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TrustReplenishment"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TrustReplenishmentClient"
+                    }
+                  ]
                 }
               }
             }
@@ -34352,22 +35292,34 @@
             "admin",
             "attorney",
             "staff",
-            "accountant"
+            "accountant",
+            "client"
           ],
           "scopes": [
             "trust:read"
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "own",
           "access_inherits": "matter",
+          "client_schema": "TrustReplenishmentClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "staff_schema": "TrustReplenishment",
+          "client_projection": "allowlist",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "client_fields": [
+            "id",
+            "matter_id",
+            "amount_cents",
+            "message",
+            "status",
+            "created_at"
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -34492,8 +35444,9 @@
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "own",
           "access_inherits": "matter",
+          "client_schema": "TrustReplenishmentClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "extension_include": {
@@ -34502,7 +35455,16 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "client_projection": "allowlist",
+          "client_fields": [
+            "id",
+            "matter_id",
+            "amount_cents",
+            "message",
+            "status",
+            "created_at"
+          ]
         },
         "x-togavsu-events": [
           "trust.replenishment_requested"
@@ -62961,6 +63923,8 @@
               "createFileLink",
               "getMe",
               "listMeAppointments",
+              "getMeTrust",
+              "getMeTrustLedger",
               "getMeContact",
               "getMeSettings",
               "listSessions",
@@ -62975,6 +63939,8 @@
               "getInvoice",
               "historyInvoice",
               "getInvoicePdf",
+              "listTrustReplenishment",
+              "getTrustReplenishment",
               "listFile",
               "getFile",
               "listFileVersions",
@@ -65081,7 +66047,8 @@
               "scope_denied",
               "field_locked",
               "matter_mismatch",
-              "duplicate_email"
+              "duplicate_email",
+              "password_change_required"
             ]
           },
           "detail": {
@@ -70152,6 +71119,108 @@
         ],
         "description": "A replenishment request from the evergreen minimum or from collections."
       },
+      "TrustReplenishmentClient": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Requested amount. Renamed from amount_requested_cents for the client allowlist."
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "satisfied",
+              "cancelled"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          }
+        },
+        "required": [
+          "id",
+          "matter_id",
+          "amount_cents",
+          "message",
+          "status",
+          "created_at"
+        ],
+        "description": "The client allowlist for replenishment JSON and MCP. A field that is not here is not returned."
+      },
+      "MeTrustMatter": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "balance_cents": {
+            "type": "integer",
+            "description": "The calling client's own trust balance on the matter across every account."
+          },
+          "replenishment_requests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrustReplenishmentClient"
+            }
+          }
+        },
+        "required": [
+          "matter_id",
+          "balance_cents",
+          "replenishment_requests"
+        ],
+        "description": "One readable matter's trust summary for the calling client: own balance and active replenishment requests naming the client."
+      },
+      "ClientTrustLedgerEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date of the ledger entry (UTC date of created_at)."
+          },
+          "type": {
+            "type": "string",
+            "description": "Ledger entry_type as shown to the client."
+          },
+          "amount_cents": {
+            "type": "integer",
+            "description": "Ledger amount for this entry."
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "type",
+          "amount_cents",
+          "description"
+        ],
+        "description": "One ledger entry naming the calling client. No account numbers and no other client's figures."
+      },
       "TrustReplenishmentWrite": {
         "type": "object",
         "additionalProperties": false,
@@ -74428,6 +75497,144 @@
           "name"
         ],
         "description": "Client projection of a directory row: active staff, attorney or admin users only."
+      },
+      "ClientAccess": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "email": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "must_change_password": {
+            "type": "boolean"
+          },
+          "last_sign_in_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "granted_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "active",
+          "must_change_password",
+          "last_sign_in_at",
+          "granted_at"
+        ],
+        "description": "Portal access status for a client-only user linked to a contact."
+      },
+      "ClientAccessGrant": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "email": {
+            "type": "string",
+            "description": "Sign-in email. Defaults to the contact's primary email."
+          }
+        },
+        "required": [
+          "contact_id"
+        ],
+        "description": "Create or refresh client portal access for a contact."
+      },
+      "ClientAccessGrantResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "created": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": "string"
+          },
+          "mail_status": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "failed",
+              "skipped"
+            ]
+          }
+        },
+        "required": [
+          "user_id",
+          "created",
+          "email",
+          "mail_status"
+        ],
+        "description": "Grant result. Never includes the temporary password."
+      },
+      "ClientAccessTemporaryPassword": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "temporary_password": {
+            "type": "string",
+            "minLength": 12
+          }
+        },
+        "required": [
+          "temporary_password"
+        ],
+        "description": "Temporary password shown once. Never logged or audited."
+      },
+      "ClientAccessStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "email": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "must_change_password": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "active",
+          "must_change_password"
+        ],
+        "description": "Active flag after deactivate or reactivate."
       },
       "Me": {
         "$ref": "#/components/schemas/User"
@@ -83735,6 +84942,18 @@
     "user.sidebar_updated": [
       "profile:read"
     ],
+    "client_access.granted": [
+      "client_access:read"
+    ],
+    "client_access.password_reset": [
+      "client_access:read"
+    ],
+    "client_access.deactivated": [
+      "client_access:read"
+    ],
+    "client_access.reactivated": [
+      "client_access:read"
+    ],
     "api_token.created": [
       "tokens:read"
     ],
@@ -85689,6 +86908,14 @@
     {
       "scope": "calendar:write",
       "description": "Write calendar events and iCal feeds."
+    },
+    {
+      "scope": "client_access:read",
+      "description": "Read whether a client contact has portal access and its status."
+    },
+    {
+      "scope": "client_access:write",
+      "description": "Grant, reset, deactivate or reactivate client portal access for a client contact."
     },
     {
       "scope": "conflicts:decide",
