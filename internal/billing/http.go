@@ -941,6 +941,13 @@ func (h *Handler) listPayments(w http.ResponseWriter, r *http.Request, p domain.
 	h.list(w, r, "payments", anys(rows, paymentView), err)
 }
 
+// moduleServiceCall is a module's own token with no viewer (CORE-01). Processor and
+// refund writes need a task authorization; a bare service call is refused.
+func moduleServiceCall(p domain.Principal) bool {
+	return p.ModuleID != "" && p.UserID.IsZero() &&
+		(p.Source == domain.SourceModule || p.Source == domain.SourceService)
+}
+
 func (h *Handler) createPayment(w http.ResponseWriter, r *http.Request, p domain.Principal) {
 	var body paymentBody
 	h.write(w, r, p, &body, func() (int, any, error) {
@@ -954,6 +961,8 @@ func (h *Handler) createPayment(w http.ResponseWriter, r *http.Request, p domain
 				return 0, nil, err
 			}
 			row, err = h.Svc.CreateProcessorPayment(r.Context(), p, grant, in)
+		} else if moduleServiceCall(p) {
+			return 0, nil, domain.Forbidden("a processor authorization is required")
 		} else {
 			row, err = h.Svc.CreatePayment(r.Context(), p, in)
 		}
@@ -996,6 +1005,9 @@ func (h *Handler) paymentStatus(w http.ResponseWriter, r *http.Request, p domain
 			}
 			row, err := h.Svc.UpdateProcessorPaymentStatus(r.Context(), p, grant, id, body.Status)
 			return http.StatusOK, paymentView(row), err
+		}
+		if moduleServiceCall(p) {
+			return 0, nil, domain.Forbidden("a processor authorization is required")
 		}
 		row, err := h.Svc.UpdatePaymentStatus(r.Context(), p, id, body.Status)
 		return http.StatusOK, paymentView(row), err
