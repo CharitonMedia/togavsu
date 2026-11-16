@@ -1,9 +1,10 @@
 name: Lane agent
 run-name: Lane ${{ inputs.run_id }}
-# One Togavsu implementation run, dispatched only by the build controller. Claude Code runs
-# headless on the Max subscription in this GitHub-hosted VM. The job token is read-only: the
-# controller verifies the returned git bundle and pushes it itself, so protected CI and the
-# review gate run on every published revision.
+# One Togavsu implementation run, dispatched only by the build controller. The worker runs headless
+# in this GitHub-hosted VM: Cursor's CLI on the Cursor subscription (worker "cursor"), or Claude Code
+# on the Max subscription (worker "claude", for lanes started before the switch). The job token is
+# read-only: the controller verifies the returned git bundle and pushes it itself, so protected CI and
+# the Claude Code review gate run on every published revision.
 on:
   workflow_dispatch:
     inputs:
@@ -26,6 +27,17 @@ on:
         description: zlib-compressed, base64-encoded assignment prompt
         required: true
         type: string
+      worker:
+        description: Which CLI runs the assignment
+        required: false
+        type: choice
+        options: [claude, cursor]
+        default: claude
+      model:
+        description: Cursor model (cursor worker only)
+        required: false
+        type: string
+        default: auto
 permissions:
   contents: read
   pull-requests: read
@@ -46,6 +58,8 @@ jobs:
       LANE_TASK: ${{ inputs.task }}
       LANE_BRANCH: ${{ inputs.branch }}
       LANE_BASE: ${{ inputs.base }}
+      LANE_WORKER: ${{ inputs.worker }}
+      LANE_MODEL: ${{ inputs.model }}
     steps:
       - name: Validate dispatch
         run: |
@@ -54,7 +68,8 @@ jobs:
           rules = {"LANE_AGENT": r"bc-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
                    "LANE_RUN": r"run-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
                    "LANE_TASK": r"[a-z0-9][a-z0-9-]{0,40}", "LANE_BRANCH": r"claude/togavsu-[a-z0-9-]{1,60}",
-                   "LANE_BASE": r"[0-9a-f]{40}"}
+                   "LANE_BASE": r"[0-9a-f]{40}", "LANE_WORKER": r"claude|cursor",
+                   "LANE_MODEL": r"[A-Za-z0-9][A-Za-z0-9.-]{0,60}"}
           bad = [k for k, rule in rules.items() if not re.fullmatch(rule, os.environ.get(k, ""))]
           if bad or os.environ["GITHUB_ACTOR"] != "pattalkslaw-del":
               sys.exit("Rejected dispatch: " + ", ".join(bad or ["actor"]))
@@ -68,7 +83,21 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Install Claude Code
+        if: inputs.worker != 'cursor'
         run: npm install --global --no-fund --no-audit @anthropic-ai/claude-code@2.1.317
+      - name: Install Cursor CLI
+        if: inputs.worker == 'cursor'
+        env:
+          CURSOR_CLI_VERSION: 2026.11.13-eacade1
+          CURSOR_CLI_SHA256: c02e4321f20d691ee03af94d29948dc3a81c6c34e7328da7bb1afade4c75812f
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cursor-cli.tar.gz" \
+            "https://downloads.cursor.com/lab/$CURSOR_CLI_VERSION/linux/x64/agent-cli-package.tar.gz"
+          echo "$CURSOR_CLI_SHA256  $RUNNER_TEMP/cursor-cli.tar.gz" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/cursor-cli"
+          tar --strip-components=1 -xzf "$RUNNER_TEMP/cursor-cli.tar.gz" -C "$RUNNER_TEMP/cursor-cli"
+          rm "$RUNNER_TEMP/cursor-cli.tar.gz"
+          echo "$RUNNER_TEMP/cursor-cli" >> "$GITHUB_PATH"
       - name: Prepare assignment
         env:
           PROMPT_Z: ${{ inputs.prompt_z }}
@@ -82,7 +111,7 @@ jobs:
           out = pathlib.Path(os.environ["RUNNER_TEMP"]) / "lane-out"
           assignment = zlib.decompress(base64.b64decode(os.environ["PROMPT_Z"])).decode()
           preamble = f"""You are the Togavsu implementation worker for assignment {os.environ['LANE_TASK']}.
-          You run Claude Code headless in an isolated GitHub-hosted VM on local branch `lane`, checked out at
+          You run headless in an isolated GitHub-hosted VM on local branch `lane`, checked out at
           {os.environ['LANE_BASE']}. Go, Node, Python and Docker are available; use Docker for Postgres and
           synthetic data only. This VM has a read-only GitHub token: you cannot push, open or edit pull
           requests, and must not try. Commit all finished work to the current local branch with clear messages
@@ -104,22 +133,34 @@ jobs:
           (out / "prompt.md").write_text(preamble + assignment)
           PY
       - name: Run assignment
-        id: claude
+        id: worker
         continue-on-error: true
         timeout-minutes: 270  # Below the job limit, so packaging always keeps committed work.
         env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Each worker gets only its own credential.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ inputs.worker != 'cursor' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          CURSOR_API_KEY: ${{ inputs.worker == 'cursor' && secrets.CURSOR_API_KEY || '' }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          claude -p --model opus --dangerously-skip-permissions --max-turns 600 --output-format json \
-            < "$RUNNER_TEMP/lane-out/prompt.md" > "$RUNNER_TEMP/lane-claude.json"
+          if [ "$LANE_WORKER" = cursor ]; then
+            cursor-agent -p --force --trust --model "$LANE_MODEL" --output-format json \
+              < "$RUNNER_TEMP/lane-out/prompt.md" > "$RUNNER_TEMP/lane-claude.json"
+          else
+            claude -p --model opus --dangerously-skip-permissions --max-turns 600 --output-format json \
+              < "$RUNNER_TEMP/lane-out/prompt.md" > "$RUNNER_TEMP/lane-claude.json"
+          fi
       - name: Package result
         env:
-          CLAUDE_OUTCOME: ${{ steps.claude.outcome }}
-          SECRET_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_OUTCOME: ${{ steps.worker.outcome }}
+          # Only the credential this lane's worker held: it is the one the scan must find, and the other
+          # never enters a process that runs after worker-controlled code on this VM.
+          SECRET_OAUTH: ${{ inputs.worker != 'cursor' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          SECRET_CURSOR: ${{ inputs.worker == 'cursor' && secrets.CURSOR_API_KEY || '' }}
           SECRET_GITHUB: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 - <<'PY'
+          # -I: no checkout directory, user site or PYTHON* variables on the import path, so a module the
+          # lane leaves in the repository root cannot load into the scanner.
+          python3 -I - <<'PY'
           import base64, hashlib, json, os, pathlib, re, subprocess, sys
           temp = pathlib.Path(os.environ["RUNNER_TEMP"])
           out, pack = temp / "lane-out", temp / "lane-pack"
@@ -142,12 +183,12 @@ jobs:
           except (OSError, ValueError):
               pass
           forms = set()
-          for name in ("SECRET_OAUTH", "SECRET_GITHUB"):
+          for name in ("SECRET_OAUTH", "SECRET_CURSOR", "SECRET_GITHUB"):
               value = os.environ.get(name, "")
               if value:
                   forms.update({value, value[::-1], base64.b64encode(value.encode()).decode().rstrip("=")})
                   forms.update(value[i:i + 16] for i in range(0, max(len(value) - 15, 1), 4))
-          SHAPED = re.compile(r"sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}")
+          SHAPED = re.compile(r"sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|crsr_[0-9a-f]{20,}")
           def history():
               # Every commit the bundle publishes, not only the net diff: a token added then removed still counts.
               return git("log", "-p", "-m", "--text", "--no-textconv", "--no-ext-diff", "--format=%H%n%B",
@@ -264,7 +305,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       - name: Report run outcome
-        if: steps.claude.outcome != 'success'
+        if: steps.worker.outcome != 'success'
         run: |
           jq -r '"subtype=\(.subtype) is_error=\(.is_error) turns=\(.num_turns)"' "$RUNNER_TEMP/lane-claude.json" 2>/dev/null || true
           exit 1
