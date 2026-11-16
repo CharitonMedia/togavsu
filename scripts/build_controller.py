@@ -513,6 +513,9 @@ class LaneRejected(ValueError):
 class ActionsRemote(Remote):
     """Claude Code lanes in GitHub Actions on the Max subscription, behind the Cursor-shaped interface.
 
+    With new_on_cursor (worker_backend "cursor"), new assignments launch as Cursor Cloud Agents and every
+    agent not in the lane registry runs on Cursor; lanes launched before the switch finish on Actions.
+
     The controller keeps calling cursor()/agent()/run(); this class answers them from a durable lane
     registry and the Lane agent workflow. A lane job holds a read-only token and returns a git bundle;
     this control process verifies the bundle and pushes it as the repository owner, without force, so
@@ -521,7 +524,8 @@ class ActionsRemote(Remote):
 
     push_url = "https://github.com/" + REPO + ".git"  # Owner credentials via gh's git credential helper.
 
-    def __init__(self, state_dir, repo_dir, dry=False):
+    def __init__(self, state_dir, repo_dir, dry=False, new_on_cursor=False):
+        self.new_on_cursor = new_on_cursor
         self.registry_path = Path(state_dir) / "lane-agents.json"
         self.work_dir = Path(state_dir)
         self.repo_dir = Path(repo_dir)
@@ -545,13 +549,13 @@ class ActionsRemote(Remote):
         return urllib.error.HTTPError("lane:" + path, 404, reason, {}, None)
 
     def legacy(self, agent_id):
-        # Agents launched on Cursor before the switch stay on Cursor until they finish; new ones are lanes.
-        return agent_id not in self.load() and bool(os.environ.get("CURSOR_API_KEY"))
+        # Any agent outside the lane registry is a Cursor agent and stays on Cursor until it finishes.
+        return agent_id not in self.load() and (self.new_on_cursor or bool(os.environ.get("CURSOR_API_KEY")))
 
     def cursor(self, method, path, body=None):
         parts = path.strip("/").split("/")
         if method == "POST" and parts == ["agents"]:
-            return self.create(body)
+            return Remote.cursor(self, method, path, body) if self.new_on_cursor else self.create(body)
         if len(parts) >= 2 and parts[0] == "agents" and self.legacy(parts[1]):
             return Remote.cursor(self, method, path, body)
         if method == "GET" and len(parts) == 2 and parts[0] == "agents":
@@ -2064,9 +2068,11 @@ def main():
         except BlockingIOError:
             print("Another controller tick owns the lock")
             return
-        # worker_backend selects who runs assignments; every gate after the PR is unchanged.
-        remote = (ActionsRemote(state, state.resolve().parent, args.dry_run)
-                  if plan.get("worker_backend") == "claude-actions" else Remote())
+        # worker_backend selects who runs new assignments ("cursor", the default, or "claude-actions"); agents
+        # already running keep their own backend until they finish. Every gate after the PR is unchanged.
+        actions = plan.get("worker_backend", "cursor") == "claude-actions"
+        remote = (ActionsRemote(state, state.resolve().parent, args.dry_run, new_on_cursor=not actions)
+                  if actions or (state / "lane-agents.json").exists() else Remote())
         controller = Controller(remote, plan, state, args.dry_run, Mailer())
         if args.test_alert:
             if not plan.get("alert_email"):

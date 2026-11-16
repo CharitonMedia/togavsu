@@ -3142,6 +3142,31 @@ class LaneBackendTests(unittest.TestCase):
         with self.assertRaises(AgentNotFound):
             self.remote.agent(legacy)
 
+    def test_cursor_backend_launches_new_agents_on_cursor_and_finishes_existing_lanes(self):
+        self.launch()  # A lane launched before the switch back to Cursor.
+        cursor_agent = "bc-c1cb681b-2606-42d3-b619-5750b5561c4a"
+        seen = []
+        def cursor(remote, method, path, body=None):
+            seen.append((method, path))
+            if method == "POST":
+                return {"agent": {"id": body["agentId"]}, "run": {"id": "run-cursor"}}
+            if path == "/agents/" + cursor_agent:
+                return {"id": cursor_agent, "status": "ACTIVE", "latestRunId": "run-cursor"}
+            return {"id": "run-cursor", "agentId": cursor_agent, "status": "RUNNING", "git": {}}
+        self.remote.new_on_cursor = True
+        os.environ["CURSOR_API_KEY"] = "test-only"
+        dispatches = len([c for c in self.remote.calls if c[1].endswith("/dispatches")])
+        with patch.object(Remote, "cursor", cursor):
+            self.remote.cursor("POST", "/agents", {"agentId": cursor_agent, "name": "Togavsu two",
+                "prompt": {"text": "Implement Togavsu assignment two."},
+                "repos": [{"url": "https://github.com/CharitonMedia/togavsu", "startingRef": self.base}]})
+            self.assertEqual(self.remote.agent({"agent_id": cursor_agent})["status"], "RUNNING")
+            self.assertEqual(self.remote.agent(self.record)["status"], "CREATING")  # Still the lane workflow.
+        self.assertEqual(seen, [("POST", "/agents"), ("GET", "/agents/" + cursor_agent),
+                                ("GET", "/agents/" + cursor_agent + "/runs/run-cursor")])
+        self.assertNotIn(cursor_agent, self.remote.load())
+        self.assertEqual(len([c for c in self.remote.calls if c[1].endswith("/dispatches")]), dispatches)
+
     def test_lane_cannot_publish_control_or_unsafe_workflow_changes(self):
         safe = "name: Product CI\non: [push]\npermissions:\n  contents: read\njobs: {}\n"
         cases = {
