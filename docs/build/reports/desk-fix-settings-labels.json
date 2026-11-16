@@ -60,7 +60,7 @@
     "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
   ],
   "simplification": {
-    "net_lines": 478,
+    "net_lines": 482,
     "ponytail_debt_sections": 13,
     "note": "No new PONYTAIL-DEBT entries. UIError shared by dashboard and core HTML; API path unchanged."
   }
