@@ -3486,6 +3486,23 @@ def _shell(api: Contract) -> None:
     )
     api.add(
         "get",
+        "/api/v1/nav/client-context",
+        operation_id="getClientNavContext",
+        summary="Client portal navigation",
+        description=(
+            "Lists {module_id, tab_id, title} for every enabled module's client tabs with nav true. "
+            "Client role only; staff, attorney, accountant and admin callers are forbidden."
+        ),
+        tag="Shell",
+        features=["nav", "client-portal"],
+        roles=["client"],
+        scopes=["profile:read"],
+        response="ClientNavContext",
+        writes=False,
+        extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "get",
         "/api/v1/nav/context",
         operation_id="getNavContext",
         summary="Sidebar context",
@@ -4769,6 +4786,42 @@ def _modules(api: Contract) -> None:
                 "append_only": True,
                 "time_module_also_posts": False,
             }
+        },
+    )
+    api.add(
+        "post",
+        "/hooks/{module_id}/{hook_id}",
+        operation_id="postInboundWebhook",
+        summary="Forward an inbound provider webhook",
+        description=(
+            "Public. POST only. The core forwards the raw body, query string and headers to the "
+            "module's declared inbound_webhooks path, minus Cookie, Authorization, "
+            "X-Togavsu-Context-Token and X-CSRF-Token, and adds X-Togavsu-Module and "
+            "X-Togavsu-Inbound-Hook. A module that is not installed or disabled, or a hook it "
+            "does not declare, is not_found and forwards nothing. Bodies over "
+            "modules.inbound_webhook_max_bytes (default 1048576) are payload_too_large (413). "
+            "More than modules.inbound_webhook_rate_per_minute (default 120) per hook per minute "
+            "is rate_limited (429) with Retry-After. The response is the module's status and body. "
+            "The audit log records delivery counts, not bodies."
+        ),
+        tag="Modules",
+        features=["modules", "inbound-webhooks"],
+        roles=None,
+        scopes=[],
+        public=True,
+        writes=False,
+        request_content={
+            "*/*": {"schema": {"type": "string", "contentMediaType": "application/octet-stream"}}
+        },
+        response_content={
+            "*/*": {"schema": {"type": "string", "contentMediaType": "application/octet-stream"}}
+        },
+        error_codes=["not_found", "payload_too_large", "rate_limited"],
+        extra_responses={
+            "413": {
+                "description": "Body larger than modules.inbound_webhook_max_bytes.",
+                "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}},
+            },
         },
     )
 

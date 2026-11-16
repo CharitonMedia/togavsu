@@ -48602,6 +48602,104 @@
         ]
       }
     },
+    "/api/v1/nav/client-context": {
+      "get": {
+        "operationId": "getClientNavContext",
+        "summary": "Client portal navigation",
+        "description": "Lists {module_id, tab_id, title} for every enabled module's client tabs with nav true. Client role only; staff, attorney, accountant and admin callers are forbidden.",
+        "tags": [
+          "Shell"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientNavContext"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "nav",
+          "client-portal"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "client"
+          ],
+          "scopes": [
+            "profile:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "own",
+          "module_delegation": "delegated_viewer"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getClientNavContext",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/nav/context": {
       "get": {
         "operationId": "getNavContext",
@@ -62246,7 +62344,8 @@
               "downloadFileVersion",
               "listFileRenditions",
               "downloadFileRendition",
-              "createFileArchive"
+              "createFileArchive",
+              "getClientNavContext"
             ],
             "grants_admin": false,
             "firmwide_bypass": false
@@ -63565,6 +63664,141 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/DomainHandlerWrite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hooks/{module_id}/{hook_id}": {
+      "post": {
+        "operationId": "postInboundWebhook",
+        "summary": "Forward an inbound provider webhook",
+        "description": "Public. POST only. The core forwards the raw body, query string and headers to the module's declared inbound_webhooks path, minus Cookie, Authorization, X-Togavsu-Context-Token and X-CSRF-Token, and adds X-Togavsu-Module and X-Togavsu-Inbound-Hook. A module that is not installed or disabled, or a hook it does not declare, is not_found and forwards nothing. Bodies over modules.inbound_webhook_max_bytes (default 1048576) are payload_too_large (413). More than modules.inbound_webhook_rate_per_minute (default 120) per hook per minute is rate_limited (429) with Retry-After. The response is the module's status and body. The audit log records delivery counts, not bodies.",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [
+          {
+            "name": "module_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "description": "Path parameter module_id."
+          },
+          {
+            "name": "hook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 63,
+              "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+              "description": "Inbound webhook id from the module manifest (CORE-07)."
+            },
+            "description": "Path parameter hook_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "application/octet-stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "413": {
+            "description": "Body larger than modules.inbound_webhook_max_bytes.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-togavsu-features": [
+          "modules",
+          "inbound-webhooks"
+        ],
+        "x-togavsu-access": {
+          "roles": [],
+          "scopes": [],
+          "public": true,
+          "matter_wall": false,
+          "client": "public"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "postInboundWebhook",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "body": {
+              "encoding": "base64",
+              "media_type": "*/*"
+            },
+            "result": {
+              "encoding": "base64",
+              "media_type": "*/*"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body_base64"
+            ]
+          }
+        },
+        "security": [],
+        "x-togavsu-error-codes": [
+          "not_found",
+          "payload_too_large",
+          "rate_limited"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "*/*": {
+              "schema": {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
               }
             }
           }
@@ -72996,6 +73230,8 @@
           "api.csv_export_max_rows",
           "modules.marketplace_url",
           "modules.alert_check_hours",
+          "modules.inbound_webhook_max_bytes",
+          "modules.inbound_webhook_rate_per_minute",
           "modules.replace_time",
           "modules.replace_trust",
           "modules.replace_calendar"
@@ -73902,6 +74138,46 @@
           "groups"
         ],
         "description": "Grouped hits. An empty group is the no-match result. The UI sentence is: No matches for {query} in {scope}."
+      },
+      "ClientNavEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tab_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "module_id",
+          "tab_id",
+          "title"
+        ],
+        "description": "One client portal nav tab from an enabled module (CORE-10)."
+      },
+      "ClientNavContext": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClientNavEntry"
+            }
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "description": "Client portal navigation entries for tabs with nav true (CORE-10)."
       },
       "NavContext": {
         "type": "object",
@@ -84043,6 +84319,28 @@
       "locked": false,
       "minimum": 1,
       "help": "How often the core polls the marketplace for flags and pulls."
+    },
+    {
+      "key": "modules.inbound_webhook_max_bytes",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 1048576,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "maximum": 1073741824,
+      "help": "Largest inbound provider webhook body in bytes. Over is 413. Default 1048576 (1 MiB)."
+    },
+    {
+      "key": "modules.inbound_webhook_rate_per_minute",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "maximum": 1000000,
+      "help": "Inbound provider webhooks allowed per minute per hook. Over is 429 with Retry-After. Default 120."
     },
     {
       "key": "modules.replace_time",

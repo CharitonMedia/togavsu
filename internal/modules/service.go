@@ -77,6 +77,9 @@ type Service struct {
 	aiErr   error
 	// AIBaseURLs overrides provider endpoints, as doctender.Router.BaseURLs does.
 	AIBaseURLs map[string]string
+
+	inboundOnce sync.Once
+	inbound     *inboundRate
 }
 
 // Installed is an installed module as the runtime serves it.
@@ -566,6 +569,12 @@ func (s *Service) install(ctx context.Context, p domain.Principal, v marketplace
 		return View{}, err
 	}
 	m := pkg.Manifest
+	if err := s.assertClientHomeFree(ctx, m.ID, m.ClientHome); err != nil {
+		return View{}, err
+	}
+	if err := s.checkSystemMailUnique(ctx, m); err != nil {
+		return View{}, err
+	}
 	existing, err := s.row(ctx, m.ID)
 	switch {
 	case err == nil && existing.Status != StatusRemoved && existing.Status != StatusCancelled:
@@ -989,6 +998,9 @@ func (s *Service) Enable(ctx context.Context, p domain.Principal, id string) (Vi
 	if err != nil {
 		return View{}, err
 	}
+	if err := s.assertClientHomeFree(ctx, id, pkg.Manifest.ClientHome); err != nil {
+		return View{}, err
+	}
 	if !r.Enabled {
 		scopes, err := s.approvedScopes(ctx, id)
 		if err != nil {
@@ -1134,6 +1146,9 @@ func (s *Service) update(ctx context.Context, p domain.Principal, id string, v m
 	}
 	if m.Version == r.Version {
 		return UpdateResult{}, domain.Conflict("version " + m.Version + " is already installed")
+	}
+	if err := s.checkSystemMailUnique(ctx, m); err != nil {
+		return UpdateResult{}, err
 	}
 	if err := s.schemas.CheckHistory(ctx, id, ms); err != nil {
 		return UpdateResult{}, refuse(CodeMigration, err.Error())

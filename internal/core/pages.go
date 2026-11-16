@@ -11,6 +11,7 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/qrcode"
 	"github.com/CharitonMedia/togavsu/internal/settings"
@@ -72,6 +73,14 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 <p><button type="submit">Verify</button></p></form>
 {{template "bottom" .}}{{end}}
 
+{{define "portal_security"}}{{template "top" .}}
+<p>Change the password you use to sign in to the client portal.</p>
+<form class="card" method="post" action="/portal/security"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label>Current password<br><input name="current_password" type="password" required autocomplete="current-password"></label></p>
+<p><label>New password<br><input name="new_password" type="password" required autocomplete="new-password"></label></p>
+<p><label>Confirm new password<br><input name="confirm_password" type="password" required autocomplete="new-password"></label></p>
+<p><button type="submit">Change password</button> <a href="/portal">Back to portal</a></p></form>
+{{template "bottom" .}}{{end}}
 {{define "logout"}}{{template "top" .}}
 <form class="card" method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}">
 <p>Sign out of Togavsu on this browser?</p><p><button type="submit">Sign out</button> <a href="/practice/matters">Cancel</a></p></form>
@@ -143,12 +152,22 @@ func csrfOf(r *http.Request) string {
 	return ""
 }
 
+
+// afterSignInPath is where a signed-in user lands: /portal for client-only users (CORE-10).
+func afterSignInPath(p domain.Principal) string {
+	if modules.ClientOnly(p) {
+		return "/portal"
+	}
+	return "/practice/matters"
+}
+
 func (a *App) home(w http.ResponseWriter, r *http.Request) {
-	if _, err := a.principal(r); err != nil {
+	p, err := a.principal(r)
+	if err != nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/practice/matters", http.StatusSeeOther)
+	http.Redirect(w, r, afterSignInPath(p), http.StatusSeeOther)
 }
 
 func (a *App) setupPage(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +224,8 @@ func (a *App) loginStep(w http.ResponseWriter, r *http.Request, res identity.Log
 	switch {
 	case res.SessionToken != "":
 		signIn(w, r, res)
-		http.Redirect(w, r, "/practice/matters", http.StatusSeeOther)
+		roles, _ := domain.ParseRoles(res.User.Roles)
+		http.Redirect(w, r, afterSignInPath(domain.Principal{UserID: res.User.ID, Roles: roles, Source: domain.SourceUI}), http.StatusSeeOther)
 	case res.TOTPToken != "":
 		render(w, http.StatusOK, "totp", view{Title: "Two-factor code", Token: res.TOTPToken})
 	case res.EnrollmentToken != "":

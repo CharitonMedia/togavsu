@@ -14049,6 +14049,47 @@
       }
     },
     {
+      "name": "getClientNavContext",
+      "method": "GET",
+      "path": "/api/v1/nav/client-context",
+      "features": [
+        "nav",
+        "client-portal"
+      ],
+      "scopes": [
+        "profile:read"
+      ],
+      "roles": [
+        "client"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
       "name": "getNavContext",
       "method": "GET",
       "path": "/api/v1/nav/context",
@@ -18062,6 +18103,36 @@
           "query",
           "idempotency_key",
           "body"
+        ]
+      }
+    },
+    {
+      "name": "postInboundWebhook",
+      "method": "POST",
+      "path": "/hooks/{module_id}/{hook_id}",
+      "features": [
+        "modules",
+        "inbound-webhooks"
+      ],
+      "scopes": [],
+      "roles": [],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "body": {
+          "encoding": "base64",
+          "media_type": "*/*"
+        },
+        "result": {
+          "encoding": "base64",
+          "media_type": "*/*"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body_base64"
         ]
       }
     }

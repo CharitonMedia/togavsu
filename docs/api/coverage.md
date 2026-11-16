@@ -330,6 +330,7 @@ It does not claim the handlers or the MCP server are implemented.
 | doc-tender | `GET` | `/api/v1/doc-tender/naming` | `getDocTenderNaming` | required:getDocTenderNaming | admin, attorney, staff | doc_tender:read |
 | doc-tender | `PUT` | `/api/v1/doc-tender/naming` | `putDocTenderNaming` | required:putDocTenderNaming | admin | doc_tender:write |
 | search | `GET` | `/api/v1/search` | `search` | required:search | admin, attorney, staff | search:use |
+| nav, client-portal | `GET` | `/api/v1/nav/client-context` | `getClientNavContext` | required:getClientNavContext | client | profile:read |
 | nav | `GET` | `/api/v1/nav/context` | `getNavContext` | required:getNavContext | admin, attorney, staff, accountant | profile:read |
 | notifications | `GET` | `/api/v1/notifications` | `listNotification` | required:listNotification | admin, attorney, staff, accountant, client | notifications:read |
 | notifications | `POST` | `/api/v1/notifications` | `createNotification` | required:createNotification | admin, attorney, staff | notifications:write |
@@ -445,5 +446,6 @@ It does not claim the handlers or the MCP server are implemented.
 | modules | `DELETE` | `/api/v1/trusted-signing-keys/{key_id}` | `deleteTrustedKey` | required:deleteTrustedKey | admin | modules:write |
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
+| modules, inbound-webhooks | `POST` | `/hooks/{module_id}/{hook_id}` | `postInboundWebhook` | required:postInboundWebhook | public | none |
 
-Operations: 440.
+Operations: 442.

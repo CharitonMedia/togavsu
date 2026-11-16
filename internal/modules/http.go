@@ -37,6 +37,7 @@ type Caller struct {
 type Handler struct {
 	Svc  *Service
 	Auth func(*http.Request) (Caller, error)
+	FirmName func(ctx context.Context) string
 
 	// idemMu guards only the idem map; no handler runs under it.
 	idemMu sync.Mutex
@@ -89,6 +90,11 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}", h.scoped("", h.widgetPage))
 	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}", h.scoped("", h.matterItemPage))
 	m.HandleFunc("/m/{module_id}/", h.frame)
+	// CORE-10
+	m.HandleFunc("GET /portal", h.scoped("", h.portalHome))
+	m.HandleFunc("GET /portal/{module_id}/{tab_id}", h.scoped("", h.portalTab))
+	m.HandleFunc("GET /portal/{module_id}/{tab_id}/context-token", h.scoped("", h.portalContextToken))
+	m.HandleFunc("GET /api/v1/nav/client-context", h.scoped("profile:read", h.clientContextJSON))
 	return m
 }
 
@@ -704,7 +710,7 @@ var framePage = template.Must(template.New("frame").Parse(`<!doctype html>
 <body><main aria-label="{{.Title}}">
 {{template "iframe" .}}
 </main></body></html>
-{{define "iframe"}}<iframe class="module-frame" title="{{.Title}}" src="{{.Src}}" sandbox="` + staffFrameSandbox + `" referrerpolicy="no-referrer"></iframe>{{end}}`))
+{{define "iframe"}}<iframe class="module-frame" title="{{.Title}}" src="{{.Src}}" sandbox="{{.Sandbox}}" referrerpolicy="no-referrer"></iframe>{{end}}`))
 
 // writeFrame renders the core page that shows a module page in a sandboxed iframe. The
 // sandbox has no allow-same-origin: the frame runs in an opaque origin, so script in it
@@ -715,9 +721,13 @@ var framePage = template.Must(template.New("frame").Parse(`<!doctype html>
 // inside the app shell; a panel or widget the core embeds in its own iframe is the bare
 // frame page, so the shell never nests.
 func writeFrame(w http.ResponseWriter, r *http.Request, screen bool, title, src string) {
+	writeFrameSandbox(w, r, screen, title, src, staffFrameSandbox)
+}
+
+func writeFrameSandbox(w http.ResponseWriter, r *http.Request, screen bool, title, src, sandbox string) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	nonce := frameNonce()
-	data := map[string]string{"Title": title, "Src": src, "Nonce": nonce}
+	data := map[string]string{"Title": title, "Src": src, "Nonce": nonce, "Sandbox": sandbox}
 	var buf bytes.Buffer
 	if screen && r.Header.Get("Sec-Fetch-Dest") != "iframe" {
 		if err := framePage.ExecuteTemplate(&buf, "iframe", data); err != nil {

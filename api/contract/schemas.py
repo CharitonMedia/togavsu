@@ -2253,6 +2253,20 @@ SCHEMAS = _register(
             ["query", "scope", "groups"],
             "Grouped hits. An empty group is the no-match result. The UI sentence is: No matches for {query} in {scope}.",
         ),
+        "ClientNavEntry": _obj(
+            {
+                "module_id": {"type": "string", "minLength": 1},
+                "tab_id": {"type": "string", "minLength": 1},
+                "title": {"type": "string", "minLength": 1},
+            },
+            ["module_id", "tab_id", "title"],
+            "One client portal nav tab from an enabled module (CORE-10).",
+        ),
+        "ClientNavContext": _obj(
+            {"data": _arr(_ref("ClientNavEntry"))},
+            ["data"],
+            "Client portal navigation entries for tabs with nav true (CORE-10).",
+        ),
         "NavContext": _obj(
             {
                 "is_admin": {"type": "boolean"},
@@ -3429,6 +3443,13 @@ QUERY = {
 PARAM_SCHEMA = {
     "setting_key": _ref("SettingKey"),
     "module_id": _module_id(),
+    "hook_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 63,
+        "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+        "description": "Inbound webhook id from the module manifest (CORE-07).",
+    },
     "name": {
         "type": "string",
         "minLength": 1,

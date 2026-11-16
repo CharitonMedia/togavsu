@@ -32,8 +32,11 @@ type Manifest struct {
 	Sidebar       []Link             `json:"sidebar"`
 	QuickCreate   []Link             `json:"quick_create"`
 	Search        []Link             `json:"search_scopes"`
-	Notifications []NotificationKind `json:"notifications"`
-	Events        []string           `json:"events"`
+	Notifications    []NotificationKind `json:"notifications"`
+	InboundWebhooks  []InboundWebhook   `json:"inbound_webhooks"`
+	// ClientHome names one of this module's client tabs as the portal landing tab (CORE-10).
+	ClientHome string `json:"client_home"`
+	Events     []string `json:"events"`
 	Emits         []string           `json:"emits"`
 	Data          Data               `json:"data"`
 	Replaces      string             `json:"replaces"`
@@ -49,6 +52,12 @@ type NotificationKind struct {
 	DefaultChannels []string `json:"default_channels"`
 }
 
+// InboundWebhook is one provider webhook at POST /hooks/{module_id}/{id} (CORE-07).
+type InboundWebhook struct {
+	ID   string `json:"id"`
+	Path string `json:"path"`
+}
+
 // Container is the image the supervisor runs, pinned by digest.
 type Container struct {
 	Image  string `json:"image"`
@@ -56,6 +65,8 @@ type Container struct {
 	Port   int    `json:"port"`
 	// Events is the path on the module that receives signed event webhooks.
 	Events string `json:"events"`
+	// SystemMail is the module path that receives core system mail (CORE-05).
+	SystemMail string `json:"system_mail"`
 }
 
 // Permission is one requested API scope. Required defaults to true.
@@ -107,14 +118,21 @@ type HelpPage struct {
 	Covers   []string `json:"covers"`
 }
 
-// Tab is a home-screen or matter-screen tab the module serves.
+// Tab is a home, matter or client tab the module serves (CORE-10 adds client).
 type Tab struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
-	// Placement is "home" or "matter".
+	// Placement is "home", "matter" or "client".
 	Placement string `json:"placement"`
 	Path      string `json:"path"`
+	// Params lists query parameters the core passes through to the module page.
+	Params []string `json:"params"`
+	// Nav keeps a client tab out of portal navigation when false (default true).
+	Nav *bool `json:"nav"`
 }
+
+// TabNav reports whether the tab appears in client portal navigation (default true).
+func (t Tab) TabNav() bool { return t.Nav == nil || *t.Nav }
 
 // MatterItem is a matter-screen panel or action.
 type MatterItem struct {
@@ -394,7 +412,18 @@ func (m Manifest) validate(report func(error) bool) {
 	if len(m.AITasks) > 0 && !seen["ai:use"] {
 		ok(invalid("ai_tasks", "AI tasks need the ai:use permission"))
 	}
+	if path := strings.TrimSpace(m.Container.SystemMail); path != "" {
+		if !ok(modulePath("container.system_mail", path)) {
+			return
+		}
+		if !seen["mail:system"] && !ok(invalid("container.system_mail", "system mail needs the mail:system permission")) {
+			return
+		}
+	}
 	if !m.validateNotifications(ok) {
+		return
+	}
+	if !m.validateInboundWebhooks(ok) {
 		return
 	}
 }
@@ -469,14 +498,29 @@ func (m Manifest) validatePages(ok func(error) bool) bool {
 			continue
 		}
 		ids[t.ID] = true
-		if t.Placement != "home" && t.Placement != "matter" {
-			if !ok(invalid(f+".placement", "placement is home or matter")) {
+		if t.Placement != "home" && t.Placement != "matter" && t.Placement != "client" {
+			if !ok(invalid(f+".placement", "placement is home, matter or client")) {
 				return false
 			}
 			continue
 		}
 		if !ok(modulePath(f+".path", t.Path)) {
 			return false
+		}
+		for j, p := range t.Params {
+			if !ident.MatchString(p) {
+				if !ok(invalid(fmt.Sprintf("%s.params[%d]", f, j), "params are lower-case names")) {
+					return false
+				}
+			}
+		}
+	}
+	if home := strings.TrimSpace(m.ClientHome); home != "" {
+		tab, found := m.Tab(home)
+		if !found || tab.Placement != "client" {
+			if !ok(invalid("client_home", "client_home names one of this module's client tabs")) {
+				return false
+			}
 		}
 	}
 	for i, it := range m.MatterItems {
@@ -767,3 +811,31 @@ func (m Manifest) Readables() []Readable {
 
 // ViewScope is the scope another module needs to read a published view.
 func ViewScope(module, view string) string { return "views:" + module + "." + view + ":read" }
+
+func (m Manifest) validateInboundWebhooks(ok func(error) bool) bool {
+	seen := map[string]bool{}
+	for i, h := range m.InboundWebhooks {
+		f := fmt.Sprintf("inbound_webhooks[%d]", i)
+		if !slug.MatchString(h.ID) || seen[h.ID] {
+			if !ok(invalid(f+".id", "inbound webhook ids are unique slugs")) {
+				return false
+			}
+			continue
+		}
+		seen[h.ID] = true
+		if !ok(modulePath(f+".path", h.Path)) {
+			return false
+		}
+	}
+	return true
+}
+
+// InboundWebhook returns the declared inbound webhook with id.
+func (m Manifest) InboundWebhook(id string) (InboundWebhook, bool) {
+	for _, h := range m.InboundWebhooks {
+		if h.ID == id {
+			return h, true
+		}
+	}
+	return InboundWebhook{}, false
+}

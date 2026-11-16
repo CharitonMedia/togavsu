@@ -88,6 +88,13 @@ func (x *extensions) openModules(a *App, cfg Config, ui *UI, now func() time.Tim
 	svc.AIBaseURLs = cfg.ProviderURLs
 	x.Modules = svc
 	x.modH = modules.NewHandler(svc, a.moduleCaller)
+	x.modH.FirmName = func(ctx context.Context) string {
+		v, err := a.Settings.Get(ctx, "firm.name")
+		if err != nil {
+			return ""
+		}
+		return v
+	}
 	return nil
 }
 
