@@ -49,9 +49,9 @@ for block in re.split(r"\n(?=## )", cc)[1:]:
             if h not in prd:
                 sys.exit("heading not in PRD: " + h)
             part = b
-        for para in [x for x in part.split("\n\n") if x.strip()]:
-            if para.strip() not in prd:
-                sys.exit("text not in PRD under " + head + ": " + para[:120])
+        for line in [x for x in part.split("\n") if x.strip()]:
+            if line.strip() not in prd:
+                sys.exit("text not in PRD under " + head + ": " + line[:120])
 write("docs/modules/CORE-CHANGES-2.md", cc)
 
 # 2. Core PRD 8.22: a pointer to the approved text, no new requirement words.
