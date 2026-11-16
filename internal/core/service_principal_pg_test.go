@@ -20,7 +20,7 @@ func TestCORE01ServicePrincipalCalls(t *testing.T) {
 	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
 	pkg := x.build(func(f map[string][]byte) {
 		f[modules.ManifestFile] = bytes.Replace(f[modules.ManifestFile], []byte("  - scope: events:read\n"),
-			[]byte("  - scope: events:write\n    reason: Append a timeline row.\n  - scope: events:read\n"), 1)
+			[]byte("  - scope: events:write\n    reason: Append a timeline row.\n  - scope: matters:write\n    reason: Prove unmarked writes stay closed.\n  - scope: events:read\n"), 1)
 	})
 	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
 		t.Fatalf("install: %s", problem)
@@ -52,6 +52,13 @@ func TestCORE01ServicePrincipalCalls(t *testing.T) {
 	// Unmarked: matters:read is approved, but listMatter is delegated_viewer only.
 	if r := bot.do("GET", "/api/v1/matters", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
 		t.Fatalf("unmarked service call: %d %v", r.code, r.json)
+	}
+	// A junk task-authorization header must not open an unmarked write (CORE-01 fail-closed).
+	junk := bot.do("POST", "/api/v1/matters", map[string]any{
+		"name": "Should Fail", "opened_on": "2026-01-01", "client_contact_id": "00000000-0000-4000-8000-000000000001",
+	}, modules.TaskAuthorizationHeader, "junk.not.a.grant")
+	if junk.code != http.StatusForbidden || junk.json["code"] != "scope_denied" {
+		t.Fatalf("junk task auth on unmarked write: %d %v", junk.code, junk.json)
 	}
 
 	// Viewer form of a marked operation still works with a context token.

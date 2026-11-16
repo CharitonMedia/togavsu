@@ -88,12 +88,20 @@ func (s *Service) CreateNotification(ctx context.Context, who domain.Principal, 
 	if hasRoles && !serviceCall {
 		return CreateNotificationResult{}, domain.Forbidden("recipient_roles is only for a service call")
 	}
-	if !in.MatterID.IsZero() && !who.UserID.IsZero() {
-		if err := s.allow(ctx, who, domain.ResMatter, domain.ActionRead, in.MatterID); err != nil {
-			return CreateNotificationResult{}, err
+	if !in.MatterID.IsZero() {
+		if serviceCall {
+			// A service principal sits outside every wall (PRD 4.1 / CU-02): refuse with
+			// not_found rather than returning a created count derived from wall membership.
+			if err := s.moduleMailMatter(ctx, who, in.MatterID, true); err != nil {
+				return CreateNotificationResult{}, err
+			}
+		} else if !who.UserID.IsZero() {
+			if err := s.allow(ctx, who, domain.ResMatter, domain.ActionRead, in.MatterID); err != nil {
+				return CreateNotificationResult{}, err
+			}
 		}
 	}
-	recipients, err := s.resolveNotificationRecipients(ctx, in)
+	recipients, err := s.resolveNotificationRecipients(ctx, in, serviceCall)
 	if err != nil {
 		return CreateNotificationResult{}, err
 	}
@@ -138,7 +146,7 @@ func (s *Service) CreateNotification(ctx context.Context, who domain.Principal, 
 	return CreateNotificationResult{Created: len(ids), NotificationIDs: ids}, nil
 }
 
-func (s *Service) resolveNotificationRecipients(ctx context.Context, in NotificationWrite) ([]domain.User, error) {
+func (s *Service) resolveNotificationRecipients(ctx context.Context, in NotificationWrite, serviceCall bool) ([]domain.User, error) {
 	if !in.UserID.IsZero() {
 		u, ok, err := s.activeUser(ctx, in.UserID)
 		if err != nil {
@@ -153,6 +161,11 @@ func (s *Service) resolveNotificationRecipients(ctx context.Context, in Notifica
 				return nil, err
 			}
 			if !sees {
+				// Hide a walled matter from a service call; interactive callers keep the
+				// validation detail so they can fix the recipient.
+				if serviceCall {
+					return nil, domain.NotFound("matter")
+				}
 				return nil, domain.Invalid("user_id", "the recipient cannot read the matter")
 			}
 		}

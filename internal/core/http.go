@@ -365,18 +365,19 @@ var serviceDelegation = map[string]bool{
 }
 
 // allowServiceCall refuses a module's own token on every operation that is not marked
-// for a service principal or a noninteractive grant workflow (CORE-01). Task-authorized
-// calls may also carry X-Togavsu-Task-Authorization; those are checked by that workflow.
+// for a service principal or a noninteractive grant workflow (CORE-01). A task-authorization
+// header only skips this gate for delegated_viewer_or_noninteractive (the grant path);
+// a junk header on an unmarked write still answers scope_denied.
 func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
-	if r.Header.Get(modules.TaskAuthorizationHeader) != "" {
-		return nil
-	}
 	if moduleRuntimeRoute(r, p) {
 		return nil
 	}
 	t, ok := a.toolFor(r.Method, r.URL.Path)
 	if !ok {
 		return domain.Forbidden("this route is not available to tokens")
+	}
+	if r.Header.Get(modules.TaskAuthorizationHeader) != "" && t.Delegation == "delegated_viewer_or_noninteractive" {
+		return nil
 	}
 	if serviceDelegation[t.Delegation] {
 		return nil

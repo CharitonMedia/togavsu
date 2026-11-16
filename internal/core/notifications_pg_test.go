@@ -70,16 +70,20 @@ func TestCORE03CreateNotification(t *testing.T) {
 		t.Fatalf("bad link: %d %s", r.code, r.body)
 	}
 
-	// Wall drop: admin audience on a walled matter creates nothing for the walled-out admin.
+	// Service call on a walled matter is not_found (CU-02): no created count from wall membership.
 	before := x.countNotifications(ctx, x.adminID, kind)
-	dropped := bot.must(http.StatusCreated, "POST", "/api/v1/notifications", map[string]any{
+	if r := bot.do("POST", "/api/v1/notifications", map[string]any{
 		"kind": kind, "title": "Walled ping", "link": link, "matter_id": walled, "audience": "admins",
-	})
-	if dropped.json["created"] != float64(0) {
-		t.Fatalf("wall drop created rows: %s", dropped.body)
+	}); r.code != http.StatusNotFound || r.json["code"] != "not_found" {
+		t.Fatalf("walled service audience: %d %s", r.code, r.body)
+	}
+	if r := bot.do("POST", "/api/v1/notifications", map[string]any{
+		"kind": kind, "title": "Walled user", "link": link, "matter_id": walled, "user_id": x.attyID,
+	}); r.code != http.StatusNotFound || r.json["code"] != "not_found" {
+		t.Fatalf("walled service user_id: %d %s", r.code, r.body)
 	}
 	if x.countNotifications(ctx, x.adminID, kind) != before {
-		t.Fatal("walled-out admin got a notification")
+		t.Fatal("walled service call wrote a notification")
 	}
 	// Same audience on an open matter reaches the admin.
 	reached := bot.must(http.StatusCreated, "POST", "/api/v1/notifications", map[string]any{
