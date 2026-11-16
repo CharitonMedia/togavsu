@@ -22,7 +22,7 @@ def _file_hashes() -> dict[str, str]:
 
 
 BASELINE_ARTIFACTS = {
-    "api/openapi/v1/openapi.json": "0a958a1e7efcb490a935880445281cf3c2f0d964a2a00b6237172b4f37fff8bf",
+    "api/openapi/v1/openapi.json": "8eba98ee01595cba26346c96fcf2bfe28e1c486edde1097df2a8615a4a1346cc",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
     "api/openapi/v1/mcp-tools.json": "c21f1dbe15161e6516996345e7a104261a3a68e999a181bd7bdb3990c51ed8a1",
     "docs/api/coverage.md": "793adc1016befc48f1d3f47d81b250025be96f2fdee29b4985516f5b7145e887",

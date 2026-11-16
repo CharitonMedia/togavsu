@@ -235,7 +235,7 @@ func TestPGFoldersFollowRoleAndClientScope(t *testing.T) {
 		if _, err := e.svc.GetFolder(ctx, who, closedFolders[0].ID); !isCode(err, domain.CodeNotFound) {
 			t.Fatalf("%v other matter folder = %v", who.Roles, err)
 		}
-		if err := e.svc.Archive(ctx, who, nil, closedFolders[0].ID, true, io.Discard); !isCode(err, domain.CodeNotFound) {
+		if err := e.svc.Archive(ctx, who, ArchiveRequest{FolderID: closedFolders[0].ID, ConfirmQuarantine: true}, io.Discard); !isCode(err, domain.CodeNotFound) {
 			t.Fatalf("%v other matter folder zip = %v", who.Roles, err)
 		}
 	}

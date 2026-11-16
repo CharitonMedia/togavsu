@@ -115,7 +115,7 @@ func TestPGFolderArchiveLeavesOutHiddenFiles(t *testing.T) {
 	names := func(p domain.Principal) []string {
 		t.Helper()
 		var buf bytes.Buffer
-		if err := e.svc.Archive(ctx, p, nil, folder.ID, false, &buf); err != nil {
+		if err := e.svc.Archive(ctx, p, ArchiveRequest{FolderID: folder.ID}, &buf); err != nil {
 			t.Fatalf("folder archive: %v", err)
 		}
 		zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
@@ -140,10 +140,10 @@ func TestPGFolderArchiveLeavesOutHiddenFiles(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("memo downloads logged = %d, want the attorney's one", n)
 	}
-	if err := e.svc.Archive(ctx, e.staff, []domain.ID{letter.ID, memo.ID}, "", false, &bytes.Buffer{}); !isCode(err, domain.CodeNotFound) {
+	if err := e.svc.Archive(ctx, e.staff, ArchiveRequest{FileIDs: []domain.ID{letter.ID, memo.ID}}, &bytes.Buffer{}); !isCode(err, domain.CodeNotFound) {
 		t.Fatalf("staff naming the memo = %v", err)
 	}
-	if err := e.svc.Archive(ctx, e.outsider, nil, mustFolder(t, e, e.walled), false, &bytes.Buffer{}); !isCode(err, domain.CodeNotFound) {
+	if err := e.svc.Archive(ctx, e.outsider, ArchiveRequest{FolderID: mustFolder(t, e, e.walled)}, &bytes.Buffer{}); !isCode(err, domain.CodeNotFound) {
 		t.Fatalf("outsider walled folder archive = %v", err)
 	}
 }

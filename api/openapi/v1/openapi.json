@@ -42912,7 +42912,7 @@
       "post": {
         "operationId": "createFileArchive",
         "summary": "Download a zip of files",
-        "description": "A folder or a selection. Each included file is written to the audit log and the case timeline as file.downloaded. A client download is highlighted. If any selected version is quarantined and confirm_quarantine is false or omitted, the response is quarantine_confirmation_required and no zip is returned. confirm_quarantine true includes those versions after the same confirmation a single download requires.",
+        "description": "A folder, a file_ids selection, or entries (version or rendition plus a checked relative path). Each included file is written to the audit log and the case timeline as file.downloaded. A client download is highlighted. If any selected version is quarantined and confirm_quarantine is false or omitted, the response is quarantine_confirmation_required and no zip is returned. confirm_quarantine true includes those versions after the same confirmation a single download requires. Every entry is checked as the viewer before the first byte; a hidden one is not_found for the whole archive. Credentials, the context token included, are checked once when the request starts, and that one response streams to completion after the token's expiry.",
         "tags": [
           "Files"
         ],
@@ -72036,36 +72036,134 @@
         ],
         "description": "One file history row: a field edit or a version save. Visible to anyone who can read the file."
       },
-      "FileArchiveRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "file_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid",
-              "description": "UUIDv7."
-            }
-          },
-          "folder_id": {
-            "anyOf": [
-              {
+      "FileArchiveEntry": {
+        "description": "One zip member. Exactly one of version_id or rendition_id. path is relative, /-separated, at most 255 bytes, with no leading /, no backslash, no . or .. segment and no control character; paths are unique without regard to case.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "file_id": {
                 "type": "string",
                 "format": "uuid",
                 "description": "UUIDv7."
               },
-              {
-                "type": "null"
+              "version_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Relative zip member path."
               }
-            ]
+            },
+            "required": [
+              "file_id",
+              "version_id",
+              "path"
+            ],
+            "description": "A file version written at path."
           },
-          "confirm_quarantine": {
-            "type": "boolean",
-            "description": "Must be true when any selected version is quarantined."
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "file_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "rendition_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Relative zip member path."
+              }
+            },
+            "required": [
+              "file_id",
+              "rendition_id",
+              "path"
+            ],
+            "description": "A file rendition written at path."
           }
-        },
-        "description": "One of file_ids or folder_id. confirm_quarantine defaults to false. A quarantined version without confirmation returns quarantine_confirmation_required and no zip."
+        ]
+      },
+      "FileArchiveRequest": {
+        "description": "Exactly one of file_ids, folder_id or entries. confirm_quarantine defaults to false. A quarantined version without confirmation returns quarantine_confirmation_required and no zip. Credentials are checked once when the request starts; the zip streams to completion after token expiry.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "file_ids": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7."
+                }
+              },
+              "confirm_quarantine": {
+                "type": "boolean",
+                "description": "Must be true when any selected version is quarantined."
+              }
+            },
+            "required": [
+              "file_ids"
+            ],
+            "description": "Current versions of the named files."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "folder_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "confirm_quarantine": {
+                "type": "boolean",
+                "description": "Must be true when any selected version is quarantined."
+              }
+            },
+            "required": [
+              "folder_id"
+            ],
+            "description": "Current versions of every file the caller may see in the folder."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "entries": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/components/schemas/FileArchiveEntry"
+                }
+              },
+              "confirm_quarantine": {
+                "type": "boolean",
+                "description": "Must be true when any selected version is quarantined."
+              }
+            },
+            "required": [
+              "entries"
+            ],
+            "description": "Named version or rendition members (CORE-21)."
+          }
+        ]
       },
       "QuarantineWrite": {
         "type": "object",

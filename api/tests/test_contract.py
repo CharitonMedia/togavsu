@@ -2538,7 +2538,10 @@ class ContractTest(unittest.TestCase):
 
     def test_archive_quarantine_requires_confirmation(self):
         operation = _operation(self.spec, "createFileArchive")
-        self.assertIn("confirm_quarantine", self.spec["components"]["schemas"]["FileArchiveRequest"]["properties"])
+        archive_schema = self.spec["components"]["schemas"]["FileArchiveRequest"]
+        self.assertIn("oneOf", archive_schema)
+        self.assertTrue(all("confirm_quarantine" in branch["properties"] for branch in archive_schema["oneOf"]))
+        self.assertIn("FileArchiveEntry", self.spec["components"]["schemas"])
         self.assertIn("quarantine_confirmation_required", operation["x-togavsu-error-codes"])
         cases = {(case["confirm_quarantine"], case["result"]) for case in operation["x-togavsu-access"]["archive_cases"]}
         self.assertIn((False, "quarantine_confirmation_required"), cases)
@@ -8737,6 +8740,18 @@ class ContractTest(unittest.TestCase):
         _component_validator(self.spec, "FileLinkWrite").validate(link_body)
         _component_validator(self.spec, "FileArchiveRequest").validate({"file_ids": [file_id, other_file]})
         _component_validator(self.spec, "FileArchiveRequest").validate({"folder_id": folder_id})
+        version_id = "018f1a00-7b3c-7d4e-8a11-ccccccccccc1"
+        rendition_id = "018f1a00-7b3c-7d4e-8a11-ddddddddddd1"
+        _component_validator(self.spec, "FileArchiveRequest").validate(
+            {"entries": [{"file_id": file_id, "version_id": version_id, "path": "docs/a.pdf"}]}
+        )
+        _component_validator(self.spec, "FileArchiveRequest").validate(
+            {"entries": [{"file_id": file_id, "rendition_id": rendition_id, "path": "docs/a.md"}]}
+        )
+        with self.assertRaises(Exception):
+            _component_validator(self.spec, "FileArchiveRequest").validate(
+                {"file_ids": [file_id], "entries": [{"file_id": file_id, "version_id": version_id, "path": "a.pdf"}]}
+            )
         _component_validator(self.spec, "MatterWritePatch").validate({"status": "open"})
         self.assertIn({"from_visible": False, "to_visible": False, "result": "not_found"}, _operation(self.spec, "createFileLink")["x-togavsu-access"]["access_cases"])
 
@@ -8890,6 +8905,65 @@ class ContractTest(unittest.TestCase):
         bad_ids = archive({"file_ids": [{"id": file_id}]}, [row(file_id)])
         self.assertEqual(bad_ids["result"], "validation_failed")
         self.assertFalse(bad_ids["effects"])
+        version_id = "018f1a00-7b3c-7d4e-8a11-ccccccccccc1"
+        rendition_id = "018f1a00-7b3c-7d4e-8a11-ddddddddddd1"
+        entries_ok = archive(
+            {"entries": [{"file_id": file_id, "version_id": version_id, "path": "docs/a.pdf"}]},
+            [row(file_id)],
+        )
+        self.assertEqual(entries_ok["result"], "allowed")
+        self.assertTrue(entries_ok["effects"])
+        entries_rendition = archive(
+            {"entries": [{"file_id": file_id, "rendition_id": rendition_id, "path": "docs/a.md"}]},
+            [row(file_id)],
+        )
+        self.assertEqual(entries_rendition["result"], "allowed")
+        hidden_entry = quiet(
+            archive(
+                {
+                    "entries": [
+                        {"file_id": file_id, "version_id": version_id, "path": "ok.pdf"},
+                        {"file_id": other_file, "version_id": version_id, "path": "secret.pdf"},
+                    ]
+                },
+                [row(file_id), row(other_file, matter_walled=True)],
+                matter_membership={matter: False},
+            )
+        )
+        self.assertEqual(hidden_entry["result"], "not_found")
+        bad_entry_path = archive(
+            {"entries": [{"file_id": file_id, "version_id": version_id, "path": "../x.pdf"}]},
+            [row(file_id)],
+        )
+        self.assertEqual(bad_entry_path["result"], "validation_failed")
+        self.assertFalse(bad_entry_path["effects"])
+        dup_entry_path = archive(
+            {
+                "entries": [
+                    {"file_id": file_id, "version_id": version_id, "path": "Docs/A.pdf"},
+                    {"file_id": file_id, "rendition_id": rendition_id, "path": "docs/a.pdf"},
+                ]
+            },
+            [row(file_id)],
+        )
+        self.assertEqual(dup_entry_path["result"], "validation_failed")
+        self.assertFalse(dup_entry_path["effects"])
+        files_and_entries = archive(
+            {
+                "file_ids": [file_id],
+                "entries": [{"file_id": file_id, "version_id": version_id, "path": "a.pdf"}],
+            },
+            [row(file_id)],
+        )
+        self.assertEqual(files_and_entries["result"], "validation_failed")
+        self.assertFalse(files_and_entries["effects"])
+        quarantined_entry = quiet(
+            archive(
+                {"entries": [{"file_id": file_id, "version_id": version_id, "path": "q.pdf"}]},
+                [row(file_id, quarantined=True)],
+            )
+        )
+        self.assertEqual(quarantined_entry["result"], "quarantine_confirmation_required")
 
     def test_record_owner_and_client_file_access(self):
         matter = "018f1a00-7b3c-7d4e-8a11-333333333333"

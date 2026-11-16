@@ -475,27 +475,29 @@ func (h *Handler) putChunk(r *http.Request, p domain.Principal) (Upload, error) 
 	return h.Svc.PutChunk(r.Context(), p, pathID(r, "upload_id"), start, end, total, r.Body)
 }
 
-// archive checks every selected file before the first byte, then streams the zip.
+// archive authenticates once, checks every selected member before the first byte, then
+// streams the zip to completion even if the caller's token would later expire (CORE-21).
 func (h *Handler) archive(w http.ResponseWriter, r *http.Request) {
 	p, ok := h.who(w, r)
 	if !ok {
 		return
 	}
 	var in struct {
-		FileIDs           []domain.ID `json:"file_ids"`
-		FolderID          *domain.ID  `json:"folder_id"`
-		ConfirmQuarantine bool        `json:"confirm_quarantine"`
+		FileIDs           []domain.ID    `json:"file_ids"`
+		FolderID          *domain.ID     `json:"folder_id"`
+		Entries           []ArchiveEntry `json:"entries"`
+		ConfirmQuarantine bool           `json:"confirm_quarantine"`
 	}
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err)
 		return
 	}
-	var folder domain.ID
+	req := ArchiveRequest{FileIDs: in.FileIDs, Entries: in.Entries, ConfirmQuarantine: in.ConfirmQuarantine}
 	if in.FolderID != nil {
-		folder = *in.FolderID
+		req.FolderID = *in.FolderID
 	}
 	pw := &pendingWriter{w: w}
-	if err := h.Svc.Archive(r.Context(), p, in.FileIDs, folder, in.ConfirmQuarantine, pw); err != nil {
+	if err := h.Svc.Archive(r.Context(), p, req, pw); err != nil {
 		if !pw.started {
 			writeErr(w, err)
 			return

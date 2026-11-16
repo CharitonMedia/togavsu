@@ -1665,14 +1665,88 @@ SCHEMAS = _register(
             ["at", "actor_kind", "kind"],
             "One file history row: a field edit or a version save. Visible to anyone who can read the file.",
         ),
-        "FileArchiveRequest": _obj(
-            {
-                "file_ids": _arr(_uuid()),
-                "folder_id": _null(_uuid()),
-                "confirm_quarantine": {"type": "boolean", "description": "Must be true when any selected version is quarantined."},
-            },
-            description="One of file_ids or folder_id. confirm_quarantine defaults to false. A quarantined version without confirmation returns quarantine_confirmation_required and no zip.",
-        ),
+        "FileArchiveEntry": {
+            "description": (
+                "One zip member. Exactly one of version_id or rendition_id. path is relative, /-separated, at most 255 bytes, "
+                "with no leading /, no backslash, no . or .. segment and no control character; paths are unique without regard to case."
+            ),
+            "oneOf": [
+                _obj(
+                    {
+                        "file_id": _uuid(),
+                        "version_id": _uuid(),
+                        "path": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255,
+                            "description": "Relative zip member path.",
+                        },
+                    },
+                    ["file_id", "version_id", "path"],
+                    "A file version written at path.",
+                ),
+                _obj(
+                    {
+                        "file_id": _uuid(),
+                        "rendition_id": _uuid(),
+                        "path": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255,
+                            "description": "Relative zip member path.",
+                        },
+                    },
+                    ["file_id", "rendition_id", "path"],
+                    "A file rendition written at path.",
+                ),
+            ],
+        },
+        "FileArchiveRequest": {
+            "description": (
+                "Exactly one of file_ids, folder_id or entries. confirm_quarantine defaults to false. "
+                "A quarantined version without confirmation returns quarantine_confirmation_required and no zip. "
+                "Credentials are checked once when the request starts; the zip streams to completion after token expiry."
+            ),
+            "oneOf": [
+                _obj(
+                    {
+                        "file_ids": {"type": "array", "minItems": 1, "items": _uuid()},
+                        "confirm_quarantine": {
+                            "type": "boolean",
+                            "description": "Must be true when any selected version is quarantined.",
+                        },
+                    },
+                    ["file_ids"],
+                    "Current versions of the named files.",
+                ),
+                _obj(
+                    {
+                        "folder_id": _uuid(),
+                        "confirm_quarantine": {
+                            "type": "boolean",
+                            "description": "Must be true when any selected version is quarantined.",
+                        },
+                    },
+                    ["folder_id"],
+                    "Current versions of every file the caller may see in the folder.",
+                ),
+                _obj(
+                    {
+                        "entries": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": _ref("FileArchiveEntry"),
+                        },
+                        "confirm_quarantine": {
+                            "type": "boolean",
+                            "description": "Must be true when any selected version is quarantined.",
+                        },
+                    },
+                    ["entries"],
+                    "Named version or rendition members (CORE-21).",
+                ),
+            ],
+        },
         "QuarantineWrite": _obj({"quarantined": {"type": "boolean"}}, ["quarantined"], "A malware-scanning module sets the flag. The version stays visible."),
         "EditLock": _obj(
             {"file_id": _uuid(), "user_id": _uuid(), "since": _dt(), "renewed_at": _dt()},

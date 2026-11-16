@@ -507,28 +507,99 @@ func (s *Service) Links(ctx context.Context, p domain.Principal, fileID domain.I
 	return out, nil
 }
 
-// Archive writes the current version of each selected file, or of every file in a
-// folder, into one zip. A folder archive holds only the files the caller may see, the
-// way List shows the folder; a hidden file the caller named denies the whole archive.
-// Each file is verified as it is written and each download is logged.
-func (s *Service) Archive(ctx context.Context, p domain.Principal, ids []domain.ID, folder domain.ID, confirmQuarantine bool, w io.Writer) error {
-	var rows []fileRow
-	if folder != "" {
-		fd, err := s.st.getFolder(ctx, folder)
-		if errors.Is(err, repository.ErrNotFound) {
-			return domain.NotFound("folder")
-		}
+// ArchiveRequest selects files for createFileArchive: exactly one of FileIDs, FolderID
+// or Entries (CORE-21).
+type ArchiveRequest struct {
+	FileIDs           []domain.ID
+	FolderID          domain.ID
+	Entries           []ArchiveEntry
+	ConfirmQuarantine bool
+}
+
+// ArchiveEntry names one version or rendition and the relative zip path it writes to.
+type ArchiveEntry struct {
+	FileID      domain.ID  `json:"file_id"`
+	VersionID   *domain.ID `json:"version_id"`
+	RenditionID *domain.ID `json:"rendition_id"`
+	Path        string     `json:"path"`
+}
+
+// archiveMember is one zip member resolved before any byte is written.
+type archiveMember struct {
+	file fileRow
+	name string
+	obj  object
+	what string
+}
+
+// Archive writes selected files into one zip. A folder archive holds only the files the
+// caller may see, the way List shows the folder; a hidden file the caller named denies
+// the whole archive. Entries (CORE-21) use caller paths after the same visibility and
+// quarantine checks, all before the first byte. Each member is verified as it is written
+// and each download is logged.
+func (s *Service) Archive(ctx context.Context, p domain.Principal, req ArchiveRequest, w io.Writer) error {
+	members, err := s.resolveArchive(ctx, p, req)
+	if err != nil {
+		return err
+	}
+	zw := zip.NewWriter(w)
+	for _, m := range members {
+		body, err := s.open(ctx, m.obj)
 		if err != nil {
 			return err
+		}
+		zf, err := zw.Create(m.name)
+		if err == nil {
+			_, err = io.Copy(zf, body)
+		}
+		_ = body.Close()
+		if err != nil {
+			return err
+		}
+		if err := s.logDownload(ctx, p, m.file, m.what); err != nil {
+			return err
+		}
+	}
+	return zw.Close()
+}
+
+func (s *Service) resolveArchive(ctx context.Context, p domain.Principal, req ArchiveRequest) ([]archiveMember, error) {
+	hasFiles := len(req.FileIDs) > 0
+	hasFolder := req.FolderID != ""
+	hasEntries := len(req.Entries) > 0
+	n := 0
+	if hasFiles {
+		n++
+	}
+	if hasFolder {
+		n++
+	}
+	if hasEntries {
+		n++
+	}
+	if n != 1 {
+		return nil, domain.Invalid("body", "set exactly one of file_ids, folder_id or entries")
+	}
+	if hasEntries {
+		return s.resolveArchiveEntries(ctx, p, req.Entries, req.ConfirmQuarantine)
+	}
+	var rows []fileRow
+	if hasFolder {
+		fd, err := s.st.getFolder(ctx, req.FolderID)
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, domain.NotFound("folder")
+		}
+		if err != nil {
+			return nil, err
 		}
 		// A folder is matter information: the same check as Folders and GetFolder.
 		if err := s.matterReadable(ctx, p, fd.MatterID); err != nil {
-			return domain.NotFound("folder")
+			return nil, domain.NotFound("folder")
 		}
-		f := string(folder)
+		f := string(req.FolderID)
 		listed, err := s.st.listFiles(ctx, fileQuery{MatterID: fd.MatterID, Folder: &f})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		walls := map[domain.ID]domain.WallView{}
 		for _, f := range listed {
@@ -537,64 +608,146 @@ func (s *Service) Archive(ctx context.Context, p domain.Principal, ids []domain.
 			}
 			d, err := s.decide(ctx, p, f, domain.ActionRead, walls)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			if d.Allow {
 				rows = append(rows, f)
 			}
 		}
 	}
-	for _, id := range ids {
+	for _, id := range req.FileIDs {
 		f, err := s.loadFile(ctx, id)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if err := s.visible(ctx, p, f); err != nil {
-			return err
+			return nil, err
 		}
 		rows = append(rows, f)
 	}
 	if len(rows) == 0 {
-		return domain.Invalid("file_ids", "select at least one file or a folder")
+		return nil, domain.Invalid("file_ids", "select at least one file or a folder")
 	}
-	var versions []domain.FileVersion
+	used := map[string]int{}
+	out := make([]archiveMember, 0, len(rows))
 	for _, f := range rows {
 		v, err := s.st.getVersion(ctx, f.CurrentVersionID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		q, err := s.st.quarantined(ctx, v)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if q && !confirmQuarantine {
-			return ErrQuarantined
+		if q && !req.ConfirmQuarantine {
+			return nil, ErrQuarantined
 		}
-		versions = append(versions, v)
-	}
-	zw := zip.NewWriter(w)
-	used := map[string]int{}
-	for i, f := range rows {
 		name := f.Name
 		if n := used[strings.ToLower(name)]; n > int(zero) {
 			name = strings.TrimSuffix(f.Name, path.Ext(f.Name)) + fmt.Sprintf("-%d", n+1) + path.Ext(f.Name)
 		}
 		used[strings.ToLower(f.Name)]++
-		body, err := s.open(ctx, versionObject(versions[i]))
+		out = append(out, archiveMember{file: f, name: name, obj: versionObject(v), what: "archive"})
+	}
+	return out, nil
+}
+
+func (s *Service) resolveArchiveEntries(ctx context.Context, p domain.Principal, entries []ArchiveEntry, confirmQuarantine bool) ([]archiveMember, error) {
+	seen := map[string]struct{}{}
+	out := make([]archiveMember, 0, len(entries))
+	for i, e := range entries {
+		memberPath, err := archiveZipPath(e.Path)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		zf, err := zw.Create(name)
-		if err == nil {
-			_, err = io.Copy(zf, body)
+		key := strings.ToLower(memberPath)
+		if _, dup := seen[key]; dup {
+			return nil, domain.Invalid("entries", "entry paths must be unique without regard to case")
 		}
-		_ = body.Close()
+		seen[key] = struct{}{}
+		versionID, hasVersion := optionalArchiveID(e.VersionID)
+		renditionID, hasRendition := optionalArchiveID(e.RenditionID)
+		if hasVersion == hasRendition {
+			return nil, domain.Invalid(fmt.Sprintf("entries[%d]", i), "set exactly one of version_id or rendition_id")
+		}
+		if e.FileID == "" {
+			return nil, domain.Invalid(fmt.Sprintf("entries[%d].file_id", i), "file_id is required")
+		}
+		var (
+			f    fileRow
+			obj  object
+			what string
+			ver  domain.FileVersion
+		)
+		if hasVersion {
+			f, ver, err = s.fileVersion(ctx, p, e.FileID, versionID)
+			if err != nil {
+				return nil, err
+			}
+			obj = versionObject(ver)
+			what = fmt.Sprintf("archive v%d", ver.Number)
+		} else {
+			f, err = s.loadFile(ctx, e.FileID)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.visible(ctx, p, f); err != nil {
+				return nil, err
+			}
+			if _, err := domain.ParseID(string(renditionID)); err != nil {
+				return nil, domain.NotFound("rendition")
+			}
+			r, err := s.st.getRendition(ctx, renditionID)
+			if errors.Is(err, repository.ErrNotFound) {
+				return nil, domain.NotFound("rendition")
+			}
+			if err != nil {
+				return nil, err
+			}
+			ver, err = s.st.getVersion(ctx, r.FileVersionID)
+			if err != nil || ver.FileID != f.ID {
+				return nil, domain.NotFound("rendition")
+			}
+			obj = renditionObject(r, f.ID)
+			what = fmt.Sprintf("archive %s %d", r.Kind, r.Number)
+		}
+		q, err := s.st.quarantined(ctx, ver)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if err := s.logDownload(ctx, p, f, "archive"); err != nil {
-			return err
+		if q && !confirmQuarantine {
+			return nil, ErrQuarantined
+		}
+		out = append(out, archiveMember{file: f, name: memberPath, obj: obj, what: what})
+	}
+	return out, nil
+}
+
+func optionalArchiveID(id *domain.ID) (domain.ID, bool) {
+	if id == nil || *id == "" {
+		return "", false
+	}
+	return *id, true
+}
+
+// archiveZipPath accepts a relative zip member path for CORE-21 entries.
+func archiveZipPath(raw string) (string, error) {
+	if raw == "" || len(raw) > 255 {
+		return "", domain.Invalid("path", "path must be 1 to 255 bytes")
+	}
+	if strings.HasPrefix(raw, "/") || strings.Contains(raw, `\`) {
+		return "", domain.Invalid("path", "path must be relative with / separators")
+	}
+	for _, r := range raw {
+		if r < 0x20 || r == 0x7f {
+			return "", domain.Invalid("path", "path must not contain control characters")
 		}
 	}
-	return zw.Close()
+	parts := strings.Split(raw, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
+			return "", domain.Invalid("path", "path segments must not be empty, . or ..")
+		}
+	}
+	return raw, nil
 }

@@ -3063,10 +3063,13 @@ def _files(api: Contract) -> None:
         operation_id="createFileArchive",
         summary="Download a zip of files",
         description=(
-            "A folder or a selection. Each included file is written to the audit log and the case timeline as file.downloaded. "
+            "A folder, a file_ids selection, or entries (version or rendition plus a checked relative path). "
+            "Each included file is written to the audit log and the case timeline as file.downloaded. "
             "A client download is highlighted. "
             "If any selected version is quarantined and confirm_quarantine is false or omitted, the response is quarantine_confirmation_required and no zip is returned. "
-            "confirm_quarantine true includes those versions after the same confirmation a single download requires."
+            "confirm_quarantine true includes those versions after the same confirmation a single download requires. "
+            "Every entry is checked as the viewer before the first byte; a hidden one is not_found for the whole archive. "
+            "Credentials, the context token included, are checked once when the request starts, and that one response streams to completion after the token's expiry."
         ),
         tag="Files",
         features=["files"],
