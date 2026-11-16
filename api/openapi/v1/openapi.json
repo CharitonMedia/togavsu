@@ -73380,6 +73380,8 @@
           "api.csv_export_max_rows",
           "modules.marketplace_url",
           "modules.alert_check_hours",
+          "modules.inbound_webhook_max_bytes",
+          "modules.inbound_webhook_rate_per_minute",
           "modules.replace_time",
           "modules.replace_trust",
           "modules.replace_calendar"
@@ -84626,6 +84628,26 @@
       "locked": false,
       "minimum": 1,
       "help": "How often the core polls the marketplace for flags and pulls."
+    },
+    {
+      "key": "modules.inbound_webhook_max_bytes",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 1048576,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Largest inbound provider webhook body in bytes. Over is 413. Default 1048576 (1 MiB)."
+    },
+    {
+      "key": "modules.inbound_webhook_rate_per_minute",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Inbound provider webhooks allowed per minute per hook. Over is 429 with Retry-After. Default 120."
     },
     {
       "key": "modules.replace_time",

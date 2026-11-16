@@ -156,6 +156,8 @@ var definitions = []Definition{
 
 	{Key: "modules.marketplace_address", Kind: KindString, Default: domain.MarketplaceAddress, Tab: TabModules, Help: "Marketplace the firm checks. Default is the Togavsu marketplace.", PRD: true},
 	{Key: "modules.alert_check", Kind: KindEnum, Default: "daily", Allowed: []string{"hourly", "daily", "weekly"}, Tab: TabModules, Help: "How often installed modules are checked for flags and pulls. Default daily.", PRD: true},
+	{Key: "modules.inbound_webhook_max_bytes", Kind: KindInt, Default: "1048576", Min: 1, Max: 1 << 30, HasMin: true, HasMax: true, Tab: TabModules, Help: "Largest inbound provider webhook body in bytes. Over is 413. Default 1048576 (1 MiB).", PRD: true},
+	{Key: "modules.inbound_webhook_rate_per_minute", Kind: KindInt, Default: "120", Min: 1, Max: 1000000, HasMin: true, HasMax: true, Tab: TabModules, Help: "Inbound provider webhooks allowed per minute per hook. Over is 429 with Retry-After. Default 120.", PRD: true},
 	{Key: "modules.replace_time", Kind: KindString, Tab: TabModules, Help: "Module id that replaces time and invoicing. Empty keeps the core."},
 	{Key: "modules.replace_trust", Kind: KindString, Tab: TabModules, Help: "Module id that replaces trust. Empty keeps the core."},
 	{Key: "modules.replace_calendar", Kind: KindString, Tab: TabModules, Help: "Module id that replaces calendar. Empty keeps the core."},

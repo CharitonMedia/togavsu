@@ -90,6 +90,8 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}", h.scoped("", h.widgetPage))
 	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}", h.scoped("", h.matterItemPage))
 	m.HandleFunc("/m/{module_id}/", h.frame)
+	// CORE-07: public provider webhook intake. POST only; undeclared hooks 404.
+	m.HandleFunc("POST /hooks/{module_id}/{hook_id}", h.inboundWebhook)
 	// CORE-10
 	m.HandleFunc("GET /portal", h.scoped("", h.portalHome))
 	m.HandleFunc("GET /portal/{module_id}/{tab_id}", h.scoped("", h.portalTab))
