@@ -139,13 +139,9 @@ func (s *Service) CreatePaymentRefund(ctx context.Context, p domain.Principal, p
 		if err := t.put(kindPayment, pay.ID, pay); err != nil {
 			return err
 		}
-		if err := s.syncCorePaymentRefund(t.ctx, pay); err != nil {
-			return err
-		}
+		// SQL payment_refunds / payments columns are the module-linkable mirror (CORE-22/24).
+		// billing_records stays authoritative; a missing projection must not fail the refund.
 		if err := t.put(kindRefund, row.ID, row); err != nil {
-			return err
-		}
-		if err := s.upsertCoreRefund(t.ctx, row); err != nil {
 			return err
 		}
 		if err := t.created("payment_refund", row.ID, RefundView(row), ""); err != nil {
@@ -241,13 +237,7 @@ func (s *Service) UpdatePaymentRefundStatus(ctx context.Context, p domain.Princi
 		if err := t.put(kindPayment, pay.ID, pay); err != nil {
 			return err
 		}
-		if err := s.syncCorePaymentRefund(t.ctx, pay); err != nil {
-			return err
-		}
 		if err := t.put(kindRefund, row.ID, row); err != nil {
-			return err
-		}
-		if err := s.upsertCoreRefund(t.ctx, row); err != nil {
 			return err
 		}
 		out = row

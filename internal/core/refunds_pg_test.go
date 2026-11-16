@@ -59,16 +59,13 @@ func TestPaymentRefundsAPI(t *testing.T) {
 	x.atty.must(http.StatusOK, "POST", "/api/v1/payments/"+payID+"/refunds/"+refundID+"/status", map[string]any{"status": "pending"})
 	x.atty.must(http.StatusOK, "POST", "/api/v1/payments/"+payID+"/refunds/"+refundID+"/status", map[string]any{"status": "completed"})
 
-	if n := x.count(`SELECT COUNT(*) FROM payment_refunds WHERE payment_id = $1`, payID); n != 2 {
-		t.Fatalf("payment_refunds rows: %d", n)
+	listed2 := x.atty.must(http.StatusOK, "GET", "/api/v1/payments/"+payID+"/refunds", nil).json
+	if data, _ := listed2["data"].([]any); len(data) != 2 {
+		t.Fatalf("list after complete: %v", listed2)
 	}
-	var refunded int64
-	var state string
-	if err := x.app.Pool.QueryRow(`SELECT refunded_cents, refund_state FROM payments WHERE id = $1`, payID).Scan(&refunded, &state); err != nil {
-		t.Fatal(err)
-	}
-	if refunded != 75_00 || state != "partial" {
-		t.Fatalf("payments SQL: refunded=%d state=%s", refunded, state)
+	got2 := x.atty.must(http.StatusOK, "GET", "/api/v1/payments/"+payID, nil).json
+	if int64(got2["refunded_cents"].(float64)) != 75_00 || got2["refund_state"] != "partial" {
+		t.Fatalf("payment after refunds: %v", got2)
 	}
 
 	trustPay := x.admin.must(http.StatusCreated, "POST", "/api/v1/payments", map[string]any{
