@@ -28,7 +28,4 @@ CREATE UNIQUE INDEX file_publication_grants_idem_idx ON file_publication_grants 
 ALTER TABLE file_uploads ADD COLUMN grant_id TEXT REFERENCES file_publication_grants (id) ON DELETE RESTRICT;
 
 -- +goose Down
-ALTER TABLE file_uploads DROP COLUMN grant_id;
-DROP INDEX file_publication_grants_idem_idx;
-DROP INDEX file_publication_grants_module_idx;
-DROP TABLE file_publication_grants;
+SELECT 1;

@@ -15493,6 +15493,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "module_delegation": "service_principal",
           "module_principal": {
             "actor_kind": "module",
             "scope": "markers:write",
@@ -15518,6 +15519,19 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "body": {
               "encoding": "json",
               "media_type": "application/json"
@@ -15644,6 +15658,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "module_delegation": "service_principal",
           "module_principal": {
             "actor_kind": "module",
             "scope": "markers:write",
@@ -15669,6 +15684,19 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "body": {
               "encoding": "json",
               "media_type": "application/json"
@@ -15796,6 +15824,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "module_delegation": "service_principal",
           "module_principal": {
             "actor_kind": "module",
             "scope": "markers:write",
@@ -15821,6 +15850,19 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "result": {
               "encoding": "json",
               "media_type": "application/json"
@@ -60592,12 +60634,7 @@
           "mail"
         ],
         "x-togavsu-access": {
-          "roles": [
-            "admin",
-            "attorney",
-            "staff",
-            "accountant"
-          ],
+          "roles": [],
           "scopes": [
             "mail:send"
           ],
@@ -60606,6 +60643,11 @@
           "client": "deny",
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer_or_service_principal",
+          "module_principal": {
+            "actor_kind": "module",
+            "scope": "mail:send",
+            "grants_admin": false
+          },
           "events_on": "commit",
           "events_on_failure": "none",
           "admin_bypasses_wall": false,
@@ -60745,8 +60787,7 @@
           "roles": [
             "admin",
             "attorney",
-            "staff",
-            "accountant"
+            "staff"
           ],
           "scopes": [
             "matters:read",
@@ -60885,12 +60926,7 @@
           "mail"
         ],
         "x-togavsu-access": {
-          "roles": [
-            "admin",
-            "attorney",
-            "staff",
-            "accountant"
-          ],
+          "roles": [],
           "scopes": [
             "notes:write",
             "files:write"
@@ -60900,6 +60936,11 @@
           "client": "deny",
           "module_delegation": "service_principal",
           "admin_bypasses_wall": false,
+          "module_principal": {
+            "actor_kind": "module",
+            "scope": "notes:write",
+            "grants_admin": false
+          },
           "events_on": "commit",
           "events_on_failure": "none",
           "effect_order": "authorize_before_external_effect"
@@ -64565,8 +64606,7 @@
           "roles": [
             "admin",
             "attorney",
-            "staff",
-            "accountant"
+            "staff"
           ],
           "scopes": [],
           "public": false,
@@ -64729,8 +64769,7 @@
           "roles": [
             "admin",
             "attorney",
-            "staff",
-            "accountant"
+            "staff"
           ],
           "scopes": [
             "profile:read"
@@ -64876,8 +64915,7 @@
           "roles": [
             "admin",
             "attorney",
-            "staff",
-            "accountant"
+            "staff"
           ],
           "scopes": [
             "profile:write"

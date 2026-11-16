@@ -5,5 +5,4 @@ ALTER TABLE files ADD COLUMN library BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE file_uploads ADD COLUMN library BOOLEAN NOT NULL DEFAULT false;
 
 -- +goose Down
-ALTER TABLE file_uploads DROP COLUMN library;
-ALTER TABLE files DROP COLUMN library;
+SELECT 1;

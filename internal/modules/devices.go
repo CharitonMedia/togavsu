@@ -58,8 +58,8 @@ func newDeviceSecret() (string, error) {
 }
 
 func firmStaff(p domain.Principal) bool {
-	return p.HasRole(domain.RoleAdmin) || p.HasRole(domain.RoleAttorney) ||
-		p.HasRole(domain.RoleStaff) || p.HasRole(domain.RoleAccountant)
+	// Device grants are staff portal work (admin, attorney, staff); not accountant (AC-004).
+	return p.HasRole(domain.RoleAdmin) || p.HasRole(domain.RoleAttorney) || p.HasRole(domain.RoleStaff)
 }
 
 func (s *Service) deviceUnusedCutoff() time.Time {

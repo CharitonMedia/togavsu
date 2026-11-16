@@ -12,4 +12,4 @@ CREATE TABLE module_secrets (
 );
 
 -- +goose Down
-DROP TABLE module_secrets;
+SELECT 1;

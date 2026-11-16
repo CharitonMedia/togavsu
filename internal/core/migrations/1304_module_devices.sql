@@ -19,6 +19,4 @@ CREATE INDEX module_devices_user_idx ON module_devices (user_id) WHERE revoked_a
 CREATE INDEX module_devices_module_idx ON module_devices (module_id) WHERE revoked_at IS NULL;
 
 -- +goose Down
-DROP INDEX module_devices_module_idx;
-DROP INDEX module_devices_user_idx;
-DROP TABLE module_devices;
+SELECT 1;

@@ -4,4 +4,4 @@
 ALTER TABLE fee_agreements ADD COLUMN signature_module_id TEXT NOT NULL DEFAULT '';
 
 -- +goose Down
-ALTER TABLE fee_agreements DROP COLUMN signature_module_id;
+SELECT 1;

@@ -20,6 +20,4 @@ ALTER TABLE payments ADD COLUMN refund_state TEXT NOT NULL DEFAULT 'none'
   CHECK (refund_state IN ('none', 'partial', 'full'));
 
 -- +goose Down
-ALTER TABLE payments DROP COLUMN refund_state;
-ALTER TABLE payments DROP COLUMN refunded_cents;
-DROP TABLE payment_refunds;
+SELECT 1;

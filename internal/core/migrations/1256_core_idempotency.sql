@@ -18,5 +18,4 @@ CREATE TABLE core_idempotency (
 CREATE INDEX events_created_idx ON events (created_at, id);
 
 -- +goose Down
-DROP INDEX events_created_idx;
-DROP TABLE core_idempotency;
+SELECT 1;

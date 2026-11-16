@@ -30,6 +30,14 @@ func (a *App) matchMailJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	// Module own-token, or staff/attorney/admin viewer. Accountant-only sessions are refused (AC-004).
+	if !moduleOwn(p) {
+		staff := p.HasRole(domain.RoleAdmin) || p.HasRole(domain.RoleAttorney) || p.HasRole(domain.RoleStaff)
+		if !staff {
+			writeErr(w, domain.Forbidden("admin, attorney or staff role is required"))
+			return
+		}
+	}
 	var body practice.MailMatchRequest
 	if err := decode(r, &body); err != nil {
 		writeErr(w, err)

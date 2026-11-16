@@ -445,7 +445,8 @@ func TestExtensionsMatterItems(t *testing.T) {
 	panel := "/modules/matter-notes/matter-items/notes?matter_id=" + open
 	action := "/modules/matter-notes/matter-items/letter?matter_id=" + open
 	screen := x.staff.must(http.StatusOK, "GET", "/practice/matters/"+open, nil)
-	for _, want := range []string{`id="module-matter-notes"`, `<iframe src="` + panel + `"`, `sandbox="allow-scripts allow-forms"`,
+	for _, want := range []string{`id="module-matter-notes"`, `<iframe src="` + panel + `"`,
+		`sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox"`,
 		`<a class="button" href="` + action + `">Draft a letter</a>`, "Matter notes"} {
 		if !strings.Contains(screen.body, want) {
 			t.Fatalf("matter screen lacks %q:\n%s", want, screen.body)

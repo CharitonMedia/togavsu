@@ -4576,10 +4576,24 @@
         "markers:write"
       ],
       "roles": [],
+      "module_delegation": "service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -4607,10 +4621,24 @@
         "markers:write"
       ],
       "roles": [],
+      "module_delegation": "service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -4638,10 +4666,24 @@
         "markers:write"
       ],
       "roles": [],
+      "module_delegation": "service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -17475,12 +17517,7 @@
       "scopes": [
         "mail:send"
       ],
-      "roles": [
-        "admin",
-        "attorney",
-        "staff",
-        "accountant"
-      ],
+      "roles": [],
       "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
         "shape": "path_query_body",
@@ -17535,8 +17572,7 @@
       "roles": [
         "admin",
         "attorney",
-        "staff",
-        "accountant"
+        "staff"
       ],
       "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
@@ -17589,12 +17625,7 @@
         "notes:write",
         "files:write"
       ],
-      "roles": [
-        "admin",
-        "attorney",
-        "staff",
-        "accountant"
-      ],
+      "roles": [],
       "module_delegation": "service_principal",
       "transfer": {
         "shape": "path_query_body",
@@ -18609,8 +18640,7 @@
       "roles": [
         "admin",
         "attorney",
-        "staff",
-        "accountant"
+        "staff"
       ],
       "transfer": {
         "shape": "path_query_body",
@@ -18646,8 +18676,7 @@
       "roles": [
         "admin",
         "attorney",
-        "staff",
-        "accountant"
+        "staff"
       ],
       "transfer": {
         "shape": "path_query_body",
@@ -18677,8 +18706,7 @@
       "roles": [
         "admin",
         "attorney",
-        "staff",
-        "accountant"
+        "staff"
       ],
       "transfer": {
         "shape": "path_query_body",
