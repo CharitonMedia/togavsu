@@ -27,7 +27,7 @@ func (a *App) passwordChangeGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if path == "/api/v1/me/password" || path == "/api/v1/auth/logout" ||
-			path == "/portal/security" || path == "/portal/sign-out" {
+			path == "/portal/security" || path == "/portal/sign-out" || path == "/mcp" {
 			next.ServeHTTP(w, r)
 			return
 		}

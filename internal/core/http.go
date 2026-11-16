@@ -189,12 +189,19 @@ type callerMemo struct {
 
 type callerKey struct{}
 
-// memoCaller gives r a fresh callerMemo. A request is served on one goroutine.
-// A presented task authorization is stashed for mail_filing / mail_matching checks.
+// memoCaller gives r one callerMemo for the whole request. Nested gates (password
+// change, screens, the outer hold gate) may call it again; a second call keeps the
+// existing memo so api_rate_per_minute counts once. A presented task authorization
+// is stashed for mail_filing / mail_matching checks.
 func memoCaller(r *http.Request) *http.Request {
-	ctx := context.WithValue(r.Context(), callerKey{}, &callerMemo{})
+	ctx := r.Context()
+	if _, ok := ctx.Value(callerKey{}).(*callerMemo); !ok {
+		ctx = context.WithValue(ctx, callerKey{}, &callerMemo{})
+	}
 	if g := r.Header.Get(modules.TaskAuthorizationHeader); g != "" {
-		ctx = modules.WithTaskAuth(ctx, g)
+		if modules.TaskAuth(ctx) == "" {
+			ctx = modules.WithTaskAuth(ctx, g)
+		}
 	}
 	return r.WithContext(ctx)
 }
@@ -347,15 +354,19 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 	return p, nil
 }
 
-// serviceDelegation marks an operation that a module service principal may call.
+// serviceDelegation marks an operation a module's own token may call without a viewer.
+// service_principal and delegated_viewer_or_service_principal are CORE-01 service calls.
+// delegated_viewer_or_noninteractive is the grant path (publication, payment, refund,
+// mail filing): the handler checks the grant or task-authorization header.
 var serviceDelegation = map[string]bool{
-	"service_principal":                       true,
-	"delegated_viewer_or_service_principal":   true,
+	"service_principal":                     true,
+	"delegated_viewer_or_service_principal": true,
+	"delegated_viewer_or_noninteractive":    true,
 }
 
 // allowServiceCall refuses a module's own token on every operation that is not marked
-// for a service principal (CORE-01). Task-authorized noninteractive calls carry a grant
-// header and are checked by that workflow instead.
+// for a service principal or a noninteractive grant workflow (CORE-01). Task-authorized
+// calls may also carry X-Togavsu-Task-Authorization; those are checked by that workflow.
 func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
 	if r.Header.Get(modules.TaskAuthorizationHeader) != "" {
 		return nil

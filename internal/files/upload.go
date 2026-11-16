@@ -471,12 +471,13 @@ func (s *Service) replayVersion(ctx context.Context, p domain.Principal, fileID,
 
 // sourceFor is the file's source: a client's upload (directly, or through a module's
 // delegated client-only viewer, CORE-16 / PRD 8.19) is client_upload even when the
-// caller's channel is the module; a module's own write is the module id; staff is upload.
+// caller's channel is the module; a module's own write (SourceModule or CORE-01
+// SourceService) is the module id; staff is upload.
 func sourceFor(p domain.Principal) string {
 	switch {
 	case clientOnly(p):
 		return "client_upload"
-	case p.Source == domain.SourceModule && p.ModuleID != "":
+	case p.ModuleID != "" && (p.Source == domain.SourceModule || p.Source == domain.SourceService):
 		return p.ModuleID
 	default:
 		return "upload"
@@ -489,7 +490,7 @@ func modulePublishOrigin(p domain.Principal, origin string) (string, error) {
 	if origin == "" {
 		return "", nil
 	}
-	if p.Source != domain.SourceModule || p.ModuleID == "" {
+	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) {
 		return "", domain.Invalid("origin", "origin is only accepted from a module token")
 	}
 	if origin != "firm" && origin != "received" {
