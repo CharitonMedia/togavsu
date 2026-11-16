@@ -153,9 +153,13 @@ func csrfOf(r *http.Request) string {
 }
 
 
-// afterSignInPath is where a signed-in user lands: /portal for client-only users (CORE-10).
+// afterSignInPath is where a signed-in user lands: /portal for client-only users (CORE-10),
+// or /portal/security when a temporary password must be changed (CORE-14).
 func afterSignInPath(p domain.Principal) string {
 	if modules.ClientOnly(p) {
+		if p.MustChangePassword {
+			return "/portal/security"
+		}
 		return "/portal"
 	}
 	return "/practice/matters"
@@ -225,7 +229,10 @@ func (a *App) loginStep(w http.ResponseWriter, r *http.Request, res identity.Log
 	case res.SessionToken != "":
 		signIn(w, r, res)
 		roles, _ := domain.ParseRoles(res.User.Roles)
-		http.Redirect(w, r, afterSignInPath(domain.Principal{UserID: res.User.ID, Roles: roles, Source: domain.SourceUI}), http.StatusSeeOther)
+		http.Redirect(w, r, afterSignInPath(domain.Principal{
+			UserID: res.User.ID, Roles: roles, Source: domain.SourceUI,
+			MustChangePassword: res.User.MustChangePassword,
+		}), http.StatusSeeOther)
 	case res.TOTPToken != "":
 		render(w, http.StatusOK, "totp", view{Title: "Two-factor code", Token: res.TOTPToken})
 	case res.EnrollmentToken != "":

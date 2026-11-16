@@ -70,6 +70,8 @@ SCOPES = {
     "mail:system": "Receive the core's system mail and deliver it through the firm's mail.",
     "users:directory": "Read the firm user directory (id, name, roles, active). No email or auth fields.",
     "firm:read": "Read the firm profile: name, contact details, time zone, and client portal appearance.",
+    "client_access:read": "Read whether a client contact has portal access and its status.",
+    "client_access:write": "Grant, reset, deactivate or reactivate client portal access for a client contact.",
 }
 
 SCOPE_PATTERNS = [

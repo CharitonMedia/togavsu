@@ -914,6 +914,10 @@ MUTATION_EVENTS = {
     "createBackupUpload": ["backup_upload.created"],
     "createModuleContextToken": ["module.context_issued"],
     "updateTrustedKey": ["signing_key.updated"],
+    "grantClientAccess": ["client_access.granted"],
+    "resetClientAccessPassword": ["client_access.password_reset"],
+    "deactivateClientAccess": ["client_access.deactivated"],
+    "reactivateClientAccess": ["client_access.reactivated"],
 }
 
 def ensure_mutation_events(spec: dict) -> None:

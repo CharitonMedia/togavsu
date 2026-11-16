@@ -173,7 +173,7 @@ func MountUI(ctx context.Context, app *App, opt UIOptions) (*UI, error) {
 	if err := u.loadScopes(); err != nil {
 		return nil, err
 	}
-	u.inner = u.route(app.setupGate(app.mux))
+	u.inner = u.route(app.setupGate(app.passwordChangeGate(app.mux)))
 	return u, nil
 }
 

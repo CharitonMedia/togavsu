@@ -50,6 +50,7 @@ func (a *App) routes() {
 	a.meAppointmentsRoutes(m)
 	a.meTrustRoutes(m)
 	a.directoryRoutes(m)
+	a.clientAccessRoutes(m)
 	a.portalRoutes(m)
 	a.systemRoutes(m)
 	a.moduleMailRoutes(m)

@@ -369,6 +369,13 @@ func (s *Service) ChangePassword(ctx context.Context, caller Caller, current, ne
 		if err := s.setPassword(ctx, user, caller.Principal.Roles, next, previous); err != nil {
 			return err
 		}
+		if user.MustChangePassword {
+			user.MustChangePassword = false
+			user.UpdatedAt = s.now().UTC()
+			if err := s.users.Update(ctx, user); err != nil {
+				return err
+			}
+		}
 		return s.revokeOtherSessions(ctx, user.ID, caller.Principal.SessionID, caller.Principal)
 	})
 }
@@ -499,6 +506,13 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, next string) 
 		}
 		if err := s.setPassword(ctx, user, roles, next, previous); err != nil {
 			return err
+		}
+		if user.MustChangePassword {
+			user.MustChangePassword = false
+			user.UpdatedAt = s.now().UTC()
+			if err := s.users.Update(ctx, user); err != nil {
+				return err
+			}
 		}
 		return s.revokeOtherSessions(ctx, user.ID, "", who)
 	})

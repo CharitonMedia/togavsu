@@ -177,6 +177,7 @@ type User struct {
 	Email                  string `db:"email"`
 	Roles                  string `db:"roles"`
 	Active                 bool   `db:"active"`
+	MustChangePassword     bool   `db:"must_change_password"`
 	DefaultHourlyRateCents Cents  `db:"default_hourly_rate_cents"`
 	ContactID              ID     `db:"contact_id"`
 	BarNumber              string `db:"bar_number"`

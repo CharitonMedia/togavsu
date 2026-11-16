@@ -31,12 +31,13 @@ const (
 
 // Principal is the authenticated caller. Handlers build it; services receive it.
 type Principal struct {
-	UserID    ID
-	Roles     []Role
-	Source    ActorSource
-	SessionID ID
-	TokenID   ID
-	ModuleID  string
+	UserID             ID
+	Roles              []Role
+	Source             ActorSource
+	SessionID          ID
+	TokenID            ID
+	ModuleID           string
+	MustChangePassword bool // CORE-14: client must change a temporary password before other API use.
 }
 
 // ErrRole is returned when a role list is empty or contains an unknown role.

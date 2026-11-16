@@ -45,6 +45,8 @@ var catalog = map[string]struct{}{
 	"module_secrets:write": {},
 	"mail:send":            {},
 	"mail:system":          {},
+	"client_access:read":   {},
+	"client_access:write":  {},
 }
 
 // moduleOnlyScopes are grantable only on a module token (CORE-02, CORE-04 to CORE-06).
@@ -96,6 +98,7 @@ func roleScopes(role domain.Role) map[string]struct{} {
 			"notifications:read", "notifications:write", "layouts:read", "layouts:write",
 			"help:read", "events:read", "doc_tender:read", "conflicts:read", "conflicts:write",
 			"users:read", "users:directory", "settings:read", "firm:read",
+			"client_access:read", "client_access:write",
 		)
 	case domain.RoleAccountant:
 		return scopeSet(
