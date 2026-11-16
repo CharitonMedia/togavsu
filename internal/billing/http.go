@@ -129,6 +129,9 @@ func (h *Handler) Routes() http.Handler {
 	api("GET /api/v1/payments/{payment_id}", h.getPayment)
 	api("POST /api/v1/payments/{payment_id}/status", h.paymentStatus)
 	api("POST /api/v1/payments/{payment_id}/reverse", h.reversePayment)
+	api("GET /api/v1/payments/{payment_id}/refunds", h.listRefunds)
+	api("POST /api/v1/payments/{payment_id}/refunds", h.createRefund)
+	api("POST /api/v1/payments/{payment_id}/refunds/{refund_id}/status", h.refundStatus)
 	api("GET /api/v1/billing/worklist", h.worklist)
 	api("POST /api/v1/billing/flat-fees/{matter_id}/apply", h.applyFlatFee)
 	for name, fn := range map[string]func(context.Context, domain.Principal, ReportFilter) (Report, error){
@@ -901,16 +904,17 @@ func (h *Handler) replenish(w http.ResponseWriter, r *http.Request, p domain.Pri
 // Payments.
 
 type paymentBody struct {
-	ContactID       domain.ID     `json:"contact_id"`
-	MatterID        domain.ID     `json:"matter_id"`
-	AmountCents     *domain.Cents `json:"amount_cents"`
-	Destination     string        `json:"destination"`
-	TrustAccountID  *domain.ID    `json:"trust_account_id"`
-	Method          string        `json:"method"`
-	ReferenceNumber string        `json:"reference_number"`
-	Status          string        `json:"status"`
-	InvoiceID       *domain.ID    `json:"invoice_id"`
-	Source          string        `json:"source"`
+	ContactID              domain.ID     `json:"contact_id"`
+	MatterID               domain.ID     `json:"matter_id"`
+	AmountCents            *domain.Cents `json:"amount_cents"`
+	Destination            string        `json:"destination"`
+	TrustAccountID         *domain.ID    `json:"trust_account_id"`
+	Method                 string        `json:"method"`
+	ReferenceNumber        string        `json:"reference_number"`
+	Status                 string        `json:"status"`
+	InvoiceID              *domain.ID    `json:"invoice_id"`
+	Source                 string        `json:"source"`
+	ReplenishmentRequestID *domain.ID    `json:"replenishment_request_id"`
 }
 
 func (b paymentBody) input() (PaymentInput, error) {
@@ -924,6 +928,9 @@ func (b paymentBody) input() (PaymentInput, error) {
 	}
 	if b.InvoiceID != nil {
 		in.InvoiceID = *b.InvoiceID
+	}
+	if b.ReplenishmentRequestID != nil {
+		in.ReplenishmentRequestID = *b.ReplenishmentRequestID
 	}
 	return in, nil
 }
@@ -1000,6 +1007,63 @@ func (h *Handler) reversePayment(w http.ResponseWriter, r *http.Request, p domai
 	h.write(w, r, p, &body, func() (int, any, error) {
 		row, err := h.Svc.ReversePayment(r.Context(), p, domain.ID(r.PathValue("payment_id")), body.Reason)
 		return http.StatusOK, paymentView(row), err
+	})
+}
+
+func (h *Handler) listRefunds(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+	rows, err := h.Svc.ListPaymentRefunds(r.Context(), p, domain.ID(r.PathValue("payment_id")))
+	h.list(w, r, "payment_refunds", anys(rows, RefundView), err)
+}
+
+func (h *Handler) createRefund(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+	var body struct {
+		AmountCents     *domain.Cents `json:"amount_cents"`
+		Reason          string        `json:"reason"`
+		ReferenceNumber string        `json:"reference_number"`
+		Status          string        `json:"status"`
+	}
+	h.write(w, r, p, &body, func() (int, any, error) {
+		if body.AmountCents == nil {
+			return 0, nil, domain.Invalid("amount_cents", "is required")
+		}
+		payID := domain.ID(r.PathValue("payment_id"))
+		pay, err := h.Svc.Payment(r.Context(), p, payID)
+		if err != nil {
+			return 0, nil, err
+		}
+		if pay.Destination == DestTrust {
+			if err := h.scopes(r, "trust:withdraw"); err != nil {
+				return 0, nil, err
+			}
+		}
+		row, err := h.Svc.CreatePaymentRefund(r.Context(), p, payID, RefundInput{
+			AmountCents: *body.AmountCents, Reason: body.Reason, ReferenceNumber: body.ReferenceNumber, Status: body.Status,
+		})
+		return http.StatusCreated, RefundView(row), err
+	})
+}
+
+func (h *Handler) refundStatus(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+	var body struct {
+		Status string `json:"status"`
+	}
+	h.write(w, r, p, &body, func() (int, any, error) {
+		payID := domain.ID(r.PathValue("payment_id"))
+		refundID := domain.ID(r.PathValue("refund_id"))
+		grant := r.Header.Get(RefundHeader)
+		if grant == "" {
+			pay, err := h.Svc.Payment(r.Context(), p, payID)
+			if err != nil {
+				return 0, nil, err
+			}
+			if pay.Destination == DestTrust && body.Status == RefundCompleted {
+				if err := h.scopes(r, "trust:withdraw"); err != nil {
+					return 0, nil, err
+				}
+			}
+		}
+		row, err := h.Svc.UpdatePaymentRefundStatus(r.Context(), p, payID, refundID, body.Status, grant)
+		return http.StatusOK, RefundView(row), err
 	})
 }
 

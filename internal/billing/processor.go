@@ -33,7 +33,7 @@ const grantPrefix = "tpa1."
 // transaction ctx carries, with grant under field in the body and credential in
 // ProcessorHeader. modules.Service provides it.
 type Processors interface {
-	Processor(ctx context.Context, module string) (approved map[string]bool, registered bool, err error)
+	Processor(ctx context.Context, module string) (approved map[string]bool, destinations []string, registered bool, err error)
 	DeliverGrant(ctx context.Context, module string, ev domain.Event, field string, grant any, credential string) error
 }
 
@@ -43,13 +43,14 @@ func (s *Service) SetProcessors(p Processors) { s.processors = p }
 
 // ProcessorInput asks the core to authorize one processor for one payment.
 type ProcessorInput struct {
-	ProcessorModuleID string
-	ContactID         domain.ID
-	MatterID          domain.ID
-	AmountCents       domain.Cents
-	Destination       string
-	TrustAccountID    domain.ID
-	InvoiceID         domain.ID
+	ProcessorModuleID      string
+	ContactID              domain.ID
+	MatterID               domain.ID
+	AmountCents            domain.Cents
+	Destination            string
+	TrustAccountID         domain.ID
+	InvoiceID              domain.ID
+	ReplenishmentRequestID domain.ID
 }
 
 // ProcessorInit is the stored initialization. PaymentID is reserved here; the processor's
@@ -65,12 +66,13 @@ type ProcessorInit struct {
 	AmountCents       domain.Cents `json:"amount_cents"`
 	Destination       string       `json:"destination"`
 	TrustAccountID    domain.ID    `json:"trust_account_id,omitempty"`
-	InvoiceID         domain.ID    `json:"invoice_id,omitempty"`
-	Status            string       `json:"status"`
-	ExpiresAt         time.Time    `json:"expires_at"`
-	Revoked           bool         `json:"revoked"`
-	SecretHash        string       `json:"secret_hash"`
-	AuthorizedBy      domain.ID    `json:"authorized_by"`
+	InvoiceID              domain.ID    `json:"invoice_id,omitempty"`
+	ReplenishmentRequestID domain.ID    `json:"replenishment_request_id,omitempty"`
+	Status                 string       `json:"status"`
+	ExpiresAt              time.Time    `json:"expires_at"`
+	Revoked                bool         `json:"revoked"`
+	SecretHash             string       `json:"secret_hash"`
+	AuthorizedBy           domain.ID    `json:"authorized_by"`
 }
 
 var moduleIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
@@ -85,7 +87,7 @@ var processorFields = []string{"status", "method", "reference_number"}
 // trust) are the handler's; the module's approved scopes are checked here, before delivery.
 func (s *Service) InitiateProcessorPayment(ctx context.Context, p domain.Principal, in ProcessorInput) (ProcessorInit, error) {
 	if p.UserID.IsZero() {
-		return ProcessorInit{}, domain.Forbidden("a staff member authorizes a payment processor")
+		return ProcessorInit{}, domain.Forbidden("a signed-in user authorizes a payment processor")
 	}
 	if !moduleIDPattern.MatchString(in.ProcessorModuleID) {
 		return ProcessorInit{}, domain.Invalid("processor_module_id", "is not a module id")
@@ -96,56 +98,125 @@ func (s *Service) InitiateProcessorPayment(ctx context.Context, p domain.Princip
 	if err := amountField("amount_cents", in.AmountCents); err != nil {
 		return ProcessorInit{}, err
 	}
-	if err := s.allow(ctx, p, domain.ResPayment, domain.ActionWrite, in.MatterID); err != nil {
-		return ProcessorInit{}, err
-	}
-	if _, err := s.matter(ctx, in.MatterID); err != nil {
-		return ProcessorInit{}, err
-	}
+	client := ClientOnly(p)
 	scopes := []string{"payments:write"}
-	switch in.Destination {
-	case DestOperating:
-		if !in.TrustAccountID.IsZero() {
-			return ProcessorInit{}, domain.Invalid("trust_account_id", "an operating payment has no trust account")
+	if client {
+		if err := s.gate.Allow(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead,
+			MatterID: in.MatterID, SharedWithClient: true}); err != nil {
+			return ProcessorInit{}, err
 		}
-	case DestTrust:
-		if in.TrustAccountID.IsZero() {
-			return ProcessorInit{}, domain.Invalid("trust_account_id", "a trust payment names its trust account")
+		user, err := s.d.Practice.User(ctx, p.UserID)
+		if err != nil || user.ContactID.IsZero() {
+			return ProcessorInit{}, domain.Forbidden("a client payment needs a linked contact")
+		}
+		if in.ContactID != user.ContactID {
+			return ProcessorInit{}, domain.NotFound("contact")
+		}
+		if !s.isParty(in.MatterID, in.ContactID) {
+			return ProcessorInit{}, domain.NotFound("matter")
+		}
+		switch in.Destination {
+		case DestOperating:
+			if !in.TrustAccountID.IsZero() {
+				return ProcessorInit{}, domain.Invalid("trust_account_id", "an operating payment has no trust account")
+			}
+			if in.InvoiceID.IsZero() {
+				return ProcessorInit{}, domain.Forbidden("a client operating payment names the client's own invoice")
+			}
+			inv, err := s.invoice(ctx, in.InvoiceID)
+			if err != nil || inv.MatterID != in.MatterID || !inv.Open() {
+				return ProcessorInit{}, domain.NotFound("invoice")
+			}
+		case DestTrust:
+			if in.TrustAccountID.IsZero() {
+				return ProcessorInit{}, domain.Invalid("trust_account_id", "a trust payment names its trust account")
+			}
+			if !in.InvoiceID.IsZero() {
+				return ProcessorInit{}, domain.Invalid("invoice_id", "a trust deposit is not applied to an invoice")
+			}
+			if s.d.Trust == nil {
+				return ProcessorInit{}, ErrTrustUnavailable
+			}
+			scopes = append(scopes, "trust:write")
+		default:
+			return ProcessorInit{}, domain.Invalid("destination", "must be operating or trust")
+		}
+	} else {
+		if err := s.allow(ctx, p, domain.ResPayment, domain.ActionWrite, in.MatterID); err != nil {
+			return ProcessorInit{}, err
+		}
+		if _, err := s.matter(ctx, in.MatterID); err != nil {
+			return ProcessorInit{}, err
+		}
+		switch in.Destination {
+		case DestOperating:
+			if !in.TrustAccountID.IsZero() {
+				return ProcessorInit{}, domain.Invalid("trust_account_id", "an operating payment has no trust account")
+			}
+		case DestTrust:
+			if in.TrustAccountID.IsZero() {
+				return ProcessorInit{}, domain.Invalid("trust_account_id", "a trust payment names its trust account")
+			}
+			if !in.InvoiceID.IsZero() {
+				return ProcessorInit{}, domain.Invalid("invoice_id", "a trust deposit is not applied to an invoice")
+			}
+			if err := s.allow(ctx, p, domain.ResTrust, domain.ActionTrustDeposit, in.MatterID); err != nil {
+				return ProcessorInit{}, err
+			}
+			if s.d.Trust == nil {
+				return ProcessorInit{}, ErrTrustUnavailable
+			}
+			scopes = append(scopes, "trust:write")
+		default:
+			return ProcessorInit{}, domain.Invalid("destination", "must be operating or trust")
+		}
+		if in.ContactID.IsZero() || !s.isParty(in.MatterID, in.ContactID) {
+			return ProcessorInit{}, domain.Invalid("contact_id", "must be a party on the matter")
 		}
 		if !in.InvoiceID.IsZero() {
-			return ProcessorInit{}, domain.Invalid("invoice_id", "a trust deposit is not applied to an invoice")
+			inv, err := s.invoice(ctx, in.InvoiceID)
+			if err != nil || inv.MatterID != in.MatterID {
+				return ProcessorInit{}, domain.Invalid("invoice_id", "must be an invoice on this matter")
+			}
+			if !inv.Open() {
+				return ProcessorInit{}, domain.Conflict("payments apply only to a sent invoice with a balance")
+			}
 		}
-		if err := s.allow(ctx, p, domain.ResTrust, domain.ActionTrustDeposit, in.MatterID); err != nil {
-			return ProcessorInit{}, err
+	}
+	if !in.ReplenishmentRequestID.IsZero() {
+		if in.Destination != DestTrust {
+			return ProcessorInit{}, domain.Invalid("replenishment_request_id", "links only to a trust payment")
 		}
 		if s.d.Trust == nil {
 			return ProcessorInit{}, ErrTrustUnavailable
 		}
-		scopes = append(scopes, "trust:write")
-	default:
-		return ProcessorInit{}, domain.Invalid("destination", "must be operating or trust")
-	}
-	if in.ContactID.IsZero() || !s.isParty(in.MatterID, in.ContactID) {
-		return ProcessorInit{}, domain.Invalid("contact_id", "must be a party on the matter")
-	}
-	if !in.InvoiceID.IsZero() {
-		inv, err := s.invoice(ctx, in.InvoiceID)
-		if err != nil || inv.MatterID != in.MatterID {
-			return ProcessorInit{}, domain.Invalid("invoice_id", "must be an invoice on this matter")
+		repl, err := s.d.Trust.Replenishment(ctx, p, in.ReplenishmentRequestID)
+		if err != nil {
+			return ProcessorInit{}, err
 		}
-		if !inv.Open() {
-			return ProcessorInit{}, domain.Conflict("payments apply only to a sent invoice with a balance")
+		if repl.MatterID != in.MatterID || repl.ClientID != in.ContactID || repl.Status != "active" {
+			return ProcessorInit{}, domain.NotFound("trust_replenishment")
 		}
 	}
 	if s.processors == nil {
 		return ProcessorInit{}, domain.Forbidden("no payment processor is registered")
 	}
-	approved, registered, err := s.processors.Processor(ctx, in.ProcessorModuleID)
+	approved, destinations, registered, err := s.processors.Processor(ctx, in.ProcessorModuleID)
 	if err != nil {
 		return ProcessorInit{}, err
 	}
 	if !registered {
 		return ProcessorInit{}, domain.Forbidden("that module is not a registered payment processor")
+	}
+	destOK := false
+	for _, d := range destinations {
+		if d == in.Destination {
+			destOK = true
+			break
+		}
+	}
+	if !destOK {
+		return ProcessorInit{}, domain.Forbidden("the processor module is not registered for " + in.Destination)
 	}
 	for _, sc := range scopes {
 		if !approved[sc] {
@@ -172,6 +243,7 @@ func (s *Service) InitiateProcessorPayment(ctx context.Context, p domain.Princip
 	row := ProcessorInit{
 		Meta: meta, PaymentID: payID, ProcessorModuleID: in.ProcessorModuleID, ContactID: in.ContactID, MatterID: in.MatterID,
 		AmountCents: in.AmountCents, Destination: in.Destination, TrustAccountID: in.TrustAccountID, InvoiceID: in.InvoiceID,
+		ReplenishmentRequestID: in.ReplenishmentRequestID,
 		Status: "authorized", ExpiresAt: s.now().Add(lifetime), SecretHash: hex.EncodeToString(sum[:]),
 		AuthorizedBy: p.UserID,
 	}
@@ -225,8 +297,21 @@ func (s *Service) processorGrant(ctx context.Context, p domain.Principal, creden
 	if p.Source != domain.SourceModule || p.ModuleID != row.ProcessorModuleID {
 		return ProcessorInit{}, domain.Principal{}, domain.Forbidden("the processor authorization was issued to another module")
 	}
-	if row.Revoked || row.Status != "authorized" || !s.now().Before(row.ExpiresAt) {
+	if row.Revoked || row.Status != "authorized" {
 		return ProcessorInit{}, domain.Principal{}, denied
+	}
+	if !s.now().Before(row.ExpiresAt) {
+		if pay, err := s.payment(ctx, row.PaymentID); err == nil && pay.Status == PayPending {
+			days := s.settingInt(ctx, "payments.processor_pending_grant_days")
+			if days < 1 {
+				days = 30
+			}
+			if !s.now().Before(pay.CreatedAt.Add(time.Duration(days)*24*time.Hour)) {
+				return ProcessorInit{}, domain.Principal{}, denied
+			}
+		} else {
+			return ProcessorInit{}, domain.Principal{}, denied
+		}
 	}
 	user, err := s.d.Practice.User(ctx, row.AuthorizedBy)
 	if err != nil || !user.Active {
@@ -267,6 +352,12 @@ func (s *Service) CreateProcessorPayment(ctx context.Context, p domain.Principal
 	case in.Destination != grant.Destination || in.TrustAccountID != grant.TrustAccountID:
 		return Payment{}, domain.Forbidden("the destination is not the authorized destination")
 	}
+	if !in.ReplenishmentRequestID.IsZero() && in.ReplenishmentRequestID != grant.ReplenishmentRequestID {
+		return Payment{}, domain.Forbidden("the replenishment request is not the authorized request")
+	}
+	if in.ReplenishmentRequestID.IsZero() {
+		in.ReplenishmentRequestID = grant.ReplenishmentRequestID
+	}
 	// The grant lets a processor set status, method and reference_number (processorFields);
 	// the bound fields must match above. Any other field is field_locked, so the payment is
 	// always attributed to the processor the grant names.
@@ -282,6 +373,7 @@ func (s *Service) CreateProcessorPayment(ctx context.Context, p domain.Principal
 		return Payment{}, err
 	}
 	row.ID = grant.PaymentID
+	row.ReplenishmentRequestID = grant.ReplenishmentRequestID
 	var out Payment
 	err = s.write(ctx, dp, func(t *txn) error {
 		if prior, err := s.payment(t.ctx, grant.PaymentID); err == nil {
@@ -319,6 +411,7 @@ func authorizationView(row ProcessorInit) map[string]any {
 		"module_id": row.ProcessorModuleID, "initialization_id": row.ID, "payment_id": row.PaymentID,
 		"matter_id": row.MatterID, "contact_id": row.ContactID, "invoice_id": idOrNil(row.InvoiceID),
 		"amount_cents": int64(row.AmountCents), "destination": row.Destination, "trust_account_id": idOrNil(row.TrustAccountID),
+		"replenishment_request_id": idOrNil(row.ReplenishmentRequestID),
 		"allowed_operations": []string{"createPayment", "updatePaymentStatus"}, "allowed_fields": processorFields,
 		"expires_at": row.ExpiresAt.UTC().Format(time.RFC3339Nano), "revoked": row.Revoked, "issued_by": "core",
 	}
@@ -329,7 +422,8 @@ func ProcessorInitView(row ProcessorInit) map[string]any {
 	return map[string]any{
 		"id": row.ID, "payment_id": row.PaymentID, "processor_module_id": row.ProcessorModuleID, "contact_id": row.ContactID,
 		"matter_id": row.MatterID, "amount_cents": int64(row.AmountCents), "destination": row.Destination,
-		"trust_account_id": idOrNil(row.TrustAccountID), "invoice_id": idOrNil(row.InvoiceID), "status": row.Status,
-		"expires_at": row.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		"trust_account_id": idOrNil(row.TrustAccountID), "invoice_id": idOrNil(row.InvoiceID),
+		"replenishment_request_id": idOrNil(row.ReplenishmentRequestID),
+		"status": row.Status, "expires_at": row.ExpiresAt.UTC().Format(time.RFC3339Nano),
 	}
 }

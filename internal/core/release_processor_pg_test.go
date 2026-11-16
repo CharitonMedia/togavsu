@@ -28,6 +28,8 @@ permissions:
   - scope: payments:write
   - scope: trust:write
   - scope: events:read
+payment_processor:
+  destinations: [operating, trust]
 events:
   - payment.processor_authorized
 `

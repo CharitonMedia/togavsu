@@ -24,6 +24,9 @@ const (
 	// CodeBatchRejected is a bulk item that rejected its all-or-nothing batch; the
 	// batch wrote nothing.
 	CodeBatchRejected = "batch_rejected"
+	// CodeRefundExceeds is a refund amount of zero or more than the payment's
+	// remaining refundable balance (CORE-24).
+	CodeRefundExceeds = "refund_exceeds_payment"
 )
 
 // APIError is the JSON body the API wave should return.
@@ -55,7 +58,7 @@ func (e *APIError) HTTPStatus() int {
 		return http.StatusForbidden
 	case CodeNotFound:
 		return http.StatusNotFound
-	case CodeValidation:
+	case CodeValidation, CodeRefundExceeds:
 		return http.StatusBadRequest
 	case CodeConflict, CodeAppendOnly, CodeIdempotencyConflict, CodeDuplicateEmail:
 		return http.StatusConflict
@@ -124,4 +127,9 @@ func AppendOnly(entity string) *APIError {
 // RateLimited constructs a 429 error.
 func RateLimited() *APIError {
 	return &APIError{Code: CodeRateLimited, Message: "rate limit exceeded"}
+}
+
+// RefundExceeds constructs a 400 for a refund that exceeds the payment.
+func RefundExceeds(message string) *APIError {
+	return &APIError{Code: CodeRefundExceeds, Message: message, Field: "amount_cents"}
 }

@@ -167,6 +167,26 @@ func (f *fakeTrust) RequestReplenishment(ctx context.Context, p domain.Principal
 	return TrustPosted{EntryID: id, Result: row, Pending: true}, f.st.Put(ctx, "fake_replenish", string(id), row)
 }
 
+func (f *fakeTrust) Replenishment(ctx context.Context, p domain.Principal, id domain.ID) (TrustReplenishment, error) {
+	var row map[string]any
+	if err := f.st.Get(ctx, "fake_replenish", string(id), &row); err != nil {
+		return TrustReplenishment{}, domain.NotFound("trust_replenishment")
+	}
+	return TrustReplenishment{ID: id, MatterID: row["matter_id"].(domain.ID), ClientID: row["client_id"].(domain.ID), Status: row["status"].(string)}, nil
+}
+
+func (f *fakeTrust) SatisfyReplenishment(ctx context.Context, p domain.Principal, id domain.ID) (TrustPosted, error) {
+	var row map[string]any
+	if err := f.st.Get(ctx, "fake_replenish", string(id), &row); err != nil {
+		return TrustPosted{}, domain.NotFound("trust_replenishment")
+	}
+	if row["status"] != "active" {
+		return TrustPosted{}, domain.Conflict("the replenishment request is not active")
+	}
+	row["status"] = "satisfied"
+	return TrustPosted{EntryID: id, Result: row, Pending: true}, f.st.Put(ctx, "fake_replenish", string(id), row)
+}
+
 type fakeMail struct {
 	sent []Message
 	fail error

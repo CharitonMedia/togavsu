@@ -30120,7 +30120,7 @@
       "post": {
         "operationId": "initiateProcessorPayment",
         "summary": "Authorize a registered payment processor",
-        "description": "A staff session asks the core to authorize one installed processor for this matter, contact, amount, and destination. The core delivers processor_authorization on moduleEvent payment.processor_authorized to that module only. This call does not create a payment and does not post trust. The initiation response does not contain the grant. An unregistered module, a different recipient, or a module id that is not the processor receives no grant. A walled matter the caller cannot see is not_found and issues nothing. Operating needs payments:write on the caller and on the module. Trust also needs trust:write on both, checked before delivery. The grant is not an admin or firm-wide token. The later callback does not need an iframe or a signed-in viewer.",
+        "description": "A signed-in viewer asks the core to authorize one installed processor for this matter, contact, amount, and destination. A client viewer is limited to the client's own readable matter and linked contact, with destination trust, or operating only with the client's own open invoice. The core delivers processor_authorization on moduleEvent payment.processor_authorized to that module only. This call does not create a payment and does not post trust. The initiation response does not contain the grant. An unregistered module, a different recipient, or a module id that is not the processor receives no grant. A walled matter the caller cannot see is not_found and issues nothing. Operating needs payments:write on the caller and on the module. Trust also needs trust:write on both, checked before delivery. The grant is not an admin or firm-wide token. The later callback does not need an iframe or a signed-in viewer.",
         "tags": [
           "Billing"
         ],
@@ -30177,7 +30177,8 @@
           "roles": [
             "admin",
             "attorney",
-            "staff"
+            "staff",
+            "client"
           ],
           "scopes": [
             "payments:write"
@@ -30710,6 +30711,476 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/Reason"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/{payment_id}/refunds": {
+      "get": {
+        "operationId": "listPaymentRefunds",
+        "summary": "List refunds on a payment",
+        "description": "Lists refunds for a payment the caller may read.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter payment_id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRefund"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "payments"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant"
+          ],
+          "scopes": [
+            "payments:read"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "listPaymentRefunds",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-replaceable-domain": "time"
+      },
+      "post": {
+        "operationId": "createPaymentRefund",
+        "summary": "Create a payment refund",
+        "description": "Records a refund on a completed payment. Admin and attorney only. payments:write is required; a trust destination also needs trust:withdraw, checked before any ledger write. Viewer call; Idempotency-Key. Zero or more than the payment amount minus pending and completed refunds is validation_failed with code refund_exceeds_payment. A non-completed payment is conflict. status may be pending or completed (default pending). Completing a trust refund posts one trust ledger entry of type refund in the same transaction; an operating refund applied to an invoice lowers amount paid and can move the invoice back from paid to sent. A pending create with a module-sourced payment delivers refund_authorization on payment.refund_authorized to that module.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter payment_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRefund"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "payments"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney"
+          ],
+          "scopes": [
+            "payments:write"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "event_read_scopes": [
+            "payments:read"
+          ],
+          "payment_events": {
+            "selection": "resulting_state",
+            "created_when": "row_inserted",
+            "completed_when": "status_becomes_completed",
+            "replay": "no_event"
+          },
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "payment.refund_created",
+          "payment.refund_authorized",
+          "payment.refunded",
+          "trust.entry_posted",
+          "trust.flag_raised"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "createPaymentRefund",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-replaceable-domain": "time",
+        "x-togavsu-domain-dispatch": {
+          "primary_domain": "time",
+          "trust_entry": {
+            "posted_by": "trust_handler",
+            "append_only": true,
+            "exactly_once": true,
+            "time_module_also_posts": false,
+            "below_zero": "posts"
+          },
+          "applies_when": "payment_has_trust_entry"
+        },
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "refund_exceeds_payment"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentRefundWrite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payments/{payment_id}/refunds/{refund_id}/status": {
+      "post": {
+        "operationId": "updatePaymentRefundStatus",
+        "summary": "Update a payment refund status",
+        "description": "Pending may become completed or failed. The same status is idempotent and does not write. Viewer call, or a refund_authorization grant from payment.refund_authorized with no viewer. Completing a trust refund needs trust:withdraw before the ledger write. payment.refunded or payment.refund_failed is emitted on a real change; a replay emits nothing.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "payment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter payment_id."
+          },
+          {
+            "name": "refund_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter refund_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRefund"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "payments"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney"
+          ],
+          "scopes": [
+            "payments:write"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "event_read_scopes": [
+            "payments:read"
+          ],
+          "payment_events": {
+            "selection": "resulting_state",
+            "completed_when": "status_becomes_completed",
+            "replay": "no_event"
+          },
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "payment_refund",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "payment.refunded",
+          "payment.refund_failed",
+          "trust.entry_posted",
+          "trust.flag_raised"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "updatePaymentRefundStatus",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "task_authorization": {
+                "header": "X-Togavsu-Task-Authorization",
+                "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token",
+              "task_authorization",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-replaceable-domain": "time",
+        "x-togavsu-domain-dispatch": {
+          "primary_domain": "time",
+          "trust_entry": {
+            "posted_by": "trust_handler",
+            "append_only": true,
+            "exactly_once": true,
+            "time_module_also_posts": false,
+            "below_zero": "posts"
+          },
+          "applies_when": "payment_has_trust_entry"
+        },
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentRefundStatusWrite"
               }
             }
           }
@@ -60285,7 +60756,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_service_principal"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -60301,6 +60772,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -66744,7 +67222,7 @@
       "post": {
         "operationId": "deliverModuleEvent",
         "summary": "Deliver a signed event to a subscribed module.",
-        "description": "Before any WebhookEvent body is serialized, the core checks that the module is installed, subscribed to the event type, approved for that event's read scope, and allowed through the matter wall. An attorney-only conflict record is not serialized. A module that fails any check receives no POST and no record id or summary. The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module webhook secret. A plain SHA-256 of the body is not accepted. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the opaque X-Togavsu-Task-Authorization credential on those later calls. The core verifies that credential. A caller-supplied claim object is not a grant. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. file.background_authorized delivers background_file_authorization to the installed module that holds files:write. That grant is one matter the service principal can access, the publication sequence, and an expiry. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment.",
+        "description": "Before any WebhookEvent body is serialized, the core checks that the module is installed, subscribed to the event type, approved for that event's read scope, and allowed through the matter wall. An attorney-only conflict record is not serialized. A module that fails any check receives no POST and no record id or summary. The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module webhook secret. A plain SHA-256 of the body is not accepted. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the opaque X-Togavsu-Task-Authorization credential on those later calls. The core verifies that credential. A caller-supplied claim object is not a grant. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. file.background_authorized delivers background_file_authorization to the installed module that holds files:write. That grant is one matter the service principal can access, the publication sequence, and an expiry. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment. payment.refund_authorized delivers refund_authorization to the payment source module the same way for updatePaymentRefundStatus.",
         "x-togavsu-task-delivery": {
           "event_type": "file.version_created",
           "delivered_on": "moduleEvent",
@@ -66852,7 +67330,8 @@
             "invoice_id",
             "amount_cents",
             "destination",
-            "trust_account_id"
+            "trust_account_id",
+            "replenishment_request_id"
           ],
           "binding": {
             "cardinality": "one_payment_per_initialization",
@@ -67011,7 +67490,8 @@
               "invoice_id",
               "amount_cents",
               "destination",
-              "trust_account_id"
+              "trust_account_id",
+              "replenishment_request_id"
             ],
             "binding": {
               "cardinality": "one_payment_per_initialization",
@@ -67061,6 +67541,27 @@
               "reversed_terminal": true,
               "no_mutation_on_denial": true
             }
+          },
+          "payment_refund": {
+            "event_type": "payment.refund_authorized",
+            "delivered_on": "moduleEvent",
+            "header": "X-Togavsu-Task-Authorization",
+            "body_field": "refund_authorization",
+            "issued_by": "core",
+            "viewer_context_required": false,
+            "callback_requires_viewer": false,
+            "module_identity_mismatch": "forbidden",
+            "invalid": "forbidden",
+            "expired": "forbidden",
+            "revoked": "forbidden",
+            "missing_grant": "forbidden",
+            "sequence": [
+              "updatePaymentRefundStatus"
+            ],
+            "allowed_operations": [
+              "updatePaymentRefundStatus"
+            ],
+            "no_mutation_on_denial": true
           },
           "background_file_publication": {
             "sources": [
@@ -70916,6 +71417,32 @@
             "type": "string",
             "description": "manual, api, or a module id."
           },
+          "refunded_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sum of pending and completed refunds. Read-only."
+          },
+          "refund_state": {
+            "type": "string",
+            "enum": [
+              "none",
+              "partial",
+              "full"
+            ],
+            "description": "Read-only aggregate. Payment status stays completed."
+          },
+          "replenishment_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "Optional active replenishment this trust payment satisfies."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "included": {
             "$ref": "#/components/schemas/Included"
           }
@@ -70932,9 +71459,11 @@
           "method",
           "status",
           "source",
-          "trust_account_id"
+          "trust_account_id",
+          "refunded_cents",
+          "refund_state"
         ],
-        "description": "A payment. Amount, destination, and trust account do not change after create. A correction is a reversal."
+        "description": "A payment. Amount, destination, and trust account do not change after create. A correction is a reversal. Refunds update refunded_cents and refund_state only."
       },
       "PaymentWrite": {
         "description": "Records a payment. destination trust requires trust_account_id of an active authorized firm account. destination operating omits trust_account_id. internal_transfer is reserved for apply-trust.",
@@ -70998,6 +71527,18 @@
               },
               "source": {
                 "type": "string"
+              },
+              "replenishment_request_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -71072,6 +71613,18 @@
               },
               "source": {
                 "type": "string"
+              },
+              "replenishment_request_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -71084,6 +71637,195 @@
             ]
           }
         ]
+      },
+      "PaymentRefund": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User who created the row, or the nil id for System."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "payment_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reference_number": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "failed"
+            ]
+          },
+          "trust_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "description": "manual, api, or the payment's source module id."
+          },
+          "included": {
+            "$ref": "#/components/schemas/Included"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "created_by",
+          "updated_at",
+          "payment_id",
+          "amount_cents",
+          "reason",
+          "status",
+          "source"
+        ],
+        "description": "A payment refund. Completing a trust refund posts one trust ledger row of entry type refund in the same transaction."
+      },
+      "PaymentRefundWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reference_number": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed"
+            ]
+          }
+        },
+        "required": [
+          "amount_cents",
+          "reason"
+        ],
+        "description": "Creates a refund on a completed payment. status defaults to pending. Zero or more than the remaining amount is refund_exceeds_payment."
+      },
+      "PaymentRefundStatusWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "description": "Pending may become completed or failed. The same status is idempotent. A refund_authorization grant may replace the viewer."
+      },
+      "RefundAuthorization": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "refund_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "payment_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "allowed_operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "issued_by": {
+            "const": "core"
+          }
+        },
+        "required": [
+          "module_id",
+          "refund_id",
+          "payment_id",
+          "matter_id",
+          "amount_cents",
+          "allowed_operations",
+          "expires_at",
+          "revoked",
+          "issued_by"
+        ],
+        "description": "Task authorization delivered on payment.refund_authorized to the payment's source module."
       },
       "PaymentStatusWrite": {
         "type": "object",
@@ -71144,6 +71886,18 @@
                     "type": "null"
                   }
                 ]
+              },
+              "replenishment_request_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -71187,6 +71941,18 @@
                 "description": "UUIDv7."
               },
               "invoice_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "replenishment_request_id": {
                 "anyOf": [
                   {
                     "type": "string",
@@ -71264,6 +72030,18 @@
             ]
           },
           "invoice_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replenishment_request_id": {
             "anyOf": [
               {
                 "type": "string",
@@ -71360,6 +72138,18 @@
                 "type": "string",
                 "format": "uuid",
                 "description": "Null when destination is operating. Otherwise the authorized account."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replenishment_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
               },
               {
                 "type": "null"
@@ -76495,6 +77285,7 @@
           "billing.late_interest_enabled",
           "billing.late_interest_annual_bps",
           "billing.default_invoice_client_message",
+          "payments.processor_pending_grant_days",
           "trust.flag_extra_recipient_user_ids",
           "trust.default_evergreen_minimum_cents",
           "trust.reconciliation_reminder_day",
@@ -80037,6 +80828,7 @@
               "expense",
               "invoice",
               "payment",
+              "payment_refund",
               "calendar_event",
               "deadline",
               "file",
@@ -80108,6 +80900,7 @@
               "expense",
               "invoice",
               "payment",
+              "payment_refund",
               "calendar_event",
               "deadline",
               "file",
@@ -84324,6 +85117,18 @@
               },
               "source": {
                 "type": "string"
+              },
+              "replenishment_request_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -84398,6 +85203,18 @@
               },
               "source": {
                 "type": "string"
+              },
+              "replenishment_request_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -84410,6 +85227,47 @@
             ]
           }
         ]
+      },
+      "PaymentRefundWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reference_number": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed"
+            ]
+          }
+        },
+        "description": "Creates a refund on a completed payment. status defaults to pending. Zero or more than the remaining amount is refund_exceeds_payment. Patch: every field is optional."
+      },
+      "PaymentRefundStatusWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "failed"
+            ]
+          }
+        },
+        "description": "Pending may become completed or failed. The same status is idempotent. A refund_authorization grant may replace the viewer. Patch: every field is optional."
       },
       "PaymentStatusWritePatch": {
         "type": "object",
@@ -84467,6 +85325,18 @@
                     "type": "null"
                   }
                 ]
+              },
+              "replenishment_request_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -84510,6 +85380,18 @@
                 "description": "UUIDv7."
               },
               "invoice_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "replenishment_request_id": {
                 "anyOf": [
                   {
                     "type": "string",
@@ -86192,7 +87074,8 @@
           "invoice_id",
           "amount_cents",
           "destination",
-          "trust_account_id"
+          "trust_account_id",
+          "replenishment_request_id"
         ],
         "binding": {
           "cardinality": "one_payment_per_initialization",
@@ -86242,6 +87125,27 @@
           "reversed_terminal": true,
           "no_mutation_on_denial": true
         }
+      },
+      "payment_refund": {
+        "event_type": "payment.refund_authorized",
+        "delivered_on": "moduleEvent",
+        "header": "X-Togavsu-Task-Authorization",
+        "body_field": "refund_authorization",
+        "issued_by": "core",
+        "viewer_context_required": false,
+        "callback_requires_viewer": false,
+        "module_identity_mismatch": "forbidden",
+        "invalid": "forbidden",
+        "expired": "forbidden",
+        "revoked": "forbidden",
+        "missing_grant": "forbidden",
+        "sequence": [
+          "updatePaymentRefundStatus"
+        ],
+        "allowed_operations": [
+          "updatePaymentRefundStatus"
+        ],
+        "no_mutation_on_denial": true
       },
       "background_file_publication": {
         "sources": [
@@ -86296,6 +87200,7 @@
         "putFileChunk",
         "quarantineFileVersion",
         "reviewUnassignedFile",
+        "updatePaymentRefundStatus",
         "updatePaymentStatus"
       ]
     },
@@ -86338,6 +87243,7 @@
         "listTrustAccount",
         "listTrustEntry",
         "markFileStatus",
+        "matchMail",
         "sendModuleMail",
         "updateFeeAgreement"
       ],
@@ -86958,13 +87864,25 @@
     "payment.reversed": [
       "payments:read"
     ],
+    "payment.refund_created": [
+      "payments:read"
+    ],
+    "payment.refund_authorized": [
+      "payments:read"
+    ],
+    "payment.refunded": [
+      "payments:read"
+    ],
+    "trust.flag_raised": [
+      "trust:read"
+    ],
+    "payment.refund_failed": [
+      "payments:read"
+    ],
     "trust_account.created": [
       "trust:read"
     ],
     "trust_account.updated": [
-      "trust:read"
-    ],
-    "trust.flag_raised": [
       "trust:read"
     ],
     "trust.flag_resolved": [
@@ -87527,6 +88445,17 @@
       "secret": false,
       "locked": false,
       "help": "Default client message on a new invoice."
+    },
+    {
+      "key": "payments.processor_pending_grant_days",
+      "type": "integer",
+      "tab": "time_and_billing",
+      "default": 30,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "maximum": 365,
+      "help": "Days a processor grant stays valid for updatePaymentStatus after the payment was created pending. Default 30."
     },
     {
       "key": "trust.flag_extra_recipient_user_ids",

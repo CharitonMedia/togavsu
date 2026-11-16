@@ -108,6 +108,15 @@ SETTINGS: list[dict] = [
     ),
     _s("billing.default_invoice_client_message", "string", "time_and_billing", "", "Default client message on a new invoice."),
     _s(
+        "payments.processor_pending_grant_days",
+        "integer",
+        "time_and_billing",
+        30,
+        "Days a processor grant stays valid for updatePaymentStatus after the payment was created pending. Default 30.",
+        minimum=1,
+        maximum=365,
+    ),
+    _s(
         "trust.flag_extra_recipient_user_ids",
         "json",
         "trust",

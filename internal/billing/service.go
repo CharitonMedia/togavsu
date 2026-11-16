@@ -105,7 +105,17 @@ type Trust interface {
 	// Reversal returns the entry that reverses entryID on the matter, or zero when none does.
 	Reversal(ctx context.Context, matterID, entryID domain.ID) (domain.ID, error)
 	RequestReplenishment(ctx context.Context, p domain.Principal, in ReplenishmentInput) (TrustPosted, error)
+	Replenishment(ctx context.Context, p domain.Principal, id domain.ID) (TrustReplenishment, error)
+	SatisfyReplenishment(ctx context.Context, p domain.Principal, id domain.ID) (TrustPosted, error)
 	Committed(ctx context.Context, posted ...TrustPosted)
+}
+
+// TrustReplenishment is the active replenishment fields billing checks on a processor payment.
+type TrustReplenishment struct {
+	ID       domain.ID
+	MatterID domain.ID
+	ClientID domain.ID
+	Status   string
 }
 
 // Attachment is one mail attachment.

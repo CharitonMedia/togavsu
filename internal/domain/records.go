@@ -351,6 +351,7 @@ type InvoiceLine struct {
 func (InvoiceLine) TableName() string { return "invoice_lines" }
 
 // Payment is money received. Destination is operating or trust.
+// RefundedCents and RefundState are read-only aggregates (CORE-24); status stays completed.
 type Payment struct {
 	Meta
 	ContactID       ID     `db:"contact_id"`
@@ -363,6 +364,8 @@ type Payment struct {
 	InvoiceID       ID     `db:"invoice_id"`
 	TrustEntryID    ID     `db:"trust_entry_id"`
 	Source          string `db:"source"`
+	RefundedCents   Cents  `db:"refunded_cents" json:"refunded_cents"`
+	RefundState     string `db:"refund_state" json:"refund_state"`
 }
 
 func (Payment) TableName() string { return "payments" }

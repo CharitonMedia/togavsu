@@ -174,17 +174,20 @@ func invoiceView(i Invoice, client bool) any {
 
 type paymentJSON struct {
 	metaJSON
-	ContactID       domain.ID  `json:"contact_id"`
-	MatterID        domain.ID  `json:"matter_id"`
-	AmountCents     int64      `json:"amount_cents"`
-	Destination     string     `json:"destination"`
-	Method          string     `json:"method"`
-	ReferenceNumber string     `json:"reference_number"`
-	Status          string     `json:"status"`
-	InvoiceID       *domain.ID `json:"invoice_id"`
-	TrustAccountID  *domain.ID `json:"trust_account_id"`
-	TrustEntryID    *domain.ID `json:"trust_entry_id"`
-	Source          string     `json:"source"`
+	ContactID              domain.ID  `json:"contact_id"`
+	MatterID               domain.ID  `json:"matter_id"`
+	AmountCents            int64      `json:"amount_cents"`
+	Destination            string     `json:"destination"`
+	Method                 string     `json:"method"`
+	ReferenceNumber        string     `json:"reference_number"`
+	Status                 string     `json:"status"`
+	InvoiceID              *domain.ID `json:"invoice_id"`
+	TrustAccountID         *domain.ID `json:"trust_account_id"`
+	TrustEntryID           *domain.ID `json:"trust_entry_id"`
+	Source                 string     `json:"source"`
+	RefundedCents          int64      `json:"refunded_cents"`
+	RefundState            string     `json:"refund_state"`
+	ReplenishmentRequestID *domain.ID `json:"replenishment_request_id"`
 }
 
 func paymentView(p Payment) paymentJSON {
@@ -192,8 +195,13 @@ func paymentView(p Payment) paymentJSON {
 	if p.Destination != DestTrust {
 		acct = ""
 	}
+	state := p.RefundState
+	if state == "" {
+		state = RefundNone
+	}
 	return paymentJSON{metaOf(p.Meta), p.ContactID, p.MatterID, int64(p.AmountCents), p.Destination, p.Method, p.ReferenceNumber,
-		p.Status, idOrNil(p.InvoiceID), idOrNil(acct), idOrNil(p.TrustEntryID), p.Source}
+		p.Status, idOrNil(p.InvoiceID), idOrNil(acct), idOrNil(p.TrustEntryID), p.Source,
+		int64(p.RefundedCents), state, idOrNil(p.ReplenishmentRequestID)}
 }
 
 type feeItemJSON struct {

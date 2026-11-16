@@ -130,13 +130,14 @@ func (h *Handler) bulkInvoices(w http.ResponseWriter, r *http.Request, p domain.
 // the caller's token as well as payments:write.
 func (h *Handler) initiateProcessor(w http.ResponseWriter, r *http.Request, p domain.Principal) {
 	var body struct {
-		ProcessorModuleID string        `json:"processor_module_id"`
-		ContactID         domain.ID     `json:"contact_id"`
-		MatterID          domain.ID     `json:"matter_id"`
-		AmountCents       *domain.Cents `json:"amount_cents"`
-		Destination       string        `json:"destination"`
-		TrustAccountID    *domain.ID    `json:"trust_account_id"`
-		InvoiceID         *domain.ID    `json:"invoice_id"`
+		ProcessorModuleID      string        `json:"processor_module_id"`
+		ContactID              domain.ID     `json:"contact_id"`
+		MatterID               domain.ID     `json:"matter_id"`
+		AmountCents            *domain.Cents `json:"amount_cents"`
+		Destination            string        `json:"destination"`
+		TrustAccountID         *domain.ID    `json:"trust_account_id"`
+		InvoiceID              *domain.ID    `json:"invoice_id"`
+		ReplenishmentRequestID *domain.ID    `json:"replenishment_request_id"`
 	}
 	h.write(w, r, p, &body, func() (int, any, error) {
 		if body.AmountCents == nil {
@@ -149,6 +150,9 @@ func (h *Handler) initiateProcessor(w http.ResponseWriter, r *http.Request, p do
 		}
 		if body.InvoiceID != nil {
 			in.InvoiceID = *body.InvoiceID
+		}
+		if body.ReplenishmentRequestID != nil {
+			in.ReplenishmentRequestID = *body.ReplenishmentRequestID
 		}
 		if in.Destination == DestTrust {
 			if err := h.scopes(r, "trust:write"); err != nil {

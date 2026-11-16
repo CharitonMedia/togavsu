@@ -2221,7 +2221,7 @@ def _billing(api: Contract) -> None:
         operation_id="initiateProcessorPayment",
         summary="Authorize a registered payment processor",
         description=(
-            "A staff session asks the core to authorize one installed processor for this matter, contact, amount, and destination. "
+            "A signed-in viewer asks the core to authorize one installed processor for this matter, contact, amount, and destination. A client viewer is limited to the client's own readable matter and linked contact, with destination trust, or operating only with the client's own open invoice. "
             "The core delivers processor_authorization on moduleEvent payment.processor_authorized to that module only. "
             "This call does not create a payment and does not post trust. "
             "The initiation response does not contain the grant. "
@@ -2233,7 +2233,7 @@ def _billing(api: Contract) -> None:
         ),
         tag="Billing",
         features=["payments"],
-        roles=STAFF,
+        roles=DIRECTORY,
         scopes=["payments:write"],
         body="ProcessorInitializationWrite",
         response="ProcessorInitialization",
@@ -2315,6 +2315,90 @@ def _billing(api: Contract) -> None:
                 "replay": "no_event",
                 "completed_when": "status_becomes_completed",
                 "updated_when": "status_changes_without_completion",
+            },
+        },
+    )
+    api.add(
+        "get",
+        "/api/v1/payments/{payment_id}/refunds",
+        operation_id="listPaymentRefunds",
+        summary="List refunds on a payment",
+        description="Lists refunds for a payment the caller may read.",
+        tag="Billing",
+        features=["payments"],
+        roles=BILLING,
+        scopes=["payments:read"],
+        response="PaymentRefund",
+        writes=False,
+        replaceable="time",
+        extra_access=WALL,
+    )
+    api.add(
+        "post",
+        "/api/v1/payments/{payment_id}/refunds",
+        operation_id="createPaymentRefund",
+        summary="Create a payment refund",
+        description=(
+            "Records a refund on a completed payment. Admin and attorney only. "
+            "payments:write is required; a trust destination also needs trust:withdraw, checked before any ledger write. "
+            "Viewer call; Idempotency-Key. "
+            "Zero or more than the payment amount minus pending and completed refunds is validation_failed with code refund_exceeds_payment. "
+            "A non-completed payment is conflict. "
+            "status may be pending or completed (default pending). "
+            "Completing a trust refund posts one trust ledger entry of type refund in the same transaction; "
+            "an operating refund applied to an invoice lowers amount paid and can move the invoice back from paid to sent. "
+            "A pending create with a module-sourced payment delivers refund_authorization on payment.refund_authorized to that module."
+        ),
+        tag="Billing",
+        features=["payments"],
+        roles=ATTORNEY,
+        scopes=["payments:write"],
+        body="PaymentRefundWrite",
+        response="PaymentRefund",
+        success="201",
+        events=["payment.refund_created", "payment.refund_authorized", "payment.refunded", "trust.entry_posted", "trust.flag_raised"],
+        error_codes=["forbidden", "scope_denied", "refund_exceeds_payment"],
+        replaceable="time",
+        domain_dispatch=REVERSAL_DISPATCH,
+        extra_access={
+            **WALL,
+            "event_read_scopes": ["payments:read"],
+            "payment_events": {
+                "selection": "resulting_state",
+                "created_when": "row_inserted",
+                "completed_when": "status_becomes_completed",
+                "replay": "no_event",
+            },
+        },
+    )
+    api.add(
+        "post",
+        "/api/v1/payments/{payment_id}/refunds/{refund_id}/status",
+        operation_id="updatePaymentRefundStatus",
+        summary="Update a payment refund status",
+        description=(
+            "Pending may become completed or failed. The same status is idempotent and does not write. "
+            "Viewer call, or a refund_authorization grant from payment.refund_authorized with no viewer. "
+            "Completing a trust refund needs trust:withdraw before the ledger write. "
+            "payment.refunded or payment.refund_failed is emitted on a real change; a replay emits nothing."
+        ),
+        tag="Billing",
+        features=["payments"],
+        roles=ATTORNEY,
+        scopes=["payments:write"],
+        body="PaymentRefundStatusWrite",
+        response="PaymentRefund",
+        events=["payment.refunded", "payment.refund_failed", "trust.entry_posted", "trust.flag_raised"],
+        error_codes=["forbidden", "scope_denied"],
+        replaceable="time",
+        domain_dispatch=REVERSAL_DISPATCH,
+        extra_access={
+            **WALL,
+            "event_read_scopes": ["payments:read"],
+            "payment_events": {
+                "selection": "resulting_state",
+                "completed_when": "status_becomes_completed",
+                "replay": "no_event",
             },
         },
     )
@@ -4555,7 +4639,7 @@ def _admin(api: Contract) -> None:
         response="MailMatchResult",
         writes=False,
         error_codes=["forbidden", "scope_denied", "validation_failed"],
-        extra_access=WALL,
+        extra_access={**WALL, "module_delegation": "delegated_viewer_or_service_principal"},
     )
     api.add(
         "post",

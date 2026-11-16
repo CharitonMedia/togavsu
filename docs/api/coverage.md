@@ -48,6 +48,9 @@ It does not claim the handlers or the MCP server are implemented.
 | users | `PATCH` | `/api/v1/users/{user_id}` | `updateUser` | required:updateUser | admin | users:write |
 | users | `POST` | `/api/v1/users/{user_id}/deactivate` | `deactivateUser` | required:deactivateUser | admin | users:write |
 | firm-profile | `GET` | `/api/v1/firm-profile` | `getFirmProfile` | required:getFirmProfile | admin, attorney, staff, accountant, client | firm:read |
+| books | `GET` | `/api/v1/books/profile` | `getBooksProfile` | required:getBooksProfile | admin, attorney, staff, accountant | books:read |
+| books | `GET` | `/api/v1/books/matters/{matter_id}` | `getBooksMatter` | required:getBooksMatter | admin, attorney, staff, accountant | books:read |
+| books | `GET` | `/api/v1/books/contacts/{contact_id}` | `getBooksContact` | required:getBooksContact | admin, attorney, staff, accountant | books:read |
 | user-directory | `GET` | `/api/v1/user-directory` | `listUserDirectory` | required:listUserDirectory | admin, attorney, staff, client | users:directory |
 | client-access | `GET` | `/api/v1/client-access` | `getClientAccess` | required:getClientAccess | admin, attorney, staff | client_access:read |
 | client-access | `POST` | `/api/v1/client-access` | `grantClientAccess` | required:grantClientAccess | admin, attorney, staff | client_access:write |
@@ -214,9 +217,12 @@ It does not claim the handlers or the MCP server are implemented.
 | payments, collections | `POST` | `/api/v1/payments` | `createPayment` | required:createPayment | admin, attorney, staff | payments:write |
 | payments, collections | `GET` | `/api/v1/payments/{payment_id}` | `getPayment` | required:getPayment | admin, attorney, staff, accountant | payments:read |
 | payments, collections, bulk | `POST` | `/api/v1/payments:bulk` | `bulkPayment` | required:bulkPayment | admin, attorney, staff | payments:write |
-| payments | `POST` | `/api/v1/payments/processor-initializations` | `initiateProcessorPayment` | required:initiateProcessorPayment | admin, attorney, staff | payments:write |
+| payments | `POST` | `/api/v1/payments/processor-initializations` | `initiateProcessorPayment` | required:initiateProcessorPayment | admin, attorney, staff, client | payments:write |
 | payments | `POST` | `/api/v1/payments/{payment_id}/status` | `updatePaymentStatus` | required:updatePaymentStatus | admin, attorney, staff | payments:write |
 | payments | `POST` | `/api/v1/payments/{payment_id}/reverse` | `reversePayment` | required:reversePayment | admin, attorney | payments:write |
+| payments | `GET` | `/api/v1/payments/{payment_id}/refunds` | `listPaymentRefunds` | required:listPaymentRefunds | admin, attorney, staff, accountant | payments:read |
+| payments | `POST` | `/api/v1/payments/{payment_id}/refunds` | `createPaymentRefund` | required:createPaymentRefund | admin, attorney | payments:write |
+| payments | `POST` | `/api/v1/payments/{payment_id}/refunds/{refund_id}/status` | `updatePaymentRefundStatus` | required:updatePaymentRefundStatus | admin, attorney | payments:write |
 | billing-worklist | `GET` | `/api/v1/billing/worklist` | `getBillingWorklist` | required:getBillingWorklist | admin, attorney, staff, accountant | invoices:read |
 | billing-worklist, trust-ledger | `POST` | `/api/v1/billing/flat-fees/{matter_id}/apply` | `applyFlatFee` | required:applyFlatFee | admin, attorney | trust:withdraw |
 | reports, trust-reports | `GET` | `/api/v1/reports/unbilled-time` | `reportUnbilledTime` | required:reportUnbilledTime | admin, attorney, staff, accountant | reports:read |
@@ -465,4 +471,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 | modules, inbound-webhooks | `POST` | `/hooks/{module_id}/{hook_id}` | `postInboundWebhook` | required:postInboundWebhook | public | none |
 
-Operations: 459.
+Operations: 465.

@@ -121,6 +121,7 @@ PAYMENT_PROCESSOR = {
         "amount_cents",
         "destination",
         "trust_account_id",
+        "replenishment_request_id",
     ],
     "binding": {
         "cardinality": "one_payment_per_initialization",
@@ -145,6 +146,25 @@ PAYMENT_PROCESSOR = {
     "idempotency_conflict": "idempotency_conflict",
     "no_mutation_on_denial": True,
 }
+
+PAYMENT_REFUND = {
+    "event_type": "payment.refund_authorized",
+    "delivered_on": "moduleEvent",
+    "header": "X-Togavsu-Task-Authorization",
+    "body_field": "refund_authorization",
+    "issued_by": "core",
+    "viewer_context_required": False,
+    "callback_requires_viewer": False,
+    "module_identity_mismatch": "forbidden",
+    "invalid": "forbidden",
+    "expired": "forbidden",
+    "revoked": "forbidden",
+    "missing_grant": "forbidden",
+    "sequence": ["updatePaymentRefundStatus"],
+    "allowed_operations": ["updatePaymentRefundStatus"],
+    "no_mutation_on_denial": True,
+}
+
 PAYMENT_STATUS_GRAPH = {
     "initial": "pending",
     "transitions": {
@@ -204,6 +224,7 @@ CORE_EXTENSION_TARGETS = (
     ("expense", "Expense", "expenses:read", ("listExpense", "getExpense")),
     ("invoice", "Invoice", "invoices:read", ("listInvoice", "getInvoice")),
     ("payment", "Payment", "payments:read", ("listPayment", "getPayment")),
+    ("payment_refund", "PaymentRefund", "payments:read", ("listPaymentRefunds",)),
     ("calendar_event", "CalendarEvent", "calendar:read", ("listCalendarEvent", "getCalendarEvent")),
     ("deadline", "Deadline", "deadlines:read", ("listDeadline", "getDeadline")),
     ("file", "File", "files:read", ("listFile", "getFile")),
@@ -444,6 +465,7 @@ NONINTERACTIVE_OPERATIONS = (
     GENERIC_NONINTERACTIVE
     | frozenset(MALWARE_SEQUENCE)
     | frozenset(PAYMENT_PROCESSOR["sequence"])
+    | frozenset(PAYMENT_REFUND["sequence"])
     | frozenset(BACKGROUND_FILE_SEQUENCE)
     | frozenset(MAIL_FILING_SEQUENCE)
     | frozenset(MAIL_MATCHING["sequence"])
@@ -660,6 +682,8 @@ def tag_noninteractive_workflows(spec: dict) -> None:
         operation_id = operation["operationId"]
         if operation_id in PAYMENT_PROCESSOR["sequence"]:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "payment_processor"
+        elif operation_id in PAYMENT_REFUND["sequence"]:
+            operation["x-togavsu-access"]["noninteractive_workflow"] = "payment_refund"
         elif operation_id in MALWARE_SEQUENCE:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "malware_scan"
         elif operation_id in BACKGROUND_FILE_SEQUENCE:
@@ -1479,6 +1503,7 @@ __all__ = [
     'MUTATION_EVENTS',
     'NONINTERACTIVE_OPERATIONS',
     'PAYMENT_PROCESSOR',
+    'PAYMENT_REFUND',
     'PAYMENT_STATUS_GRAPH',
     'PRIVATE_GRANT_FIELDS',
     'REQUIRED_BACKGROUND_EVENTS',

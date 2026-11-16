@@ -8744,7 +8744,8 @@
       "roles": [
         "admin",
         "attorney",
-        "staff"
+        "staff",
+        "client"
       ],
       "module_delegation": "delegated_viewer",
       "transfer": {
@@ -8900,6 +8901,154 @@
           "query",
           "idempotency_key",
           "context_token",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "listPaymentRefunds",
+      "method": "GET",
+      "path": "/api/v1/payments/{payment_id}/refunds",
+      "features": [
+        "payments"
+      ],
+      "scopes": [
+        "payments:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "createPaymentRefund",
+      "method": "POST",
+      "path": "/api/v1/payments/{payment_id}/refunds",
+      "features": [
+        "payments"
+      ],
+      "scopes": [
+        "payments:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "context_token",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "updatePaymentRefundStatus",
+      "method": "POST",
+      "path": "/api/v1/payments/{payment_id}/refunds/{refund_id}/status",
+      "features": [
+        "payments"
+      ],
+      "scopes": [
+        "payments:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -17389,7 +17538,7 @@
         "staff",
         "accountant"
       ],
-      "module_delegation": "delegated_viewer",
+      "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -17399,6 +17548,13 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [

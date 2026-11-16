@@ -13,6 +13,7 @@ from contract.metadata import (
     MALWARE_DELIVERY,
     NONINTERACTIVE_OPERATIONS,
     PAYMENT_PROCESSOR,
+    PAYMENT_REFUND,
     SERVICE_PRINCIPAL_ISSUANCE,
 )
 from contract.schemas import COMPONENTS, PARAM_SCHEMA, QUERY
@@ -78,6 +79,7 @@ SERVICE_PRINCIPAL_OPERATIONS = frozenset(
         "bulkEvent",
         "createNotification",
         "sendModuleMail",
+        "matchMail",
         "updateFeeAgreement",
         "markFileStatus",
         "listInvoice",
@@ -150,6 +152,7 @@ MODULE_DELEGATION_POLICY = {
         "attorney_only_redaction": True,
         "malware_scan": MALWARE_DELIVERY,
         "payment_processor": PAYMENT_PROCESSOR,
+        "payment_refund": PAYMENT_REFUND,
         "background_file_publication": BACKGROUND_FILE_PUBLICATION,
         "operations": sorted(NONINTERACTIVE_OPERATIONS),
     },

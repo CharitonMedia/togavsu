@@ -110,6 +110,7 @@ func TestPRDDefaults(t *testing.T) {
 		"api.webhook_attempts":                  "8",
 		"api.webhook_window_hours":              "24",
 		"llms.show_firm_name":                   "true",
+		"payments.processor_pending_grant_days": "30",
 	}
 	got := map[string]string{}
 	for _, def := range settings.Definitions() {

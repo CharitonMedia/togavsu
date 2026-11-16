@@ -10,17 +10,18 @@ import (
 
 // PaymentInput records a payment. Status defaults to completed.
 type PaymentInput struct {
-	ContactID       domain.ID
-	MatterID        domain.ID
-	AmountCents     domain.Cents
-	Destination     string
-	TrustAccountID  domain.ID
-	Method          string
-	ReferenceNumber string
-	Status          string
-	InvoiceID       domain.ID
-	Source          string
-	ReceivedOn      string
+	ContactID              domain.ID
+	MatterID               domain.ID
+	AmountCents            domain.Cents
+	Destination            string
+	TrustAccountID         domain.ID
+	Method                 string
+	ReferenceNumber        string
+	Status                 string
+	InvoiceID              domain.ID
+	Source                 string
+	ReceivedOn             string
+	ReplenishmentRequestID domain.ID
 }
 
 // PaymentFilter narrows a payment list.
@@ -144,11 +145,12 @@ func (s *Service) buildPayment(ctx context.Context, p domain.Principal, in Payme
 	if err != nil {
 		return Payment{}, err
 	}
-	row := Payment{TrustAccountID: in.TrustAccountID, ReceivedOn: in.ReceivedOn}
+	row := Payment{TrustAccountID: in.TrustAccountID, ReceivedOn: in.ReceivedOn, ReplenishmentRequestID: in.ReplenishmentRequestID}
 	row.Payment = domain.Payment{
 		Meta: meta, ContactID: in.ContactID, MatterID: in.MatterID, AmountCents: in.AmountCents,
 		Destination: in.Destination, Method: in.Method, ReferenceNumber: strings.TrimSpace(in.ReferenceNumber),
 		Status: in.Status, InvoiceID: in.InvoiceID, Source: sourceOf(p, in.Source),
+		RefundState: "none",
 	}
 	return row, nil
 }
@@ -236,6 +238,13 @@ func (s *Service) complete(t *txn, row *Payment) error {
 			return err
 		}
 		row.TrustEntryID = t.trusted(posted).EntryID
+		if !row.ReplenishmentRequestID.IsZero() {
+			sat, err := s.d.Trust.SatisfyReplenishment(t.ctx, t.p, row.ReplenishmentRequestID)
+			if err != nil {
+				return err
+			}
+			t.trusted(sat)
+		}
 		return nil
 	}
 	if row.InvoiceID.IsZero() {
