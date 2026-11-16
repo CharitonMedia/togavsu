@@ -49,6 +49,7 @@ func (a *App) routes() {
 	a.directoryRoutes(m)
 	a.portalRoutes(m)
 	a.systemRoutes(m)
+	a.moduleMailRoutes(m)
 	a.eventRoutes(m)
 	a.aiProviderRoutes(m)
 	a.emailChangeRoutes(m)

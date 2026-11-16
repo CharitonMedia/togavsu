@@ -317,6 +317,10 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.Trust, app.Billing = fin.Trust, fin.Billing
+	// CORE-04: absolute links and immediate delivery via SMTP/outbox until CORE-05
+	// systemMailer routes through the email module.
+	app.Trust.FirmDomain = cfg.Domain
+	app.Trust.MailSender = trustSMTPSender{smtpMailer{Settings: reg}}
 	if cli == "" {
 		cli = WordcraftCLI
 	}

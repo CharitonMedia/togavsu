@@ -41,6 +41,7 @@ type Practice interface {
 	Matter(ctx context.Context, id domain.ID) (domain.Matter, error)
 	Contact(ctx context.Context, id domain.ID) (domain.Contact, error)
 	Parties(matter, contact domain.ID) []domain.MatterParty
+	Emails(contact domain.ID) []domain.ContactEmail
 }
 
 // Users resolves admins and the responsible attorney for flags and notifications.
@@ -89,6 +90,12 @@ type Service struct {
 	// dashboard prefs are up. Nil skips the check (DeclaredKind) or email (EmailWanted).
 	DeclaredKind DeclaredModuleKind
 	EmailWanted  NotificationEmailWanted
+	// FirmDomain is the firm's public host for absolute links in module mail (CORE-04).
+	FirmDomain string
+	// MailSender delivers one outbox row immediately after queue for sendModuleMail
+	// (CORE-04). Nil leaves the row for DeliverMail. CORE-05 systemMailer implements
+	// Sender (and OutboxSender) when wired.
+	MailSender Sender
 }
 
 // New checks the required dependencies.

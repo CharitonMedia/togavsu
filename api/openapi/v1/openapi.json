@@ -58188,6 +58188,156 @@
         }
       }
     },
+    "/api/v1/mail/messages": {
+      "post": {
+        "operationId": "sendModuleMail",
+        "summary": "Send module mail",
+        "description": "A module token with mail:send sends firm mail to users or matter parties. The core resolves addresses and never returns them. Each recipient is sent, failed, or skipped. With matter_id and at least one sent recipient, a mail.sent timeline event is appended (summary Email sent: {subject}, client_visible false). Until CORE-05 routes through the email module, delivery uses the SMTP/outbox path. A repeated Idempotency-Key with the same body returns the original result.",
+        "tags": [
+          "Mail"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleMailResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "mail"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant"
+          ],
+          "scopes": [
+            "mail:send"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer_or_service_principal",
+          "events_on": "commit",
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
+        },
+        "x-togavsu-events": [
+          "mail.sent"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "sendModuleMail",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "not_found",
+          "validation_failed",
+          "idempotency_conflict"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleMailWrite"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/problem-reports": {
       "get": {
         "operationId": "listProblemReport",
@@ -73230,8 +73380,6 @@
           "api.csv_export_max_rows",
           "modules.marketplace_url",
           "modules.alert_check_hours",
-          "modules.inbound_webhook_max_bytes",
-          "modules.inbound_webhook_rate_per_minute",
           "modules.replace_time",
           "modules.replace_trust",
           "modules.replace_calendar"
@@ -73974,6 +74122,111 @@
           "link"
         ],
         "description": "A notification for one user."
+      },
+      "ModuleMailWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "subject",
+          "text"
+        ],
+        "properties": {
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "One-line subject. 1 to 200 characters; no CR or LF."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000,
+            "description": "Plain-text body. With link_path the core appends https://{firm domain}{link_path} as the last line."
+          },
+          "link_path": {
+            "type": "string",
+            "description": "Optional path starting with /portal/ or /modules/. Absolute URL is appended to text."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional matter. Required with to_contact_ids. With any sent recipient, emits mail.sent on the timeline."
+          },
+          "to_user_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUIDv7."
+            },
+            "description": "1 to 20 user ids. Inactive users are skipped. Viewer or service call."
+          },
+          "to_contact_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUIDv7."
+            },
+            "description": "1 to 20 contact ids that are parties on matter_id. Viewer call only (admin, attorney, or staff)."
+          }
+        },
+        "description": "sendModuleMail body (CORE-04). Exactly one of to_user_ids or to_contact_ids. The core resolves addresses and never returns them."
+      },
+      "ModuleMailRecipientResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Set when the recipient was a user."
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Set when the recipient was a contact."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "failed",
+              "skipped"
+            ],
+            "description": "Delivery outcome."
+          },
+          "error": {
+            "type": "string",
+            "description": "Skip or failure reason. Never an address."
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "description": "One recipient outcome. Addresses never appear."
+      },
+      "ModuleMailResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModuleMailRecipientResult"
+            }
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "description": "Per-recipient outcomes for sendModuleMail."
       },
       "NotificationWrite": {
         "type": "object",
@@ -81220,6 +81473,58 @@
         },
         "description": "HomeLayoutWrite Patch: every field is optional."
       },
+      "ModuleMailWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "One-line subject. 1 to 200 characters; no CR or LF."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000,
+            "description": "Plain-text body. With link_path the core appends https://{firm domain}{link_path} as the last line."
+          },
+          "link_path": {
+            "type": "string",
+            "description": "Optional path starting with /portal/ or /modules/. Absolute URL is appended to text."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional matter. Required with to_contact_ids. With any sent recipient, emits mail.sent on the timeline."
+          },
+          "to_user_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUIDv7."
+            },
+            "description": "1 to 20 user ids. Inactive users are skipped. Viewer or service call."
+          },
+          "to_contact_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUIDv7."
+            },
+            "description": "1 to 20 contact ids that are parties on matter_id. Viewer call only (admin, attorney, or staff)."
+          }
+        },
+        "description": "sendModuleMail body (CORE-04). Exactly one of to_user_ids or to_contact_ids. The core resolves addresses and never returns them. Patch: every field is optional."
+      },
       "NotificationWritePatch": {
         "type": "object",
         "additionalProperties": false,
@@ -82119,7 +82424,8 @@
       "operations": [
         "bulkEvent",
         "createEvent",
-        "createNotification"
+        "createNotification",
+        "sendModuleMail"
       ],
       "credential": "module_bearer",
       "viewer_required": false,
@@ -82891,6 +83197,7 @@
     "mail.tested": [
       "settings:read"
     ],
+    "mail.sent": [],
     "problem_report.created": [
       "profile:read"
     ],
@@ -84321,28 +84628,6 @@
       "help": "How often the core polls the marketplace for flags and pulls."
     },
     {
-      "key": "modules.inbound_webhook_max_bytes",
-      "type": "integer",
-      "tab": "modules_and_marketplace",
-      "default": 1048576,
-      "secret": false,
-      "locked": false,
-      "minimum": 1,
-      "maximum": 1073741824,
-      "help": "Largest inbound provider webhook body in bytes. Over is 413. Default 1048576 (1 MiB)."
-    },
-    {
-      "key": "modules.inbound_webhook_rate_per_minute",
-      "type": "integer",
-      "tab": "modules_and_marketplace",
-      "default": 120,
-      "secret": false,
-      "locked": false,
-      "minimum": 1,
-      "maximum": 1000000,
-      "help": "Inbound provider webhooks allowed per minute per hook. Over is 429 with Retry-After. Default 120."
-    },
-    {
       "key": "modules.replace_time",
       "type": "string",
       "tab": "modules_and_marketplace",
@@ -84634,6 +84919,10 @@
     {
       "scope": "layouts:write",
       "description": "Save layouts."
+    },
+    {
+      "scope": "mail:send",
+      "description": "Send mail from the firm to Togavsu users and to parties on a matter, through system mail."
     },
     {
       "scope": "markers:write",

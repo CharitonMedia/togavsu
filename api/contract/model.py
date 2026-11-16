@@ -77,6 +77,7 @@ SERVICE_PRINCIPAL_OPERATIONS = frozenset(
         "createEvent",
         "bulkEvent",
         "createNotification",
+        "sendModuleMail",
     }
 )
 

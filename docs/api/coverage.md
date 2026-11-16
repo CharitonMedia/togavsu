@@ -400,6 +400,7 @@ It does not claim the handlers or the MCP server are implemented.
 | ai | `GET` | `/api/v1/ai/calls` | `listAiCalls` | required:listAiCalls | admin | ai:admin |
 | mail | `PUT` | `/api/v1/mail/smtp-password` | `putSmtpPassword` | required:putSmtpPassword | admin | settings:write |
 | mail | `POST` | `/api/v1/mail/test` | `testMail` | required:testMail | admin | settings:write |
+| mail | `POST` | `/api/v1/mail/messages` | `sendModuleMail` | required:sendModuleMail | admin, attorney, staff, accountant | mail:send |
 | problem-reports | `GET` | `/api/v1/problem-reports` | `listProblemReport` | required:listProblemReport | admin | settings:read |
 | problem-reports | `POST` | `/api/v1/problem-reports` | `createProblemReport` | required:createProblemReport | admin, attorney, staff, accountant | profile:write |
 | problem-reports | `GET` | `/api/v1/problem-reports/{problem_report_id}` | `getProblemReport` | required:getProblemReport | admin | settings:read |
@@ -448,4 +449,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 | modules, inbound-webhooks | `POST` | `/hooks/{module_id}/{hook_id}` | `postInboundWebhook` | required:postInboundWebhook | public | none |
 
-Operations: 442.
+Operations: 443.

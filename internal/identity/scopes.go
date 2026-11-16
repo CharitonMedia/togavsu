@@ -43,12 +43,15 @@ var catalog = map[string]struct{}{
 	"backups:admin": {}, "updates:admin": {},
 	"modules:read": {}, "modules:write": {},
 	"module_secrets:write": {},
+	"mail:send": {},
 }
 
 // moduleOnlyScopes are grantable only on a module token (CORE-02, CORE-04 to CORE-06).
 // Entries land with the CORE item that adds the scope to the catalog.
 var moduleOnlyScopes = map[string]struct{}{
 	"module_secrets:write": {},
+	"mail:send": {},
+	"mail:send": {},
 }
 
 func knownScope(scope string) bool {

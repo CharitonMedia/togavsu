@@ -66,6 +66,7 @@ SCOPES = {
     "modules:read": "Read modules, marketplace listings, and domain handlers.",
     "modules:write": "Install, configure, and remove modules.",
     "module_secrets:write": "Store and read the calling module's own sealed secrets.",
+    "mail:send": "Send mail from the firm to Togavsu users and to parties on a matter, through system mail.",
     "users:directory": "Read the firm user directory (id, name, roles, active). No email or auth fields.",
     "firm:read": "Read the firm profile: name, contact details, time zone, and client portal appearance.",
 }

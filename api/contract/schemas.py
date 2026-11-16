@@ -2190,6 +2190,71 @@ SCHEMAS = _register(
             ["user_id", "kind", "title", "link"],
             "A notification for one user.",
         ),
+
+        "ModuleMailWrite": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["subject", "text"],
+            "properties": {
+                "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "description": "One-line subject. 1 to 200 characters; no CR or LF.",
+                },
+                "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000,
+                    "description": "Plain-text body. With link_path the core appends https://{firm domain}{link_path} as the last line.",
+                },
+                "link_path": {
+                    "type": "string",
+                    "description": "Optional path starting with /portal/ or /modules/. Absolute URL is appended to text.",
+                },
+                "matter_id": _uuid(
+                    "Optional matter. Required with to_contact_ids. With any sent recipient, emits mail.sent on the timeline."
+                ),
+                "to_user_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "uniqueItems": True,
+                    "items": _uuid(),
+                    "description": "1 to 20 user ids. Inactive users are skipped. Viewer or service call.",
+                },
+                "to_contact_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "uniqueItems": True,
+                    "items": _uuid(),
+                    "description": "1 to 20 contact ids that are parties on matter_id. Viewer call only (admin, attorney, or staff).",
+                },
+            },
+            "description": (
+                "sendModuleMail body (CORE-04). Exactly one of to_user_ids or to_contact_ids. "
+                "The core resolves addresses and never returns them."
+            ),
+        },
+        "ModuleMailRecipientResult": _obj(
+            {
+                "user_id": _uuid("Set when the recipient was a user."),
+                "contact_id": _uuid("Set when the recipient was a contact."),
+                "status": _enum(["sent", "failed", "skipped"], "Delivery outcome."),
+                "error": {"type": "string", "description": "Skip or failure reason. Never an address."},
+            },
+            ["status"],
+            "One recipient outcome. Addresses never appear.",
+        ),
+        "ModuleMailResult": _obj(
+            {
+                "results": _arr({"$ref": "#/components/schemas/ModuleMailRecipientResult"}),
+            },
+            ["results"],
+            "Per-recipient outcomes for sendModuleMail.",
+        ),
+
         "NotificationWrite": {
             "type": "object",
             "additionalProperties": False,

@@ -4214,6 +4214,30 @@ def _admin(api: Contract) -> None:
         success="202",
         response_schema={"type": "object", "additionalProperties": False, "required": ["accepted"], "properties": {"accepted": {"type": "boolean"}}},
     )
+    
+    api.add(
+        "post",
+        "/api/v1/mail/messages",
+        operation_id="sendModuleMail",
+        summary="Send module mail",
+        description=(
+            "A module token with mail:send sends firm mail to users or matter parties. "
+            "The core resolves addresses and never returns them. Each recipient is sent, failed, or skipped. "
+            "With matter_id and at least one sent recipient, a mail.sent timeline event is appended "
+            "(summary Email sent: {subject}, client_visible false). "
+            "Until CORE-05 routes through the email module, delivery uses the SMTP/outbox path. "
+            "A repeated Idempotency-Key with the same body returns the original result."
+        ),
+        tag="Mail",
+        features=["mail"],
+        roles=FIRM,
+        scopes=["mail:send"],
+        body="ModuleMailWrite",
+        response="ModuleMailResult",
+        error_codes=["forbidden", "scope_denied", "not_found", "validation_failed", "idempotency_conflict"],
+        events=["mail.sent"],
+        extra_access=WALL,
+    )
     api.resource(
         collection="/api/v1/problem-reports",
         schema="ProblemReport",
