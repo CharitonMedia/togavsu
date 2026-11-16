@@ -92,8 +92,11 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("POST /api/v1/ai/calls", h.write("ai:use", h.aiCall))
 	m.HandleFunc("GET /api/v1/ai/calls", h.scoped("ai:admin", h.aiCalls))
 	m.HandleFunc("GET /modules/{module_id}/tabs/{tab}", h.scoped("", h.tabPage))
+	m.HandleFunc("GET /modules/{module_id}/tabs/{tab}/context-token", h.scoped("", h.staffTabContextToken))
 	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}", h.scoped("", h.widgetPage))
+	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}/context-token", h.scoped("", h.staffWidgetContextToken))
 	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}", h.scoped("", h.matterItemPage))
+	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}/context-token", h.scoped("", h.staffMatterItemContextToken))
 	m.HandleFunc("GET /modules/{module_id}/device-connect", h.scoped("", h.deviceConnectGet))
 	m.HandleFunc("POST /modules/{module_id}/device-connect", h.write("", h.deviceConnectPost))
 	m.HandleFunc("/m/{module_id}/", h.frame)
@@ -793,49 +796,73 @@ func (h *Handler) aiCallQuery(r *http.Request) (AICallQuery, error) {
 // allow-top-navigation-by-user-activation. Neither ever includes allow-same-origin.
 const staffFrameSandbox = "allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox"
 
+// coreFrameNavigatePrefixes are core pages a module frame may open via togavsu:navigate,
+// matching the widget-target allowlist (a tab of the same module, or a core page).
+var coreFrameNavigatePrefixes = []string{
+	"/practice/", "/billing/", "/trust/", "/calendar/", "/files/", "/help", "/me/", "/settings/", "/",
+}
+
+// BridgeNavigateURL builds the in-app URL for a togavsu:navigate message, or false when
+// page is outside the widget-target allowlist (same module tab/widget/matter-item, or a
+// core page). Absolute and protocol-relative URLs are refused.
+func BridgeNavigateURL(moduleID, page string, params map[string]string) (string, bool) {
+	page = strings.TrimSpace(page)
+	if page == "" || !strings.HasPrefix(page, "/") || strings.HasPrefix(page, "//") || strings.Contains(page, "://") {
+		return "", false
+	}
+	path, rawQuery, _ := strings.Cut(page, "?")
+	ok := false
+	modPrefix := "/modules/" + moduleID + "/"
+	for _, p := range []string{modPrefix + "tabs/", modPrefix + "widgets/", modPrefix + "matter-items/"} {
+		if strings.HasPrefix(path, p) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		for _, p := range coreFrameNavigatePrefixes {
+			if p == "/" {
+				if path == "/" {
+					ok = true
+					break
+				}
+				continue
+			}
+			if strings.HasPrefix(path, p) || path == strings.TrimSuffix(p, "/") {
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok {
+		return "", false
+	}
+	q := url.Values{}
+	if rawQuery != "" {
+		if existing, err := url.ParseQuery(rawQuery); err == nil {
+			q = existing
+		}
+	}
+	for k, v := range params {
+		if k != "" {
+			q.Set(k, v)
+		}
+	}
+	if enc := q.Encode(); enc != "" {
+		return path + "?" + enc, true
+	}
+	return path, true
+}
+
 var framePage = template.Must(template.New("frame").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{{.Title}}</title>
 <style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style>
-<script nonce="{{.Nonce}}">
-(function () {
-  var frame = null;
-  function bind() { frame = document.querySelector("iframe.module-frame"); }
-  window.addEventListener("message", function (ev) {
-    if (!frame) bind();
-    if (!frame || ev.source !== frame.contentWindow || !ev.data || typeof ev.data !== "object") return;
-    var d = ev.data, t = d.type;
-    if (t === "togavsu:editor.open" && d.file_id) {
-      window.location.assign("/files/" + encodeURIComponent(d.file_id) + "/edit");
-      return;
-    }
-    if (t === "togavsu:navigate" && d.page) {
-      var u = d.page;
-      if (d.params && typeof d.params === "object") {
-        var q = new URLSearchParams();
-        Object.keys(d.params).forEach(function (k) { q.set(k, d.params[k]); });
-        u += (u.indexOf("?") >= 0 ? "&" : "?") + q.toString();
-      }
-      window.location.assign(u);
-      return;
-    }
-    if (t === "togavsu:context.refresh" && d.request_id) {
-      fetch(window.location.pathname + "/context-token", {credentials: "same-origin", headers: {"Accept": "application/json"}})
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-        .then(function (body) {
-          frame.contentWindow.postMessage({type: "togavsu:context.token", request_id: d.request_id, token: body.token, expires_at: body.expires_at}, "*");
-        })
-        .catch(function () {
-          frame.contentWindow.postMessage({type: "togavsu:context.error", request_id: d.request_id, code: "session_expired"}, "*");
-        });
-    }
-  });
-})();
-</script>
+<script nonce="{{.Nonce}}">{{.Bridge}}</script>
 </head>
-<body><main aria-label="{{.Title}}">
+<body><main aria-label="{{.Title}}" data-module="{{.Module}}">
 {{template "iframe" .}}
 </main></body></html>
-{{define "iframe"}}<iframe class="module-frame" title="{{.Title}}" src="{{.Src}}" sandbox="{{.Sandbox}}" referrerpolicy="no-referrer"></iframe>{{end}}`))
+{{define "iframe"}}<iframe class="module-frame" title="{{.Title}}" src="{{.Src}}" sandbox="{{.Sandbox}}" referrerpolicy="no-referrer" data-module="{{.Module}}"></iframe>{{end}}`))
 
 // writeFrame renders the core page that shows a module page in a sandboxed iframe. The
 // sandbox has no allow-same-origin: the frame runs in an opaque origin, so script in it
@@ -845,22 +872,27 @@ var framePage = template.Must(template.New("frame").Parse(`<!doctype html>
 // A page that opens as a screen of its own (a module tab, a matter action) is drawn
 // inside the app shell; a panel or widget the core embeds in its own iframe is the bare
 // frame page, so the shell never nests.
-func writeFrame(w http.ResponseWriter, r *http.Request, screen bool, title, src string) {
-	writeFrameSandbox(w, r, screen, title, src, staffFrameSandbox)
+func writeFrame(w http.ResponseWriter, r *http.Request, screen bool, title, src, moduleID string) {
+	writeFrameSandbox(w, r, screen, title, src, staffFrameSandbox, moduleID)
 }
 
-func writeFrameSandbox(w http.ResponseWriter, r *http.Request, screen bool, title, src, sandbox string) {
+func writeFrameSandbox(w http.ResponseWriter, r *http.Request, screen bool, title, src, sandbox, moduleID string) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	nonce := frameNonce()
-	data := map[string]string{"Title": title, "Src": src, "Nonce": nonce, "Sandbox": sandbox}
+	bridge := template.JS(frameBridgeScript(moduleID))
+	data := map[string]any{"Title": title, "Src": src, "Nonce": nonce, "Sandbox": sandbox, "Module": moduleID, "Bridge": bridge}
 	var buf bytes.Buffer
 	if screen && r.Header.Get("Sec-Fetch-Dest") != "iframe" {
 		if err := framePage.ExecuteTemplate(&buf, "iframe", data); err != nil {
 			writeErr(w, err)
 			return
 		}
-		bridge := `<script nonce="` + nonce + `">` + frameBridgeJS + `</script>`
-		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(bridge + buf.String()), WorkInFrame: true})
+		// Shell would default to help.CSP (script-src 'self') and block the nonce bridge;
+		// set a policy that keeps the shell assets and allows this one inline script.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'none'")
+		body := `<span hidden data-module="` + template.HTMLEscapeString(moduleID) + `"></span>` +
+			`<script nonce="` + nonce + `">` + frameBridgeScript(moduleID) + `</script>` + buf.String()
+		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(body), WorkInFrame: true})
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -880,12 +912,28 @@ func frameNonce() string {
 	return hex.EncodeToString(b[:])
 }
 
-// frameBridgeJS is the postMessage listener body used when the shell wraps the iframe
-// (the bare frame page embeds the same logic via the template).
-const frameBridgeJS = `
+// frameBridgeScript is the CORE-09 postMessage listener for one module's frame.
+func frameBridgeScript(moduleID string) string {
+	esc := strings.ReplaceAll(moduleID, `\`, `\\`)
+	esc = strings.ReplaceAll(esc, `"`, `\"`)
+	return `
 (function () {
-  var frame = document.querySelector("iframe.module-frame");
+  var moduleId = "` + esc + `";
+  var frame = null;
+  function bind() { frame = document.querySelector("iframe.module-frame"); }
+  function allowed(page) {
+    if (typeof page !== "string" || page.charAt(0) !== "/" || page.indexOf("//") === 0 || page.indexOf("://") >= 0) return false;
+    var path = page.split("?")[0];
+    var pref = "/modules/" + moduleId + "/";
+    if (path.indexOf(pref + "tabs/") === 0 || path.indexOf(pref + "widgets/") === 0 || path.indexOf(pref + "matter-items/") === 0) return true;
+    var cores = ["/practice/", "/billing/", "/trust/", "/calendar/", "/files/", "/help", "/me/", "/settings/"];
+    for (var i = 0; i < cores.length; i++) {
+      if (path === cores[i].replace(/\/$/, "") || path.indexOf(cores[i]) === 0) return true;
+    }
+    return path === "/";
+  }
   window.addEventListener("message", function (ev) {
+    if (!frame) bind();
     if (!frame || ev.source !== frame.contentWindow || !ev.data || typeof ev.data !== "object") return;
     var d = ev.data, t = d.type;
     if (t === "togavsu:editor.open" && d.file_id) {
@@ -893,6 +941,7 @@ const frameBridgeJS = `
       return;
     }
     if (t === "togavsu:navigate" && d.page) {
+      if (!allowed(d.page)) return;
       var u = d.page;
       if (d.params && typeof d.params === "object") {
         var q = new URLSearchParams();
@@ -903,7 +952,8 @@ const frameBridgeJS = `
       return;
     }
     if (t === "togavsu:context.refresh" && d.request_id) {
-      fetch(window.location.pathname.replace(/\/$/, "") + "/context-token", {credentials: "same-origin", headers: {"Accept": "application/json"}})
+      var refresh = window.location.pathname.replace(/\/$/, "") + "/context-token" + window.location.search;
+      fetch(refresh, {credentials: "same-origin", headers: {"Accept": "application/json"}})
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
         .then(function (body) {
           frame.contentWindow.postMessage({type: "togavsu:context.token", request_id: d.request_id, token: body.token, expires_at: body.expires_at}, "*");
@@ -915,6 +965,7 @@ const frameBridgeJS = `
   });
 })();
 `
+}
 
 func (h *Handler) tabPage(w http.ResponseWriter, r *http.Request, c Caller) {
 	in, err := h.Svc.Installed(r.Context(), r.PathValue("module_id"))
@@ -941,7 +992,7 @@ func (h *Handler) tabPage(w http.ResponseWriter, r *http.Request, c Caller) {
 	for k, v := range r.URL.Query() {
 		q[k] = v
 	}
-	writeFrame(w, r, true, tab.Title, FramePath(in.ID, tab.Path, t.Token, q))
+	writeFrame(w, r, true, tab.Title, FramePath(in.ID, tab.Path, t.Token, q), in.ID)
 }
 
 // matterItemPage frames a module's matter-screen panel or action for one matter, with a
@@ -967,7 +1018,7 @@ func (h *Handler) matterItemPage(w http.ResponseWriter, r *http.Request, c Calle
 		writeErr(w, err)
 		return
 	}
-	writeFrame(w, r, item.Kind != "panel", item.Title, FramePath(in.ID, item.Path, t.Token, url.Values{"matter_id": {string(matter)}}))
+	writeFrame(w, r, item.Kind != "panel", item.Title, FramePath(in.ID, item.Path, t.Token, url.Values{"matter_id": {string(matter)}}), in.ID)
 }
 
 func (h *Handler) widgetPage(w http.ResponseWriter, r *http.Request, c Caller) {
@@ -994,7 +1045,75 @@ func (h *Handler) widgetPage(w http.ResponseWriter, r *http.Request, c Caller) {
 			}
 		}
 	}
-	writeFrame(w, r, false, wd.Title, FramePath(in.ID, wd.Path, t.Token, q))
+	writeFrame(w, r, false, wd.Title, FramePath(in.ID, wd.Path, t.Token, q), in.ID)
+}
+
+// staff frame context-token routes (CORE-09): same user, module and matter as the frame.
+func (h *Handler) staffTabContextToken(w http.ResponseWriter, r *http.Request, c Caller) {
+	h.staffFrameContextToken(w, r, c, "tab", r.PathValue("tab"))
+}
+
+func (h *Handler) staffWidgetContextToken(w http.ResponseWriter, r *http.Request, c Caller) {
+	h.staffFrameContextToken(w, r, c, "widget", r.PathValue("widget"))
+}
+
+func (h *Handler) staffMatterItemContextToken(w http.ResponseWriter, r *http.Request, c Caller) {
+	h.staffFrameContextToken(w, r, c, "item", r.PathValue("item"))
+}
+
+func (h *Handler) staffFrameContextToken(w http.ResponseWriter, r *http.Request, c Caller, kind, id string) {
+	if ClientOnly(c.Principal) {
+		writeErr(w, domain.NotFound("frame"))
+		return
+	}
+	in, err := h.Svc.Installed(r.Context(), r.PathValue("module_id"))
+	if err != nil || !in.Enabled {
+		writeErr(w, domain.NotFound("module"))
+		return
+	}
+	var matter domain.ID
+	switch kind {
+	case "tab":
+		tab, ok := in.Manifest.Tab(id)
+		if !ok || tab.Placement == "client" {
+			writeErr(w, domain.NotFound("tab"))
+			return
+		}
+		if tab.Placement == "matter" {
+			matter = domain.ID(r.URL.Query().Get("matter_id"))
+			if matter.IsZero() {
+				writeErr(w, invalid("matter_id", "a matter tab needs the matter"))
+				return
+			}
+		}
+	case "widget":
+		if _, ok := in.Manifest.Widget(id); !ok {
+			writeErr(w, domain.NotFound("widget"))
+			return
+		}
+		if mid := r.URL.Query().Get("matter_id"); mid != "" {
+			matter = domain.ID(mid)
+		}
+	case "item":
+		if _, ok := in.Manifest.MatterItem(id); !ok {
+			writeErr(w, domain.NotFound("matter item"))
+			return
+		}
+		matter = domain.ID(r.URL.Query().Get("matter_id"))
+		if matter.IsZero() {
+			writeErr(w, invalid("matter_id", "a matter item needs the matter"))
+			return
+		}
+	default:
+		writeErr(w, domain.NotFound("frame"))
+		return
+	}
+	tok, err := h.Svc.IssueContext(r.Context(), c.Principal, in.ID, matter)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": tok.Token, "expires_at": tok.ExpiresAt.UTC().Format(time.RFC3339)})
 }
 
 // frame proxies /m/{id}/... to the module without the core's cookie or credentials.

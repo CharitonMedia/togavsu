@@ -146,7 +146,8 @@
   {{range .Items}}{{if eq .Kind "panel"}}
   <figure class="module-panel" data-item="{{.ID}}">
     <figcaption>{{.Title}}</figcaption>
-    <iframe src="{{.Path}}" title="{{.Title}}" sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" loading="lazy"></iframe>
+    {{/* allow-same-origin: this iframe loads a core frame page (/modules/.../matter-items/...), not module HTML. The nested module iframe keeps the staff sandbox with no allow-same-origin so the CORE-09 bridge can refresh the session. */}}
+    <iframe src="{{.Path}}" title="{{.Title}}" class="module-frame" sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-same-origin" referrerpolicy="no-referrer" loading="lazy"></iframe>
   </figure>
   {{else}}<p class="module-action" data-item="{{.ID}}"><a class="button" href="{{.Path}}">{{.Title}}</a></p>{{end}}{{end}}
   {{range .Rows}}

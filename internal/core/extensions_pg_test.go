@@ -446,7 +446,8 @@ func TestExtensionsMatterItems(t *testing.T) {
 	action := "/modules/matter-notes/matter-items/letter?matter_id=" + open
 	screen := x.staff.must(http.StatusOK, "GET", "/practice/matters/"+open, nil)
 	for _, want := range []string{`id="module-matter-notes"`, `<iframe src="` + panel + `"`,
-		`sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox"`,
+		// Outer iframe loads a core frame page; allow-same-origin lets the nested CORE-09 bridge use the session.
+		`sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-same-origin"`,
 		`<a class="button" href="` + action + `">Draft a letter</a>`, "Matter notes"} {
 		if !strings.Contains(screen.body, want) {
 			t.Fatalf("matter screen lacks %q:\n%s", want, screen.body)

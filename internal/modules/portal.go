@@ -107,8 +107,8 @@ func tabQuery(tab Tab, q url.Values) url.Values {
 	return out
 }
 
-func writeClientFrame(w http.ResponseWriter, r *http.Request, title, src string) {
-	writeFrameSandbox(w, r, false, title, src, clientFrameSandbox)
+func writeClientFrame(w http.ResponseWriter, r *http.Request, title, src, moduleID string) {
+	writeFrameSandbox(w, r, false, title, src, clientFrameSandbox, moduleID)
 }
 
 func (h *Handler) portalHome(w http.ResponseWriter, r *http.Request, c Caller) {
@@ -164,7 +164,7 @@ func (h *Handler) portalTab(w http.ResponseWriter, r *http.Request, c Caller) {
 		writeErr(w, err)
 		return
 	}
-	writeClientFrame(w, r, tab.Title, FramePath(in.ID, tab.Path, tok.Token, q))
+	writeClientFrame(w, r, tab.Title, FramePath(in.ID, tab.Path, tok.Token, q), in.ID)
 }
 
 func (h *Handler) portalContextToken(w http.ResponseWriter, r *http.Request, c Caller) {
