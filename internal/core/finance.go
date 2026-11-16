@@ -64,7 +64,7 @@ type finance struct {
 // flow to the practice store through the balance sink, invoices through the mirror, and
 // committed trust entries sync flat-fee invoices through billing.TrustEvents.
 func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *settings.Registry, store *practice.Durable,
-	users trust.Users, walls domain.WallReader, fsvc *files.Service, custom billing.CustomFields, p func(*http.Request) (domain.Principal, error), scopes func(*http.Request, ...string) error, now func() time.Time) (*finance, error) {
+	users trust.Users, walls domain.WallReader, fsvc *files.Service, custom billing.CustomFields, p func(*http.Request) (domain.Principal, error), scopes func(*http.Request, ...string) error, now func() time.Time, mail *systemMailer) (*finance, error) {
 	if err := trust.InstallPrivileges(ctx, pool); err != nil {
 		return nil, fmt.Errorf("core: trust privileges: %w", err)
 	}
@@ -91,7 +91,7 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 	}
 	bs, err := billing.New(billing.Deps{
 		Store: bstore, Practice: store, Walls: walls, Audit: aud, Settings: reg,
-		Trust: link, Mail: smtpMailer{Settings: reg}, Mirror: store, Receipts: fileLink, InvoiceFiles: fileLink, Custom: custom, Now: now,
+		Trust: link, Mail: mail, Mirror: store, Receipts: fileLink, InvoiceFiles: fileLink, Custom: custom, Now: now,
 	})
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (a *App) deliverTrustMail(ctx context.Context, every time.Duration) {
 func (a *App) DeliverMail(ctx context.Context) (int, error) {
 	a.mailMu.Lock()
 	defer a.mailMu.Unlock()
-	return a.Trust.DeliverMail(ctx, trust.SMTP{Settings: a.Settings})
+	return a.Trust.DeliverMail(ctx, a.sysMail.AsSender())
 }
 
 // entryTypeScoped are the contract operations whose scopes depend on the body's

@@ -93,7 +93,7 @@ func (a *App) testMailJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Invalid("to", "to must be one email address"))
 		return
 	}
-	err := smtpMailer{Settings: a.Settings}.Send(r.Context(), billing.Message{
+	err := a.sysMail.Send(r.Context(), billing.Message{
 		To: []string{to}, Subject: "Togavsu system mail test",
 		Text: "This is a test of Togavsu's system mail settings. No action is needed.",
 	})

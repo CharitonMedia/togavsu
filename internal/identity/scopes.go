@@ -14,8 +14,8 @@ var catalog = map[string]struct{}{
 	"tokens:read": {}, "tokens:write": {},
 	"users:read": {}, "users:write": {},
 	"users:directory": {},
-	"firm:read": {},
-	"contacts:read": {}, "contacts:write": {},
+	"firm:read":       {},
+	"contacts:read":   {}, "contacts:write": {},
 	"matters:read": {}, "matters:write": {},
 	"markers:write": {},
 	"notes:read":    {}, "notes:write": {},
@@ -43,7 +43,8 @@ var catalog = map[string]struct{}{
 	"backups:admin": {}, "updates:admin": {},
 	"modules:read": {}, "modules:write": {},
 	"module_secrets:write": {},
-	"mail:send": {},
+	"mail:send":            {},
+	"mail:system":          {},
 }
 
 // moduleOnlyScopes are grantable only on a module token (CORE-02, CORE-04 to CORE-06).
@@ -51,6 +52,7 @@ var catalog = map[string]struct{}{
 var moduleOnlyScopes = map[string]struct{}{
 	"module_secrets:write": {},
 	"mail:send":            {},
+	"mail:system":          {},
 }
 
 func knownScope(scope string) bool {

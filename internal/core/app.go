@@ -109,6 +109,7 @@ type App struct {
 	UI      *UI
 	Modules *modules.Service
 	Market  *marketplace.Service
+	sysMail *systemMailer
 
 	// providerURLs is Config.ProviderURLs, for the AI tab's Provider check.
 	providerURLs map[string]string
@@ -276,11 +277,12 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	if err != nil {
 		return fail(err)
 	}
+	sysMail := &systemMailer{Settings: reg, Now: now}
 	pg := identity.NewPG(pool)
 	ids, err := identity.New(identity.Deps{
 		Users: pg.Users(), Sessions: pg.Sessions(), Passwords: pg.Passwords(),
 		TOTP: pg.TOTP(), Recovery: pg.Recovery(), Tokens: pg.Tokens(),
-		Audit: aud, Settings: reg, Key: cfg.Key, Now: now, Mail: resetMailer{mail: smtpMailer{Settings: reg}},
+		Audit: aud, Settings: reg, Key: cfg.Key, Now: now, Mail: resetMailer{mail: sysMail},
 	})
 	if err != nil {
 		return fail(err)
@@ -294,6 +296,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		Pool: pool, Audit: aud, Settings: reg, Identity: ids, Users: users,
 		Practice: practice.NewWithKey(store, reg, cfg.Key), Store: store, ledger: ledger,
 	}
+	app.sysMail = sysMail
 	sub, err := fs.Sub(web.Practice, "templates/practice")
 	if err != nil {
 		return fail(err)
@@ -307,20 +310,19 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	if dataDir == "" {
 		dataDir = DataDir
 	}
-	docs, err := openFiles(ctx, pool, aud, reg, store, app.Practice.Policy.Walls, cfg.Key, dataDir, now)
+	docs, err := openFiles(ctx, pool, aud, reg, store, app.Practice.Policy.Walls, cfg.Key, dataDir, now, sysMail)
 	if err != nil {
 		return fail(err)
 	}
 	app.docs = docs
-	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, docs.Files, app.Practice, app.principal, app.scopes, now)
+	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, docs.Files, app.Practice, app.principal, app.scopes, now, sysMail)
 	if err != nil {
 		return fail(err)
 	}
 	app.Trust, app.Billing = fin.Trust, fin.Billing
-	// CORE-04: absolute links and immediate delivery via SMTP/outbox until CORE-05
-	// systemMailer routes through the email module.
+	// CORE-05: absolute links and delivery through the system mail router.
 	app.Trust.FirmDomain = cfg.Domain
-	app.Trust.MailSender = trustSMTPSender{smtpMailer{Settings: reg}}
+	app.Trust.MailSender = sysMail.AsSender()
 	if cli == "" {
 		cli = WordcraftCLI
 	}
@@ -379,6 +381,9 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.Modules = ext.Modules
+	if app.sysMail != nil {
+		app.sysMail.Modules = ext.Modules
+	}
 	// CORE-03: createNotification kind checks, preference grid groups, and email wants.
 	if ext.Modules != nil && app.Trust != nil {
 		mods := ext.Modules
