@@ -16,19 +16,19 @@ const ManifestFile = "togavsu-module.yaml"
 
 // Manifest is togavsu-module.yaml (PRD 9.2).
 type Manifest struct {
-	ID          string        `json:"id"`
-	Name        string        `json:"name"`
-	Version     string        `json:"version"`
-	Author      string        `json:"author"`
-	Homepage    string        `json:"homepage"`
-	License     string        `json:"license"`
-	Price       string        `json:"price"`
-	Container   Container     `json:"container"`
-	Permissions []Permission  `json:"permissions"`
-	Widgets     []Widget      `json:"widgets"`
-	Help        HelpGuide     `json:"help"`
-	Tabs        []Tab         `json:"tabs"`
-	MatterItems []MatterItem  `json:"matter_items"`
+	ID            string             `json:"id"`
+	Name          string             `json:"name"`
+	Version       string             `json:"version"`
+	Author        string             `json:"author"`
+	Homepage      string             `json:"homepage"`
+	License       string             `json:"license"`
+	Price         string             `json:"price"`
+	Container     Container          `json:"container"`
+	Permissions   []Permission       `json:"permissions"`
+	Widgets       []Widget           `json:"widgets"`
+	Help          HelpGuide          `json:"help"`
+	Tabs          []Tab              `json:"tabs"`
+	MatterItems   []MatterItem       `json:"matter_items"`
 	Sidebar       []Link             `json:"sidebar"`
 	QuickCreate   []Link             `json:"quick_create"`
 	Search        []Link             `json:"search_scopes"`
