@@ -1433,13 +1433,11 @@
       "prd_sections": [
         "8.9"
       ],
-      "acceptance_ids": [
-        "AC-019"
-      ],
+      "acceptance_ids": [],
       "required_checks": [
         "Core tests"
       ],
-      "prompt": "A small bounded assignment that confirms the Cursor build path end to end. internal/frame has no tests. Add internal/frame/frame_test.go only, using the Go standard library (net/http/httptest, html/template), covering: Write with a shell installed via With calls the shell and not Bare; Write with no shell writes the bare document with the title, the area class and the body; Bare escapes Title, Notice and Error, renders Scripts as deferred same-origin script tags, keeps an existing Content-Type header and sets text/html otherwise; a zero or below-100 Status writes 200 and StatusCode reports it; a set Status such as 404 is written. These tests cover the shared shell package that section 8.9 and AC-019 rest on; they do not pass AC-019, so report it as pending. Do not change any other file. Run go vet ./internal/frame/ and go test ./internal/frame/ and report the results and the tested commit SHA in the PR body."
+      "prompt": "A small bounded assignment that confirms the Cursor build path end to end. internal/frame has no tests. Add internal/frame/frame_test.go only, using the Go standard library (net/http/httptest, html/template), covering: Write with a shell installed via With calls the shell and not Bare; Write with no shell writes the bare document with the title, the area class and the body; Bare escapes Title, Notice and Error, renders Scripts as deferred same-origin script tags, keeps an existing Content-Type header and sets text/html otherwise; a zero or below-100 Status writes 200 and StatusCode reports it; a set Status such as 404 is written. These tests cover the shared shell package section 8.9 rests on; they pass no acceptance criterion. Do not change any other file. Run go vet ./internal/frame/ and go test ./internal/frame/ and report the results and the tested commit SHA in the PR body."
     }
   ],
   "max_repairs": 1,
