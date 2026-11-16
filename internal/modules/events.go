@@ -215,6 +215,15 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 		case !m.Approved["events:read"] || !Subscribed(m.Manifest.Events, ev.Action):
 			continue
 		}
+		if m.Approved["books:read"] {
+			drop, err := s.dropBooksEvent(ctx, ev)
+			if err != nil {
+				return queued, err
+			}
+			if drop {
+				continue
+			}
+		}
 		body, err := json.Marshal(EventPayload{ID: string(ev.ID), Action: ev.Action, RecordType: ev.RecordType, RecordID: string(ev.RecordID),
 			MatterID: string(ev.MatterID), OccurredAt: at.UTC().Format(time.RFC3339Nano), Module: m.ID, BackgroundFileAuthorization: grant})
 		if err != nil {
@@ -234,6 +243,43 @@ VALUES ($1,$2,$2,'',$3,$4,$5,$6,'pending',0,$2,'',0) ON CONFLICT (module_id, eve
 		}
 	}
 	return queued, nil
+}
+
+
+// dropBooksEvent reports whether a books:read module must not receive ev (CORE-02):
+// money events on a walled matter, and contact.updated for a contact getBooksContact
+// would not return.
+func (s *Service) dropBooksEvent(ctx context.Context, ev domain.Event) (bool, error) {
+	if booksMoneyEvent(ev.Action) && !ev.MatterID.IsZero() {
+		if s.d.Walls == nil {
+			return true, nil
+		}
+		view, err := s.d.Walls.View(ctx, domain.Principal{Source: domain.SourceService, Roles: []domain.Role{domain.RoleAccountant}}, ev.MatterID)
+		if err != nil {
+			return false, err
+		}
+		return view.Walled && !view.Allows, nil
+	}
+	if ev.Action == "contact.updated" {
+		if s.d.BooksContactOK == nil {
+			return true, nil
+		}
+		ok, err := s.d.BooksContactOK(ctx, ev.RecordID)
+		if err != nil {
+			return false, err
+		}
+		return !ok, nil
+	}
+	return false, nil
+}
+
+func booksMoneyEvent(action string) bool {
+	for _, prefix := range []string{"invoice.", "payment.", "expense.", "trust."} {
+		if strings.HasPrefix(action, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // Publish queues deliveries for events a domain keeps outside core.events (billing and

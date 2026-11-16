@@ -14,6 +14,7 @@ ANY = ["admin", "attorney", "staff", "accountant", "client"]
 DIRECTORY = ["admin", "attorney", "staff", "client"]
 CLIENT = ["client"]
 VIEWER = {"module_delegation": "delegated_viewer"}
+BOOKS_SERVICE = {"module_delegation": "service_principal"}
 
 WALL = {"matter_wall": True, "access_inherits": "matter"}
 FILE_ACCESS_CASES = [
@@ -941,6 +942,62 @@ def _identity(api: Contract) -> None:
         response="FirmProfile",
         writes=False,
         extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "get",
+        "/api/v1/books/profile",
+        operation_id="getBooksProfile",
+        summary="Get the books profile",
+        description=(
+            "Firm name, time zone and currency for a module's books reader (CORE-02). "
+            "Currency is always USD. Module token with books:read; service call only."
+        ),
+        tag="Billing",
+        features=["books"],
+        roles=BILLING,
+        scopes=["books:read"],
+        response="BooksProfile",
+        writes=False,
+        extra_access=BOOKS_SERVICE,
+    )
+    api.add(
+        "get",
+        "/api/v1/books/matters/{matter_id}",
+        operation_id="getBooksMatter",
+        summary="Get a matter for books sync",
+        description=(
+            "Matter id, number, name, status, primary client_contact_id and responsible_attorney_user_id "
+            "for a module's books reader (CORE-02). A walled matter is not_found. "
+            "Module token with books:read; service call only."
+        ),
+        tag="Billing",
+        features=["books"],
+        roles=BILLING,
+        scopes=["books:read"],
+        response="BooksMatter",
+        writes=False,
+        extra_access={**BOOKS_SERVICE, **WALL},
+    )
+    api.add(
+        "get",
+        "/api/v1/books/contacts/{contact_id}",
+        operation_id="getBooksContact",
+        summary="Get a billed contact for books sync",
+        description=(
+            "Billing details of a contact the books reader may see (CORE-02): kind, display name, given and family "
+            "name, organization name, primary email, phone and billing address, and archived. "
+            "No date of birth, identifier, tags or custom fields. "
+            "Only a contact that is the client of an unwalled matter, or the contact on a payment or trust entry "
+            "the books reader can read, is returned; any other is not_found. "
+            "Module token with books:read; service call only."
+        ),
+        tag="Billing",
+        features=["books"],
+        roles=BILLING,
+        scopes=["books:read"],
+        response="BooksContact",
+        writes=False,
+        extra_access=BOOKS_SERVICE,
     )
     api.add(
         "get",

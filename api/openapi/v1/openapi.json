@@ -30,6 +30,9 @@
       "name": "Settings"
     },
     {
+      "name": "Billing"
+    },
+    {
       "name": "Contacts"
     },
     {
@@ -46,9 +49,6 @@
     },
     {
       "name": "Custom fields"
-    },
-    {
-      "name": "Billing"
     },
     {
       "name": "Reports"
@@ -4704,6 +4704,330 @@
               "path",
               "query",
               "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/books/profile": {
+      "get": {
+        "operationId": "getBooksProfile",
+        "summary": "Get the books profile",
+        "description": "Firm name, time zone and currency for a module's books reader (CORE-02). Currency is always USD. Module token with books:read; service call only.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BooksProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "books"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant"
+          ],
+          "scopes": [
+            "books:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "service_principal"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getBooksProfile",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/books/matters/{matter_id}": {
+      "get": {
+        "operationId": "getBooksMatter",
+        "summary": "Get a matter for books sync",
+        "description": "Matter id, number, name, status, primary client_contact_id and responsible_attorney_user_id for a module's books reader (CORE-02). A walled matter is not_found. Module token with books:read; service call only.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "matter_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter matter_id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BooksMatter"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "books"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant"
+          ],
+          "scopes": [
+            "books:read"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "module_delegation": "service_principal",
+          "access_inherits": "matter"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getBooksMatter",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/books/contacts/{contact_id}": {
+      "get": {
+        "operationId": "getBooksContact",
+        "summary": "Get a billed contact for books sync",
+        "description": "Billing details of a contact the books reader may see (CORE-02): kind, display name, given and family name, organization name, primary email, phone and billing address, and archived. No date of birth, identifier, tags or custom fields. Only a contact that is the client of an unwalled matter, or the contact on a payment or trust entry the books reader can read, is returned; any other is not_found. Module token with books:read; service call only.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "name": "contact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter contact_id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BooksContact"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "books"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant"
+          ],
+          "scopes": [
+            "books:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "service_principal"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getBooksContact",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query"
             ]
           }
         },
@@ -59961,7 +60285,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer_or_service_principal"
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -59977,13 +60301,6 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
-              },
-              "module_bearer": {
-                "header": "Authorization",
-                "scheme": "Bearer",
-                "from_arguments": false,
-                "viewer_required": false,
-                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -85963,47 +86280,6 @@
           "file.version_created"
         ]
       },
-      "mail_filing": {
-        "sequence": [
-          "createNote",
-          "createFileUpload",
-          "getFileUpload",
-          "putFileChunk",
-          "completeFileUpload",
-          "publishFile",
-          "bulkFile",
-          "createFileLink"
-        ],
-        "issued_by": "core",
-        "registered_module": true,
-        "viewer_context_required": false,
-        "scopes": [
-          "notes:write",
-          "files:write"
-        ],
-        "grants_admin": false,
-        "firmwide_bypass": false,
-        "expired": "forbidden",
-        "wrong_module": "forbidden",
-        "wrong_matter": "not_found",
-        "operation_outside_grant": "forbidden",
-        "event_type": "mail.filing_authorized"
-      },
-      "mail_matching": {
-        "sequence": [
-          "createAiCall"
-        ],
-        "issued_by": "core",
-        "viewer_context_required": false,
-        "scopes": [
-          "ai:use"
-        ],
-        "grants_admin": false,
-        "firmwide_bypass": false,
-        "expired": "forbidden",
-        "wrong_module": "forbidden",
-        "without_matter_id": true
-      },
       "operations": [
         "bulkFile",
         "completeFileUpload",
@@ -86062,7 +86338,6 @@
         "listTrustAccount",
         "listTrustEntry",
         "markFileStatus",
-        "matchMail",
         "sendModuleMail",
         "updateFeeAgreement"
       ],
@@ -88501,6 +88776,10 @@
     {
       "scope": "backups:admin",
       "description": "Create, download, and restore backups."
+    },
+    {
+      "scope": "books:read",
+      "description": "Read the firm's invoices, payments, expenses, trust accounts and trust ledger, and the billing details of billed contacts, firm-wide except walled matters and without a viewer, for a module's background money work."
     },
     {
       "scope": "calendar:read",

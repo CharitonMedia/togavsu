@@ -62,8 +62,11 @@ type Deps struct {
 	// no contact-keyed module row is readable, so a composition that leaves it out fails
 	// closed.
 	Contacts ContactReader
-	HTTP     *http.Client
-	Now      func() time.Time
+	// BooksContactOK reports whether a books:read module may receive contact.updated for
+	// the contact (CORE-02). Nil drops every contact.updated for books:read modules.
+	BooksContactOK func(ctx context.Context, contactID domain.ID) (bool, error)
+	HTTP           *http.Client
+	Now            func() time.Time
 }
 
 // Service is the module runtime (PRD 9).

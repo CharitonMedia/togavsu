@@ -47,11 +47,13 @@ var catalog = map[string]struct{}{
 	"mail:system":          {},
 	"client_access:read":   {},
 	"client_access:write":  {},
+	"books:read":           {},
 }
 
 // moduleOnlyScopes are grantable only on a module token (CORE-02, CORE-04 to CORE-06).
 // Entries land with the CORE item that adds the scope to the catalog.
 var moduleOnlyScopes = map[string]struct{}{
+	"books:read":           {},
 	"module_secrets:write": {},
 	"mail:send":            {},
 	"mail:system":          {},

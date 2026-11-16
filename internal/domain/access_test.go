@@ -61,6 +61,10 @@ func TestDecide(t *testing.T) {
 		{"attorney approve", principal(RoleAttorney), AccessInput{Resource: ResInvoice, Action: ActionApproveInvoice}, Decision{Allow: true}},
 		{"union write", principal(RoleAccountant, RoleAttorney), AccessInput{Resource: ResInvoice, Action: ActionWrite}, Decision{Allow: true}},
 		{"system wall", SystemPrincipal(), AccessInput{Resource: ResMatter, Action: ActionRead, MatterID: matter, Walled: true}, Decision{Allow: true, Reason: ReasonSystem}},
+		{"books reader invoice", Principal{ModuleID: "quickbooks", Source: SourceService, Roles: []Role{RoleAccountant}}, AccessInput{Resource: ResInvoice, Action: ActionRead}, Decision{Allow: true}},
+		{"books reader walled", Principal{ModuleID: "quickbooks", Source: SourceService, Roles: []Role{RoleAccountant}}, AccessInput{Resource: ResInvoice, Action: ActionRead, MatterID: matter, Walled: true}, Decision{Reason: ReasonMatterWall}},
+		{"books reader write", Principal{ModuleID: "quickbooks", Source: SourceService, Roles: []Role{RoleAccountant}}, AccessInput{Resource: ResInvoice, Action: ActionWrite}, Decision{Reason: ReasonRole}},
+		{"service no roles", Principal{ModuleID: "quickbooks", Source: SourceService}, AccessInput{Resource: ResInvoice, Action: ActionRead}, Decision{Reason: ReasonUnauthenticated}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

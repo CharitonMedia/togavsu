@@ -1358,6 +1358,138 @@
       }
     },
     {
+      "name": "getBooksProfile",
+      "method": "GET",
+      "path": "/api/v1/books/profile",
+      "features": [
+        "books"
+      ],
+      "scopes": [
+        "books:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ],
+      "module_delegation": "service_principal",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "getBooksMatter",
+      "method": "GET",
+      "path": "/api/v1/books/matters/{matter_id}",
+      "features": [
+        "books"
+      ],
+      "scopes": [
+        "books:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ],
+      "module_delegation": "service_principal",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "getBooksContact",
+      "method": "GET",
+      "path": "/api/v1/books/contacts/{contact_id}",
+      "features": [
+        "books"
+      ],
+      "scopes": [
+        "books:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ],
+      "module_delegation": "service_principal",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query"
+        ]
+      }
+    },
+    {
       "name": "listUserDirectory",
       "method": "GET",
       "path": "/api/v1/user-directory",
@@ -17257,7 +17389,7 @@
         "staff",
         "accountant"
       ],
-      "module_delegation": "delegated_viewer_or_service_principal",
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -17267,13 +17399,6 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
-          },
-          "module_bearer": {
-            "header": "Authorization",
-            "scheme": "Bearer",
-            "from_arguments": false,
-            "viewer_required": false,
-            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [

@@ -138,7 +138,12 @@ func Decide(p Principal, in AccessInput) Decision {
 	if p.Source == SourceSystem {
 		return Decision{Allow: true, Reason: ReasonSystem}
 	}
-	if p.UserID.IsZero() || len(p.Roles) == 0 {
+	// A module service principal with roles (the books reader, CORE-02) has no user id
+	// and sits outside every wall. Any other caller still needs a user.
+	if len(p.Roles) == 0 {
+		return Decision{Allow: false, Reason: ReasonUnauthenticated}
+	}
+	if p.UserID.IsZero() && !(p.Source == SourceService && p.ModuleID != "") {
 		return Decision{Allow: false, Reason: ReasonUnauthenticated}
 	}
 	if in.MatterID != "" && in.Walled && !in.WallAllows {
@@ -238,6 +243,11 @@ func roleAllowsOne(role Role, in AccessInput) bool {
 			return false
 		}
 	case RoleClient:
+		// CORE-23: a client-authorized processor grant posts the trust deposit and may
+		// satisfy a replenishment under ActionTrustDeposit on the client's own matter.
+		if in.Action == ActionTrustDeposit && in.Resource == ResTrust && in.ClientMatter {
+			return true
+		}
 		if in.Action != ActionRead || !in.ClientMatter {
 			return false
 		}

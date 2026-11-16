@@ -80,7 +80,7 @@ func (x *extensions) openModules(a *App, cfg Config, ui *UI, now func() time.Tim
 		}
 	}
 	svc, err := modules.New(modules.Deps{DB: a.Pool, Key: cfg.Key, Audit: a.Audit, Settings: a.Settings, Walls: a.Practice.Policy.Walls,
-		Contacts: a.Practice, Signing: x.Market, Users: a.Users, Tokens: modules.IdentityTokens{Svc: a.Identity}, Help: ui.Help,
+		Contacts: a.Practice, BooksContactOK: a.booksContactReadableForModule, Signing: x.Market, Users: a.Users, Tokens: modules.IdentityTokens{Svc: a.Identity}, Help: ui.Help,
 		Widgets: ui.Catalog, Nav: ui.Dashboard, Runtime: rt, Backups: backups, Now: now})
 	if err != nil {
 		return err

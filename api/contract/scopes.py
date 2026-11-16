@@ -72,6 +72,11 @@ SCOPES = {
     "firm:read": "Read the firm profile: name, contact details, time zone, and client portal appearance.",
     "client_access:read": "Read whether a client contact has portal access and its status.",
     "client_access:write": "Grant, reset, deactivate or reactivate client portal access for a client contact.",
+    "books:read": (
+        "Read the firm's invoices, payments, expenses, trust accounts and trust ledger, "
+        "and the billing details of billed contacts, firm-wide except walled matters and without a viewer, "
+        "for a module's background money work."
+    ),
 }
 
 SCOPE_PATTERNS = [

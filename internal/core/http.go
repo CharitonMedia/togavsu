@@ -50,6 +50,7 @@ func (a *App) routes() {
 	a.meAppointmentsRoutes(m)
 	a.meTrustRoutes(m)
 	a.directoryRoutes(m)
+	a.booksRoutes(m)
 	a.clientAccessRoutes(m)
 	a.portalRoutes(m)
 	a.systemRoutes(m)
@@ -334,6 +335,9 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 			return p, err
 		}
 		p.Source = domain.SourceService
+		if err := a.elevateBooksReader(r, &p, c); err != nil {
+			return p, err
+		}
 	}
 	return p, nil
 }

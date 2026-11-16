@@ -80,6 +80,37 @@ SERVICE_PRINCIPAL_OPERATIONS = frozenset(
         "sendModuleMail",
         "updateFeeAgreement",
         "markFileStatus",
+        "listInvoice",
+        "getInvoice",
+        "listPayment",
+        "getPayment",
+        "listExpense",
+        "getExpense",
+        "listTrustAccount",
+        "getTrustAccount",
+        "listTrustEntry",
+        "getTrustEntry",
+        "getTrustBalances",
+    }
+)
+
+# Money reads that a books:read service call elevates to the accountant books reader (CORE-02).
+BOOKS_READER_OPERATIONS = frozenset(
+    {
+        "listInvoice",
+        "getInvoice",
+        "listPayment",
+        "getPayment",
+        "listExpense",
+        "getExpense",
+        "listTrustAccount",
+        "getTrustAccount",
+        "listTrustEntry",
+        "getTrustEntry",
+        "getTrustBalances",
+        "getBooksProfile",
+        "getBooksMatter",
+        "getBooksContact",
     }
 )
 
