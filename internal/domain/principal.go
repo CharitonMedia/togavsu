@@ -18,12 +18,14 @@ const (
 )
 
 // ActorSource names where a write came from. System is reserved for the job runner.
+// Service is a module's own token with no viewer (CORE-01 service call).
 type ActorSource string
 
 const (
 	SourceUI       ActorSource = "ui"
 	SourceAPIToken ActorSource = "api_token"
 	SourceModule   ActorSource = "module"
+	SourceService  ActorSource = "service"
 	SourceSystem   ActorSource = "system"
 )
 

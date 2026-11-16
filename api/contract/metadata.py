@@ -396,9 +396,8 @@ BACKGROUND_FILE_PUBLICATION = {
 }
 GENERIC_NONINTERACTIVE = frozenset(
     {
-        "createEvent",
-        "bulkEvent",
-        "createNotification",
+        # createEvent, bulkEvent and createNotification take a service principal
+        # (CORE-01 / CORE-03) instead of a noninteractive task grant.
         "createFileLink",
         "createAiCall",
     }

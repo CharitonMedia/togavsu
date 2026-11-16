@@ -41,7 +41,9 @@ func TestMigrationRefusalsAssumingCore(t *testing.T) {
 	ms := []db.Migration{{Version: 1, Name: "0001_links",
 		SQL: "CREATE TABLE links (id TEXT PRIMARY KEY, refund_id TEXT REFERENCES core.payment_refunds (id) ON DELETE CASCADE);\n" +
 			"CREATE TABLE fine (id TEXT PRIMARY KEY, refund_id TEXT REFERENCES core.payment_refunds (id) ON DELETE RESTRICT);"}}
-	if got := refusalCodes(MigrationRefusals(m, ms)); len(got) != 2 || got[0] != RefuseCoreReference || got[1] != RefuseCoreReference {
+	// CORE-22: payment_refunds is a linkable core record. CASCADE is still refused;
+	// RESTRICT is accepted. AssumingCore hides the relation-missing class only.
+	if got := refusalCodes(MigrationRefusals(m, ms)); len(got) != 1 || got[0] != RefuseStatement {
 		t.Fatalf("refusals: %v", got)
 	}
 	refs := MigrationRefusalsAssumingCore(m, ms)

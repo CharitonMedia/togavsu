@@ -206,6 +206,9 @@ var coreRecords = map[string]string{
 	"payment": "payments", "time_entry": "time_entries", "expense": "expenses", "file": "files",
 	"note": "notes", "calendar_event": "calendar_events", "deadline": "deadlines",
 	"trust_entry": "trust_ledger", "practice_area": "practice_areas",
+	// CORE-22: modules may link to and extend these. payment_refunds is created by the
+	// module-core migration that lands with this record (CORE-24 fills the refund API).
+	"fee_agreement": "fee_agreements", "payment_refund": "payment_refunds", "trust_account": "trust_accounts",
 }
 
 // CoreTable returns the schema-core table for a record name.

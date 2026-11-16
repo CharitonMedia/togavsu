@@ -275,14 +275,17 @@ def render_mcp(spec: dict) -> dict:
             mcp = operation["x-togavsu-mcp"]
             if mcp["parity"] != "required":
                 continue
+            access = operation["x-togavsu-access"]
             tool = {
                 "name": operation["operationId"],
                 "method": method.upper(),
                 "path": path,
                 "features": operation["x-togavsu-features"],
-                "scopes": operation["x-togavsu-access"]["scopes"],
-                "roles": operation["x-togavsu-access"]["roles"],
+                "scopes": access["scopes"],
+                "roles": access["roles"],
             }
+            if access.get("module_delegation"):
+                tool["module_delegation"] = access["module_delegation"]
             limit = next((parameter for parameter in operation.get("parameters") or [] if parameter.get("name") == "limit"), None)
             if limit and isinstance(limit.get("schema"), dict):
                 tool["limit"] = dict(limit["schema"])

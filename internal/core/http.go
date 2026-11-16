@@ -12,6 +12,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 	"github.com/CharitonMedia/togavsu/internal/settings"
@@ -300,13 +301,51 @@ func shared(err error) error {
 
 // principal is the hook practice and every core route use. Services check roles,
 // walls and attorney-only redaction against it.
-// A module's call carrying a context token runs as the viewer (delegate).
+// A module's call carrying a context token runs as the viewer (delegate). A module
+// token with no context token is the service principal (CORE-01), audited as source
+// service, and only reaches operations marked for it.
 func (a *App) principal(r *http.Request) (domain.Principal, error) {
 	c, err := a.caller(r)
 	if err != nil {
 		return c.Principal, err
 	}
-	return a.delegate(r, c.Principal)
+	p, err := a.delegate(r, c.Principal)
+	if err != nil {
+		return p, err
+	}
+	if moduleOwn(p) {
+		if err := a.allowServiceCall(r, p); err != nil {
+			return p, err
+		}
+		p.Source = domain.SourceService
+	}
+	return p, nil
+}
+
+// serviceDelegation marks an operation that a module service principal may call.
+var serviceDelegation = map[string]bool{
+	"service_principal":                       true,
+	"delegated_viewer_or_service_principal":   true,
+}
+
+// allowServiceCall refuses a module's own token on every operation that is not marked
+// for a service principal (CORE-01). Task-authorized noninteractive calls carry a grant
+// header and are checked by that workflow instead.
+func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
+	if r.Header.Get(modules.TaskAuthorizationHeader) != "" {
+		return nil
+	}
+	if moduleRuntimeRoute(r, p) {
+		return nil
+	}
+	t, ok := a.toolFor(r.Method, r.URL.Path)
+	if !ok {
+		return domain.Forbidden("this route is not available to tokens")
+	}
+	if serviceDelegation[t.Delegation] {
+		return nil
+	}
+	return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
 }
 
 // status is the HTTP status for err: identity's own codes go through shared, and the

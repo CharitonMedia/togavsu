@@ -40,6 +40,7 @@ modules
 note_tags
 notes
 password_credentials
+payment_refunds
 payments
 practice_areas
 recovery_codes

@@ -75,8 +75,8 @@ func (s *Service) Record(ctx context.Context, who domain.Principal, change Chang
 	actor := who.UserID
 	if actor.IsZero() {
 		// A module-bound token has no user. The row is the System actor with source
-		// module, and provenance keeps the module id in the reason.
-		moduleCall := who.Source == domain.SourceModule && who.ModuleID != ""
+		// module or service (CORE-01), and provenance keeps the module id in the reason.
+		moduleCall := (who.Source == domain.SourceModule || who.Source == domain.SourceService) && who.ModuleID != ""
 		if who.Source != domain.SourceSystem && !moduleCall {
 			return domain.AuditEntry{}, domain.Unauthenticated("actor is required")
 		}

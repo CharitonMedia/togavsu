@@ -744,6 +744,7 @@ var pluralRecords = map[string]string{
 	"matters": "matter", "contacts": "contact", "users": "user", "invoices": "invoice", "payments": "payment",
 	"time-entries": "time_entry", "expenses": "expense", "files": "file", "notes": "note",
 	"calendar-events": "calendar_event", "deadlines": "deadline",
+	"fee-agreements": "fee_agreement", // CORE-22
 }
 
 // Include wraps the core's read and list endpoints: GET /api/v1/{records}/{id} and

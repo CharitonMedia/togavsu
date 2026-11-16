@@ -45,9 +45,9 @@ func staffRole(p domain.Principal) bool {
 	return p.HasRole(domain.RoleAdmin) || p.HasRole(domain.RoleAttorney) || p.HasRole(domain.RoleStaff)
 }
 
-// moduleOwn is a module's own token with no viewer (PRD 9.3).
+// moduleOwn is a module's own token with no viewer (PRD 9.3 / CORE-01 service call).
 func moduleOwn(p domain.Principal) bool {
-	return p.Source == domain.SourceModule && p.ModuleID != "" && p.UserID.IsZero()
+	return (p.Source == domain.SourceModule || p.Source == domain.SourceService) && p.ModuleID != "" && p.UserID.IsZero()
 }
 
 // moduleEnabled reports whether module is installed and enabled.
@@ -241,7 +241,7 @@ func eventActorKind(p domain.Principal) string {
 	switch p.Source {
 	case domain.SourceSystem:
 		return "system"
-	case domain.SourceModule:
+	case domain.SourceModule, domain.SourceService:
 		return "module"
 	case domain.SourceAPIToken:
 		return "agent"

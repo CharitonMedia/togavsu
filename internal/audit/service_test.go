@@ -133,12 +133,21 @@ func TestModulePrincipalIsAudited(t *testing.T) {
 	if row.ActorID != domain.SystemUserID || row.Source != string(domain.SourceModule) || !strings.Contains(row.Reason, "module=matter-clock") {
 		t.Fatalf("module row %+v", row)
 	}
+	service := domain.Principal{Source: domain.SourceService, ModuleID: "matter-clock", TokenID: "tok-1"}
+	row, err = svc.Record(ctx, service, Change{Entity: "matter", EntityID: "m-1", Field: "name", Old: "B", New: "C"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Source != string(domain.SourceService) || !strings.Contains(row.Reason, "module=matter-clock") {
+		t.Fatalf("service row %+v", row)
+	}
 	for _, who := range []domain.Principal{
 		{Source: domain.SourceModule},
+		{Source: domain.SourceService},
 		{Source: domain.SourceAPIToken, ModuleID: "matter-clock"},
 		{Source: domain.SourceUI},
 	} {
-		if _, err := svc.Record(ctx, who, Change{Entity: "matter", EntityID: "m-1", Field: "name", New: "C"}); err == nil {
+		if _, err := svc.Record(ctx, who, Change{Entity: "matter", EntityID: "m-1", Field: "name", New: "D"}); err == nil {
 			t.Fatalf("%+v recorded without an actor", who)
 		}
 	}

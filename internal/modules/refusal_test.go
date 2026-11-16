@@ -135,11 +135,10 @@ func TestCheckAllReportsEveryMigrationRefusal(t *testing.T) {
 		code, file, value string
 		statement         int
 	}
+	// CORE-22: trust_accounts and payment_refunds are linkable core records, so those
+	// REFERENCES pass. CREATE TABLE contacts still collides with a core name.
 	wants := []want{
-		{modules.RefuseCoreReference, "migrations/0001_matter_targets.sql", "core.trust_accounts", 1},
-		{modules.RefuseCoreReference, "migrations/0002_more.sql", "core.payment_refunds", 1},
 		{modules.RefuseStatement, "migrations/0002_more.sql", "", 2},
-		{modules.RefuseCoreReference, "migrations/0002_more.sql", "core.trust_accounts", 3},
 	}
 	if len(refs) != len(wants) {
 		t.Fatalf("refusals: %v", refs)

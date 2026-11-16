@@ -51,7 +51,7 @@ func (e *APIError) HTTPStatus() int {
 	switch e.Code {
 	case CodeUnauthenticated:
 		return http.StatusUnauthorized
-	case CodeForbidden, CodeFieldLocked:
+	case CodeForbidden, CodeFieldLocked, "scope_denied":
 		return http.StatusForbidden
 	case CodeNotFound:
 		return http.StatusNotFound

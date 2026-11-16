@@ -46,6 +46,9 @@ func (s *Service) IssueToken(ctx context.Context, caller Caller, in Issue) (Issu
 		if !knownScope(scope) {
 			return IssuedToken{}, domain.Invalid("scopes", "unknown scope")
 		}
+		if _, modOnly := moduleOnlyScopes[scope]; modOnly && in.ModuleID == "" {
+			return IssuedToken{}, apiCode("scope_denied", "scope is for module tokens only")
+		}
 		if _, ok := ceiling[scope]; !ok && !viewScope(scope) {
 			return IssuedToken{}, apiCode("scope_denied", "issuer cannot grant this scope")
 		}

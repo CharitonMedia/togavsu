@@ -15,12 +15,13 @@ import (
 
 // tool is one entry of api/openapi/v1/mcp-tools.json: an API operation and its scopes.
 type tool struct {
-	Name   string   `json:"name"`
-	Method string   `json:"method"`
-	Path   string   `json:"path"`
-	Scopes []string `json:"scopes"`
-	Roles  []string `json:"roles"`
-	segs   []string
+	Name       string   `json:"name"`
+	Method     string   `json:"method"`
+	Path       string   `json:"path"`
+	Scopes     []string `json:"scopes"`
+	Roles      []string `json:"roles"`
+	Delegation string   `json:"module_delegation,omitempty"`
+	segs       []string
 }
 
 func loadTools(raw []byte) ([]tool, error) {

@@ -731,6 +731,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -773,6 +774,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1242,6 +1244,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -1292,6 +1295,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1339,6 +1343,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1380,6 +1385,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1427,6 +1433,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1470,6 +1477,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -1518,6 +1526,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1565,6 +1574,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -1612,6 +1622,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1659,6 +1670,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1700,6 +1712,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1748,6 +1761,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1795,6 +1809,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -1842,6 +1857,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1889,6 +1905,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1930,6 +1947,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -1978,6 +1996,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2025,6 +2044,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -2072,6 +2092,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2119,6 +2140,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2160,6 +2182,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2208,6 +2231,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2255,6 +2279,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -2302,6 +2327,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2349,6 +2375,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2390,6 +2417,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2438,6 +2466,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2485,6 +2514,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2534,6 +2564,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -2586,6 +2617,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2635,6 +2667,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2678,6 +2711,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2727,6 +2761,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2772,6 +2807,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -2822,6 +2858,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2869,6 +2906,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2910,6 +2948,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -2956,6 +2995,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3003,6 +3043,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3050,6 +3091,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -3097,6 +3139,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -3144,6 +3187,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -3191,6 +3235,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3238,6 +3283,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3279,6 +3325,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3327,6 +3374,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3372,6 +3420,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3417,6 +3466,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3458,6 +3508,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -3505,6 +3556,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3552,6 +3604,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3593,6 +3646,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3640,6 +3694,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3682,6 +3737,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -3947,6 +4003,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -3994,6 +4051,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4041,6 +4099,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4082,6 +4141,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4130,6 +4190,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -4178,6 +4239,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4225,6 +4287,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -4272,6 +4335,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4319,6 +4383,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4360,6 +4425,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4407,6 +4473,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4450,6 +4517,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4497,6 +4565,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -4544,6 +4613,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4591,6 +4661,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4632,6 +4703,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4680,6 +4752,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4727,6 +4800,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4769,6 +4843,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -4816,6 +4891,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4856,6 +4932,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -5971,6 +6048,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6018,6 +6096,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6065,6 +6144,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6116,6 +6196,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6163,6 +6244,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6211,6 +6293,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -6261,6 +6344,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6309,6 +6393,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6350,6 +6435,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6399,6 +6485,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -6447,6 +6534,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6494,6 +6582,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -6541,6 +6630,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6588,6 +6678,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6629,6 +6720,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6671,6 +6763,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6713,6 +6806,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6756,6 +6850,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -6806,6 +6901,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6854,6 +6950,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6895,6 +6992,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -6944,6 +7042,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -6992,6 +7091,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7041,6 +7141,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -7093,6 +7194,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7134,6 +7236,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7184,6 +7287,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -7232,6 +7336,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7280,6 +7385,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7327,6 +7433,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7373,6 +7480,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7414,6 +7522,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7463,6 +7572,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7503,6 +7613,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7550,6 +7661,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7597,6 +7709,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7645,6 +7758,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7694,6 +7808,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -7745,6 +7860,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7805,6 +7921,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7848,6 +7965,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7895,6 +8013,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -7942,6 +8061,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8018,6 +8138,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8066,6 +8187,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8107,6 +8229,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8156,6 +8279,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8202,6 +8326,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8248,6 +8373,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8294,6 +8420,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8340,6 +8467,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8386,6 +8514,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8432,6 +8561,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8478,6 +8608,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8524,6 +8655,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8569,6 +8701,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8614,6 +8747,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -8659,6 +8793,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8707,6 +8842,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8746,6 +8882,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8795,6 +8932,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -8844,6 +8982,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8893,6 +9032,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8937,6 +9077,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -8983,6 +9124,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9031,6 +9173,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -9079,6 +9222,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -9127,6 +9271,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9167,6 +9312,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9215,6 +9361,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -9262,6 +9409,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9310,6 +9458,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9352,6 +9501,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9399,6 +9549,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9441,6 +9592,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9484,6 +9636,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -9531,6 +9684,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9579,6 +9733,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9621,6 +9776,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9668,6 +9824,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -9715,6 +9872,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9762,6 +9920,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9803,6 +9962,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9850,6 +10010,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9892,6 +10053,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -9939,6 +10101,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -9986,6 +10149,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10033,6 +10197,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10074,6 +10239,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10122,6 +10288,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10169,6 +10336,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10216,6 +10384,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -10263,6 +10432,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10310,6 +10480,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10351,6 +10522,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10418,6 +10590,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -10470,6 +10643,7 @@
         "staff",
         "client"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10530,6 +10704,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10582,6 +10757,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10631,6 +10807,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10691,6 +10868,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10744,6 +10922,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10792,6 +10971,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10839,6 +11019,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10886,6 +11067,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10933,6 +11115,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -10975,6 +11158,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11015,6 +11199,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11063,6 +11248,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -11122,6 +11308,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11172,6 +11359,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -11222,6 +11410,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -11270,6 +11459,7 @@
         "staff",
         "client"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11331,6 +11521,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11383,6 +11574,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11425,6 +11617,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11485,6 +11678,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -11534,6 +11728,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11576,6 +11771,7 @@
         "staff",
         "client"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11635,6 +11831,7 @@
         "staff",
         "client"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11688,6 +11885,7 @@
         "staff",
         "client"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11751,6 +11949,7 @@
         "staff",
         "client"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11806,6 +12005,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11853,6 +12053,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -11900,6 +12101,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11947,6 +12149,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11988,6 +12191,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12035,6 +12239,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12077,6 +12282,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12119,6 +12325,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12160,6 +12367,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12203,6 +12411,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12244,6 +12453,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -12291,6 +12501,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12338,6 +12549,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12385,6 +12597,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -12432,6 +12645,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12479,6 +12693,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12520,6 +12735,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12566,6 +12782,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12606,6 +12823,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -12651,6 +12869,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12696,6 +12915,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12735,6 +12955,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12780,6 +13001,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12820,6 +13042,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -12865,6 +13088,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12910,6 +13134,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12949,6 +13174,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -12991,6 +13217,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -13038,6 +13265,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13078,6 +13306,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13119,6 +13348,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -13165,6 +13395,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13205,6 +13436,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13252,6 +13484,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13293,6 +13526,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13333,6 +13567,7 @@
         "admin",
         "attorney"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13373,6 +13608,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13414,6 +13650,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -13459,6 +13696,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13506,6 +13744,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13545,6 +13784,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13592,6 +13832,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13631,6 +13872,7 @@
       "roles": [
         "admin"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13678,6 +13920,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13751,6 +13994,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -13798,6 +14042,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13808,15 +14053,12 @@
             "argument": "context_token",
             "roles_from_arguments": false
           },
-          "task_authorization": {
-            "header": "X-Togavsu-Task-Authorization",
-            "argument": "task_authorization",
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            },
-            "claims_from_arguments": false,
-            "roles_from_arguments": false
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [
@@ -13836,7 +14078,6 @@
           "query",
           "idempotency_key",
           "context_token",
-          "task_authorization",
           "body"
         ]
       }
@@ -13858,6 +14099,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13899,6 +14141,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13942,6 +14185,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -13986,6 +14230,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14064,6 +14309,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14106,6 +14352,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14149,6 +14396,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14191,6 +14439,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14233,6 +14482,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14275,6 +14525,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14318,6 +14569,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14361,6 +14613,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14404,6 +14657,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14446,6 +14700,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14488,6 +14743,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -14951,6 +15207,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -15032,6 +15289,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -15134,6 +15392,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -15215,6 +15474,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -15317,6 +15577,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -15366,6 +15627,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -15412,6 +15674,7 @@
         "accountant",
         "client"
       ],
+      "module_delegation": "delegated_viewer",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -15454,6 +15717,7 @@
         "staff",
         "accountant"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -15589,6 +15853,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -15636,6 +15901,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -15646,15 +15912,12 @@
             "argument": "context_token",
             "roles_from_arguments": false
           },
-          "task_authorization": {
-            "header": "X-Togavsu-Task-Authorization",
-            "argument": "task_authorization",
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            },
-            "claims_from_arguments": false,
-            "roles_from_arguments": false
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [
@@ -15674,7 +15937,6 @@
           "query",
           "idempotency_key",
           "context_token",
-          "task_authorization",
           "body"
         ]
       }
@@ -15695,6 +15957,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -15705,15 +15968,12 @@
             "argument": "context_token",
             "roles_from_arguments": false
           },
-          "task_authorization": {
-            "header": "X-Togavsu-Task-Authorization",
-            "argument": "task_authorization",
-            "schema": {
-              "type": "string",
-              "minLength": 1
-            },
-            "claims_from_arguments": false,
-            "roles_from_arguments": false
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [
@@ -15733,7 +15993,6 @@
           "query",
           "idempotency_key",
           "context_token",
-          "task_authorization",
           "body"
         ]
       }
@@ -16097,6 +16356,7 @@
         "attorney",
         "staff"
       ],
+      "module_delegation": "delegated_viewer_or_noninteractive",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",

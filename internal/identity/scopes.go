@@ -42,6 +42,10 @@ var catalog = map[string]struct{}{
 	"modules:read": {}, "modules:write": {},
 }
 
+// moduleOnlyScopes are grantable only on a module token (CORE-02, CORE-04 to CORE-06).
+// Entries land with the CORE item that adds the scope to the catalog.
+var moduleOnlyScopes = map[string]struct{}{}
+
 func knownScope(scope string) bool {
 	if _, ok := catalog[scope]; ok {
 		return true
@@ -66,6 +70,9 @@ func roleScopes(role domain.Role) map[string]struct{} {
 		out := copyCatalog()
 		for _, drop := range []string{"settings:write", "users:write", "tokens:write", "backups:admin", "updates:admin", "modules:write", "ai:admin"} {
 			delete(out, drop)
+		}
+		for scope := range moduleOnlyScopes {
+			delete(out, scope)
 		}
 		return out
 	case domain.RoleStaff:
@@ -112,6 +119,12 @@ func copyCatalog() map[string]struct{} {
 		out[scope] = struct{}{}
 	}
 	return out
+}
+
+// ModuleOnlyScope reports a scope that may only sit on a module token (CORE-02).
+func ModuleOnlyScope(scope string) bool {
+	_, ok := moduleOnlyScopes[scope]
+	return ok
 }
 
 func scopeSet(scopes ...string) map[string]struct{} {
