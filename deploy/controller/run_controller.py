@@ -1,6 +1,6 @@
-"""Control-only entrypoint. The Cursor backend needs the existing Cursor key. The Claude Actions
-backend needs none to launch, because lane jobs use the repository's Max sign-in secret; it still
-loads the key when present so agents launched on Cursor before the switch are observed to the end."""
+"""Control-only entrypoint. The cursor-cloud backend needs the existing Cursor key here. The cursor and
+claude-actions backends need none to launch, because lane jobs read the repository's Cursor key or Max
+sign-in secret; the key still loads when present so Cloud Agents launched earlier are observed to the end."""
 import json
 import os
 from pathlib import Path
@@ -24,7 +24,7 @@ for smtp_file in (Path("/mnt/claude-workspace/.env"), Path("/mnt/claude-workspac
             key = key.strip().removeprefix("export ").strip()
             if sep and key in {"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"} and key not in os.environ:
                 os.environ[key] = value.strip().strip("\"'")
-if backend == "cursor" and not os.environ.get("CURSOR_API_KEY"):
+if backend == "cursor-cloud" and not os.environ.get("CURSOR_API_KEY"):
     raise SystemExit("Cursor control credential unavailable")
 script = Path(__file__).resolve().with_name("build_controller.py")
 sys.argv[0] = str(script)

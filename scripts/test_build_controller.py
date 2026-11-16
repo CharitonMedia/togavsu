@@ -1316,7 +1316,7 @@ class ControllerTests(unittest.TestCase):
         self.record["intent"] = intent
         self.controller.save()
         plan = Path(self.temp.name) / "plan.json"
-        plan.write_text(json.dumps(self.controller.plan))
+        plan.write_text(json.dumps(dict(self.controller.plan, worker_backend="cursor-cloud")))  # A Cloud Agents record.
         base = ["build_controller.py", "--plan", str(plan), "--state", self.temp.name, "--reconcile-intent", "one", "R3"]
         with patch("sys.argv", base), patch("sys.stderr", io.StringIO()), self.assertRaises(SystemExit):
             build_controller.main()
@@ -2888,8 +2888,8 @@ LANE_AGENT = "bc-12345678-1234-4234-8234-123456789abc"
 class FakeLaneRemote(build_controller.ActionsRemote):
     """ActionsRemote with GitHub replaced by memory and the push target replaced by a local bare repo."""
 
-    def __init__(self, state_dir, repo_dir, bare, dry=False):
-        super().__init__(state_dir, repo_dir, dry)
+    def __init__(self, state_dir, repo_dir, bare, dry=False, **backend):
+        super().__init__(state_dir, repo_dir, dry, **backend)
         self.push_url = str(bare)
         self.bare = bare
         self.calls, self.runs, self.artifacts, self.pulls = [], [], {}, []
@@ -3172,7 +3172,18 @@ class LaneBackendTests(unittest.TestCase):
         actions = select({"worker_backend": "claude-actions"}, self.state)
         self.assertIsInstance(actions, build_controller.ActionsRemote)
         self.assertFalse(actions.new_on_cursor)
-        for plan in ({"worker_backend": "cursor"}, {}):
+        self.assertEqual((actions.worker, actions.model), ("claude", None))
+        for plan, model in (({"worker_backend": "cursor", "cursor_model": "gpt-5.3-codex"}, "gpt-5.3-codex"), ({}, "auto")):
+            with self.subTest(plan=plan):
+                cli = select(plan, self.state)  # Cursor's CLI in a lane, with or without a lane registry.
+                self.assertIsInstance(cli, build_controller.ActionsRemote)
+                self.assertFalse(cli.new_on_cursor)
+                self.assertEqual((cli.worker, cli.model), ("cursor", model))
+        for plan in ({"worker_backend": "cursor", "cursor_model": "auto; rm -rf /"}, {"worker_backend": "cursor", "cursor_model": ""},
+                     {"worker_backend": "codex"}):
+            with self.subTest(plan=plan), self.assertRaises(ValueError):
+                select(plan, self.state)
+        for plan in ({"worker_backend": "cursor-cloud"},):
             with self.subTest(plan=plan):
                 self.assertIs(type(select(plan, self.state)), Remote)  # No lanes ever ran: plain Cursor.
                 (self.state / "lane-agents.json").write_text("{}")
@@ -3180,6 +3191,31 @@ class LaneBackendTests(unittest.TestCase):
                 self.assertIsInstance(mixed, build_controller.ActionsRemote)
                 self.assertTrue(mixed.new_on_cursor)  # Lanes finish on Actions; new work goes to Cursor.
                 (self.state / "lane-agents.json").unlink()
+
+    def dispatched_inputs(self):
+        return [c[2]["inputs"] for c in self.remote.calls if c[1].endswith("/dispatches")]
+
+    def test_cursor_lane_dispatches_the_cursor_worker_and_keeps_it(self):
+        self.remote = FakeLaneRemote(self.state, self.control, self.bare, worker="cursor", model="auto")
+        self.launch()
+        self.assertEqual(self.remote.load()[LANE_AGENT]["worker"], "cursor")
+        self.remote.cursor("POST", "/agents/" + LANE_AGENT + "/runs", {"prompt": {"text": "fix"}})
+        # A later controller on another model still sends the model the lane started with.
+        later = FakeLaneRemote(self.state, self.control, self.bare, worker="cursor", model="gpt-5.3-codex")
+        later.cursor("POST", "/agents/" + LANE_AGENT + "/runs", {"prompt": {"text": "fix again"}})
+        sent = self.dispatched_inputs() + [c[2]["inputs"] for c in later.calls if c[1].endswith("/dispatches")]
+        self.assertEqual([(i["worker"], i["model"]) for i in sent], [("cursor", "auto")] * 3)
+
+    def test_claude_lanes_keep_running_claude_after_the_switch(self):
+        self.launch()  # A claude-actions lane, as release-final was before the switch.
+        registry = json.loads((self.state / "lane-agents.json").read_text())
+        del registry[LANE_AGENT]["worker"]  # Lanes created before the field existed.
+        (self.state / "lane-agents.json").write_text(json.dumps(registry))
+        cursor = FakeLaneRemote(self.state, self.control, self.bare, worker="cursor", model="auto")
+        cursor.cursor("POST", "/agents/" + LANE_AGENT + "/runs", {"prompt": {"text": "fix"}})
+        sent = self.dispatched_inputs() + [c[2]["inputs"] for c in cursor.calls if c[1].endswith("/dispatches")]
+        self.assertEqual(len(sent), 2)
+        self.assertTrue(all("worker" not in i and "model" not in i for i in sent))  # The workflow defaults to claude.
 
     def test_lane_cannot_publish_control_or_unsafe_workflow_changes(self):
         safe = "name: Product CI\non: [push]\npermissions:\n  contents: read\njobs: {}\n"
@@ -3234,6 +3270,24 @@ class LaneBackendTests(unittest.TestCase):
         (self.state / "lane-agents.json").write_text(json.dumps(registry))
         self.assertEqual(self.remote.agent(self.record)["status"], "ERROR")
 
+    def test_operator_rehomes_a_stopped_cursor_record_onto_a_cursor_cli_lane(self):
+        plan = {"worker_backend": "cursor", "max_implementation_agents": 4, "tasks": [
+            {"id": "one", "depends_on": [], "owned_paths": ["internal/one/"]}]}
+        cursor_agent = "bc-c1cb681b-2606-42d3-b619-5750b5561c4a"
+        stopped = {"agent_id": cursor_agent, "agent_status": "ERROR", "submitted": True, "halted": "Delivery outcome uncertain"}
+        (self.state / "controller.json").write_text(json.dumps({"tasks": {"one": stopped}, "events": [], "tick": 0}))
+        remote = FakeLaneRemote(self.state, self.control, self.bare, worker="cursor", model="auto")
+        controller = Controller(remote, plan, self.state)
+        controller.rehome("one", "integration lead")
+        saved = json.loads((self.state / "controller.json").read_text())
+        self.assertNotIn("one", saved["tasks"])
+        self.assertIn("Cursor CLI lane", saved["events"][-1]["message"])
+        cloud = Controller(build_controller.ActionsRemote(self.state, self.control, new_on_cursor=True),
+                           dict(plan, worker_backend="cursor-cloud"), self.state)
+        cloud.tasks["one"] = dict(stopped)
+        with self.assertRaises(ValueError):
+            cloud.rehome("one", "integration lead")  # Cloud Agents mode has no lane to rehome onto.
+
     def test_operator_rehomes_a_stopped_cursor_record(self):
         plan = {"worker_backend": "claude-actions", "max_implementation_agents": 4, "tasks": [
             {"id": "one", "depends_on": [], "owned_paths": ["internal/one/"]}]}
@@ -3262,6 +3316,7 @@ class LanePackageScanTests(unittest.TestCase):
 
     # A piece of a real repository secret still withholds the whole result.
     TOKEN = "sk-ant-oat01-" + "Q" * 48
+    CURSOR = "crsr" + "_" + "ab12" * 16
 
     def setUp(self):
         text = (Path(__file__).resolve().parents[1] / ".github/workflows/lane-agent.yml").read_text()
@@ -3302,7 +3357,7 @@ class LanePackageScanTests(unittest.TestCase):
     def package(self):
         env = dict(os.environ, RUNNER_TEMP=str(self.runner), LANE_BASE=self.base, LANE_AGENT=LANE_AGENT,
                    LANE_RUN="run-1", LANE_TASK="one", LANE_BRANCH="claude/togavsu-one-12345678",
-                   CLAUDE_OUTCOME="success", SECRET_OAUTH=self.TOKEN, SECRET_GITHUB="")
+                   CLAUDE_OUTCOME="success", SECRET_OAUTH=self.TOKEN, SECRET_CURSOR=self.CURSOR, SECRET_GITHUB="")
         return subprocess.run([sys.executable, "-I", "-c", self.script], cwd=self.repo, env=env, capture_output=True, text=True)
 
     def test_token_added_then_removed_is_withheld(self):
@@ -3313,6 +3368,20 @@ class LanePackageScanTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("credential", result.stderr)
         self.assertFalse((self.runner / "lane-pack" / "lane.bundle").exists())
+
+    def test_cursor_key_in_history_is_withheld(self):
+        self.commit("debug.txt", "env dump " + self.CURSOR + "\n")
+        result = self.package()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("credential", result.stderr)
+        self.assertFalse((self.runner / "lane-pack" / "lane.bundle").exists())
+
+    def test_cursor_shaped_fixture_line_is_stripped(self):
+        self.commit("fixture.txt", "keep\nfake crsr" + "_" + "0" * 40 + "\n")
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads((self.runner / "lane-pack" / "lane-result.json").read_text())
+        self.assertEqual(data["credential_lines_removed"], {"fixture.txt": 1})
 
     def test_clean_history_is_bundled(self):
         self.commit("work.txt", "done\n")
