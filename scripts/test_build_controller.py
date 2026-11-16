@@ -3153,8 +3153,8 @@ class LaneBackendTests(unittest.TestCase):
             if path == "/agents/" + cursor_agent:
                 return {"id": cursor_agent, "status": "ACTIVE", "latestRunId": "run-cursor"}
             return {"id": "run-cursor", "agentId": cursor_agent, "status": "RUNNING", "git": {}}
-        self.remote.new_on_cursor = True
-        os.environ["CURSOR_API_KEY"] = "test-only"
+        self.remote.new_on_cursor = True  # No CURSOR_API_KEY: only new_on_cursor can route these to Cursor.
+        self.assertNotIn("CURSOR_API_KEY", os.environ)
         dispatches = len([c for c in self.remote.calls if c[1].endswith("/dispatches")])
         with patch.object(Remote, "cursor", cursor):
             self.remote.cursor("POST", "/agents", {"agentId": cursor_agent, "name": "Togavsu two",
