@@ -1,6 +1,6 @@
 # Unattended build controller
 
-The controller runs on Render-1 as Patrick's systemd user timer, togavsu-build-controller.timer. It starts after boot and runs again two minutes after each completed tick. Linger is enabled, so neither an open chat nor a logged-in desktop is required. Builds, tests and application installs remain in Cursor cloud VMs and GitHub-hosted CI; Render-1 runs only control operations.
+The controller runs on Render-1 as Patrick's systemd user timer, togavsu-build-controller.timer; the batch2 instance runs as togavsu-build-controller-batch2.timer (see Batch 2 on its own branch). It starts after boot and runs again two minutes after each completed tick. Linger is enabled, so neither an open chat nor a logged-in desktop is required. Builds, tests and application installs remain in Cursor cloud VMs and GitHub-hosted CI; Render-1 runs only control operations.
 
 ## Automatic cycle
 - Adopt the four existing Cursor agents and their two already-used correction rounds.
@@ -30,7 +30,7 @@ A failed control request is recorded and retried by later observation, not by by
 Observation validation uses the [documented Cursor v1 run statuses](https://cursor.com/docs/cloud-agent/api/endpoints): active `CREATING`, `RUNNING`, `WAITING_FOR_BACKGROUND_WORK`; terminal `FINISHED`, `ERROR`, `CANCELLED`, `EXPIRED`. Only an identified terminal run can release capacity or allow correction/PR processing. Missing, unknown or malformed statuses, malformed identities and terminal snapshots without an ID retain the slot and report a transient observation error, including during adoption and initial-launch reconciliation. The fetched run must match the requested agent and latest run ID; agent lifecycle data cannot substitute for a run result. Agent `ACTIVE` without an available run is only a conservative busy signal. Valid later observations clear the transient error automatically while preserving unrelated holds and delivery intents.
 
 ## Freeze and recovery
-Immediate freeze: stop both togavsu-build-controller.timer and togavsu-build-controller.service through systemctl --user. Create .build-state/STOP to keep it paused across a later timer start. A STOP file is checked at the beginning of each tick.
+Immediate freeze: stop togavsu-build-controller.timer, togavsu-build-controller.service, togavsu-build-controller-batch2.timer and togavsu-build-controller-batch2.service through systemctl --user. Create both .build-state/STOP and .build-state-batch2/STOP to keep both instances paused across a later timer start or boot. Each instance checks its own STOP file at the beginning of each tick.
 
 State lives in the control checkout's ignored .build-state directory: controller.json contains durable IDs, delivery/merge intents, correction budgets and results; agents.json preserves the original launches. Investigate a stopped item and reconcile its external run, PR and independent evidence before the authorized integration lead makes a targeted recovery. Routine supervision doesn't wait for Patrick. Recovery can't waive review, CI, ownership, protection or product acceptance.
 
