@@ -3321,7 +3321,11 @@ class LanePackageScanTests(unittest.TestCase):
     def setUp(self):
         text = (Path(__file__).resolve().parents[1] / ".github/workflows/lane-agent.yml").read_text()
         step = text[text.index("- name: Package result"):]
-        start = step.index("python3 - <<'PY'\n") + len("python3 - <<'PY'\n")
+        # The scanner runs isolated, and holds only the credential of the worker that ran.
+        self.assertIn("python3 -I - <<'PY'\n", step)
+        self.assertIn("SECRET_OAUTH: ${{ inputs.worker != 'cursor' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}", step)
+        self.assertIn("SECRET_CURSOR: ${{ inputs.worker == 'cursor' && secrets.CURSOR_API_KEY || '' }}", step)
+        start = step.index("python3 -I - <<'PY'\n") + len("python3 -I - <<'PY'\n")
         lines = []
         for line in step[start:].splitlines():
             if line.strip() == "PY":

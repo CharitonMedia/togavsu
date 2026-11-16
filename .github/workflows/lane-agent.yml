@@ -152,11 +152,15 @@ jobs:
       - name: Package result
         env:
           CLAUDE_OUTCOME: ${{ steps.worker.outcome }}
-          SECRET_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          SECRET_CURSOR: ${{ secrets.CURSOR_API_KEY }}
+          # Only the credential this lane's worker held: it is the one the scan must find, and the other
+          # never enters a process that runs after worker-controlled code on this VM.
+          SECRET_OAUTH: ${{ inputs.worker != 'cursor' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          SECRET_CURSOR: ${{ inputs.worker == 'cursor' && secrets.CURSOR_API_KEY || '' }}
           SECRET_GITHUB: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 - <<'PY'
+          # -I: no checkout directory, user site or PYTHON* variables on the import path, so a module the
+          # lane leaves in the repository root cannot load into the scanner.
+          python3 -I - <<'PY'
           import base64, hashlib, json, os, pathlib, re, subprocess, sys
           temp = pathlib.Path(os.environ["RUNNER_TEMP"])
           out, pack = temp / "lane-out", temp / "lane-pack"
