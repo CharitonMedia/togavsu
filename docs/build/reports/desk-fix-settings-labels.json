@@ -1,8 +1,8 @@
 {
   "task_id": "desk-fix-settings-labels",
   "status": "pass",
-  "scope": "Desk fix: plain labels on every settings.Definition, admin Settings rows, and the settings API JSON/OpenAPI Setting schema. Codex P1/P2 follow-up: UI error text names settings by label; regression tests for layout, notices, errors, and API label. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
-  "tested_revision": "a86e6330fc2e348e70b1ebf097067e66cb2f2570",
+  "scope": "Desk fix: plain labels on every settings.Definition, admin Settings rows, and the settings API JSON/OpenAPI Setting schema. Codex follow-ups: UI error text names settings by label; UIError keeps domain reasons for specials (naming_pattern, model_prices). status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
+  "tested_revision": "3ed21b34562dcd1c04202b1278fe7b94616cf118",
   "prd_sections": [
     "8.7"
   ],
@@ -11,23 +11,23 @@
     {
       "command": "go vet ./...",
       "exit_code": 0,
-      "seconds": 17
+      "seconds": 2
     },
     {
       "command": "go test -count=1 ./internal/settings/ ./internal/dashboard/ ./internal/core/",
       "exit_code": 0,
-      "seconds": 118
+      "seconds": 121
     },
     {
       "command": "go test -count=1 ./internal/dashboard/...",
       "exit_code": 0,
-      "seconds": 30,
-      "note": "Includes compose UI regression TestUIAdminSettingsLabels"
+      "seconds": 40,
+      "note": "Includes compose UI regression TestUIAdminSettingsLabels (row order, notices, naming-pattern domain reason, API label)"
     },
     {
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 27
+      "seconds": 34
     }
   ],
   "codex_resolutions": [
@@ -42,13 +42,17 @@
     {
       "finding": "P2 missing layout/API/notice/error tests",
       "resolution": "TestUIErrorNamesSettingByLabel; TestUIAdminSettingsLabels; tightened TestUIAdminSettings invalid-path assertion"
+    },
+    {
+      "finding": "P2 UIError dropped domain reasons when the registry error did not start with the key (naming_pattern, model_prices)",
+      "resolution": "UIError keeps the reason after the label (e.g. File Naming Pattern: … needs <ext>); unit cases and compose TestUIAdminSettingsLabels assert the hint survives"
     }
   ],
   "implemented": [
     "settings.Definition.Label on every catalog key from docs/build/desk-fixes/settings-labels.md",
     "ValidateCatalog refuses an empty label",
     "Admin and core settings rows lead with label, help under it, key last muted; column heading Name; visually hidden form label and save/reset/error copy use the label",
-    "settings.UIError rewrites mutation failures for UI display by label; API error bodies still name the key",
+    "settings.UIError rewrites mutation failures for UI display by label and preserves non-key domain reasons; API error bodies still name the key",
     "settingJSON and OpenAPI Setting include required label; listSettings description lists setting fields including label"
   ],
   "pending": [
@@ -56,8 +60,8 @@
     "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
   ],
   "simplification": {
-    "net_lines": 436,
+    "net_lines": 478,
     "ponytail_debt_sections": 13,
-    "note": "No new PONYTAIL-DEBT entries. Added settings.UIError shared by dashboard and core HTML; API path unchanged."
+    "note": "No new PONYTAIL-DEBT entries. UIError shared by dashboard and core HTML; API path unchanged."
   }
 }
