@@ -2260,6 +2260,66 @@ SCHEMAS = _register(
             ["name", "short_name", "address", "phone", "email", "website", "logo_file_id", "time_zone", "client_portal"],
             "Firm profile from firm.* settings plus the client portal appearance. Read only.",
         ),
+        "BooksProfile": _obj(
+            {
+                "firm_name": {"type": "string"},
+                "time_zone": {"type": "string"},
+                "currency": _enum(["USD"], "Always USD."),
+            },
+            ["firm_name", "time_zone", "currency"],
+            "Firm books profile for a module books reader (CORE-02).",
+        ),
+        "BooksMatter": _obj(
+            {
+                "id": _uuid(),
+                "number": {"type": "string"},
+                "name": {"type": "string"},
+                "status": {"type": "string"},
+                "client_contact_id": _null(_uuid("Primary client party contact.")),
+                "responsible_attorney_user_id": _null(_uuid()),
+            },
+            ["id", "number", "name", "status", "client_contact_id", "responsible_attorney_user_id"],
+            "Matter projection for a module books reader. A walled matter is not_found.",
+        ),
+        "BooksBillingAddress": _obj(
+            {
+                "line1": {"type": "string"},
+                "line2": {"type": "string"},
+                "city": {"type": "string"},
+                "region": {"type": "string"},
+                "postal_code": {"type": "string"},
+                "country": {"type": "string"},
+            },
+            ["line1", "line2", "city", "region", "postal_code", "country"],
+            "Primary current mailing address for books sync.",
+        ),
+        "BooksContact": _obj(
+            {
+                "id": _uuid(),
+                "kind": _KIND,
+                "display_name": {"type": "string"},
+                "given_name": {"type": "string"},
+                "family_name": {"type": "string"},
+                "organization_name": {"type": "string"},
+                "email": {"type": "string"},
+                "phone": {"type": "string"},
+                "billing_address": _null(_ref("BooksBillingAddress")),
+                "archived": {"type": "boolean"},
+            },
+            [
+                "id",
+                "kind",
+                "display_name",
+                "given_name",
+                "family_name",
+                "organization_name",
+                "email",
+                "phone",
+                "billing_address",
+                "archived",
+            ],
+            "Billing details for a contact the books reader may see. No date of birth, identifier, tags or custom fields.",
+        ),
         "UserDirectoryEntry": _obj(
             {
                 "id": _uuid(),
@@ -2487,6 +2547,85 @@ SCHEMAS = _register(
             ["status"],
             "One recipient outcome. Addresses never appear.",
         ),
+        
+        "MailMatchRequest": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "addresses": {"type": "array", "maxItems": 50, "items": {"type": "string"}, "description": "At most 50 email addresses."},
+                "matter_numbers": {"type": "array", "maxItems": 50, "items": {"type": "string"}},
+                "case_numbers": {"type": "array", "maxItems": 50, "items": {"type": "string"}},
+                "name_tokens": {"type": "array", "maxItems": 50, "items": {"type": "string"}},
+                "known_matter_ids": {"type": "array", "maxItems": 50, "items": _uuid(), "uniqueItems": True},
+            },
+            "description": "matchMail body (CORE-26). Each list is at most 50 entries.",
+        },
+        "MailMatchContact": _obj(
+            {
+                "id": _uuid(),
+                "given_name": {"type": "string"},
+                "family_name": {"type": "string"},
+                "full_name": {"type": "string"},
+                "kind": {"type": "string"},
+            },
+            ["id"],
+            "A non-archived contact whose current email matched an address.",
+        ),
+        "MailMatchClient": _obj(
+            {"given_name": {"type": "string"}, "family_name": {"type": "string"}},
+            [],
+            "Client party names on a matched matter.",
+        ),
+        "MailMatchMatter": _obj(
+            {
+                "id": _uuid(),
+                "number": {"type": "string"},
+                "name": {"type": "string"},
+                "status": {"type": "string"},
+                "case_number": {"type": "string"},
+                "practice_area": {"type": "string"},
+                "clients": _arr({"$ref": "#/components/schemas/MailMatchClient"}),
+                "via": _enum(["address", "matter_number", "case_number", "case_number_in_name", "client_name", "known"], "How the matter matched."),
+            },
+            ["id", "number", "name", "status", "via", "clients"],
+            "One matched matter (at most 50 in the response).",
+        ),
+        "MailMatchResult": _obj(
+            {
+                "contacts_by_address": {
+                    "type": "object",
+                    "additionalProperties": _arr({"$ref": "#/components/schemas/MailMatchContact"}),
+                    "description": "Map of requested address to matching non-archived contacts.",
+                },
+                "matters": _arr({"$ref": "#/components/schemas/MailMatchMatter"}),
+                "match_token": {"type": "string", "description": "Service call only: task authorization naming the module and returned matter ids, valid 15 minutes."},
+            },
+            ["contacts_by_address", "matters"],
+            "matchMail response (CORE-26).",
+        ),
+        "MailFilingGrantRequest": _obj(
+            {
+                "match_token": {"type": "string", "minLength": 1},
+                "matter_id": _uuid("Must be in the match token and unwalled."),
+                "message_key": {"type": "string", "minLength": 1},
+            },
+            ["match_token", "matter_id", "message_key"],
+            "issueMailFilingGrant body (CORE-27).",
+        ),
+        "MailFilingAuthorization": _obj(
+            {
+                "task_authorization": {"type": "string"},
+                "module_id": {"type": "string"},
+                "matter_id": _uuid(),
+                "message_key": {"type": "string"},
+                "expires_at": {"type": "string", "format": "date-time"},
+                "allowed_operations": _arr({"type": "string"}),
+                "issued_by": {"type": "string"},
+            },
+            ["task_authorization", "module_id", "matter_id", "message_key", "expires_at", "allowed_operations", "issued_by"],
+            "Mail filing task authorization (CORE-27), valid 15 minutes.",
+        ),
+
         "ModuleMailResult": _obj(
             {
                 "results": _arr({"$ref": "#/components/schemas/ModuleMailRecipientResult"}),
@@ -2939,6 +3078,42 @@ SCHEMAS = _register(
             },
             ["value"],
             "Body for putModuleSecret.",
+        ),
+        "ModuleDevice": _obj(
+            {
+                "id": _uuid(),
+                "module_id": _module_id(),
+                "user_id": _uuid(),
+                "name": {"type": "string"},
+                "created_at": _dt(),
+                "last_used_at": _dt(),
+                "secret": {
+                    "type": "string",
+                    "description": "Clear device secret. Returned only from createModuleDeviceGrant.",
+                },
+            },
+            ["id", "module_id", "user_id", "name", "created_at", "last_used_at"],
+            "One module device grant (CORE-28). The secret is omitted on list.",
+        ),
+        "ModuleDeviceWrite": _obj(
+            {
+                "module_id": _module_id("Installed module that declares device_connect."),
+                "name": {"type": "string", "description": "Optional label for this device."},
+            },
+            ["module_id"],
+            "Body for createModuleDeviceGrant.",
+        ),
+        "DeviceContextRequest": _obj(
+            {
+                "secret": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Device grant secret from createModuleDeviceGrant or the device-connect page.",
+                },
+                "matter_id": _null(_uuid()),
+            },
+            ["secret"],
+            "Body for exchangeModuleDeviceGrant.",
         ),
         "ManifestMigration": _obj(
             {

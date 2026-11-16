@@ -22,6 +22,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/marketplace"
+	"github.com/CharitonMedia/togavsu/internal/practice"
 )
 
 // Caller is an authenticated request: the principal, the bearer token's scopes (nil for
@@ -80,7 +81,11 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("DELETE /api/v1/modules/{module_id}/secrets/{name...}", h.write("module_secrets:write", h.deleteSecret))
 	m.HandleFunc("POST /api/v1/modules/{module_id}/context-tokens", h.write("", h.contextToken))
 	m.HandleFunc("POST /api/v1/modules/{module_id}/context-tokens/verify", h.scoped("", h.verifyContext))
+	m.HandleFunc("POST /api/v1/modules/{module_id}/device-context-tokens", h.write("modules:read", h.exchangeDevice))
 	m.HandleFunc("GET /api/v1/modules/{module_id}/views/{view}", h.scoped("", h.readView))
+	m.HandleFunc("POST /api/v1/me/module-devices", h.write("", h.createDevice))
+	m.HandleFunc("GET /api/v1/me/module-devices", h.scoped("profile:read", h.listDevices))
+	m.HandleFunc("DELETE /api/v1/me/module-devices/{device_id}", h.write("profile:write", h.revokeDevice))
 	m.HandleFunc("GET /api/v1/domain-handlers", h.scoped("modules:read", h.listDomains))
 	m.HandleFunc("PUT /api/v1/domain-handlers/{domain}", h.write("modules:write", h.switchDomain))
 	m.HandleFunc("GET /api/v1/webhook-deliveries", h.scoped("webhooks:read", h.deliveries))
@@ -89,6 +94,8 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("GET /modules/{module_id}/tabs/{tab}", h.scoped("", h.tabPage))
 	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}", h.scoped("", h.widgetPage))
 	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}", h.scoped("", h.matterItemPage))
+	m.HandleFunc("GET /modules/{module_id}/device-connect", h.scoped("", h.deviceConnectGet))
+	m.HandleFunc("POST /modules/{module_id}/device-connect", h.write("", h.deviceConnectPost))
 	m.HandleFunc("/m/{module_id}/", h.frame)
 	// CORE-07: public provider webhook intake. POST only; undeclared hooks 404.
 	m.HandleFunc("POST /hooks/{module_id}/{hook_id}", h.inboundWebhook)
@@ -154,8 +161,9 @@ func (h *Handler) caller(r *http.Request) (Caller, error) {
 	if err != nil {
 		return Caller{}, err
 	}
-	// CORE-06: module secret routes use the module bearer; a context token is ignored.
-	if tok := r.Header.Get(ContextHeader); tok != "" && !moduleSecretPath(r.URL.Path) {
+	// CORE-06 / CORE-28: module secret and device-exchange routes use the module bearer;
+	// a context token is ignored.
+	if tok := r.Header.Get(ContextHeader); tok != "" && !ignoreModuleContext(r.URL.Path) {
 		p, err := h.Svc.Delegate(r.Context(), c.Principal, tok)
 		if err != nil {
 			return Caller{}, err
@@ -165,14 +173,18 @@ func (h *Handler) caller(r *http.Request) (Caller, error) {
 	return c, nil
 }
 
-// moduleSecretPath is /api/v1/modules/{module_id}/secrets/{name...}.
-func moduleSecretPath(path string) bool {
+// ignoreModuleContext is secrets (CORE-06) and device-context-tokens (CORE-28).
+func ignoreModuleContext(path string) bool {
 	rest, ok := strings.CutPrefix(path, "/api/v1/modules/")
 	if !ok {
 		return false
 	}
-	_, after, ok := strings.Cut(rest, "/secrets/")
-	return ok && after != ""
+	_, afterSecrets, secrets := strings.Cut(rest, "/secrets/")
+	if secrets && afterSecrets != "" {
+		return true
+	}
+	_, afterDevice, device := strings.Cut(rest, "/device-context-tokens")
+	return device && (afterDevice == "" || afterDevice == "/")
 }
 
 type handlerFunc func(w http.ResponseWriter, r *http.Request, c Caller)
@@ -464,6 +476,117 @@ func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request, c Caller) 
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+
+// createDevice is createModuleDeviceGrant (CORE-28): session only.
+func (h *Handler) createDevice(w http.ResponseWriter, r *http.Request, c Caller) {
+	if c.Bearer {
+		writeErr(w, domain.Forbidden("a device grant is created from a signed-in session"))
+		return
+	}
+	var body ModuleDeviceWrite
+	if err := decode(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	v, err := h.Svc.CreateModuleDeviceGrant(r.Context(), c.Principal, body)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, v)
+}
+
+func (h *Handler) listDevices(w http.ResponseWriter, r *http.Request, c Caller) {
+	v, err := h.Svc.ListModuleDeviceGrants(r.Context(), c.Principal)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": v})
+}
+
+func (h *Handler) revokeDevice(w http.ResponseWriter, r *http.Request, c Caller) {
+	if err := h.Svc.RevokeModuleDeviceGrant(r.Context(), c.Principal, domain.ID(r.PathValue("device_id"))); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// exchangeDevice is exchangeModuleDeviceGrant (CORE-28).
+func (h *Handler) exchangeDevice(w http.ResponseWriter, r *http.Request, c Caller) {
+	var body DeviceContextRequest
+	if err := decode(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	tok, err := h.Svc.ExchangeModuleDeviceGrant(r.Context(), c.Principal, r.PathValue("module_id"), body)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, tok)
+}
+
+var deviceConnectPage = template.Must(template.New("device-connect").Parse(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Connect device</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:2rem;max-width:28rem;line-height:1.4}
+button{font:inherit;padding:.5rem 1rem;cursor:pointer}
+.error{color:#8b0000}
+</style></head>
+<body>
+<h1>Connect a device</h1>
+<p>Allow <strong>{{.Name}}</strong> to act as you on this device. You can revoke the grant later from your profile.</p>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<button type="submit">Connect</button>
+</form>
+</body></html>`))
+
+func (h *Handler) deviceConnectGet(w http.ResponseWriter, r *http.Request, c Caller) {
+	h.renderDeviceConnect(w, r, c, "")
+}
+
+func (h *Handler) deviceConnectPost(w http.ResponseWriter, r *http.Request, c Caller) {
+	if c.Bearer {
+		writeErr(w, domain.Forbidden("a device grant is created from a signed-in session"))
+		return
+	}
+	module := r.PathValue("module_id")
+	_, path, err := h.Svc.DeviceConnectPath(r.Context(), module)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	v, err := h.Svc.CreateModuleDeviceGrant(r.Context(), c.Principal, ModuleDeviceWrite{ModuleID: module})
+	if err != nil {
+		h.renderDeviceConnect(w, r, c, err.Error())
+		return
+	}
+	http.Redirect(w, r, "/m/"+module+path+"#grant="+url.QueryEscape(v.Secret), http.StatusSeeOther)
+}
+
+func (h *Handler) renderDeviceConnect(w http.ResponseWriter, r *http.Request, c Caller, errText string) {
+	if ClientOnly(c.Principal) {
+		writeErr(w, domain.Forbidden("only firm staff may connect a device"))
+		return
+	}
+	module := r.PathValue("module_id")
+	name, _, err := h.Svc.DeviceConnectPath(r.Context(), module)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	csrf := ""
+	if cookie, err := r.Cookie(practice.CSRFCookie); err == nil {
+		csrf = cookie.Value
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = deviceConnectPage.Execute(w, map[string]string{"Name": name, "CSRF": csrf, "Error": errText})
 }
 
 // putSecret is putModuleSecret (CORE-06).

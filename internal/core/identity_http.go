@@ -231,6 +231,10 @@ func (a *App) deactivateUserJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	// CORE-28: device grants lapse when the user is deactivated.
+	if a.ext != nil && a.ext.Modules != nil {
+		_ = a.ext.Modules.RevokeDevicesForUser(r.Context(), p, id)
+	}
 	row, err := acc.User(r.Context(), p, id)
 	if err != nil {
 		writeErr(w, err)

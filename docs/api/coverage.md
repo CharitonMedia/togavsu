@@ -411,6 +411,8 @@ It does not claim the handlers or the MCP server are implemented.
 | mail | `PUT` | `/api/v1/mail/smtp-password` | `putSmtpPassword` | required:putSmtpPassword | admin | settings:write |
 | mail | `POST` | `/api/v1/mail/test` | `testMail` | required:testMail | admin | settings:write |
 | mail | `POST` | `/api/v1/mail/messages` | `sendModuleMail` | required:sendModuleMail | admin, attorney, staff, accountant | mail:send |
+| mail | `POST` | `/api/v1/mail/matches` | `matchMail` | required:matchMail | admin, attorney, staff, accountant | matters:read, contacts:read |
+| mail | `POST` | `/api/v1/mail/filing-grants` | `issueMailFilingGrant` | required:issueMailFilingGrant | admin, attorney, staff, accountant | notes:write, files:write |
 | problem-reports | `GET` | `/api/v1/problem-reports` | `listProblemReport` | required:listProblemReport | admin | settings:read |
 | problem-reports | `POST` | `/api/v1/problem-reports` | `createProblemReport` | required:createProblemReport | admin, attorney, staff, accountant | profile:write |
 | problem-reports | `GET` | `/api/v1/problem-reports/{problem_report_id}` | `getProblemReport` | required:getProblemReport | admin | settings:read |
@@ -442,6 +444,10 @@ It does not claim the handlers or the MCP server are implemented.
 | modules | `POST` | `/api/v1/modules/{module_id}/update` | `updateModule` | required:updateModule | admin | modules:write |
 | modules | `GET` | `/api/v1/modules/{module_id}/settings` | `getModuleSettings` | required:getModuleSettings | admin | modules:read |
 | modules | `PUT` | `/api/v1/modules/{module_id}/settings` | `putModuleSettings` | required:putModuleSettings | admin | modules:write |
+| modules, profile | `POST` | `/api/v1/me/module-devices` | `createModuleDeviceGrant` | required:createModuleDeviceGrant | admin, attorney, staff, accountant | none |
+| modules, profile | `GET` | `/api/v1/me/module-devices` | `listModuleDeviceGrants` | required:listModuleDeviceGrants | admin, attorney, staff, accountant | profile:read |
+| modules, profile | `DELETE` | `/api/v1/me/module-devices/{device_id}` | `revokeModuleDeviceGrant` | required:revokeModuleDeviceGrant | admin, attorney, staff, accountant | profile:write |
+| modules | `POST` | `/api/v1/modules/{module_id}/device-context-tokens` | `exchangeModuleDeviceGrant` | required:exchangeModuleDeviceGrant | public | modules:read |
 | modules | `PUT` | `/api/v1/modules/{module_id}/secrets/{name}` | `putModuleSecret` | required:putModuleSecret | public | module_secrets:write |
 | modules | `GET` | `/api/v1/modules/{module_id}/secrets/{name}` | `getModuleSecret` | required:getModuleSecret | public | module_secrets:write |
 | modules | `DELETE` | `/api/v1/modules/{module_id}/secrets/{name}` | `deleteModuleSecret` | required:deleteModuleSecret | public | module_secrets:write |
@@ -459,4 +465,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 | modules, inbound-webhooks | `POST` | `/hooks/{module_id}/{hook_id}` | `postInboundWebhook` | required:postInboundWebhook | public | none |
 
-Operations: 453.
+Operations: 459.

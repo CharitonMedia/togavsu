@@ -110,6 +110,34 @@ MODULE_SECRET = {
     # Module bearer only; no viewer. A context token is ignored at the handler.
     "module_delegation": "service_principal",
 }
+MODULE_DEVICE_EXCHANGE = {
+    "client": "deny",
+    "module_principal": {
+        "actor_kind": "module",
+        "scope": "modules:read",
+        "module_id_param": "module_id",
+        "own_namespace_only": True,
+        "grants_admin": False,
+        "other_module": "forbidden",
+        "human_session": "forbidden",
+    },
+    "module_delegation": "service_principal",
+    "matter_wall": True,
+}
+DEVICE_GRANT_OWNERSHIP = {
+    "client": "deny",
+    "owner": "self_or_admin",
+    "secret_on_read": False,
+    "access_cases": [
+        {"action": "list", "role": "staff", "owner": "self", "result": "allowed"},
+        {"action": "list", "role": "staff", "owner": "other_user", "result": "omitted"},
+        {"action": "revoke", "role": "staff", "owner": "self", "result": "allowed"},
+        {"action": "revoke", "role": "staff", "owner": "other_user", "result": "not_found"},
+        {"action": "revoke", "role": "admin", "owner": "other_user", "result": "allowed"},
+        {"action": "create", "role": "client", "result": "forbidden"},
+        {"action": "create", "credential": "bearer", "result": "forbidden"},
+    ],
+}
 OWN = {"client": "own"}
 NOTIFICATION_RECIPIENT = {
     "owner": "self",
@@ -4450,6 +4478,49 @@ def _admin(api: Contract) -> None:
         events=["mail.sent"],
         extra_access=WALL,
     )
+    api.add(
+        "post",
+        "/api/v1/mail/matches",
+        operation_id="matchMail",
+        summary="Match mail to contacts and matters",
+        description=(
+            "A module token with matters:read and contacts:read matches addresses, matter numbers, "
+            "case numbers, name tokens and known matter ids. Each list is at most 50. "
+            "Returns contacts_by_address and at most 50 matters with via. "
+            "A service call omits walled matters and returns match_token (15 minutes). "
+            "A viewer call applies that viewer's walls."
+        ),
+        tag="Mail",
+        features=["mail"],
+        roles=FIRM,
+        scopes=["matters:read", "contacts:read"],
+        body="MailMatchRequest",
+        response="MailMatchResult",
+        writes=False,
+        error_codes=["forbidden", "scope_denied", "validation_failed"],
+        extra_access=WALL,
+    )
+    api.add(
+        "post",
+        "/api/v1/mail/filing-grants",
+        operation_id="issueMailFilingGrant",
+        summary="Issue a mail filing grant",
+        description=(
+            "A module service principal with notes:write and files:write presents a match_token, "
+            "matter_id (must be in the token and unwalled) and message_key. "
+            "Returns a mail_filing task authorization valid 15 minutes and emits mail.filing_authorized."
+        ),
+        tag="Mail",
+        features=["mail"],
+        roles=FIRM,
+        scopes=["notes:write", "files:write"],
+        body="MailFilingGrantRequest",
+        response="MailFilingAuthorization",
+        success="201",
+        events=["mail.filing_authorized"],
+        error_codes=["forbidden", "scope_denied", "not_found", "validation_failed"],
+        extra_access={"module_delegation": "service_principal", "matter_wall": True, "admin_bypasses_wall": False, "client": "deny"},
+    )
     api.resource(
         collection="/api/v1/problem-reports",
         schema="ProblemReport",
@@ -4812,6 +4883,85 @@ def _modules(api: Contract) -> None:
         body_schema={"type": "object", "additionalProperties": True},
         response_schema={"type": "object", "additionalProperties": True},
         events=["setting.updated"],
+    )
+    api.add(
+        "post",
+        "/api/v1/me/module-devices",
+        operation_id="createModuleDeviceGrant",
+        summary="Connect a device to a module",
+        description=(
+            "Session only. Creates a device grant for the signed-in firm staff user and the named module, "
+            "which must declare device_connect. Returns the grant including the secret once. "
+            "The device-connect page uses this after the user approves. "
+            "A bearer token is refused. Grants lapse after 90 days unused or when the user is deactivated."
+        ),
+        tag="Modules",
+        features=["modules", "profile"],
+        roles=FIRM,
+        scopes=[],
+        body="ModuleDeviceWrite",
+        response="ModuleDevice",
+        success="201",
+        events=["module_device.created"],
+        error_codes=["forbidden", "not_found", "validation_failed"],
+        extra_access=DEVICE_GRANT_OWNERSHIP,
+    )
+    api.add(
+        "get",
+        "/api/v1/me/module-devices",
+        operation_id="listModuleDeviceGrants",
+        summary="List my module device grants",
+        description=(
+            "Returns the caller's active device grants that have not lapsed. The secret is never included."
+        ),
+        tag="Modules",
+        features=["modules", "profile"],
+        roles=FIRM,
+        scopes=["profile:read"],
+        response_schema={"type": "object", "required": ["data"], "properties": {"data": {"type": "array", "items": {"$ref": "#/components/schemas/ModuleDevice"}}}},
+        writes=False,
+        extra_access=DEVICE_GRANT_OWNERSHIP,
+    )
+    api.add(
+        "delete",
+        "/api/v1/me/module-devices/{device_id}",
+        operation_id="revokeModuleDeviceGrant",
+        summary="Revoke a module device grant",
+        description=(
+            "Revokes one device grant. The owner may revoke their own. An admin may revoke anyone's. "
+            "Emits module_device.revoked."
+        ),
+        tag="Modules",
+        features=["modules", "profile"],
+        roles=FIRM,
+        scopes=["profile:write"],
+        success="204",
+        response_content={},
+        events=["module_device.revoked"],
+        error_codes=["forbidden", "not_found", "scope_denied"],
+        extra_access=DEVICE_GRANT_OWNERSHIP,
+    )
+    api.add(
+        "post",
+        "/api/v1/modules/{module_id}/device-context-tokens",
+        operation_id="exchangeModuleDeviceGrant",
+        summary="Exchange a device grant for a context token",
+        description=(
+            "The module's own bearer, with modules:read, presents a device secret and receives a context token "
+            "for that user, valid 10 minutes, like createModuleContextToken. "
+            "Optional matter_id is checked against the wall before the token is signed. "
+            "A context token on the request is ignored. "
+            "A revoked, unused-for-90-days, or deactivated-user grant returns unauthenticated."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["modules:read"],
+        body="DeviceContextRequest",
+        response="ContextToken",
+        success="201",
+        error_codes=["forbidden", "scope_denied", "not_found", "unauthenticated"],
+        extra_access=MODULE_DEVICE_EXCHANGE,
     )
     api.add(
         "put",

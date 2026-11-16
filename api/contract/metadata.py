@@ -394,12 +394,49 @@ BACKGROUND_FILE_PUBLICATION = {
     "on_failure": "no_file_no_event",
     "publish_events": ["file.created", "file.version_created"],
 }
+
+MAIL_FILING_SEQUENCE = [
+    "createNote",
+    "createFileUpload",
+    "getFileUpload",
+    "putFileChunk",
+    "completeFileUpload",
+    "publishFile",
+    "bulkFile",
+    "createFileLink",
+]
+MAIL_FILING = {
+    "sequence": list(MAIL_FILING_SEQUENCE),
+    "issued_by": "core",
+    "registered_module": True,
+    "viewer_context_required": False,
+    "scopes": ["notes:write", "files:write"],
+    "grants_admin": False,
+    "firmwide_bypass": False,
+    "expired": "forbidden",
+    "wrong_module": "forbidden",
+    "wrong_matter": "not_found",
+    "operation_outside_grant": "forbidden",
+    "event_type": "mail.filing_authorized",
+}
+MAIL_MATCHING = {
+    "sequence": ["createAiCall"],
+    "issued_by": "core",
+    "viewer_context_required": False,
+    "scopes": ["ai:use"],
+    "grants_admin": False,
+    "firmwide_bypass": False,
+    "expired": "forbidden",
+    "wrong_module": "forbidden",
+    "without_matter_id": True,
+}
+
 GENERIC_NONINTERACTIVE = frozenset(
     {
         # createEvent, bulkEvent and createNotification take a service principal
         # (CORE-01 / CORE-03) instead of a noninteractive task grant.
+        # createFileLink also accepts mail_filing (CORE-27).
         "createFileLink",
-        "createAiCall",
     }
 )
 SERVICE_PRINCIPAL_ISSUANCE = frozenset({"issueFilePublicationGrant"})
@@ -408,6 +445,8 @@ NONINTERACTIVE_OPERATIONS = (
     | frozenset(MALWARE_SEQUENCE)
     | frozenset(PAYMENT_PROCESSOR["sequence"])
     | frozenset(BACKGROUND_FILE_SEQUENCE)
+    | frozenset(MAIL_FILING_SEQUENCE)
+    | frozenset(MAIL_MATCHING["sequence"])
 )
 
 _TRUST_POST = {
@@ -625,6 +664,12 @@ def tag_noninteractive_workflows(spec: dict) -> None:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "malware_scan"
         elif operation_id in BACKGROUND_FILE_SEQUENCE:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "background_file_publication"
+        elif operation_id == "createNote":
+            operation["x-togavsu-access"]["noninteractive_workflow"] = "mail_filing"
+        elif operation_id == "createAiCall":
+            operation["x-togavsu-access"]["noninteractive_workflow"] = "mail_matching"
+        elif operation_id == "createFileLink":
+            operation["x-togavsu-access"]["noninteractive_workflow"] = "mail_filing"
 
 def _json_schema_slot(operation: dict) -> dict:
     for code, response in operation["responses"].items():
@@ -863,6 +908,15 @@ EVENT_EXEMPTIONS = {
         "Removes a sealed module credential. The audit log records the secret name only; "
         "no activity-stream event is emitted (CORE-06)."
     ),
+    "exchangeModuleDeviceGrant": (
+        "Exchanges a device grant secret for a short-lived context token (CORE-28). "
+        "The grant's module_device.created or module_device.revoked events already cover the grant lifecycle; "
+        "the exchange itself emits no activity-stream event."
+    ),
+    "matchMail": (
+        "Mail address matching for the email module (CORE-26). Returns match results and an optional match_token; "
+        "no activity-stream event is emitted on the match itself."
+    )
 }
 
 MUTATION_EVENTS = {
@@ -913,6 +967,8 @@ MUTATION_EVENTS = {
     "testBackupDestination": ["backup_destination.tested"],
     "createBackupUpload": ["backup_upload.created"],
     "createModuleContextToken": ["module.context_issued"],
+    "createModuleDeviceGrant": ["module_device.created"],
+    "revokeModuleDeviceGrant": ["module_device.revoked"],
     "updateTrustedKey": ["signing_key.updated"],
     "grantClientAccess": ["client_access.granted"],
     "resetClientAccessPassword": ["client_access.password_reset"],
@@ -1403,6 +1459,9 @@ PAYMENT_PROCESSOR["status_graph"] = PAYMENT_STATUS_GRAPH
 
 __all__ = [
     'BACKGROUND_FILE_PUBLICATION',
+    'MAIL_FILING',
+    'MAIL_FILING_SEQUENCE',
+    'MAIL_MATCHING',
     'BACKGROUND_FILE_SEQUENCE',
     'CORE_EXTENSION_TARGETS',
     'CORE_EXTENSION_EXCLUSIONS',

@@ -36,12 +36,21 @@ type Manifest struct {
 	InboundWebhooks  []InboundWebhook   `json:"inbound_webhooks"`
 	// ClientHome names one of this module's client tabs as the portal landing tab (CORE-10).
 	ClientHome string `json:"client_home"`
-	Events     []string `json:"events"`
+	// DeviceConnect is the module path the device-connect page redirects to with #grant= (CORE-28).
+	DeviceConnect string `json:"device_connect"`
+	// PaymentProcessor registers this module as a payment processor (CORE-23).
+	PaymentProcessor *PaymentProcessor `json:"payment_processor"`
+	Events           []string          `json:"events"`
 	Emits         []string           `json:"emits"`
 	Data          Data               `json:"data"`
 	Replaces      string             `json:"replaces"`
 	Settings      []SettingSpec      `json:"settings"`
 	AITasks       []AITask           `json:"ai_tasks"`
+}
+
+// PaymentProcessor is manifest payment_processor: destinations the module may charge (CORE-23).
+type PaymentProcessor struct {
+	Destinations []string `json:"destinations"`
 }
 
 // NotificationKind is one module notification kind (CORE-03). The core names it
@@ -420,12 +429,66 @@ func (m Manifest) validate(report func(error) bool) {
 			return
 		}
 	}
+	if path := strings.TrimSpace(m.DeviceConnect); path != "" {
+		if !ok(modulePath("device_connect", path)) {
+			return
+		}
+	}
 	if !m.validateNotifications(ok) {
 		return
 	}
 	if !m.validateInboundWebhooks(ok) {
 		return
 	}
+	if !m.validatePaymentProcessor(ok) {
+		return
+	}
+}
+
+func (m Manifest) validatePaymentProcessor(ok func(error) bool) bool {
+	if m.PaymentProcessor == nil {
+		return true
+	}
+	if len(m.PaymentProcessor.Destinations) == 0 {
+		return ok(invalid("payment_processor.destinations", "at least one of operating or trust is required"))
+	}
+	seen := map[string]bool{}
+	for i, d := range m.PaymentProcessor.Destinations {
+		f := fmt.Sprintf("payment_processor.destinations[%d]", i)
+		if d != "operating" && d != "trust" {
+			if !ok(invalid(f, "must be operating or trust")) {
+				return false
+			}
+			continue
+		}
+		if seen[d] {
+			if !ok(invalid(f, "duplicate destination "+d)) {
+				return false
+			}
+			continue
+		}
+		seen[d] = true
+	}
+	if !Subscribed(m.Events, "payment.processor_authorized") {
+		return ok(invalid("payment_processor", "a payment processor must subscribe to payment.processor_authorized"))
+	}
+	needWrite := true
+	needTrust := seen["trust"]
+	for _, p := range m.Permissions {
+		if p.Scope == "payments:write" {
+			needWrite = false
+		}
+		if p.Scope == "trust:write" {
+			needTrust = false
+		}
+	}
+	if needWrite {
+		return ok(invalid("payment_processor", "a payment processor needs the payments:write permission"))
+	}
+	if needTrust {
+		return ok(invalid("payment_processor", "a trust destination needs the trust:write permission"))
+	}
+	return true
 }
 
 func (m Manifest) validateNotifications(ok func(error) bool) bool {

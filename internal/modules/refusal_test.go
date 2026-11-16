@@ -61,7 +61,7 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 	raw := samplePackage(t, func(f map[string][]byte) {
 		replace(f, modules.ManifestFile, "  events: /events\n", "  events: /events\n  mystery_hook: true\n")
 		replace(f, modules.ManifestFile, "    placement: home\n", "    placement: home\n    mystery: true\n")
-		replace(f, modules.ManifestFile, "tabs:\n", "payment_processor:\n  destinations: [operating]\ntabs:\n")
+		replace(f, modules.ManifestFile, "tabs:\n", "not_a_real_manifest_field: true\ntabs:\n")
 		replace(f, modules.ManifestFile, "      h: 2\n    sizes:", "      h: 2\n      d: 1\n    sizes:")
 	})
 	_, _, refs := modules.CheckAll(raw)
@@ -72,7 +72,7 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 		}
 		got[r.Path] = r.Value
 	}
-	want := map[string]string{"container.mystery_hook": "mystery_hook", "tabs[0].mystery": "mystery", "payment_processor": "payment_processor", "widgets[0].size.d": "d"}
+	want := map[string]string{"container.mystery_hook": "mystery_hook", "tabs[0].mystery": "mystery", "not_a_real_manifest_field": "not_a_real_manifest_field", "widgets[0].size.d": "d"}
 	if len(got) != len(want) {
 		t.Fatalf("refusals %v, want %v", got, want)
 	}
@@ -87,7 +87,7 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 		t.Fatal("the install check passed an unknown field")
 	}
 	one := samplePackage(t, func(f map[string][]byte) {
-		replace(f, modules.ManifestFile, "tabs:\n", "device_connect: true\ntabs:\n")
+		replace(f, modules.ManifestFile, "tabs:\n", "pending_core_field: true\ntabs:\n")
 	})
 	_, _, refs = modules.CheckAll(one)
 	_, _, err = modules.CheckPackage(one)
@@ -96,16 +96,33 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 	}
 }
 
+
+func TestDeviceConnectManifestAccepted(t *testing.T) {
+	raw := samplePackage(t, func(f map[string][]byte) {
+		replace(f, modules.ManifestFile, "tabs:\n", "device_connect: /outlook-addin/connected\ntabs:\n")
+	})
+	if _, _, refs := modules.CheckAll(raw); len(refs) != 0 {
+		t.Fatalf("valid device_connect refused: %v", refs)
+	}
+	bad := samplePackage(t, func(f map[string][]byte) {
+		replace(f, modules.ManifestFile, "tabs:\n", "device_connect: https://evil.example/x\ntabs:\n")
+	})
+	_, _, refs := modules.CheckAll(bad)
+	if len(refs) == 0 || refs[0].Path != "device_connect" {
+		t.Fatalf("bad device_connect: %v", refs)
+	}
+}
+
 func TestCheckAllReportsUnknownScopes(t *testing.T) {
 	raw := samplePackage(t, func(f map[string][]byte) {
-		replace(f, modules.ManifestFile, "permissions:\n", "permissions:\n  - scope: books:read\n    reason: r\n  - scope: views:other.view:read\n    reason: r\n  - scope: firm:read\n    reason: r\n")
+		replace(f, modules.ManifestFile, "permissions:\n", "permissions:\n  - scope: not_a_real_scope:read\n    reason: r\n  - scope: views:other.view:read\n    reason: r\n  - scope: books:read\n    reason: r\n  - scope: firm:read\n    reason: r\n")
 	})
 	_, _, refs := modules.CheckAll(raw)
 	if len(refs) != 1 {
 		t.Fatalf("refusals: %v", refs)
 	}
 	r := refs[0]
-	if r.Code != modules.RefuseUnknownScope || r.Kind != modules.KindScope || r.Value != "books:read" || r.APICode != domain.CodeValidation {
+	if r.Code != modules.RefuseUnknownScope || r.Kind != modules.KindScope || r.Value != "not_a_real_scope:read" || r.APICode != domain.CodeValidation {
 		t.Fatalf("refusal: %+v", r)
 	}
 	if r.Path != "permissions[0]" {
@@ -115,7 +132,7 @@ func TestCheckAllReportsUnknownScopes(t *testing.T) {
 	if _, _, err := modules.CheckPackage(raw); err != nil {
 		t.Fatalf("install check: %v", err)
 	}
-	if identity.KnownScope("books:read") || !identity.KnownScope("firm:read") || !identity.KnownScope("matters:read") || !identity.KnownScope("views:a.b:read") {
+	if !identity.KnownScope("books:read") || !identity.KnownScope("firm:read") || !identity.KnownScope("matters:read") || !identity.KnownScope("views:a.b:read") || identity.KnownScope("not_a_real_scope:read") {
 		t.Fatal("KnownScope")
 	}
 }

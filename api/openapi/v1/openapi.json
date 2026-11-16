@@ -16792,7 +16792,8 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "mail_filing",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -16819,6 +16820,16 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "task_authorization": {
+                "header": "X-Togavsu-Task-Authorization",
+                "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
+                "roles_from_arguments": false
               }
             },
             "forbidden_header_overrides": [
@@ -16838,6 +16849,7 @@
               "query",
               "idempotency_key",
               "context_token",
+              "task_authorization",
               "body"
             ]
           }
@@ -25593,7 +25605,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -25616,6 +25628,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -25865,7 +25884,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -25886,6 +25905,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -26607,7 +26633,7 @@
           "client": "shared",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "client_schema": "InvoiceClient",
           "staff_schema": "Invoice",
           "client_projection": "allowlist",
@@ -26667,6 +26693,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -26784,7 +26817,7 @@
           "client": "shared",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "client_schema": "InvoiceClient",
           "staff_schema": "Invoice",
           "client_projection": "allowlist",
@@ -26825,6 +26858,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -29104,7 +29144,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -29127,6 +29167,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -29455,7 +29502,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -29476,6 +29523,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -32747,7 +32801,7 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -32770,6 +32824,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -33010,7 +33071,7 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -33031,6 +33092,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -33359,7 +33427,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -33382,6 +33450,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -33746,7 +33821,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -33767,6 +33842,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -34367,7 +34449,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -34385,6 +34467,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -42255,6 +42344,7 @@
             "grouped_photo_source"
           ],
           "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "mail_filing",
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -59109,6 +59199,7 @@
           ],
           "off_wall": "not_found",
           "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "mail_matching",
           "events_on": "commit",
           "events_on_failure": "none",
           "effect_order": "authorize_before_external_effect"
@@ -59792,6 +59883,292 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ModuleMailWrite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/matches": {
+      "post": {
+        "operationId": "matchMail",
+        "summary": "Match mail to contacts and matters",
+        "description": "A module token with matters:read and contacts:read matches addresses, matter numbers, case numbers, name tokens and known matter ids. Each list is at most 50. Returns contacts_by_address and at most 50 matters with via. A service call omits walled matters and returns match_token (15 minutes). A viewer call applies that viewer's walls.",
+        "tags": [
+          "Mail"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailMatchResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "mail"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant"
+          ],
+          "scopes": [
+            "matters:read",
+            "contacts:read"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer_or_service_principal"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "matchMail",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "validation_failed"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailMatchRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mail/filing-grants": {
+      "post": {
+        "operationId": "issueMailFilingGrant",
+        "summary": "Issue a mail filing grant",
+        "description": "A module service principal with notes:write and files:write presents a match_token, matter_id (must be in the token and unwalled) and message_key. Returns a mail_filing task authorization valid 15 minutes and emits mail.filing_authorized.",
+        "tags": [
+          "Mail"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailFilingAuthorization"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "mail"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant"
+          ],
+          "scopes": [
+            "notes:write",
+            "files:write"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "module_delegation": "service_principal",
+          "admin_bypasses_wall": false,
+          "events_on": "commit",
+          "events_on_failure": "none",
+          "effect_order": "authorize_before_external_effect"
+        },
+        "x-togavsu-events": [
+          "mail.filing_authorized"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "issueMailFilingGrant",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "not_found",
+          "validation_failed"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailFilingGrantRequest"
               }
             }
           }
@@ -63325,6 +63702,626 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/module-devices": {
+      "post": {
+        "operationId": "createModuleDeviceGrant",
+        "summary": "Connect a device to a module",
+        "description": "Session only. Creates a device grant for the signed-in firm staff user and the named module, which must declare device_connect. Returns the grant including the secret once. The device-connect page uses this after the user approves. A bearer token is refused. Grants lapse after 90 days unused or when the user is deactivated.",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleDevice"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "modules",
+          "profile"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant"
+          ],
+          "scopes": [],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "owner": "self_or_admin",
+          "secret_on_read": false,
+          "access_cases": [
+            {
+              "action": "list",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "list",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "omitted"
+            },
+            {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "revoke",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
+              "action": "create",
+              "role": "client",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "credential": "bearer",
+              "result": "forbidden"
+            }
+          ],
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "module_device.created"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "createModuleDeviceGrant",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "not_found",
+          "validation_failed"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleDeviceWrite"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listModuleDeviceGrants",
+        "summary": "List my module device grants",
+        "description": "Returns the caller's active device grants that have not lapsed. The secret is never included.",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ModuleDevice"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "modules",
+          "profile"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant"
+          ],
+          "scopes": [
+            "profile:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "owner": "self_or_admin",
+          "secret_on_read": false,
+          "access_cases": [
+            {
+              "action": "list",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "list",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "omitted"
+            },
+            {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "revoke",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
+              "action": "create",
+              "role": "client",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "credential": "bearer",
+              "result": "forbidden"
+            }
+          ]
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "listModuleDeviceGrants",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/module-devices/{device_id}": {
+      "delete": {
+        "operationId": "revokeModuleDeviceGrant",
+        "summary": "Revoke a module device grant",
+        "description": "Revokes one device grant. The owner may revoke their own. An admin may revoke anyone's. Emits module_device.revoked.",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter device_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "modules",
+          "profile"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant"
+          ],
+          "scopes": [
+            "profile:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "owner": "self_or_admin",
+          "secret_on_read": false,
+          "access_cases": [
+            {
+              "action": "list",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "list",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "omitted"
+            },
+            {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "revoke",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
+              "action": "create",
+              "role": "client",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "credential": "bearer",
+              "result": "forbidden"
+            }
+          ],
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "module_device.revoked"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "revokeModuleDeviceGrant",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "result": {
+              "encoding": "empty"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "not_found",
+          "scope_denied"
+        ]
+      }
+    },
+    "/api/v1/modules/{module_id}/device-context-tokens": {
+      "post": {
+        "operationId": "exchangeModuleDeviceGrant",
+        "summary": "Exchange a device grant for a context token",
+        "description": "The module's own bearer, with modules:read, presents a device secret and receives a context token for that user, valid 10 minutes, like createModuleContextToken. Optional matter_id is checked against the wall before the token is signed. A context token on the request is ignored. A revoked, unused-for-90-days, or deactivated-user grant returns unauthenticated.",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [
+          {
+            "name": "module_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "description": "Path parameter module_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextToken"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "modules"
+        ],
+        "x-togavsu-access": {
+          "roles": [],
+          "scopes": [
+            "modules:read"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "module_principal": {
+            "actor_kind": "module",
+            "scope": "modules:read",
+            "module_id_param": "module_id",
+            "own_namespace_only": true,
+            "grants_admin": false,
+            "other_module": "forbidden",
+            "human_session": "forbidden"
+          },
+          "module_delegation": "service_principal",
+          "event_exemption": "Exchanges a device grant secret for a short-lived context token (CORE-28). The grant's module_device.created or module_device.revoked events already cover the grant lifecycle; the exchange itself emits no activity-stream event.",
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "exchangeModuleDeviceGrant",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "not_found",
+          "unauthenticated"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceContextRequest"
               }
             }
           }
@@ -75459,6 +76456,179 @@
         ],
         "description": "Firm profile from firm.* settings plus the client portal appearance. Read only."
       },
+      "BooksProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "firm_name": {
+            "type": "string"
+          },
+          "time_zone": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD"
+            ],
+            "description": "Always USD."
+          }
+        },
+        "required": [
+          "firm_name",
+          "time_zone",
+          "currency"
+        ],
+        "description": "Firm books profile for a module books reader (CORE-02)."
+      },
+      "BooksMatter": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "number": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "client_contact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "Primary client party contact."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "responsible_attorney_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "name",
+          "status",
+          "client_contact_id",
+          "responsible_attorney_user_id"
+        ],
+        "description": "Matter projection for a module books reader. A walled matter is not_found."
+      },
+      "BooksBillingAddress": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "line1": {
+            "type": "string"
+          },
+          "line2": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "postal_code": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "line1",
+          "line2",
+          "city",
+          "region",
+          "postal_code",
+          "country"
+        ],
+        "description": "Primary current mailing address for books sync."
+      },
+      "BooksContact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "person",
+              "organization"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "given_name": {
+            "type": "string"
+          },
+          "family_name": {
+            "type": "string"
+          },
+          "organization_name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "billing_address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BooksBillingAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "archived": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "display_name",
+          "given_name",
+          "family_name",
+          "organization_name",
+          "email",
+          "phone",
+          "billing_address",
+          "archived"
+        ],
+        "description": "Billing details for a contact the books reader may see. No date of birth, identifier, tags or custom fields."
+      },
       "UserDirectoryEntry": {
         "type": "object",
         "additionalProperties": false,
@@ -76253,6 +77423,244 @@
           "status"
         ],
         "description": "One recipient outcome. Addresses never appear."
+      },
+      "MailMatchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            },
+            "description": "At most 50 email addresses."
+          },
+          "matter_numbers": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            }
+          },
+          "case_numbers": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            }
+          },
+          "name_tokens": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            }
+          },
+          "known_matter_ids": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUIDv7."
+            },
+            "uniqueItems": true
+          }
+        },
+        "description": "matchMail body (CORE-26). Each list is at most 50 entries."
+      },
+      "MailMatchContact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "given_name": {
+            "type": "string"
+          },
+          "family_name": {
+            "type": "string"
+          },
+          "full_name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "description": "A non-archived contact whose current email matched an address."
+      },
+      "MailMatchClient": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "given_name": {
+            "type": "string"
+          },
+          "family_name": {
+            "type": "string"
+          }
+        },
+        "description": "Client party names on a matched matter."
+      },
+      "MailMatchMatter": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "number": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "case_number": {
+            "type": "string"
+          },
+          "practice_area": {
+            "type": "string"
+          },
+          "clients": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MailMatchClient"
+            }
+          },
+          "via": {
+            "type": "string",
+            "enum": [
+              "address",
+              "matter_number",
+              "case_number",
+              "case_number_in_name",
+              "client_name",
+              "known"
+            ],
+            "description": "How the matter matched."
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "name",
+          "status",
+          "via",
+          "clients"
+        ],
+        "description": "One matched matter (at most 50 in the response)."
+      },
+      "MailMatchResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contacts_by_address": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/MailMatchContact"
+              }
+            },
+            "description": "Map of requested address to matching non-archived contacts."
+          },
+          "matters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MailMatchMatter"
+            }
+          },
+          "match_token": {
+            "type": "string",
+            "description": "Service call only: task authorization naming the module and returned matter ids, valid 15 minutes."
+          }
+        },
+        "required": [
+          "contacts_by_address",
+          "matters"
+        ],
+        "description": "matchMail response (CORE-26)."
+      },
+      "MailFilingGrantRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "match_token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Must be in the match token and unwalled."
+          },
+          "message_key": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "match_token",
+          "matter_id",
+          "message_key"
+        ],
+        "description": "issueMailFilingGrant body (CORE-27)."
+      },
+      "MailFilingAuthorization": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "task_authorization": {
+            "type": "string"
+          },
+          "module_id": {
+            "type": "string"
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "message_key": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "allowed_operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "issued_by": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_authorization",
+          "module_id",
+          "matter_id",
+          "message_key",
+          "expires_at",
+          "allowed_operations",
+          "issued_by"
+        ],
+        "description": "Mail filing task authorization (CORE-27), valid 15 minutes."
       },
       "ModuleMailResult": {
         "type": "object",
@@ -78167,6 +79575,100 @@
           "value"
         ],
         "description": "Body for putModuleSecret."
+      },
+      "ModuleDevice": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "module_id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "secret": {
+            "type": "string",
+            "description": "Clear device secret. Returned only from createModuleDeviceGrant."
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "user_id",
+          "name",
+          "created_at",
+          "last_used_at"
+        ],
+        "description": "One module device grant (CORE-28). The secret is omitted on list."
+      },
+      "ModuleDeviceWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "description": "Installed module that declares device_connect."
+          },
+          "name": {
+            "type": "string",
+            "description": "Optional label for this device."
+          }
+        },
+        "required": [
+          "module_id"
+        ],
+        "description": "Body for createModuleDeviceGrant."
+      },
+      "DeviceContextRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Device grant secret from createModuleDeviceGrant or the device-connect page."
+          },
+          "matter_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "description": "Body for exchangeModuleDeviceGrant."
       },
       "ManifestMigration": {
         "type": "object",
@@ -83860,6 +85362,23 @@
         },
         "description": "Body for putModuleSecret. Patch: every field is optional."
       },
+      "ModuleDeviceWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "description": "Installed module that declares device_connect."
+          },
+          "name": {
+            "type": "string",
+            "description": "Optional label for this device."
+          }
+        },
+        "description": "Body for createModuleDeviceGrant. Patch: every field is optional."
+      },
       "ProblemReportWritePatch": {
         "type": "object",
         "additionalProperties": false,
@@ -84444,12 +85963,54 @@
           "file.version_created"
         ]
       },
+      "mail_filing": {
+        "sequence": [
+          "createNote",
+          "createFileUpload",
+          "getFileUpload",
+          "putFileChunk",
+          "completeFileUpload",
+          "publishFile",
+          "bulkFile",
+          "createFileLink"
+        ],
+        "issued_by": "core",
+        "registered_module": true,
+        "viewer_context_required": false,
+        "scopes": [
+          "notes:write",
+          "files:write"
+        ],
+        "grants_admin": false,
+        "firmwide_bypass": false,
+        "expired": "forbidden",
+        "wrong_module": "forbidden",
+        "wrong_matter": "not_found",
+        "operation_outside_grant": "forbidden",
+        "event_type": "mail.filing_authorized"
+      },
+      "mail_matching": {
+        "sequence": [
+          "createAiCall"
+        ],
+        "issued_by": "core",
+        "viewer_context_required": false,
+        "scopes": [
+          "ai:use"
+        ],
+        "grants_admin": false,
+        "firmwide_bypass": false,
+        "expired": "forbidden",
+        "wrong_module": "forbidden",
+        "without_matter_id": true
+      },
       "operations": [
         "bulkFile",
         "completeFileUpload",
         "createAiCall",
         "createFileLink",
         "createFileUpload",
+        "createNote",
         "createPayment",
         "downloadFileVersion",
         "getFile",
@@ -84489,7 +86050,19 @@
         "bulkEvent",
         "createEvent",
         "createNotification",
+        "getExpense",
+        "getInvoice",
+        "getPayment",
+        "getTrustAccount",
+        "getTrustBalances",
+        "getTrustEntry",
+        "listExpense",
+        "listInvoice",
+        "listPayment",
+        "listTrustAccount",
+        "listTrustEntry",
         "markFileStatus",
+        "matchMail",
         "sendModuleMail",
         "updateFeeAgreement"
       ],
@@ -85276,6 +86849,10 @@
       "settings:read"
     ],
     "mail.sent": [],
+    "mail.filing_authorized": [
+      "files:read",
+      "notes:read"
+    ],
     "problem_report.created": [
       "profile:read"
     ],
@@ -85323,6 +86900,10 @@
     ],
     "module.update_requested": [
       "modules:read"
+    ],
+    "module_device.created": [],
+    "module_device.revoked": [
+      "profile:read"
     ],
     "module.context_issued": [
       "modules:read"
