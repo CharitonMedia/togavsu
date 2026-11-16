@@ -355,7 +355,7 @@ func (s *Service) refundGrant(ctx context.Context, p domain.Principal, credentia
 	if !hmac.Equal([]byte(hex.EncodeToString(sum[:])), []byte(row.SecretHash)) {
 		return Refund{}, domain.Principal{}, denied
 	}
-	if p.Source != domain.SourceModule || p.ModuleID != row.Source {
+	if (p.Source != domain.SourceModule && p.Source != domain.SourceService) || p.ModuleID != row.Source {
 		return Refund{}, domain.Principal{}, domain.Forbidden("the refund authorization was issued to another module")
 	}
 	if row.Revoked || row.Status != RefundPending || !s.now().Before(row.ExpiresAt) {

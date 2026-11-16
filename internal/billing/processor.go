@@ -294,7 +294,7 @@ func (s *Service) processorGrant(ctx context.Context, p domain.Principal, creden
 	if !hmac.Equal([]byte(hex.EncodeToString(sum[:])), []byte(row.SecretHash)) {
 		return ProcessorInit{}, domain.Principal{}, denied
 	}
-	if p.Source != domain.SourceModule || p.ModuleID != row.ProcessorModuleID {
+	if (p.Source != domain.SourceModule && p.Source != domain.SourceService) || p.ModuleID != row.ProcessorModuleID {
 		return ProcessorInit{}, domain.Principal{}, domain.Forbidden("the processor authorization was issued to another module")
 	}
 	if row.Revoked || row.Status != "authorized" {

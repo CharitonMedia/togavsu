@@ -246,7 +246,11 @@ func TestReleaseProcessorInitialization(t *testing.T) {
 
 	// Without trust:write approved for the module, a trust authorization is refused.
 	x.rt.Handle("pay-lite", &processorInbox{})
-	lite := strings.NewReplacer("id: pay-proc", "id: pay-lite", "  - scope: trust:write\n", "").Replace(extProcessorManifest)
+	lite := strings.NewReplacer(
+		"id: pay-proc", "id: pay-lite",
+		"  - scope: trust:write\n", "",
+		"destinations: [operating, trust]", "destinations: [operating]",
+	).Replace(extProcessorManifest)
 	if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(lite))); problem != "" {
 		t.Fatalf("install pay-lite: %s", problem)
 	}
