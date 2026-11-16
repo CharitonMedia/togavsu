@@ -139,6 +139,10 @@ func (h *Handler) inboundWebhook(w http.ResponseWriter, r *http.Request) {
 			pr.Out.Header.Set("X-Togavsu-Inbound-Hook", hookID)
 		},
 		ModifyResponse: func(resp *http.Response) error {
+			// Same origin protections as /m/ (CORE-09): a public hook must not plant cookies
+			// on the core domain or run module HTML as the core origin in a staff browser.
+			resp.Header.Del("Set-Cookie")
+			resp.Header.Add("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation")
 			if err := h.Svc.audit(r.Context(), domain.SystemPrincipal(), moduleID, "inbound_webhook", "",
 				fmt.Sprintf("%s %d", hookID, resp.StatusCode), "inbound webhook delivery"); err != nil {
 				log.Printf("modules: inbound webhook audit %s/%s: %v", moduleID, hookID, err)

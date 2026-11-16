@@ -15,9 +15,10 @@ func TestPGInboundWebhook(t *testing.T) {
 	e.rt.Handle("matter-clock", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen.record(r)
 		if r.URL.Path == "/hook" {
-			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Set-Cookie", "togavsu_session=stolen")
 			w.WriteHeader(http.StatusAccepted)
-			_, _ = io.WriteString(w, "ok-from-module")
+			_, _ = io.WriteString(w, "<script>document.cookie='x=1'</script>ok-from-module")
 			return
 		}
 		http.NotFound(w, r)
@@ -38,8 +39,15 @@ func TestPGInboundWebhook(t *testing.T) {
 		"X-CSRF-Token", "should-not-forward",
 		"X-Provider-Sig", "keep-me",
 	)
-	if res.code != http.StatusAccepted || res.body != "ok-from-module" {
+	if res.code != http.StatusAccepted || !strings.Contains(res.body, "ok-from-module") {
 		t.Fatalf("forward: %d %q", res.code, res.body)
+	}
+	if res.setCookie != "" {
+		t.Fatalf("inbound webhook planted Set-Cookie on the core origin: %q", res.setCookie)
+	}
+	wantCSP := "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+	if !strings.Contains(res.csp, wantCSP) || strings.Contains(res.csp, "allow-same-origin") {
+		t.Fatalf("inbound webhook CSP: %q", res.csp)
 	}
 	if seen.n != 1 || seen.path != "/hook" || seen.query != "token=abc" || seen.body != `{"event":"paid"}` {
 		t.Fatalf("module saw %+v", seen)
@@ -177,6 +185,8 @@ type rawResp struct {
 	code       int
 	body       string
 	retryAfter string
+	setCookie  string
+	csp        string
 }
 
 func (e *env) postRaw(path, body string, hdr ...string) rawResp {
@@ -194,5 +204,8 @@ func (e *env) postRaw(path, body string, hdr ...string) rawResp {
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
-	return rawResp{code: res.StatusCode, body: string(raw), retryAfter: res.Header.Get("Retry-After")}
+	return rawResp{
+		code: res.StatusCode, body: string(raw), retryAfter: res.Header.Get("Retry-After"),
+		setCookie: res.Header.Get("Set-Cookie"), csp: res.Header.Get("Content-Security-Policy"),
+	}
 }
