@@ -1,6 +1,6 @@
 # Core changes for the second batch of modules
 
-The core and marketplace parts of the approved batch 2 modules PRD (approved by Patrick on 2026-11-16), copied unchanged: its fixed decisions that bind the core, section 4 (module API update 2, CORE-30 to CORE-37), section 5 (shared module rules the coretest harness serves), section 6 (migration import: opening invoices, core PRD section 8.22), section 17 (marketplace paid listings) and sections 18.3 and 18.4 (tests and review gate). The nine modules build in their own repositories, CharitonMedia/togavsu-<id>, from the public kit only; keep every name in this file exactly as given, because those repositories are written against it. This file outranks docs/modules/CORE-CHANGES.md where they differ for CORE-30 onward.
+The core and marketplace parts of the approved batch 2 modules PRD (approved by Patrick on 2026-11-16), copied unchanged: its fixed decisions that bind the core, section 4 (module API update 2, CORE-30 to CORE-37), section 5 (shared module rules the coretest harness serves), section 6 (migration import: opening invoices, core PRD section 8.22), the license bullet of section 15.5 (the key the marketplace issues and the paid module checks), section 17 (marketplace paid listings) and sections 18.3 and 18.4 (tests and review gate). The nine modules build in their own repositories, CharitonMedia/togavsu-<id>, from the public kit only; keep every name in this file exactly as given, because those repositories are written against it. This file outranks docs/modules/CORE-CHANGES.md where they differ for CORE-30 onward.
 
 Source: togavsu-modules-batch2-prd.md as approved, SHA-256 f4fb200f30a9d05c96e0388b498f46ffb8691b1b88638e0a3d0c23d4f6d330ef.
 
@@ -127,6 +127,12 @@ IMP-06 The client sees the document of record in the portal for an imported invo
 IMP-07 Voiding an imported invoice works and logs the void; the sequence is untouched.
 
 IMP-08 The collections panel, aging and statements include imported invoices exactly like others.
+
+## 15. Missouri estate planning (mo-estate-planning), the paid module
+
+### 15.5 Behavior
+
+- **The license.** The module reads its license key from its secret settings. The key is an Ed25519-signed statement from the marketplace naming the firm's install id, the module, and the paid-through date, and the module checks it offline against the marketplace's public key built into the image. It renews the key from the marketplace once a day. After the paid-through date plus a grace period setting (14 days), Generate package stops with a plain message; every questionnaire, answer and document already made stays readable and downloadable. The core enforces nothing.
 
 ## 17. Marketplace: paid listings and submission
 
