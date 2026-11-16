@@ -427,6 +427,52 @@
       }
     },
     {
+      "name": "listMeAppointments",
+      "method": "GET",
+      "path": "/api/v1/me/appointments",
+      "features": [
+        "calendar"
+      ],
+      "scopes": [
+        "calendar:read"
+      ],
+      "roles": [
+        "client"
+      ],
+      "module_delegation": "delegated_viewer",
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 50
+      },
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
       "name": "getMeContact",
       "method": "GET",
       "path": "/api/v1/me/contact",

@@ -47,6 +47,7 @@ func (a *App) routes() {
 	m.HandleFunc("DELETE /api/v1/api-tokens/{token_id}", a.revokeTokenJSON)
 	a.identityRoutes(m)
 	a.meContactRoutes(m)
+	a.meAppointmentsRoutes(m)
 	a.directoryRoutes(m)
 	a.portalRoutes(m)
 	a.systemRoutes(m)

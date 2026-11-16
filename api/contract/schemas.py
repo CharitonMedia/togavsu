@@ -2017,6 +2017,19 @@ SCHEMAS = _register(
             ["contact_id", "email", "phone", "address"],
             "Client-linked contact primary email, phone and mailing address. Sign-in email is separate.",
         ),
+        "ClientAppointment": _obj(
+            {
+                "title": {"type": "string"},
+                "kind": _enum(["client_meeting", "court_date"], "Upcoming appointment kinds a client may see."),
+                "start": _dt("Event start (UTC)."),
+                "end": _dt("Event end (UTC)."),
+                "all_day": {"type": "boolean"},
+                "location": {"type": "string"},
+                "matter_id": _uuid("Matter the appointment belongs to."),
+            },
+            ["title", "kind", "start", "end", "all_day", "location", "matter_id"],
+            "Upcoming client_meeting or court_date on a matter the client can read. No notes, attendees or other calendar fields.",
+        ),
         "MeContactWrite": _obj(
             {
                 "email": {"type": "string", "format": "email"},

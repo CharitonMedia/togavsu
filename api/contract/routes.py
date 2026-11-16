@@ -538,6 +538,25 @@ def _identity(api: Contract) -> None:
     )
     api.add(
         "get",
+        "/api/v1/me/appointments",
+        operation_id="listMeAppointments",
+        summary="List upcoming client appointments",
+        description=(
+            "Returns upcoming client_meeting and court_date events on matters the client can read. "
+            "Each row carries title, kind, start, end, all_day, location and matter_id only. "
+            "The firm calendar-events collection stays staff-only."
+        ),
+        tag="Calendar",
+        features=["calendar"],
+        roles=CLIENT,
+        scopes=["calendar:read"],
+        response_schema=_page("ClientAppointment"),
+        paginate=True,
+        writes=False,
+        extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "get",
         "/api/v1/me/contact",
         operation_id="getMeContact",
         summary="Get linked contact details",

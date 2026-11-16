@@ -22,10 +22,10 @@ def _file_hashes() -> dict[str, str]:
 
 
 BASELINE_ARTIFACTS = {
-    "api/openapi/v1/openapi.json": "39cc4e62177b29e69a14d22e7abebc55d4da76855b75f6f2fbd0da95a812210f",
+    "api/openapi/v1/openapi.json": "0a958a1e7efcb490a935880445281cf3c2f0d964a2a00b6237172b4f37fff8bf",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
-    "api/openapi/v1/mcp-tools.json": "64de8c8c792910c3a8c7f45a8cdb0b0280f10bf5144f5af7bd53503dbc0be017",
-    "docs/api/coverage.md": "6e65a560815b1da4bc4d95d3f42e8d500cebfcbc43a7213b6cc57e884c1668ec",
+    "api/openapi/v1/mcp-tools.json": "c21f1dbe15161e6516996345e7a104261a3a68e999a181bd7bdb3990c51ed8a1",
+    "docs/api/coverage.md": "793adc1016befc48f1d3f47d81b250025be96f2fdee29b4985516f5b7145e887",
 }
 
 DECISION_RESULTS = {

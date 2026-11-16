@@ -21,6 +21,9 @@
       "name": "Identity"
     },
     {
+      "name": "Calendar"
+    },
+    {
       "name": "Settings"
     },
     {
@@ -49,9 +52,6 @@
     },
     {
       "name": "Trust"
-    },
-    {
-      "name": "Calendar"
     },
     {
       "name": "Files"
@@ -1732,6 +1732,143 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/me/appointments": {
+      "get": {
+        "operationId": "listMeAppointments",
+        "summary": "List upcoming client appointments",
+        "description": "Returns upcoming client_meeting and court_date events on matters the client can read. Each row carries title, kind, start, end, all_day, location and matter_id only. The firm calendar-events collection stays staff-only.",
+        "tags": [
+          "Calendar"
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from page.next_cursor."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 50
+            },
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ClientAppointment"
+                      }
+                    },
+                    "page": {
+                      "$ref": "#/components/schemas/Page"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "calendar"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "client"
+          ],
+          "scopes": [
+            "calendar:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "own",
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "listMeAppointments",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/api/v1/me/contact": {
@@ -62823,6 +62960,7 @@
               "publishFile",
               "createFileLink",
               "getMe",
+              "listMeAppointments",
               "getMeContact",
               "getMeSettings",
               "listSessions",
@@ -73472,6 +73610,54 @@
           "address"
         ],
         "description": "Client-linked contact primary email, phone and mailing address. Sign-in email is separate."
+      },
+      "ClientAppointment": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "client_meeting",
+              "court_date"
+            ],
+            "description": "Upcoming appointment kinds a client may see."
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Event start (UTC)."
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Event end (UTC)."
+          },
+          "all_day": {
+            "type": "boolean"
+          },
+          "location": {
+            "type": "string"
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Matter the appointment belongs to."
+          }
+        },
+        "required": [
+          "title",
+          "kind",
+          "start",
+          "end",
+          "all_day",
+          "location",
+          "matter_id"
+        ],
+        "description": "Upcoming client_meeting or court_date on a matter the client can read. No notes, attendees or other calendar fields."
       },
       "MeContactWrite": {
         "type": "object",
