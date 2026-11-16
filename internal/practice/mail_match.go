@@ -8,7 +8,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
-const mailMatchCap = 50
+const mailMatchCap = domain.MailMatchListMax
 
 // MailMatchRequest is matchMail's body (CORE-26).
 type MailMatchRequest struct {
@@ -52,9 +52,23 @@ type MailMatchResult struct {
 	Matters           []MailMatchMatter             `json:"matters"`
 }
 
-var mailViaRank = map[string]int{
-	"known": 1, "address": 2, "matter_number": 3,
-	"case_number": 4, "case_number_in_name": 5, "client_name": 6,
+func mailViaRankOf(via string) int {
+	switch via {
+	case "known":
+		return 1
+	case "address":
+		return 2
+	case "matter_number":
+		return 3
+	case "case_number":
+		return 4
+	case "case_number_in_name":
+		return 5
+	case "client_name":
+		return 6
+	default:
+		return 0
+	}
 }
 
 func trimMailList(in []string) ([]string, error) {
@@ -145,7 +159,7 @@ func (s *Service) MatchMail(ctx context.Context, p domain.Principal, in MailMatc
 	}
 	hits := map[domain.ID]hit{}
 	note := func(row domain.Matter, via string) {
-		if prior, ok := hits[row.ID]; ok && mailViaRank[via] >= mailViaRank[prior.via] {
+		if prior, ok := hits[row.ID]; ok && mailViaRankOf(via) >= mailViaRankOf(prior.via) {
 			return
 		}
 		hits[row.ID] = hit{row: row, via: via}

@@ -732,7 +732,7 @@ func optionalArchiveID(id *domain.ID) (domain.ID, bool) {
 
 // archiveZipPath accepts a relative zip member path for CORE-21 entries.
 func archiveZipPath(raw string) (string, error) {
-	if raw == "" || len(raw) > 255 {
+	if raw == "" || len(raw) > domain.ArchiveZipPathMaxBytes {
 		return "", domain.Invalid("path", "path must be 1 to 255 bytes")
 	}
 	if strings.HasPrefix(raw, "/") || strings.Contains(raw, `\`) {

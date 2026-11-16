@@ -16,7 +16,7 @@ import (
 // TemporaryPassword returns a random password long enough for HashPassword.
 // Callers must not log, audit or put the value in events.
 func TemporaryPassword() (string, error) {
-	raw := make([]byte, 18)
+	raw := make([]byte, domain.TempPasswordBytes)
 	if _, err := rand.Read(raw); err != nil {
 		return "", err
 	}

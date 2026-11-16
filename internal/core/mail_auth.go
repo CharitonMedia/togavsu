@@ -18,8 +18,9 @@ import (
 const (
 	workflowMailMatching = "mail_matching"
 	workflowMailFiling   = "mail_filing"
-	mailAuthTTL          = 15 * time.Minute
 )
+
+func mailAuthTTL() time.Duration { return 15 * time.Minute }
 
 type mailAuthClaims struct {
 	Workflow   string   `json:"wf"`

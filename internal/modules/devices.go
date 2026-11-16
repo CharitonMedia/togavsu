@@ -17,10 +17,10 @@ import (
 )
 
 // Device grant lifetime and exchange token TTL (CORE-28).
-const (
-	deviceGrantUnusedDays = 90
-	deviceContextTTL      = 10 * time.Minute
-)
+const deviceGrantUnusedDays = domain.ModuleDeviceUnusedDays
+
+func deviceContextTTL() time.Duration { return 10 * time.Minute }
+
 
 // ModuleDevice is one device grant row for list and create responses.
 type ModuleDevice struct {
@@ -283,7 +283,7 @@ WHERE module_id = $1 AND secret_hash = $2`, module, hashDeviceSecret(secret)).
 	if in.MatterID != nil {
 		matter = *in.MatterID
 	}
-	tok, err := s.issueContext(ctx, viewer, module, matter, deviceContextTTL)
+	tok, err := s.issueContext(ctx, viewer, module, matter, deviceContextTTL())
 	if err != nil {
 		return ContextToken{}, err
 	}

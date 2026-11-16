@@ -55,7 +55,7 @@ func (a *App) matchMailJSON(w http.ResponseWriter, r *http.Request) {
 		now := time.Now()
 		tok, err := a.sealMailAuth(mailAuthClaims{
 			Workflow: workflowMailMatching, Module: p.ModuleID, MatterIDs: ids,
-			ExpiresAt: now.Add(mailAuthTTL).Unix(), IssuedAt: now.Unix(),
+			ExpiresAt: now.Add(mailAuthTTL()).Unix(), IssuedAt: now.Unix(),
 		})
 		if err != nil {
 			writeErr(w, err)
@@ -134,7 +134,7 @@ func (a *App) issueMailFilingGrant(ctx context.Context, p domain.Principal, in f
 		return MailFilingAuthorization{}, domain.NotFound("matter")
 	}
 	now := time.Now()
-	exp := now.Add(mailAuthTTL)
+	exp := now.Add(mailAuthTTL())
 	tok, err := a.sealMailAuth(mailAuthClaims{
 		Workflow: workflowMailFiling, Module: p.ModuleID, MatterID: string(in.MatterID),
 		MessageKey: in.MessageKey, ExpiresAt: exp.Unix(), IssuedAt: now.Unix(),

@@ -44,9 +44,13 @@ const (
 	ModuleSecretMaxBytes      = 16 << 10
 	DirectoryIDsMax           = 100
 	SidebarDefaultOrder       = 1000
-	InboundWebhookMaxBytes    = 1048576
-	InboundWebhookRatePerMin  = 120
+	InboundWebhookMaxBytes     = 1048576
+	InboundWebhookRatePerMin   = 120
 	ClientAccessDaysAfterClose = 14
+	MailMatchListMax           = 50
+	ArchiveZipPathMaxBytes     = 255
+	ModuleDeviceUnusedDays     = 90
+	TempPasswordBytes          = 18
 )
 
 // DocCategory is one default filing category.
