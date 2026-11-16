@@ -50,8 +50,7 @@ var catalog = map[string]struct{}{
 // Entries land with the CORE item that adds the scope to the catalog.
 var moduleOnlyScopes = map[string]struct{}{
 	"module_secrets:write": {},
-	"mail:send": {},
-	"mail:send": {},
+	"mail:send":            {},
 }
 
 func knownScope(scope string) bool {
