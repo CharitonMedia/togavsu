@@ -28,21 +28,27 @@ reads a setting changes.
 
 - Lists of words (party roles, matter markers, default folders, activity types, expense types): a textarea,
   one item per line, stored as the same JSON list. Blank lines are dropped.
-- Durations: a number and a unit picker (seconds, minutes, hours, days); shown as "12 hours", "15 minutes",
-  "180 milliseconds" where that is the value. Defaults are shown the same way.
+- Durations: a whole number and a unit picker (milliseconds, seconds, minutes, hours, days); shown as
+  "12 hours", "15 minutes", "180 milliseconds" in the largest unit that holds the value exactly. Every value
+  the old text form accepted, including sub-second ones such as search.delay's 180 ms, can be entered and is
+  stored exactly. Defaults are shown the same way.
 - Byte sizes (largest upload, upload chunk size, editor run memory): a number and MB or GB; shown as
   "2 GB", "8 MB", "1 GB".
 - Doc Tender retry schedule: one delay per line in plain form ("Right away", "15 minutes", "2 hours"); stored as
   the same JSON list.
 - Default notifications: a grid of checkboxes, one row per kind in plain words, columns Email and In app; the
   trust flag email box is checked and cannot be cleared.
-- Custom colors: one color picker per named color.
+- Custom colors: one row per named color, each with a "Use the preset" choice and a color picker. A color
+  left on "Use the preset" is not written; only colors the admin picked are stored, so saving the form with
+  nothing picked stores `{}` as before.
 - Model prices and per-task model overrides: a plain read-only table of what is set (or "None set"); the
   JSON editor for each sits behind Advanced.
 - File naming pattern: keep the token form, and show under it a sample file name built from it with sample
   values, so the admin sees what a file will be called.
 - On/off settings stay On/Off. Money stays in dollars. Plain text stays plain text.
 - The Default column uses the same plain form as the value. "(none)" reads "None".
+- Help text holds no code. Where a setting's help shows JSON or a pattern (ai.model_prices today), reword it
+  in plain words for the default view and move the format example next to the Advanced editor.
 
 ## Done means
 
