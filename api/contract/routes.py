@@ -12,6 +12,7 @@ BILLING = ["admin", "attorney", "staff", "accountant"]
 FIRM = ["admin", "attorney", "staff", "accountant"]
 ANY = ["admin", "attorney", "staff", "accountant", "client"]
 DIRECTORY = ["admin", "attorney", "staff", "client"]
+CLIENT = ["client"]
 VIEWER = {"module_delegation": "delegated_viewer"}
 
 WALL = {"matter_wall": True, "access_inherits": "matter"}
@@ -531,6 +532,43 @@ def _identity(api: Contract) -> None:
                 "bar_state",
             ],
         },
+    )
+    api.add(
+        "get",
+        "/api/v1/me/contact",
+        operation_id="getMeContact",
+        summary="Get linked contact details",
+        description=(
+            "Returns the client caller's linked contact primary email, primary phone and mailing address. "
+            "Sign-in email stays on getMe and requestEmailChange."
+        ),
+        tag="Identity",
+        features=["profile"],
+        roles=CLIENT,
+        scopes=["profile:read"],
+        response="MeContact",
+        writes=False,
+        extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "patch",
+        "/api/v1/me/contact",
+        operation_id="updateMeContact",
+        summary="Update linked contact details",
+        description=(
+            "Changes the client caller's linked contact primary email, primary phone and/or mailing address. "
+            "A change sets effective_to on the old row and adds a new primary row. "
+            "Audited with the client as actor; emits contact.updated with a client-visible timeline row. "
+            "Sign-in email stays on requestEmailChange."
+        ),
+        tag="Identity",
+        features=["profile"],
+        roles=CLIENT,
+        scopes=["profile:write"],
+        body="MeContactWrite",
+        response="MeContact",
+        events=["contact.updated"],
+        extra_access={**VIEWER, "client": "own"},
     )
     api.add(
         "post",
@@ -2490,7 +2528,7 @@ def _files(api: Contract) -> None:
         update=False,
         include=True,
         csv=True,
-        filters=["matter_id", "contact_id", "folder_id", "q", "trashed", "attorney_only", "category_id"],
+        filters=["matter_id", "contact_id", "folder_id", "q", "trashed", "attorney_only", "category_id", "library"],
         extra_access=SHARED,
     )
     api.add(

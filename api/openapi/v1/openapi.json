@@ -1734,6 +1734,231 @@
         }
       }
     },
+    "/api/v1/me/contact": {
+      "get": {
+        "operationId": "getMeContact",
+        "summary": "Get linked contact details",
+        "description": "Returns the client caller's linked contact primary email, primary phone and mailing address. Sign-in email stays on getMe and requestEmailChange.",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeContact"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "profile"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "client"
+          ],
+          "scopes": [
+            "profile:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "own",
+          "module_delegation": "delegated_viewer"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getMeContact",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "updateMeContact",
+        "summary": "Update linked contact details",
+        "description": "Changes the client caller's linked contact primary email, primary phone and/or mailing address. A change sets effective_to on the old row and adds a new primary row. Audited with the client as actor; emits contact.updated with a client-visible timeline row. Sign-in email stays on requestEmailChange.",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeContact"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "profile"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "client"
+          ],
+          "scopes": [
+            "profile:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "own",
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "contact.updated"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "updateMeContact",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeContactWrite"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me/email-change": {
       "post": {
         "operationId": "requestEmailChange",
@@ -37673,6 +37898,15 @@
             "description": "Category filter."
           },
           {
+            "name": "library",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Library file filter. When true, only firm library files; when false, only non-library files."
+          },
+          {
             "name": "include",
             "in": "query",
             "required": false,
@@ -37842,7 +38076,7 @@
       "post": {
         "operationId": "publishFile",
         "summary": "Publish a staged upload as a file",
-        "description": "Creates the file and its first version from one staged upload in one transaction, then marks the upload published. completeFileUpload must have run first. A failed publish leaves the upload staged, creates no file, and emits no file.version_created. After the transaction commits, the new first version emits file.version_created. Optional origin (firm or received) is accepted only from a module token; omitted keeps the current receivedSource and grant rules. A client-only delegated viewer forces source client_upload and may not pass origin firm.",
+        "description": "Creates the file and its first version from one staged upload in one transaction, then marks the upload published. completeFileUpload must have run first. A failed publish leaves the upload staged, creates no file, and emits no file.version_created. After the transaction commits, the new first version emits file.version_created.",
         "tags": [
           "Files"
         ],
@@ -62476,6 +62710,7 @@
               "publishFile",
               "createFileLink",
               "getMe",
+              "getMeContact",
               "getMeSettings",
               "listSessions",
               "getFirmProfile",
@@ -70425,6 +70660,10 @@
           "shared_with_client": {
             "type": "boolean"
           },
+          "library": {
+            "type": "boolean",
+            "description": "Firm library file. When true, matter_id and contact_id are null. Firm roles only; Doc Tender does not process it."
+          },
           "source": {
             "type": "string"
           },
@@ -70524,11 +70763,12 @@
           "origin",
           "attorney_only",
           "shared_with_client",
+          "library",
           "source",
           "locked_fields",
           "warnings"
         ],
-        "description": "A core file record. Bytes live on a storage backend under an opaque key that this API does not return. financial_classification is server-owned: an expense receipt or a stored invoice PDF. Write requests cannot set it."
+        "description": "A core file record. Bytes live on a storage backend under an opaque key that this API does not return. financial_classification is server-owned: an expense receipt or a stored invoice PDF. Write requests cannot set it. library is a firm-shared file with no matter or contact."
       },
       "FileRename": {
         "type": "object",
@@ -70963,13 +71203,17 @@
           "sha256": {
             "type": "string",
             "pattern": "^[a-f0-9]{64}$"
+          },
+          "library": {
+            "type": "boolean",
+            "description": "When true, matter_id and contact_id must be null. Creates a firm library file on publish."
           }
         },
         "required": [
           "file_name",
           "size_bytes"
         ],
-        "description": "Starts an upload. size_bytes above files.max_upload_bytes is payload_too_large."
+        "description": "Starts an upload. size_bytes above files.max_upload_bytes is payload_too_large. library true requires matter_id and contact_id null."
       },
       "FileBulkItem": {
         "type": "object",
@@ -71013,19 +71257,15 @@
           "shared_with_client": {
             "type": "boolean"
           },
-          "origin": {
-            "type": "string",
-            "enum": [
-              "firm",
-              "received"
-            ],
-            "description": "Optional. firm or received. Accepted only from a module token. Omitted, receivedSource (and an email/zoom/drop grant) still marks the file received. A module may not pass firm for a client-only delegated viewer (validation_failed)."
+          "library": {
+            "type": "boolean",
+            "description": "When true, matter_id and contact_id must be null. Publishes a firm library file."
           }
         },
         "required": [
           "upload_id"
         ],
-        "description": "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event. Optional origin (firm or received) is accepted only from a module token (CORE-16)."
+        "description": "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event. library true requires matter_id and contact_id null."
       },
       "BackgroundFileGrantRequest": {
         "description": "Matter publication names one authorized matter. Unassigned ingestion names no matter. The body cannot name a module id, a role, or an expiry.",
@@ -72134,6 +72374,7 @@
               "published",
               "exception",
               "not_processed_matter_closed",
+              "not_processed_library",
               "held_for_provider",
               "held_for_ai_setup"
             ]
@@ -72170,7 +72411,7 @@
           "status",
           "attempts"
         ],
-        "description": "A Doc Tender job. A closed matter is stored as not_processed_matter_closed and makes no model call. The published labels are getDocTenderResult, not this object."
+        "description": "A Doc Tender job. A closed matter is stored as not_processed_matter_closed and makes no model call. Library files are not_processed_library and never queued. The published labels are getDocTenderResult, not this object."
       },
       "DocTenderException": {
         "type": "object",
@@ -72533,7 +72774,7 @@
         "properties": {
           "status": {
             "type": "string",
-            "description": "The newest job's status; empty when no job has run."
+            "description": "The newest job's status; empty when no job has run. Library files report not_processed_library with no job."
           },
           "label": {
             "type": "string"
@@ -72568,7 +72809,7 @@
           "label",
           "flags"
         ],
-        "description": "A file's Doc Tender state as the caller sees the file."
+        "description": "A file's Doc Tender state as the caller sees the file. Library files are not_processed_library."
       },
       "DocTenderModelChoices": {
         "type": "object",
@@ -72968,6 +73209,107 @@
           }
         },
         "description": "Fields the signed-in user may change on PATCH /api/v1/me. roles, email, and linked_contact_id are absent. Email changes use requestEmailChange and confirmEmailChange."
+      },
+      "MailingAddress": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "line1": {
+            "type": "string"
+          },
+          "line2": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "postal_code": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "line1",
+          "city",
+          "region",
+          "postal_code",
+          "country"
+        ],
+        "description": "Postal mailing address fields for the client's linked contact."
+      },
+      "MeContact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Linked contact id."
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\+[1-9]\\d{1,14}$",
+                "description": "Primary phone in E.164."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "address": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MailingAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "contact_id",
+          "email",
+          "phone",
+          "address"
+        ],
+        "description": "Client-linked contact primary email, phone and mailing address. Sign-in email is separate."
+      },
+      "MeContactWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{1,14}$"
+          },
+          "address": {
+            "$ref": "#/components/schemas/MailingAddress"
+          }
+        },
+        "description": "Optional primary email, phone and mailing address. Omitted fields are left unchanged. Sign-in email stays on requestEmailChange."
       },
       "EmailChangeRequest": {
         "type": "object",
@@ -81099,9 +81441,13 @@
           "sha256": {
             "type": "string",
             "pattern": "^[a-f0-9]{64}$"
+          },
+          "library": {
+            "type": "boolean",
+            "description": "When true, matter_id and contact_id must be null. Creates a firm library file on publish."
           }
         },
-        "description": "Starts an upload. size_bytes above files.max_upload_bytes is payload_too_large. Patch: every field is optional."
+        "description": "Starts an upload. size_bytes above files.max_upload_bytes is payload_too_large. library true requires matter_id and contact_id null. Patch: every field is optional."
       },
       "FileMetadataWritePatch": {
         "type": "object",
@@ -81403,6 +81749,24 @@
           }
         },
         "description": "Fields the signed-in user may change on PATCH /api/v1/me. roles, email, and linked_contact_id are absent. Email changes use requestEmailChange and confirmEmailChange. Patch: every field is optional."
+      },
+      "MeContactWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{1,14}$"
+          },
+          "address": {
+            "$ref": "#/components/schemas/MailingAddress"
+          }
+        },
+        "description": "Optional primary email, phone and mailing address. Omitted fields are left unchanged. Sign-in email stays on requestEmailChange. Patch: every field is optional."
       },
       "ApiTokenWritePatch": {
         "description": "An admin issues a token bound to one user or one module. Requested scopes must be within the issuing credential and within that owner's role or approved module permissions. A bearer cannot gain scopes it does not already hold. Patch: every field is optional.",
@@ -82882,6 +83246,9 @@
     "user.updated": [
       "users:read"
     ],
+    "contact.updated": [
+      "contacts:read"
+    ],
     "user.email_change_requested": [
       "profile:read"
     ],
@@ -82910,9 +83277,6 @@
       "tokens:read"
     ],
     "contact.created": [
-      "contacts:read"
-    ],
-    "contact.updated": [
       "contacts:read"
     ],
     "contact.archived": [

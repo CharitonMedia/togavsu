@@ -613,6 +613,7 @@ type File struct {
 	Origin           string `db:"origin"`
 	AttorneyOnly     bool   `db:"attorney_only"`
 	SharedWithClient bool   `db:"shared_with_client"`
+	Library          bool   `db:"library"`
 	Source           string `db:"source"`
 	ArrivedName      string `db:"arrived_name"`
 	LockedFields     string `db:"locked_fields"`

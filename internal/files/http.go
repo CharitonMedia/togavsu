@@ -386,6 +386,10 @@ func (h *Handler) list(r *http.Request, p domain.Principal) (map[string]any, err
 		f := domain.ID(q.Get("folder_id"))
 		lq.FolderID = &f
 	}
+	if q.Has("library") {
+		lib := q.Get("library") == "true"
+		lq.Library = &lib
+	}
 	rows, next, err := h.Svc.List(r.Context(), p, lq)
 	if err != nil {
 		return nil, err

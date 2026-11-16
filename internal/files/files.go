@@ -24,6 +24,7 @@ type NewFile struct {
 	FolderID         domain.ID
 	AttorneyOnly     bool
 	SharedWithClient bool
+	Library          bool
 	MediaType        string
 	// Source is upload, client_upload, editor, email, zoom, drop_folder, importer or a module id.
 	Source string
@@ -58,6 +59,7 @@ type FileView struct {
 	FinancialClass   *string    `json:"financial_classification"`
 	AttorneyOnly     bool       `json:"attorney_only"`
 	SharedWithClient bool       `json:"shared_with_client"`
+	Library          bool       `json:"library"`
 	Source           string     `json:"source"`
 	ArrivedAs        string     `json:"arrived_as"`
 	LockedFields     []string   `json:"locked_fields"`
@@ -91,8 +93,8 @@ func view(f fileRow, warnings []string) FileView {
 		ID: f.ID, CreatedAt: domain.FormatUTC(f.CreatedAt), CreatedBy: f.CreatedBy, UpdatedAt: domain.FormatUTC(f.UpdatedAt),
 		Name: f.Name, Extension: f.Extension, MatterID: optID(f.MatterID), ContactID: optID(f.ContactID),
 		FolderID: optID(domain.ID(f.Folder)), CategoryID: optString(f.Category), Status: optString(f.Status),
-		Origin: f.Origin, AttorneyOnly: f.AttorneyOnly, SharedWithClient: f.SharedWithClient, Source: f.Source,
-		ArrivedAs: f.ArrivedName, LockedFields: lockedFields(f), CurrentVersionID: optID(f.CurrentVersionID),
+		Origin: f.Origin, AttorneyOnly: f.AttorneyOnly, SharedWithClient: f.SharedWithClient, Library: f.Library,
+		Source: f.Source, ArrivedAs: f.ArrivedName, LockedFields: lockedFields(f), CurrentVersionID: optID(f.CurrentVersionID),
 		TrashedBy: optID(f.TrashedBy), Warnings: warnings, MarkdownName: MarkdownName(f.Name),
 	}
 	if f.FinancialClass != "" && f.FinancialClass != string(domain.FileGeneral) {
@@ -133,6 +135,20 @@ func validName(name string) error {
 
 // maxName is the common file-system name limit in bytes.
 const maxName = 1<<8 - 1
+
+// libraryPlacement refuses a library file that names a matter or contact.
+func libraryPlacement(library bool, matter, contact domain.ID) error {
+	if !library {
+		return nil
+	}
+	if matter != "" {
+		return domain.Invalid("matter_id", "a library file has no matter")
+	}
+	if contact != "" {
+		return domain.Invalid("contact_id", "a library file has no contact")
+	}
+	return nil
+}
 
 func validHow(how string) bool {
 	switch how {
@@ -243,6 +259,9 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 	default:
 		return FileView{}, domain.Invalid("financial_classification", "unknown class")
 	}
+	if err := libraryPlacement(nf.Library, nf.MatterID, nf.ContactID); err != nil {
+		return FileView{}, err
+	}
 	if nf.unassigned {
 		if nf.MatterID != "" || nf.AttorneyOnly {
 			return FileView{}, domain.Forbidden("an unassigned module file has no matter and is not attorney-only")
@@ -273,8 +292,8 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 	f := fileRow{File: domain.File{
 		Meta: fm, Name: nf.Name, Extension: extensionOf(nf.Name), MatterID: nf.MatterID, ContactID: nf.ContactID,
 		Folder: string(nf.FolderID), Status: status, Origin: nf.Origin, AttorneyOnly: nf.AttorneyOnly,
-		SharedWithClient: nf.SharedWithClient, Source: nf.Source, ArrivedName: nf.Name, LockedFields: "[]",
-		CurrentVersionID: vm.ID,
+		SharedWithClient: nf.SharedWithClient, Library: nf.Library, Source: nf.Source, ArrivedName: nf.Name,
+		LockedFields: "[]", CurrentVersionID: vm.ID,
 	}, FinancialClass: class}
 	v := domain.FileVersion{
 		Meta: vm, FileID: fm.ID, Number: int(zero) + 1, StorageBackendID: loc.Backend, StorageKey: string(vm.ID), SizeBytes: size,
@@ -336,7 +355,9 @@ func versionNote(v domain.FileVersion) string {
 
 func (s *Service) versionCreated(ctx context.Context, f fileRow, v domain.FileVersion) {
 	if s.onVersion != nil {
-		s.onVersion(context.WithoutCancel(ctx), VersionCreated{FileID: f.ID, VersionID: v.ID, MatterID: f.MatterID, Number: v.Number, How: v.How, Source: f.Source})
+		s.onVersion(context.WithoutCancel(ctx), VersionCreated{
+			FileID: f.ID, VersionID: v.ID, MatterID: f.MatterID, Number: v.Number, How: v.How, Source: f.Source, Library: f.Library,
+		})
 	}
 }
 
@@ -463,6 +484,7 @@ type ListQuery struct {
 	ContactID domain.ID
 	FolderID  *domain.ID
 	Trashed   bool
+	Library   *bool
 	Text      string
 	Cursor    domain.ID
 	Limit     int
@@ -476,7 +498,7 @@ func (s *Service) List(ctx context.Context, p domain.Principal, q ListQuery) ([]
 			return nil, "", err
 		}
 	}
-	fq := fileQuery{MatterID: q.MatterID, ContactID: q.ContactID, Trashed: q.Trashed, Text: q.Text, After: q.Cursor}
+	fq := fileQuery{MatterID: q.MatterID, ContactID: q.ContactID, Trashed: q.Trashed, Library: q.Library, Text: q.Text, After: q.Cursor}
 	if q.FolderID != nil {
 		folder := string(*q.FolderID)
 		fq.Folder = &folder
@@ -701,11 +723,17 @@ func (s *Service) UpdateMetadata(ctx context.Context, p domain.Principal, id dom
 			lock(&next, "category")
 		}
 		if m.MatterID != nil && *m.MatterID != f.MatterID {
+			if f.Library {
+				return domain.Invalid("matter_id", "a library file has no matter")
+			}
 			next.MatterID = *m.MatterID
 			next.Folder = ""
 			lock(&next, "matter")
 		}
 		if m.ContactID != nil {
+			if f.Library && *m.ContactID != "" {
+				return domain.Invalid("contact_id", "a library file has no contact")
+			}
 			next.ContactID = *m.ContactID
 		}
 		if next.MatterID != f.MatterID || next.ContactID != f.ContactID || next.AttorneyOnly != f.AttorneyOnly {

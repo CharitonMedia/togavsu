@@ -427,6 +427,92 @@
       }
     },
     {
+      "name": "getMeContact",
+      "method": "GET",
+      "path": "/api/v1/me/contact",
+      "features": [
+        "profile"
+      ],
+      "scopes": [
+        "profile:read"
+      ],
+      "roles": [
+        "client"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "updateMeContact",
+      "method": "PATCH",
+      "path": "/api/v1/me/contact",
+      "features": [
+        "profile"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "client"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "context_token",
+          "body"
+        ]
+      }
+    },
+    {
       "name": "requestEmailChange",
       "method": "POST",
       "path": "/api/v1/me/email-change",

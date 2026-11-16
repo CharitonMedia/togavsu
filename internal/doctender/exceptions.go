@@ -673,6 +673,10 @@ func (s *Service) Status(ctx context.Context, p domain.Principal, fileID domain.
 		return FileStatus{}, err
 	}
 	out := FileStatus{Flags: []Flag{}}
+	if f.Library {
+		out.Status, out.Label = StatusLibrary, "Not processed (library)"
+		return out, nil
+	}
 	jobs, err := s.jobsWhere(ctx, `file_id = ? AND kind = 'file' ORDER BY created_at DESC, id DESC`, f.ID)
 	if err != nil {
 		return out, err
@@ -683,6 +687,8 @@ func (s *Service) Status(ctx context.Context, p domain.Principal, fileID domain.
 	switch out.Status {
 	case StatusMatterClosed:
 		out.Label = "Not processed (matter closed)"
+	case StatusLibrary:
+		out.Label = "Not processed (library)"
 	case StatusPublished:
 		out.Label = "Processed"
 	case StatusException:

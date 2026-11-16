@@ -24,6 +24,7 @@ type UploadRequest struct {
 	MediaType string    `json:"media_type"`
 	SizeBytes int64     `json:"size_bytes"`
 	SHA256    string    `json:"sha256"`
+	Library   bool      `json:"library"`
 }
 
 // Upload is the FileUpload contract shape.
@@ -81,6 +82,9 @@ func (s *Service) CreateUpload(ctx context.Context, p domain.Principal, in Uploa
 	if in.SizeBytes > max {
 		return Upload{}, domain.Invalid("size_bytes", fmt.Sprintf("the largest upload is %d bytes", max))
 	}
+	if err := libraryPlacement(in.Library, in.MatterID, in.ContactID); err != nil {
+		return Upload{}, err
+	}
 	chunk, err := s.intSetting(ctx, "files.upload_chunk_bytes")
 	if err != nil {
 		return Upload{}, err
@@ -96,7 +100,7 @@ func (s *Service) CreateUpload(ctx context.Context, p domain.Principal, in Uploa
 	u := uploadRow{
 		Meta: m, OwnerUserID: p.UserID, OwnerModuleID: p.ModuleID, FileName: in.FileName, MatterID: in.MatterID,
 		ContactID: in.ContactID, MediaType: in.MediaType, SizeBytes: in.SizeBytes, DeclaredSHA256: in.SHA256,
-		ChunkBytes: chunk, Status: "receiving", ExpiresAt: us(noExpiry), GrantID: grant,
+		ChunkBytes: chunk, Status: "receiving", ExpiresAt: us(noExpiry), GrantID: grant, Library: in.Library,
 	}
 	if err := os.MkdirAll(s.staging, fs.ModePerm&0o700); err != nil {
 		return Upload{}, err
@@ -317,6 +321,7 @@ type Publish struct {
 	Name             string     `json:"name"`
 	AttorneyOnly     bool       `json:"attorney_only"`
 	SharedWithClient bool       `json:"shared_with_client"`
+	Library          bool       `json:"library"`
 	FolderID         domain.ID  `json:"folder_id"`
 	// Origin is firm or received. Only a module token may set it (CORE-16).
 	Origin string `json:"origin,omitempty"`
@@ -357,10 +362,14 @@ func (s *Service) PublishUpload(ctx context.Context, p domain.Principal, in Publ
 	if in.Name != "" {
 		name = in.Name
 	}
+	library := in.Library || u.Library
+	if err := libraryPlacement(library, matter, contact); err != nil {
+		return FileView{}, err
+	}
 	nf := NewFile{
 		Name: name, MatterID: matter, ContactID: contact, FolderID: in.FolderID, AttorneyOnly: in.AttorneyOnly,
-		SharedWithClient: in.SharedWithClient, MediaType: u.MediaType, Source: sourceFor(p), How: "upload",
-		Origin: origin, created: true, unassigned: grant.Assignment == "unassigned",
+		SharedWithClient: in.SharedWithClient, Library: library, MediaType: u.MediaType, Source: sourceFor(p), How: "upload",
+		Origin: origin, created: true, unassigned: grant.Assignment == "unassigned" && !library,
 	}
 	if origin == "" && grant.ID != "" && grant.Source != "importer" {
 		nf.Origin = "received"

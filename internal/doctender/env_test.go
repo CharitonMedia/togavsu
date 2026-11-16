@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -77,6 +78,19 @@ func testDB(t *testing.T) *sql.DB {
 	}
 	if err := Migrate(ctx, plain); err != nil {
 		t.Fatalf("doc tender migrations: %v", err)
+	}
+	// CORE-17 library column (module-core 1300-1399) after Doc Tender's 800-range so
+	// schema_migrations stays ordered when packages migrate separately.
+	libSQL, err := os.ReadFile("../core/migrations/1302_library_files.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib, err := db.LoadFS(fstest.MapFS{"1302_library_files.sql": {Data: libSQL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: lib}); err != nil {
+		t.Fatalf("library migration: %v", err)
 	}
 	_ = plain.Close()
 	pool, err := db.OpenPostgres(u.String(), "core")

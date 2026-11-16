@@ -1408,6 +1408,10 @@ SCHEMAS = _register(
                 ),
                 "attorney_only": {"type": "boolean"},
                 "shared_with_client": {"type": "boolean"},
+                "library": {
+                    "type": "boolean",
+                    "description": "Firm library file. When true, matter_id and contact_id are null. Firm roles only; Doc Tender does not process it.",
+                },
                 "source": {"type": "string"},
                 "arrived_as": {"type": "string", "description": "Name the file arrived with. Kept for audit and page order. Not the display name."},
                 "locked_fields": _arr(_enum(["name", "category", "matter", "grouping"])),
@@ -1418,8 +1422,8 @@ SCHEMAS = _register(
                 "warnings": _arr(_obj({"code": {"type": "string"}, "detail": {"type": "string"}}, ["code", "detail"])),
                 "included": _ref("Included"),
             },
-            ["name", "extension", "origin", "attorney_only", "shared_with_client", "source", "locked_fields", "warnings"],
-            "A core file record. Bytes live on a storage backend under an opaque key that this API does not return. financial_classification is server-owned: an expense receipt or a stored invoice PDF. Write requests cannot set it.",
+            ["name", "extension", "origin", "attorney_only", "shared_with_client", "library", "source", "locked_fields", "warnings"],
+            "A core file record. Bytes live on a storage backend under an opaque key that this API does not return. financial_classification is server-owned: an expense receipt or a stored invoice PDF. Write requests cannot set it. library is a firm-shared file with no matter or contact.",
         ),
         "FileRename": _obj({"name": {"type": "string", "minLength": 1}}, ["name"], "The extension stays. A rename is edit history."),
         "FileMove": _obj({"folder_id": _null(_uuid())}, ["folder_id"], "Moves the record between folders. Bytes stay where they are."),
@@ -1515,9 +1519,13 @@ SCHEMAS = _register(
                 "media_type": {"type": "string"},
                 "size_bytes": {"type": "integer", "minimum": 0},
                 "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "library": {
+                    "type": "boolean",
+                    "description": "When true, matter_id and contact_id must be null. Creates a firm library file on publish.",
+                },
             },
             ["file_name", "size_bytes"],
-            "Starts an upload. size_bytes above files.max_upload_bytes is payload_too_large.",
+            "Starts an upload. size_bytes above files.max_upload_bytes is payload_too_large. library true requires matter_id and contact_id null.",
         ),
         "FileBulkItem": _obj(
             {
@@ -1527,9 +1535,13 @@ SCHEMAS = _register(
                 "name": {"type": "string"},
                 "attorney_only": {"type": "boolean"},
                 "shared_with_client": {"type": "boolean"},
+                "library": {
+                    "type": "boolean",
+                    "description": "When true, matter_id and contact_id must be null. Publishes a firm library file.",
+                },
             },
             ["upload_id"],
-            "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event.",
+            "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event. library true requires matter_id and contact_id null.",
         ),
         "BackgroundFileGrantRequest": {
             "description": "Matter publication names one authorized matter. Unassigned ingestion names no matter. The body cannot name a module id, a role, or an expiry.",
@@ -1762,13 +1774,24 @@ SCHEMAS = _register(
             {
                 "file_version_id": _uuid(),
                 "stage": {"type": "string"},
-                "status": _enum(["queued", "running", "published", "exception", "not_processed_matter_closed", "held_for_provider", "held_for_ai_setup"]),
+                "status": _enum(
+                    [
+                        "queued",
+                        "running",
+                        "published",
+                        "exception",
+                        "not_processed_matter_closed",
+                        "not_processed_library",
+                        "held_for_provider",
+                        "held_for_ai_setup",
+                    ]
+                ),
                 "attempts": {"type": "integer", "minimum": 0},
                 "next_attempt_at": _null(_dt()),
                 "last_error": {"type": "string"},
             },
             ["file_version_id", "stage", "status", "attempts"],
-            "A Doc Tender job. A closed matter is stored as not_processed_matter_closed and makes no model call. The published labels are getDocTenderResult, not this object.",
+            "A Doc Tender job. A closed matter is stored as not_processed_matter_closed and makes no model call. Library files are not_processed_library and never queued. The published labels are getDocTenderResult, not this object.",
             mutable=False,
         ),
         "DocTenderException": _meta(
@@ -1851,7 +1874,7 @@ SCHEMAS = _register(
         ),
         "DocTenderFileStatus": _obj(
             {
-                "status": {"type": "string", "description": "The newest job's status; empty when no job has run."},
+                "status": {"type": "string", "description": "The newest job's status; empty when no job has run. Library files report not_processed_library with no job."},
                 "label": {"type": "string"},
                 "flags": _arr(
                     _obj(
@@ -1862,7 +1885,7 @@ SCHEMAS = _register(
                 ),
             },
             ["status", "label", "flags"],
-            "A file's Doc Tender state as the caller sees the file.",
+            "A file's Doc Tender state as the caller sees the file. Library files are not_processed_library.",
         ),
         "DocTenderModelChoices": {
             "type": "object",
@@ -1952,6 +1975,36 @@ SCHEMAS = _register(
                 "profile_file_id": _null(_uuid("Profile picture file record.")),
             },
             description="Fields the signed-in user may change on PATCH /api/v1/me. roles, email, and linked_contact_id are absent. Email changes use requestEmailChange and confirmEmailChange.",
+        ),
+        "MailingAddress": _obj(
+            {
+                "line1": {"type": "string"},
+                "line2": {"type": "string"},
+                "city": {"type": "string"},
+                "region": {"type": "string"},
+                "postal_code": {"type": "string"},
+                "country": {"type": "string"},
+            },
+            ["line1", "city", "region", "postal_code", "country"],
+            "Postal mailing address fields for the client's linked contact.",
+        ),
+        "MeContact": _obj(
+            {
+                "contact_id": _uuid("Linked contact id."),
+                "email": _null({"type": "string", "format": "email"}),
+                "phone": _null({"type": "string", "pattern": "^\\+[1-9]\\d{1,14}$", "description": "Primary phone in E.164."}),
+                "address": _null(_ref("MailingAddress")),
+            },
+            ["contact_id", "email", "phone", "address"],
+            "Client-linked contact primary email, phone and mailing address. Sign-in email is separate.",
+        ),
+        "MeContactWrite": _obj(
+            {
+                "email": {"type": "string", "format": "email"},
+                "phone": {"type": "string", "pattern": "^\\+[1-9]\\d{1,14}$"},
+                "address": _ref("MailingAddress"),
+            },
+            description="Optional primary email, phone and mailing address. Omitted fields are left unchanged. Sign-in email stays on requestEmailChange.",
         ),
         "EmailChangeRequest": _obj(
             {"email": {"type": "string", "format": "email"}},
@@ -3463,6 +3516,7 @@ QUERY = {
     "category_id": _query("category_id", _ref("Uuid"), "Category filter."),
     "trashed": _query("trashed", {"type": "boolean"}, "Trash filter. Default is false."),
     "attorney_only": _query("attorney_only", {"type": "boolean"}, "Attorney-only file filter."),
+    "library": _query("library", {"type": "boolean"}, "Library file filter. When true, only firm library files; when false, only non-library files."),
     "practice_area_id": _query("practice_area_id", _ref("Uuid"), "Practice area filter."),
     "active": _query("active", {"type": "boolean"}, "Active filter."),
     "role": _query("role", _ROLE, "Role filter. Matches users who hold this role."),

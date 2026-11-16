@@ -68,6 +68,7 @@ type VersionCreated struct {
 	Number    int
 	How       string
 	Source    string
+	Library   bool
 }
 
 // Config wires the service.

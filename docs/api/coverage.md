@@ -23,6 +23,8 @@ It does not claim the handlers or the MCP server are implemented.
 | auth | `POST` | `/api/v1/auth/password-resets/confirm` | `confirmPasswordReset` | required:confirmPasswordReset | public | none |
 | profile | `GET` | `/api/v1/me` | `getMe` | required:getMe | admin, attorney, staff, accountant, client | profile:read |
 | profile | `PATCH` | `/api/v1/me` | `updateMe` | required:updateMe | admin, attorney, staff, accountant, client | profile:write |
+| profile | `GET` | `/api/v1/me/contact` | `getMeContact` | required:getMeContact | client | profile:read |
+| profile | `PATCH` | `/api/v1/me/contact` | `updateMeContact` | required:updateMeContact | client | profile:write |
 | profile | `POST` | `/api/v1/me/email-change` | `requestEmailChange` | required:requestEmailChange | admin, attorney, staff, accountant, client | profile:write |
 | profile | `POST` | `/api/v1/me/email-change/confirm` | `confirmEmailChange` | required:confirmEmailChange | admin, attorney, staff, accountant, client | profile:write |
 | profile | `POST` | `/api/v1/me/password` | `changePassword` | required:changePassword | admin, attorney, staff, accountant, client | profile:write |
@@ -449,4 +451,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 | modules, inbound-webhooks | `POST` | `/hooks/{module_id}/{hook_id}` | `postInboundWebhook` | required:postInboundWebhook | public | none |
 
-Operations: 443.
+Operations: 445.
