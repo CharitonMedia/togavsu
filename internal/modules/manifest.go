@@ -116,10 +116,23 @@ type MatterItem struct {
 }
 
 // Link is a sidebar entry, quick-create item or search scope.
+// Section, Subgroup, Icon, Order and Badge are CORE-08 sidebar placement fields;
+// they apply only to sidebar entries (validated in Validate).
 type Link struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Path  string `json:"path"`
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Path     string `json:"path"`
+	Section  string `json:"section,omitempty"`
+	Subgroup string `json:"subgroup,omitempty"`
+	Icon     string `json:"icon,omitempty"`
+	Order    *int   `json:"order,omitempty"`
+	Badge    *Badge `json:"badge,omitempty"`
+}
+
+// Badge is a sidebar count the core fetches from the module (CORE-08).
+type Badge struct {
+	Path string `json:"path"`
+	Tone string `json:"tone"`
 }
 
 // Data is the module's database extension (PRD 9.9).
@@ -423,6 +436,12 @@ func (m Manifest) validatePages(ok func(error) bool) bool {
 			return false
 		}
 	}
+	homePaths := map[string]bool{}
+	for _, t := range m.Tabs {
+		if t.Placement == "home" {
+			homePaths[t.Path] = true
+		}
+	}
 	for _, list := range []struct {
 		name  string
 		links []Link
@@ -438,10 +457,69 @@ func (m Manifest) validatePages(ok func(error) bool) bool {
 			if !ok(modulePath(f+".path", l.Path)) {
 				return false
 			}
+			if list.name != "sidebar" {
+				if l.Section != "" || l.Subgroup != "" || l.Icon != "" || l.Order != nil || l.Badge != nil {
+					if !ok(invalid(f, "section, subgroup, icon, order and badge are sidebar fields")) {
+						return false
+					}
+				}
+				continue
+			}
+			if !homePaths[l.Path] {
+				if !ok(invalid(f+".path", "a sidebar path must match a home tab")) {
+					return false
+				}
+			}
+			if l.Section != "" && !sidebarSection(l.Section) {
+				if !ok(invalid(f+".section", "section is a PRD 8.9 sidebar section")) {
+					return false
+				}
+			}
+			if l.Icon != "" && !sidebarIcon(l.Icon) {
+				if !ok(invalid(f+".icon", "icon is not in the core icon set")) {
+					return false
+				}
+			}
+			if l.Badge != nil {
+				if !ok(modulePath(f+".badge.path", l.Badge.Path)) {
+					return false
+				}
+				if l.Badge.Tone != "normal" && l.Badge.Tone != "warning" {
+					if !ok(invalid(f+".badge.tone", "tone is normal or warning")) {
+						return false
+					}
+				}
+			}
 		}
 	}
 	return true
 }
+
+// sidebarSection is a PRD 8.9 section id (CORE-08).
+func sidebarSection(s string) bool {
+	switch s {
+	case "top", "communications", "documents", "litigation", "money", "intake", "activity", "system":
+		return true
+	}
+	return false
+}
+
+// sidebarIcon is a glyph in the core icon set (catalog.json plus puzzle, mail, message, file).
+func sidebarIcon(name string) bool {
+	return sidebarIcons[name]
+}
+
+var sidebarIcons = func() map[string]bool {
+	out := map[string]bool{
+		"puzzle": true, "mail": true, "message": true, "file": true,
+	}
+	for _, n := range dashboard.CoreNav() {
+		if n.Icon != "" {
+			out[n.Icon] = true
+		}
+	}
+	return out
+}()
 
 // Tab returns the tab with id.
 func (m Manifest) Tab(id string) (Tab, bool) {

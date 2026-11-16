@@ -149,7 +149,8 @@ WHERE c.contype = 'f' AND c.confdeltype = 'r' AND n.nspname = 'core' AND t.relna
 
 	// Widget page frames the module page in a sandbox with a context token, no cookie.
 	r = e.do("GET", "/modules/matter-clock/widgets/hours", nil, e.as("staff")...)
-	if r.code != http.StatusOK || !strings.Contains(r.body, `sandbox="allow-scripts allow-forms"`) || strings.Contains(r.body, "allow-same-origin") ||
+	staffSandbox := `sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox"`
+	if r.code != http.StatusOK || !strings.Contains(r.body, staffSandbox) || strings.Contains(r.body, "allow-same-origin") ||
 		!strings.Contains(r.body, "/m/matter-clock/widget?context=") {
 		t.Fatalf("widget frame page: %d %s", r.code, r.body)
 	}
@@ -685,7 +686,9 @@ func TestPGModuleObjectsRunAsModuleRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	res.Body.Close()
-	if !strings.Contains(res.Header.Get("Content-Security-Policy"), "sandbox") {
-		t.Fatalf("module page without a sandbox policy: %v", res.Header)
+	csp := res.Header.Get("Content-Security-Policy")
+	wantCSP := "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
+	if !strings.Contains(csp, wantCSP) || strings.Contains(csp, "allow-same-origin") {
+		t.Fatalf("module page sandbox policy: %v", res.Header)
 	}
 }

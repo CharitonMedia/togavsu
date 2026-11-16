@@ -3,6 +3,7 @@ package modules
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -607,41 +608,128 @@ func (h *Handler) aiCallQuery(r *http.Request) (AICallQuery, error) {
 
 // --- frames ---
 
+// staffFrameSandbox is the iframe sandbox for staff frames (CORE-09). Client frames add
+// allow-top-navigation-by-user-activation. Neither ever includes allow-same-origin.
+const staffFrameSandbox = "allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox"
+
 var framePage = template.Must(template.New("frame").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{{.Title}}</title>
-<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style></head>
+<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style>
+<script nonce="{{.Nonce}}">
+(function () {
+  var frame = null;
+  function bind() { frame = document.querySelector("iframe.module-frame"); }
+  window.addEventListener("message", function (ev) {
+    if (!frame) bind();
+    if (!frame || ev.source !== frame.contentWindow || !ev.data || typeof ev.data !== "object") return;
+    var d = ev.data, t = d.type;
+    if (t === "togavsu:editor.open" && d.file_id) {
+      window.location.assign("/files/" + encodeURIComponent(d.file_id) + "/edit");
+      return;
+    }
+    if (t === "togavsu:navigate" && d.page) {
+      var u = d.page;
+      if (d.params && typeof d.params === "object") {
+        var q = new URLSearchParams();
+        Object.keys(d.params).forEach(function (k) { q.set(k, d.params[k]); });
+        u += (u.indexOf("?") >= 0 ? "&" : "?") + q.toString();
+      }
+      window.location.assign(u);
+      return;
+    }
+    if (t === "togavsu:context.refresh" && d.request_id) {
+      fetch(window.location.pathname + "/context-token", {credentials: "same-origin", headers: {"Accept": "application/json"}})
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (body) {
+          frame.contentWindow.postMessage({type: "togavsu:context.token", request_id: d.request_id, token: body.token, expires_at: body.expires_at}, "*");
+        })
+        .catch(function () {
+          frame.contentWindow.postMessage({type: "togavsu:context.error", request_id: d.request_id, code: "session_expired"}, "*");
+        });
+    }
+  });
+})();
+</script>
+</head>
 <body><main aria-label="{{.Title}}">
 {{template "iframe" .}}
 </main></body></html>
-{{define "iframe"}}<iframe class="module-frame" title="{{.Title}}" src="{{.Src}}" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer"></iframe>{{end}}`))
+{{define "iframe"}}<iframe class="module-frame" title="{{.Title}}" src="{{.Src}}" sandbox="` + staffFrameSandbox + `" referrerpolicy="no-referrer"></iframe>{{end}}`))
 
 // writeFrame renders the core page that shows a module page in a sandboxed iframe. The
 // sandbox has no allow-same-origin: the frame runs in an opaque origin, so script in it
 // can't read the core's cookies or page even though /m/ is on the core's domain.
+// CORE-09 adds the postMessage bridge (nonce-gated) and the staff sandbox list.
 //
 // A page that opens as a screen of its own (a module tab, a matter action) is drawn
 // inside the app shell; a panel or widget the core embeds in its own iframe is the bare
 // frame page, so the shell never nests.
 func writeFrame(w http.ResponseWriter, r *http.Request, screen bool, title, src string) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	data := map[string]string{"Title": title, "Src": src}
+	nonce := frameNonce()
+	data := map[string]string{"Title": title, "Src": src, "Nonce": nonce}
 	var buf bytes.Buffer
 	if screen && r.Header.Get("Sec-Fetch-Dest") != "iframe" {
 		if err := framePage.ExecuteTemplate(&buf, "iframe", data); err != nil {
 			writeErr(w, err)
 			return
 		}
-		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(buf.String()), WorkInFrame: true})
+		bridge := `<script nonce="` + nonce + `">` + frameBridgeJS + `</script>`
+		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(bridge + buf.String()), WorkInFrame: true})
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-src 'self'; frame-ancestors 'self'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-"+nonce+"'; frame-src 'self'; frame-ancestors 'self'")
 	if err := framePage.Execute(&buf, data); err != nil {
 		writeErr(w, err)
 		return
 	}
 	_, _ = w.Write(buf.Bytes())
 }
+
+func frameNonce() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "togavsu"
+	}
+	return hex.EncodeToString(b[:])
+}
+
+// frameBridgeJS is the postMessage listener body used when the shell wraps the iframe
+// (the bare frame page embeds the same logic via the template).
+const frameBridgeJS = `
+(function () {
+  var frame = document.querySelector("iframe.module-frame");
+  window.addEventListener("message", function (ev) {
+    if (!frame || ev.source !== frame.contentWindow || !ev.data || typeof ev.data !== "object") return;
+    var d = ev.data, t = d.type;
+    if (t === "togavsu:editor.open" && d.file_id) {
+      window.location.assign("/files/" + encodeURIComponent(d.file_id) + "/edit");
+      return;
+    }
+    if (t === "togavsu:navigate" && d.page) {
+      var u = d.page;
+      if (d.params && typeof d.params === "object") {
+        var q = new URLSearchParams();
+        Object.keys(d.params).forEach(function (k) { q.set(k, d.params[k]); });
+        u += (u.indexOf("?") >= 0 ? "&" : "?") + q.toString();
+      }
+      window.location.assign(u);
+      return;
+    }
+    if (t === "togavsu:context.refresh" && d.request_id) {
+      fetch(window.location.pathname.replace(/\/$/, "") + "/context-token", {credentials: "same-origin", headers: {"Accept": "application/json"}})
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (body) {
+          frame.contentWindow.postMessage({type: "togavsu:context.token", request_id: d.request_id, token: body.token, expires_at: body.expires_at}, "*");
+        })
+        .catch(function () {
+          frame.contentWindow.postMessage({type: "togavsu:context.error", request_id: d.request_id, code: "session_expired"}, "*");
+        });
+    }
+  });
+})();
+`
 
 func (h *Handler) tabPage(w http.ResponseWriter, r *http.Request, c Caller) {
 	in, err := h.Svc.Installed(r.Context(), r.PathValue("module_id"))

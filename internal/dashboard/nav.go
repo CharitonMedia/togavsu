@@ -107,7 +107,7 @@ func (s *Service) AddModuleNav(module string, es []ModuleNavEntry, count func(ct
 		if e.ID == "" || strings.TrimSpace(e.Label) == "" || !strings.HasPrefix(e.Path, "/") || strings.HasPrefix(e.Path, "//") {
 			return domain.Invalid("nav", "a module sidebar entry needs an id, a label and a path on this site")
 		}
-		if !validSection(e.Section) || e.Section == SectionTop {
+		if !validSection(e.Section) {
 			return domain.Invalid("nav.section", "unknown sidebar section "+e.Section)
 		}
 		if e.Tone != "" && e.Tone != "normal" && e.Tone != "warning" {

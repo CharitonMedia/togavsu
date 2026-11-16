@@ -899,7 +899,7 @@ func (s *Service) bringUp(ctx context.Context, p domain.Principal, r modRow, m M
 	}
 	if s.d.Nav != nil {
 		s.d.Nav.RemoveModuleNav(r.ID)
-		if err := s.d.Nav.AddModuleNav(r.ID, NavEntries(m), nil); err != nil {
+		if err := s.d.Nav.AddModuleNav(r.ID, NavEntries(m), s.badgeCounter(r.ID, m)); err != nil {
 			errs = append(errs, "sidebar: "+err.Error())
 		}
 	}
@@ -1633,7 +1633,7 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 	for _, in := range mods {
 		if s.d.Nav != nil {
-			if err := s.d.Nav.AddModuleNav(in.ID, NavEntries(in.Manifest), nil); err != nil {
+			if err := s.d.Nav.AddModuleNav(in.ID, NavEntries(in.Manifest), s.badgeCounter(in.ID, in.Manifest)); err != nil {
 				return err
 			}
 		}
