@@ -26,6 +26,16 @@ import zipfile
 import zlib
 
 REPO = "CharitonMedia/togavsu"
+# A plan may name another base_branch, such as an integration branch built beside main. Lane workflows are
+# always dispatched from main, where the protected Lane agent workflow lives.
+BASE_BRANCH_PATTERN = r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}"
+
+
+def base_branch(plan):
+    base = plan.get("base_branch", "main")
+    if not isinstance(base, str) or not re.fullmatch(BASE_BRANCH_PATTERN, base):
+        raise ValueError("Invalid base_branch: " + repr(base))
+    return base
 RUN_ACTIVE = {"CREATING", "RUNNING", "WAITING_FOR_BACKGROUND_WORK"}
 ACTIVE = RUN_ACTIVE | {"ACTIVE"}  # Agent lifecycle ACTIVE is only a conservative busy signal.
 TERMINAL = {"FINISHED", "ERROR", "CANCELLED", "EXPIRED"}  # Cursor v1 Get A Run outcomes.
@@ -529,12 +539,13 @@ class ActionsRemote(Remote):
 
     push_url = "https://github.com/" + REPO + ".git"  # Owner credentials via gh's git credential helper.
 
-    def __init__(self, state_dir, repo_dir, dry=False, new_on_cursor=False, worker="claude", model=None):
+    def __init__(self, state_dir, repo_dir, dry=False, new_on_cursor=False, worker="claude", model=None, base="main"):
         if worker not in LANE_WORKERS:
             raise ValueError("Unknown lane worker: " + str(worker))
         if worker == "cursor" and not re.fullmatch(LANE_MODEL_PATTERN, model or ""):
             raise ValueError("Cursor lanes need a valid cursor_model")
         self.new_on_cursor = new_on_cursor
+        self.base = base_branch({"base_branch": base})
         self.worker, self.model = worker, (model if worker == "cursor" else None)
         self.registry_path = Path(state_dir) / "lane-agents.json"
         self.work_dir = Path(state_dir)
@@ -790,7 +801,7 @@ class ActionsRemote(Remote):
         if not agent.get("pr"):
             prs = self.gh("pulls?state=all&head=CharitonMedia:" + urllib.parse.quote(agent["branch"], safe=""))
             pr = prs[0] if len(prs) == 1 else self.gh("pulls", "POST", {"title": title, "head": agent["branch"],
-                "base": "main", "body": body, "draft": False})
+                "base": self.base, "body": body, "draft": False})
             agent["pr"], agent["pr_url"] = pr["number"], pr["html_url"]
         elif body.strip():
             pull = self.gh("pulls/" + str(agent["pr"]))
@@ -808,6 +819,7 @@ def protection_enforces_checkpoints(protection):
 class Controller:
     def __init__(self, remote, plan, state_dir, dry=False, mailer=None):
         self.remote, self.plan, self.dir, self.dry, self.mailer = remote, plan, Path(state_dir), dry, mailer
+        self.base = base_branch(plan)
         self.dir.mkdir(parents=True, exist_ok=True)
         path = self.dir / "controller.json"
         self.state = json.loads(path.read_text()) if path.exists() else {"tasks": {}, "events": [], "tick": 0}
@@ -885,7 +897,7 @@ class Controller:
         # differ; strict required checks, both checkpoints and pull request reviews stay mandatory.
         if not isinstance(operator, str) or not operator.strip():
             raise ValueError("Operator name is required for an audited protection adoption")
-        protection = self.remote.gh("branches/main/protection")
+        protection = self.remote.gh("branches/" + self.base + "/protection")
         if not protection_enforces_checkpoints(protection):
             raise ValueError("Main protection no longer requires strict checks, both checkpoints and reviews; "
                              "nothing is adopted")
@@ -1253,7 +1265,7 @@ class Controller:
         if any(other != task and value.get("pr") == pr["number"] for other, value in self.tasks.items()):
             self.halt(task, record, "PR is already assigned to another task")
             return False
-        if pr["head"]["repo"]["full_name"] != REPO or pr["base"]["ref"] != "main":
+        if pr["head"]["repo"]["full_name"] != REPO or pr["base"]["ref"] != self.base:
             self.halt(task, record, "Unexpected PR repository or target branch")
             return False
         head, number = pr["head"]["sha"], pr["number"]
@@ -1320,7 +1332,7 @@ class Controller:
                 return False
             if pr.get("mergeable") is False:
                 self.followup(task, record, snapshot, "conflict:" + head + ":" + main,
-                    "Merge origin/main into your existing PR branch and resolve integration conflicts, preserving both sides' "
+                    "Merge origin/" + self.base + " into your existing PR branch and resolve integration conflicts, preserving both sides' "
                     "requirements, tests and debt entries. You may edit shared files solely to reconcile this integration. "
                     "Run complete applicable tests, refresh the ORIGINAL PR body with current revision/results, commit and push. "
                     "Do not force-push, merge the PR, weaken checks or discard another domain's work.", repair=False)
@@ -1331,10 +1343,10 @@ class Controller:
                     self.save()  # A lost update response must still have a bounded deadline.
                 self.effect("update branch PR " + str(number), lambda: self.remote.gh("pulls/" + str(number) + "/update-branch",
                     "PUT", {"expected_head_sha": head}))
-                self.event(task, "Refresh branch against main; await fresh tests and Codex")
+                self.event(task, "Refresh branch against " + self.base + "; await fresh tests and Codex")
             return False
         checks = self.remote.checks(head)
-        existing_protection = self.remote.gh("branches/main/protection")
+        existing_protection = self.remote.gh("branches/" + self.base + "/protection")
         required = REQUIRED | set(spec.get("required_checks", [])) | set(
             (existing_protection.get("required_status_checks") or {}).get("contexts", []))
         if not required <= checks.keys() or any(c["status"] != "completed" for c in checks.values()):
@@ -1423,7 +1435,7 @@ class Controller:
                     "Never fabricate acceptance or change a failed result to pass. Report external blockers explicitly.",
                     problem={"phase_evidence": str(error)})
                 return False
-        protection = self.remote.gh("branches/main/protection")
+        protection = self.remote.gh("branches/" + self.base + "/protection")
         required_config = protection.get("required_status_checks") or {}
         if not (protection_enforces_checkpoints(protection) and self.admins_accepted(protection)):
             self.halt(task, record, PROTECTION_HALT)
@@ -1440,8 +1452,8 @@ class Controller:
             if self.dry:
                 self.effect("enforce product checks " + task, lambda: None)
             else:
-                self.remote.gh("branches/main/protection/required_status_checks", "PATCH", {"strict": True, "checks": bindings})
-                protection = self.remote.gh("branches/main/protection")
+                self.remote.gh("branches/" + self.base + "/protection/required_status_checks", "PATCH", {"strict": True, "checks": bindings})
+                protection = self.remote.gh("branches/" + self.base + "/protection")
                 if not required <= set(protection["required_status_checks"].get("contexts", [])):
                     self.halt(task, record, "GitHub did not enforce task-required product checks")
                     return False
@@ -1452,8 +1464,8 @@ class Controller:
             return False
         # Final metadata refresh follows product-check enforcement and observation.
         fresh = self.remote.gh("pulls/" + str(number))
-        current_main = self.remote.gh("git/ref/heads/main")["object"]["sha"]
-        if (fresh.get("base", {}).get("ref") != "main"
+        current_main = self.remote.gh("git/ref/heads/" + self.base)["object"]["sha"]
+        if (fresh.get("base", {}).get("ref") != self.base
                 or fresh.get("head", {}).get("ref") != record["expected_branch"]):
             self.halt(task, record, "PR was retargeted or its pinned branch changed during final refresh")
             return False
@@ -1542,13 +1554,13 @@ class Controller:
         self.save()
 
     def verify_merge(self, task, record, pr):
-        if pr.get("base", {}).get("ref") != "main":
-            self.halt(task, record, "Merge target changed; refusing dependency completion outside main")
+        if pr.get("base", {}).get("ref") != self.base:
+            self.halt(task, record, "Merge target changed; refusing dependency completion outside " + self.base)
             return False
         intent = record["merge_intent"]
         merged = intent.get("result_sha", pr.get("merge_commit_sha"))
         visible = pr.get("merged") and pr.get("merge_commit_sha") == merged and pr["head"]["sha"] == intent["head"]
-        current_main = self.remote.gh("git/ref/heads/main")["object"]["sha"]
+        current_main = self.remote.gh("git/ref/heads/" + self.base)["object"]["sha"]
         on_main = merged == current_main
         if visible and not on_main and isinstance(merged, str) and re.fullmatch(r"[0-9a-f]{40}", merged):
             graph = self.remote.gh("compare/" + merged + "..." + current_main)
@@ -1556,9 +1568,9 @@ class Controller:
         if not visible or not on_main:
             record.setdefault("merge_verify_since", now())
             elapsed = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(record["merge_verify_since"])).total_seconds()
-            record["waiting"] = "Await verified merge commit on main; dependencies remain blocked"
+            record["waiting"] = "Await verified merge commit on " + self.base + "; dependencies remain blocked"
             if elapsed > 900:
-                self.halt(task, record, "Merge response could not be verified on main within 15 minutes")
+                self.halt(task, record, "Merge response could not be verified on " + self.base + " within 15 minutes")
             self.save()
             return False
         record["completed"] = {"pr": pr["number"], "merge_sha": merged, "head": intent["head"], "report": pr["html_url"]}
@@ -1566,7 +1578,7 @@ class Controller:
         record.pop("merge_blocked", None)
         self.reset_fixed_problems(task, record, FIXED_PROBLEMS, "verified merge")
         self.state["last_productive_progress"] = {"time": now(), "task": task, "merge_sha": merged}
-        self.event(task, "Verified protected merge on main: " + merged)
+        self.event(task, "Verified protected merge on " + self.base + ": " + merged)
         self.save()
         return True
 
@@ -1638,7 +1650,7 @@ class Controller:
             + (MODULES_PRD if spec.get("module_prd_sections") else "") + "Your exact approved assignment follows. "
             "Work in your isolated hosted workspace (a Cursor-hosted VM or a GitHub-hosted lane runner) on your own branch using synthetic data only. "
             "Implement working behavior with meaningful success/failure tests and honest pending criteria. "
-            "Do not merge, push main, force-push or alter controller/gates/acceptance criteria. "
+            "Do not merge, push " + self.base + ", force-push or alter controller/gates/acceptance criteria. "
             "Commit/push explicit paths and open a ready PR when your bounded assignment is complete. "
             "Keep original PR body current with tested code revision and results.\n\n" + json.dumps(spec)
             + "\n\n" + CI_OWNERSHIP)
@@ -1704,7 +1716,7 @@ class Controller:
 
     def _tick(self):
         self.adopt()
-        main = self.remote.gh("git/ref/heads/main")["object"]["sha"]
+        main = self.remote.gh("git/ref/heads/" + self.base)["object"]["sha"]
         specs = {t["id"]: t for t in self.plan["tasks"]}
         snapshots, unverified = {}, {}
         # Observe ALL workers before any dispatch; a later dictionary entry may already occupy a slot.
@@ -2059,13 +2071,13 @@ def select_remote(plan, state, dry=False):
     # backend until they finish. Every gate after the PR is unchanged.
     backend = plan.get("worker_backend", "cursor")
     if backend == "cursor":
-        return ActionsRemote(state, state.resolve().parent, dry, worker="cursor", model=plan.get("cursor_model", "auto"))
+        return ActionsRemote(state, state.resolve().parent, dry, worker="cursor", model=plan.get("cursor_model", "auto"), base=base_branch(plan))
     if backend == "claude-actions":
-        return ActionsRemote(state, state.resolve().parent, dry)
+        return ActionsRemote(state, state.resolve().parent, dry, base=base_branch(plan))
     if backend != "cursor-cloud":
         raise ValueError("Unknown worker_backend: " + str(backend))
     if (state / "lane-agents.json").exists():
-        return ActionsRemote(state, state.resolve().parent, dry, new_on_cursor=True)
+        return ActionsRemote(state, state.resolve().parent, dry, new_on_cursor=True, base=base_branch(plan))
     return Remote()
 
 

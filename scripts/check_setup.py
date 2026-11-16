@@ -64,6 +64,6 @@ for t in tasks.values():
     for s in t.get("module_prd_sections", []):
         assert s in headings, (t["id"], "unknown modules PRD section", s)
 for p in ["AGENTS.md","docs/build/WORKFLOW.md","docs/build/review.schema.json","docs/build/prompts/codex-review.md","PONYTAIL-DEBT.md",
-          "togavsu-initial-modules-prd.md","docs/modules/CORE-CHANGES.md","docs/modules/CORE-CHANGES-2.md"] + ["docs/modules/" + m + "/SPEC.md" for m in MODULES]:
+          "togavsu-initial-modules-prd.md","docs/modules/CORE-CHANGES.md"] + ["docs/modules/" + m + "/SPEC.md" for m in MODULES]:
     assert (root / p).is_file(), p
 print("PASS: 52 criteria indexed, dependency graph valid, four disjoint bootstrap assignments, controller plan matches tasks.json, parallel lanes disjoint, module PRD sections exist. Product acceptance pending.")

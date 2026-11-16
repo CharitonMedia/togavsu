@@ -3,7 +3,7 @@
   "worker_backend": "cursor",
   "cursor_model": "auto",
   "held_tasks": [
-    "release-module-api"
+    "module-core"
   ],
   "alert_email": "pnolan@nemolegal.com",
   "idle_alert_seconds": 3600,
@@ -1340,7 +1340,7 @@
       "wave": "module-api",
       "phase": 8,
       "depends_on": [
-        "release-perf"
+        "release-final"
       ],
       "owned_paths": [
         "cmd/core/",
@@ -1383,13 +1383,8 @@
         "Backup integration",
         "Supervisor image"
       ],
-      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the module API update in togavsu-initial-modules-prd.md section 4: implement CORE-01 to CORE-29 in docs/modules/CORE-CHANGES.md in the order of section 4.4, exactly as named there (endpoints, operation ids, scopes, events, manifest fields, settings, delegation values, migrations, mail routing, frame bridge, public webhook routes, client portal routes), each with OpenAPI contract and API/MCP parity updates, role and wall checks, audit entries and Go tests against real Postgres beside the code it changes, failure cases included. You start from main after release-perf merged. The release-final assignment (PR 60) is still open on operator evidence and touches only release reports, docs/release/, scripts/release/, tests/test_full_acceptance.py and tests/test_release_ci.py; never edit those. Schema migrations: use versions 1300-1399 only; add a module-core block for them to internal/db/ranges.go and renumber nothing. Done when CU-01 to CU-05 in section 4.4 pass in automated tests, including matter-clock installing, running and uninstalling unchanged and the update applying through the supervisor with no failed requests under the update load test. The five modules are built in their own repositories against these specs, so keep every name exactly as the specs give it. CORE-29 extends pkg/modulekit/coretest, the composed test core in the public module kit (togavsu-initial-modules-prd.md section 5); keep pkg/modulekit and cmd/togavsu-module working for the module repositories. Never edit docs/modules/, the PRDs, .github/ other than product-ci.yml, controller files or review gates, and never write to a module repository. Never edit go.mod or go.sum; the mail libraries are already pinned, and any other dependency is proposed in your PR for the integration lead. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
-      "stage_report": true,
-      "excluded_paths": [
-        "internal/frame/frame_test.go",
-        "tests/test_full_acceptance.py",
-        "tests/test_release_ci.py"
-      ]
+      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the module API update in togavsu-initial-modules-prd.md section 4: implement CORE-01 to CORE-29 in docs/modules/CORE-CHANGES.md in the order of section 4.4, exactly as named there (endpoints, operation ids, scopes, events, manifest fields, settings, delegation values, migrations, mail routing, frame bridge, public webhook routes, client portal routes), each with OpenAPI contract and API/MCP parity updates, role and wall checks, audit entries and Go tests against real Postgres beside the code it changes, failure cases included. You start from the released core (the release-final assignment is merged). Done when CU-01 to CU-05 in section 4.4 pass in automated tests, including matter-clock installing, running and uninstalling unchanged and the update applying through the supervisor with no failed requests under the update load test. The five modules are built in their own repositories against these specs, so keep every name exactly as the specs give it. CORE-29 extends pkg/modulekit/coretest, the composed test core in the public module kit (togavsu-initial-modules-prd.md section 5); keep pkg/modulekit and cmd/togavsu-module working for the module repositories. Never edit docs/modules/, the PRDs, .github/ other than product-ci.yml, controller files or review gates, and never write to a module repository. Never edit go.mod or go.sum; the mail libraries are already pinned, and any other dependency is proposed in your PR for the integration lead. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
+      "stage_report": true
     },
     {
       "id": "release-module-api",
@@ -1449,167 +1444,6 @@
         "Core tests"
       ],
       "prompt": "A small bounded assignment that confirms the Cursor build path end to end. internal/frame has no tests. Add internal/frame/frame_test.go only, using the Go standard library (net/http/httptest, html/template), covering: Write with a shell installed via With calls the shell and not Bare; Write with no shell writes the bare document with the title, the area class and the body; Bare escapes Title, Notice and Error, renders Scripts as deferred same-origin script tags, keeps an existing Content-Type header and sets text/html otherwise; a zero or below-100 Status writes 200 and StatusCode reports it; a set Status such as 404 is written. These tests cover the shared shell package section 8.9 rests on; they pass no acceptance criterion. Do not change any other file. Run go vet ./internal/frame/ and go test ./internal/frame/ and report the results and the tested commit SHA in the PR body."
-    },
-    {
-      "id": "core-update-2a",
-      "wave": "module-api-2a",
-      "phase": 9,
-      "depends_on": [
-        "module-core"
-      ],
-      "owned_paths": [
-        "cmd/core/",
-        "cmd/togavsu-module/",
-        "internal/",
-        "pkg/",
-        "web/",
-        "api/",
-        "tests/",
-        "compose.yaml",
-        "deploy/",
-        "scripts/ci/",
-        ".github/workflows/product-ci.yml",
-        "docs/api/",
-        "docs/modules/CONTRIBUTOR-GAPS.md",
-        "docs/modules/MODULE-KIT.md"
-      ],
-      "excluded_paths": [
-        "internal/marketplace/**",
-        "internal/frame/frame_test.go",
-        "tests/test_full_acceptance.py",
-        "tests/test_release_ci.py"
-      ],
-      "prd_sections": [
-        "8",
-        "9"
-      ],
-      "acceptance_ids": [],
-      "required_checks": [
-        "Core tests",
-        "API contract tests",
-        "QA harness tests",
-        "Supervisor tests",
-        "Backup integration",
-        "Supervisor image"
-      ],
-      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. This is a batch 2 modules task. docs/modules/CORE-CHANGES-2.md holds the core parts of the batch 2 modules PRD Patrick approved on 2026-11-16, copied unchanged; it is the approved scope for this assignment and outranks docs/modules/CORE-CHANGES.md for CORE-30 onward. Also read docs/modules/CORE-CHANGES.md, docs/modules/MODULE-KIT.md and docs/modules/CONTRIBUTOR-GAPS.md. Build the first part of module API update 2 in CORE-CHANGES-2.md section 4, in the order of section 4.4: CORE-36 (every contributor gap fix it names, each closing its row in docs/modules/CONTRIBUTOR-GAPS.md with a test that failed before the fix, including moving invoices, payments and expenses from JSON into rows in core.invoices, core.payments and core.expenses with a backfill that reconciles every cent) and then CORE-30 (wider service calls, each with its own per-minute limit setting, default 120). Done when the CU2-01, CU2-02, CU2-05 and CU2-06 cases for CORE-30 and CORE-36 pass in automated tests and matter-clock still installs, runs and uninstalls unchanged. Schema migrations: use versions 1400-1449 only; add a core-update-2a block for them to internal/db/ranges.go and renumber nothing. Every addition is part of the public module API: document it in docs/api/modules.md and the OpenAPI spec, mount it on /mcp, refuse it without its scope, and test it against real Postgres beside the code it changes, failure cases included. Nothing in the core checks a module's id or author. Keep pkg/modulekit, pkg/modulekit/coretest and cmd/togavsu-module working for the module repositories, and keep every name exactly as CORE-CHANGES-2.md gives it: nine module repositories are written against it. Never edit docs/modules/ other than CONTRIBUTOR-GAPS.md and MODULE-KIT.md, the PRDs, .github/ other than product-ci.yml, controller files or review gates, and never write to a module repository. Never edit internal/marketplace/ or marketplace/: the marketplace-paid lane owns them. Never edit go.mod or go.sum; propose any dependency in your PR for the integration lead. Outside services are fakes and local test servers only; never create a key or secret. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
-      "stage_report": true
-    },
-    {
-      "id": "core-update-2b",
-      "wave": "module-api-2b",
-      "phase": 9,
-      "depends_on": [
-        "core-update-2a"
-      ],
-      "owned_paths": [
-        "cmd/core/",
-        "cmd/togavsu-module/",
-        "internal/",
-        "pkg/",
-        "web/",
-        "api/",
-        "tests/",
-        "compose.yaml",
-        "deploy/",
-        "scripts/ci/",
-        ".github/workflows/product-ci.yml",
-        "docs/api/",
-        "docs/modules/CONTRIBUTOR-GAPS.md",
-        "docs/modules/MODULE-KIT.md"
-      ],
-      "excluded_paths": [
-        "internal/marketplace/**",
-        "internal/frame/frame_test.go",
-        "tests/test_full_acceptance.py",
-        "tests/test_release_ci.py"
-      ],
-      "prd_sections": [
-        "8",
-        "9"
-      ],
-      "acceptance_ids": [],
-      "required_checks": [
-        "Core tests",
-        "API contract tests",
-        "QA harness tests",
-        "Supervisor tests",
-        "Backup integration",
-        "Supervisor image"
-      ],
-      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. This is a batch 2 modules task. docs/modules/CORE-CHANGES-2.md holds the core parts of the batch 2 modules PRD Patrick approved on 2026-11-16, copied unchanged; it is the approved scope for this assignment and outranks docs/modules/CORE-CHANGES.md for CORE-30 onward. Also read docs/modules/CORE-CHANGES.md, docs/modules/MODULE-KIT.md and docs/modules/CONTRIBUTOR-GAPS.md. Build the second part of module API update 2 in CORE-CHANGES-2.md section 4: CORE-31 (module service contracts: provides and consumes manifest fields, admin-approved links on the Modules tab, the core-proxied and HMAC-signed contract call at POST /api/v1/modules/contracts/{contract}/{operation}, provider-pushed contract events, one provider per contract per firm unless the contract says many, and no module ever learning another module's address), CORE-32 (public module pages under /p/{id}/ with the rate, body size, CSRF and step-token helpers and public_operations), CORE-33 (the public forms kit, pkg/modulekit/forms, with all 16 field types, the conditions, validation, the HTMX renderer, autosave with offline queue, \"I don't know\" answers and masked-field encryption through the module secret store) and CORE-34 (the staff banner slot), with the settings, scopes and events section 4.3 names. Done when the CU2-01, CU2-03 and CU2-04 cases for these items pass in automated tests. Schema migrations: use versions 1450-1499 only; add a core-update-2b block for them to internal/db/ranges.go and renumber nothing. Every addition is part of the public module API: document it in docs/api/modules.md and the OpenAPI spec, mount it on /mcp, refuse it without its scope, and test it against real Postgres beside the code it changes, failure cases included. Nothing in the core checks a module's id or author. Keep pkg/modulekit, pkg/modulekit/coretest and cmd/togavsu-module working for the module repositories, and keep every name exactly as CORE-CHANGES-2.md gives it: nine module repositories are written against it. Never edit docs/modules/ other than CONTRIBUTOR-GAPS.md and MODULE-KIT.md, the PRDs, .github/ other than product-ci.yml, controller files or review gates, and never write to a module repository. Never edit internal/marketplace/ or marketplace/: the marketplace-paid lane owns them. Never edit go.mod or go.sum; propose any dependency in your PR for the integration lead. Outside services are fakes and local test servers only; never create a key or secret. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
-      "stage_report": true
-    },
-    {
-      "id": "core-update-2c",
-      "wave": "module-api-2c",
-      "phase": 9,
-      "depends_on": [
-        "core-update-2b"
-      ],
-      "owned_paths": [
-        "cmd/core/",
-        "cmd/togavsu-module/",
-        "internal/",
-        "pkg/",
-        "web/",
-        "api/",
-        "tests/",
-        "compose.yaml",
-        "deploy/",
-        "scripts/ci/",
-        ".github/workflows/product-ci.yml",
-        "docs/api/",
-        "docs/modules/CONTRIBUTOR-GAPS.md",
-        "docs/modules/MODULE-KIT.md"
-      ],
-      "excluded_paths": [
-        "internal/marketplace/**",
-        "internal/frame/frame_test.go",
-        "tests/test_full_acceptance.py",
-        "tests/test_release_ci.py"
-      ],
-      "prd_sections": [
-        "8",
-        "9"
-      ],
-      "acceptance_ids": [],
-      "required_checks": [
-        "Core tests",
-        "API contract tests",
-        "QA harness tests",
-        "Supervisor tests",
-        "Backup integration",
-        "Supervisor image"
-      ],
-      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. This is a batch 2 modules task. docs/modules/CORE-CHANGES-2.md holds the core parts of the batch 2 modules PRD Patrick approved on 2026-11-16, copied unchanged; it is the approved scope for this assignment and outranks docs/modules/CORE-CHANGES.md for CORE-30 onward. Also read docs/modules/CORE-CHANGES.md, docs/modules/MODULE-KIT.md and docs/modules/CONTRIBUTOR-GAPS.md. Finish module API update 2 in CORE-CHANGES-2.md: CORE-35 (the manifest's structured price, shown and stored by the core, never charged, checked or enforced) and CORE-37, the opening invoice import of section 6 (core PRD section 8.22): the admin page's Migration import tab with the single form and the CSV upload with its full preview and one-transaction write, the three new InvoiceImport fields on the existing bulkInvoice endpoint, the Imported marker and document of record on the matter billing tab, the portal and statements showing the document of record, and the invoice.imported event. Done when IMP-01 to IMP-08 pass in automated tests and every CU2 case in section 4.4 passes for the whole update, CU2-07 (matter-clock and the five batch 1 module packages install, run and uninstall unchanged; build them from their public repositories at their main branch in the test, read-only) and CU2-08 (the update applies through the supervisor with no failed requests under the update load test, and a fresh install reaches first-run setup with no module installed) included. Schema migrations: use versions 1500-1549 only; add a core-update-2c block for them to internal/db/ranges.go and renumber nothing. Every addition is part of the public module API: document it in docs/api/modules.md and the OpenAPI spec, mount it on /mcp, refuse it without its scope, and test it against real Postgres beside the code it changes, failure cases included. Nothing in the core checks a module's id or author. Keep pkg/modulekit, pkg/modulekit/coretest and cmd/togavsu-module working for the module repositories, and keep every name exactly as CORE-CHANGES-2.md gives it: nine module repositories are written against it. Never edit docs/modules/ other than CONTRIBUTOR-GAPS.md and MODULE-KIT.md, the PRDs, .github/ other than product-ci.yml, controller files or review gates, and never write to a module repository. Never edit internal/marketplace/ or marketplace/: the marketplace-paid lane owns them. Never edit go.mod or go.sum; propose any dependency in your PR for the integration lead. Outside services are fakes and local test servers only; never create a key or secret. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
-      "stage_report": true
-    },
-    {
-      "id": "marketplace-paid",
-      "wave": "marketplace-2",
-      "phase": 9,
-      "depends_on": [
-        "module-core"
-      ],
-      "owned_paths": [
-        "marketplace/",
-        "internal/marketplace/"
-      ],
-      "prd_sections": [
-        "10"
-      ],
-      "acceptance_ids": [],
-      "required_checks": [
-        "Core tests",
-        "API contract tests",
-        "QA harness tests",
-        "Supervisor tests",
-        "Backup integration",
-        "Supervisor image"
-      ],
-      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. This is a batch 2 modules task. docs/modules/CORE-CHANGES-2.md holds the core parts of the batch 2 modules PRD Patrick approved on 2026-11-16, copied unchanged; it is the approved scope for this assignment and outranks docs/modules/CORE-CHANGES.md for CORE-30 onward. Also read docs/modules/CORE-CHANGES.md, docs/modules/MODULE-KIT.md and docs/modules/CONTRIBUTOR-GAPS.md. Build the marketplace paid listings in CORE-CHANGES-2.md section 17, in marketplace/ and internal/marketplace/ only: the listing price taken from the manifest's structured price {amount_cents, currency, interval, note} (CORE-35's format; read it from the uploaded manifest in the marketplace, because the core lanes own the core's manifest code) with the old string still accepted, author price changes with the notice period setting (30 days) and the notice email, POST /v1/authors/me/packages taking the kit's signed package file unchanged and refusing a tampered one, Stripe Connect for authors, Stripe Checkout subscriptions naming the install id, license keys bound to the install id with the daily renewal endpoint, cancel running to the paid-through date, the platform fee operator setting (default 0 percent), and no card number or Stripe secret anywhere in state, logs or responses. Stripe is a fake or local test server in every test; test helpers refuse any other host. Every listing stays private and no public marketplace is deployed. Close the CONTRIBUTOR-GAPS rows section 17 names by listing them in your PR body for the integration lead, because docs/modules/ is not yours. Done when MKT-01 to MKT-07 pass in automated tests. Schema migrations, if the marketplace needs core ones: use versions 1550-1599 only; never edit internal/db/ranges.go and name the block in your PR body for the integration lead. Never edit anything outside marketplace/ and internal/marketplace/, go.mod, go.sum, controller files, review gates, the PRDs or docs/modules/. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
-      "stage_report": true
     }
   ],
   "max_repairs": 1,

@@ -246,6 +246,37 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(merge[0][2]["sha"], HEAD)
         self.assertEqual(self.record["completed"]["merge_sha"], NEW)
 
+    def test_base_branch_plan_reads_merges_and_verifies_only_its_branch(self):
+        remote = self.remote
+        original = remote.gh
+
+        def on_batch2(path, method="GET", payload=None, binary=False):
+            if "heads/main" in path or "branches/main/" in path:
+                raise AssertionError("main touched by a batch2 plan: " + path)
+            return original(path.replace("heads/batch2", "heads/main").replace("branches/batch2/", "branches/main/"),
+                            method, payload, binary)
+        remote.gh = on_batch2
+        remote.pr["base"]["ref"] = "batch2"
+        self.controller = Controller(remote, {"tasks": [SPEC], "max_repairs": 3, "max_implementation_agents": 4,
+                                              "base_branch": "batch2"}, self.temp.name)
+        self.controller.tasks["one"] = self.record
+        self.assertTrue(self.process())
+        self.assertEqual(self.record["completed"]["merge_sha"], NEW)
+        self.assertTrue(any(c[1] == "branches/main/protection" for c in remote.calls))
+
+    def test_pr_on_main_is_refused_by_a_base_branch_plan(self):
+        self.controller = Controller(self.remote, {"tasks": [SPEC], "max_repairs": 3, "max_implementation_agents": 4,
+                                                   "base_branch": "batch2"}, self.temp.name)
+        self.controller.tasks["one"] = self.record
+        self.assertFalse(self.process())
+        self.assertEqual(self.record["halted"], "Unexpected PR repository or target branch")
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def test_invalid_base_branch_is_refused(self):
+        for bad in ["", "-x", "a/b", "x" * 60, 7]:
+            with self.assertRaises(ValueError):
+                Controller(self.remote, {"tasks": [SPEC], "base_branch": bad}, self.temp.name)
+
     def test_admin_enforcement_off_halts_until_an_operator_adopts_it(self):
         self.remote.protection["enforce_admins"] = {"enabled": False}
         self.assertFalse(self.process())
@@ -3046,6 +3077,17 @@ class LaneBackendTests(unittest.TestCase):
         self.assertEqual(len([c for c in self.remote.calls if c[:2] == ("POST", "pulls")]), 1)
         self.assertEqual(self.git(self.control, "for-each-ref", "refs/lane-import/"), "")
         self.assertEqual(list(self.state.glob(".lane-*")), [])
+
+    def test_base_branch_lane_opens_its_pr_against_that_branch(self):
+        self.remote.base = "batch2"
+        run_id = self.launch()["run"]["id"]
+        head, bundle = self.lane_commit(self.base, "first")
+        self.finish(run_id, self.base, head, bundle)
+        self.assertEqual(self.remote.agent(self.record)["status"], "FINISHED")
+        created = [c for c in self.remote.calls if c[:2] == ("POST", "pulls")]
+        self.assertEqual(created[0][2]["base"], "batch2")
+        dispatch = [c for c in self.remote.calls if c[1].endswith("/dispatches")]
+        self.assertEqual(dispatch[0][2]["ref"], "main")
 
     def test_followup_starts_from_branch_head_and_carries_assignment(self):
         run_id = self.launch("Original assignment text")["run"]["id"]
