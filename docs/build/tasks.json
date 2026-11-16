@@ -1322,7 +1322,10 @@
           "AC-040"
         ]
       },
-      "full_acceptance": true
+      "full_acceptance": true,
+      "excluded_paths": [
+        "internal/frame/frame_test.go"
+      ]
     },
     {
       "id": "module-core",

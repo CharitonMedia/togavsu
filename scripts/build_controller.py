@@ -2036,6 +2036,16 @@ class Controller:
             self.save()
 
 
+def select_remote(plan, state, dry=False):
+    # worker_backend selects who runs new assignments ("cursor", the default, or "claude-actions"); agents
+    # already running keep their own backend until they finish. Every gate after the PR is unchanged.
+    if plan.get("worker_backend", "cursor") == "claude-actions":
+        return ActionsRemote(state, state.resolve().parent, dry)
+    if (state / "lane-agents.json").exists():
+        return ActionsRemote(state, state.resolve().parent, dry, new_on_cursor=True)
+    return Remote()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--plan", required=True)
@@ -2068,11 +2078,7 @@ def main():
         except BlockingIOError:
             print("Another controller tick owns the lock")
             return
-        # worker_backend selects who runs new assignments ("cursor", the default, or "claude-actions"); agents
-        # already running keep their own backend until they finish. Every gate after the PR is unchanged.
-        actions = plan.get("worker_backend", "cursor") == "claude-actions"
-        remote = (ActionsRemote(state, state.resolve().parent, args.dry_run, new_on_cursor=not actions)
-                  if actions or (state / "lane-agents.json").exists() else Remote())
+        remote = select_remote(plan, state, args.dry_run)
         controller = Controller(remote, plan, state, args.dry_run, Mailer())
         if args.test_alert:
             if not plan.get("alert_email"):

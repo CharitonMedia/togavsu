@@ -3167,6 +3167,20 @@ class LaneBackendTests(unittest.TestCase):
         self.assertNotIn(cursor_agent, self.remote.load())
         self.assertEqual(len([c for c in self.remote.calls if c[1].endswith("/dispatches")]), dispatches)
 
+    def test_plan_backend_selects_the_remote(self):
+        select = build_controller.select_remote
+        actions = select({"worker_backend": "claude-actions"}, self.state)
+        self.assertIsInstance(actions, build_controller.ActionsRemote)
+        self.assertFalse(actions.new_on_cursor)
+        for plan in ({"worker_backend": "cursor"}, {}):
+            with self.subTest(plan=plan):
+                self.assertIs(type(select(plan, self.state)), Remote)  # No lanes ever ran: plain Cursor.
+                (self.state / "lane-agents.json").write_text("{}")
+                mixed = select(plan, self.state)
+                self.assertIsInstance(mixed, build_controller.ActionsRemote)
+                self.assertTrue(mixed.new_on_cursor)  # Lanes finish on Actions; new work goes to Cursor.
+                (self.state / "lane-agents.json").unlink()
+
     def test_lane_cannot_publish_control_or_unsafe_workflow_changes(self):
         safe = "name: Product CI\non: [push]\npermissions:\n  contents: read\njobs: {}\n"
         cases = {
