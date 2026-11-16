@@ -1,0 +1,94 @@
+[
+  {
+    "id": "CU2-01",
+    "requirement": "Every CORE item's tests pass against Postgres, and each new operation is in openapi.json, on /mcp, and refused without its scope."
+  },
+  {
+    "id": "CU2-02",
+    "requirement": "A service call on every CORE-30 operation leaves out a walled matter's records and answers not_found on a walled get; lifting the wall returns them on the next read."
+  },
+  {
+    "id": "CU2-03",
+    "requirement": "A contract call reaches only a provider the admin linked; unlinking stops it at once with contract_unlinked; neither module ever receives the other's address."
+  },
+  {
+    "id": "CU2-04",
+    "requirement": "A public page serves with no session, refuses an operation not in public_operations, and answers 429 past the rate setting."
+  },
+  {
+    "id": "CU2-05",
+    "requirement": "Every row CORE-36 names is closed in CONTRIBUTOR-GAPS.md, each with a test that failed before the fix."
+  },
+  {
+    "id": "CU2-06",
+    "requirement": "After the billing move, every invoice, payment and expense reads the same through the API as before, to the cent, and a module foreign key to core.invoices installs and holds."
+  },
+  {
+    "id": "CU2-07",
+    "requirement": "matter-clock and the five batch 1 modules install, run and uninstall on the updated core with no change to their packages."
+  },
+  {
+    "id": "CU2-08",
+    "requirement": "The update applies overnight with no failed requests during the core's update load test, and a fresh install reaches first-run setup with no module installed."
+  },
+  {
+    "id": "IMP-01",
+    "requirement": "The form makes a sent invoice with one \"Balance forward as of\" line, its historical number and imported true; the next normal invoice takes the next number in the sequence, unchanged."
+  },
+  {
+    "id": "IMP-02",
+    "requirement": "A number at or above invoice_number_start, a duplicate number, an amount of zero or less, or a missing matter is refused with a message naming the reason, and nothing is written."
+  },
+  {
+    "id": "IMP-03",
+    "requirement": "A CSV of 500 rows with one bad row writes nothing and the preview names the bad row; with the row fixed, all 500 land in one transaction."
+  },
+  {
+    "id": "IMP-04",
+    "requirement": "Re-running the same CSV writes nothing new and reports every row as already imported by external_ref."
+  },
+  {
+    "id": "IMP-05",
+    "requirement": "Amount paid to date posts one imported payment and the balance due equals amount due less amount paid."
+  },
+  {
+    "id": "IMP-06",
+    "requirement": "The client sees the document of record in the portal for an imported invoice, and staff open it from the billing tab."
+  },
+  {
+    "id": "IMP-07",
+    "requirement": "Voiding an imported invoice works and logs the void; the sequence is untouched."
+  },
+  {
+    "id": "IMP-08",
+    "requirement": "The collections panel, aging and statements include imported invoices exactly like others."
+  },
+  {
+    "id": "MKT-01",
+    "requirement": "A package with a structured price lists at that price; a package with the old string still lists."
+  },
+  {
+    "id": "MKT-02",
+    "requirement": "Uploading the kit's signed file unchanged succeeds; a tampered one is refused."
+  },
+  {
+    "id": "MKT-03",
+    "requirement": "A firm subscribes through fake Stripe, gets a license key bound to its install id, and the module accepts it; a key for another install id is refused."
+  },
+  {
+    "id": "MKT-04",
+    "requirement": "A price change emails subscribers and takes effect at the next renewal after the notice period."
+  },
+  {
+    "id": "MKT-05",
+    "requirement": "Cancel stops renewal and the key runs out on its date."
+  },
+  {
+    "id": "MKT-06",
+    "requirement": "No card number or Stripe secret ever appears in marketplace state, logs or responses."
+  },
+  {
+    "id": "MKT-07",
+    "requirement": "No test reaches Stripe."
+  }
+]
