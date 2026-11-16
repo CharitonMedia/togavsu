@@ -252,14 +252,15 @@ func (SettingRow) TableName() string { return "settings" }
 // FeeAgreement is the one active fee agreement on a matter.
 type FeeAgreement struct {
 	Meta
-	MatterID    ID     `db:"matter_id"`
-	FeeType     string `db:"fee_type"`
-	AmountCents Cents  `db:"amount_cents"`
-	Services    string `db:"services"`
-	Status      string `db:"status"`
-	SignedOn    string `db:"signed_on"`
-	VoidReason  string `db:"void_reason"`
-	FileID      ID     `db:"file_id"`
+	MatterID          ID     `db:"matter_id"`
+	FeeType           string `db:"fee_type"`
+	AmountCents       Cents  `db:"amount_cents"`
+	Services          string `db:"services"`
+	Status            string `db:"status"`
+	SignedOn          string `db:"signed_on"`
+	VoidReason        string `db:"void_reason"`
+	FileID            ID     `db:"file_id"`
+	SignatureModuleID string `db:"signature_module_id"`
 }
 
 func (FeeAgreement) TableName() string { return "fee_agreements" }

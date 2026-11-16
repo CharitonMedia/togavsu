@@ -705,6 +705,10 @@ SCHEMAS = _register(
                 "signed_on": _null(_date()),
                 "void_reason": {"type": "string"},
                 "signed_file_id": _null(_uuid()),
+                "signature_module_id": {
+                    "type": "string",
+                    "description": "Module that moved the agreement to sent; only that module may service-call it to signed (CORE-25).",
+                },
                 "included": _ref("Included"),
             },
             ["matter_id", "fee_type", "services_description", "status"],

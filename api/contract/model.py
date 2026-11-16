@@ -78,6 +78,8 @@ SERVICE_PRINCIPAL_OPERATIONS = frozenset(
         "bulkEvent",
         "createNotification",
         "sendModuleMail",
+        "updateFeeAgreement",
+        "markFileStatus",
     }
 )
 

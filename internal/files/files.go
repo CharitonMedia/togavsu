@@ -668,17 +668,84 @@ func (s *Service) MoveToFolder(ctx context.Context, p domain.Principal, id domai
 }
 
 // MarkStatus is Mark draft, final, executed or filed. A model never calls it.
+// A module service call (CORE-25) may only set executed on the signed fee-agreement file
+// for that module.
 func (s *Service) MarkStatus(ctx context.Context, p domain.Principal, id domain.ID, status string) (FileView, error) {
 	switch status {
 	case "draft", "final", "executed", "filed", "received":
 	default:
 		return FileView{}, domain.Invalid("status", "status is draft, final, executed, filed or received")
 	}
+	if p.Source == domain.SourceService && p.ModuleID != "" && p.UserID.IsZero() {
+		return s.signatureMarkExecuted(ctx, p, id, status)
+	}
 	return s.change(ctx, p, id, "status", func(f *fileRow) (string, string, error) {
 		old := f.Status
 		f.Status = status
 		return old, status, nil
 	})
+}
+
+// signatureMarkExecuted is CORE-25: the signature module marks its signed copy executed.
+func (s *Service) signatureMarkExecuted(ctx context.Context, p domain.Principal, id domain.ID, status string) (FileView, error) {
+	if status != "executed" {
+		return FileView{}, &domain.APIError{Code: "scope_denied", Message: "a signature service call may only mark the signed file executed"}
+	}
+	if s.feeSignedFile == nil {
+		return FileView{}, &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
+	}
+	ok, err := s.feeSignedFile(ctx, p.ModuleID, id)
+	if err != nil {
+		return FileView{}, err
+	}
+	if !ok {
+		return FileView{}, &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
+	}
+	var out fileRow
+	err = s.tx(ctx, func(ctx context.Context) error {
+		f, err := s.lockedFile(ctx, id)
+		if err != nil {
+			return err
+		}
+		if f.PurgedAt != zero {
+			return domain.NotFound("file")
+		}
+		old := f.Status
+		if old == status {
+			out = f
+			return nil
+		}
+		f.Status = status
+		f.UpdatedAt = s.now().UTC()
+		if err := s.st.updateFile(ctx, f); err != nil {
+			return err
+		}
+		if err := s.record(ctx, p, "file", f.ID, "status", old, status); err != nil {
+			return err
+		}
+		if err := s.event(ctx, p, f, "file.updated", fmt.Sprintf("Changed status of %s", f.Name)); err != nil {
+			return err
+		}
+		out = f
+		return nil
+	})
+	if err != nil {
+		return FileView{}, err
+	}
+	return view(out, nil), nil
+}
+
+// Peek returns a file with no caller ACL, for cross-service links that already know the
+// caller may name it (CORE-25 signed copy check).
+func (s *Service) Peek(ctx context.Context, id domain.ID) (FileView, error) {
+	f, err := s.loadFile(ctx, id)
+	if err != nil {
+		return FileView{}, err
+	}
+	if f.PurgedAt != zero {
+		return FileView{}, domain.NotFound("file")
+	}
+	return view(f, nil), nil
 }
 
 // Metadata is updateFileMetadata. Nil fields stay as they are.

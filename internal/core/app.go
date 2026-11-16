@@ -360,6 +360,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	// (PRD 8.19, 9.3); the files service asks the module runtime, which is opened after
 	// the ui, so until then every module principal is refused.
 	docs.Files.SetModuleCheck(app.moduleEnabled)
+	docs.Files.SetFeeSignatureFile(app.Billing.IsSignatureFile)
 	app.Practice.SetModuleCheck(app.moduleEnabled)
 	if app.tools, err = loadTools(api.MCPTools); err != nil {
 		return fail(err)
@@ -433,6 +434,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	// (AC-017); the memo ends with the request, so changes apply from the next one.
 	inner := ui.Handler()
 	app.handler = app.holdGate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = memoCaller(r)
 		inner.ServeHTTP(w, r.WithContext(practice.WithRequestMemo(r.Context())))
 	}))
 	if err := ext.start(ctx); err != nil {

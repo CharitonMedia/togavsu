@@ -23,14 +23,15 @@ const kindFeeAgreement = "fee_agreement"
 // FeeAgreement is one agreement row.
 type FeeAgreement struct {
 	domain.Meta
-	MatterID     domain.ID     `json:"matter_id"`
-	FeeType      string        `json:"fee_type"`
-	AmountCents  *domain.Cents `json:"amount_cents"`
-	Services     string        `json:"services_description"`
-	Status       string        `json:"status"`
-	SignedOn     string        `json:"signed_on"`
-	VoidReason   string        `json:"void_reason"`
-	SignedFileID domain.ID     `json:"signed_file_id"`
+	MatterID          domain.ID     `json:"matter_id"`
+	FeeType           string        `json:"fee_type"`
+	AmountCents       *domain.Cents `json:"amount_cents"`
+	Services          string        `json:"services_description"`
+	Status            string        `json:"status"`
+	SignedOn          string        `json:"signed_on"`
+	VoidReason        string        `json:"void_reason"`
+	SignedFileID      domain.ID     `json:"signed_file_id"`
+	SignatureModuleID string        `json:"signature_module_id,omitempty"`
 }
 
 // FeeAgreementInput creates or patches an agreement; nil fields stay as they are.
@@ -60,6 +61,18 @@ var feeStatusNext = map[string]map[string]bool{
 // the agreement's matter. FileLink provides it.
 type SignedCopies interface {
 	CheckMatterFile(ctx context.Context, p domain.Principal, matter, file domain.ID) error
+}
+
+// MatterFiles checks a file sits on a matter without a caller's wall or role (CORE-25
+// signature service call).
+type MatterFiles interface {
+	MatterFileExists(ctx context.Context, matter, file domain.ID) error
+}
+
+// feeServiceCall is a module's own token with no viewer (CORE-01 / CORE-25).
+func feeServiceCall(p domain.Principal) bool {
+	return (p.Source == domain.SourceService || p.Source == domain.SourceModule) &&
+		p.ModuleID != "" && p.UserID.IsZero()
 }
 
 func (s *Service) feeAccess(ctx context.Context, p domain.Principal, matter domain.ID, act domain.Action) error {
@@ -142,6 +155,9 @@ func (s *Service) CreateFeeAgreements(ctx context.Context, p domain.Principal, i
 			if err := s.applyFeeAgreement(t.ctx, p, &row, in); err != nil {
 				return itemInvalid(batch, i, err)
 			}
+			if row.Status == "sent" && p.ModuleID != "" {
+				row.SignatureModuleID = p.ModuleID
+			}
 			if row.Status != "void" {
 				busy, err := s.activeFeeAgreement(t.ctx, row.MatterID, "")
 				if err != nil {
@@ -176,7 +192,12 @@ func (s *Service) CreateFeeAgreements(ctx context.Context, p domain.Principal, i
 // UpdateFeeAgreement patches one agreement. The matter can't change; status moves
 // forward only (draft, sent, signed), any status can be voided with a reason, and void is
 // final. Every changed field goes to the audit log with its old and new value.
+// A module service call (CORE-25) may only move sent to signed with signed_on and
+// signed_file_id, and only when that module is signature_module_id.
 func (s *Service) UpdateFeeAgreement(ctx context.Context, p domain.Principal, id domain.ID, in FeeAgreementInput) (FeeAgreement, error) {
+	if feeServiceCall(p) {
+		return s.signatureUpdate(ctx, p, id, in)
+	}
 	var out FeeAgreement
 	err := s.write(ctx, p, func(t *txn) error {
 		before, err := s.FeeAgreement(t.ctx, p, id)
@@ -196,6 +217,9 @@ func (s *Service) UpdateFeeAgreement(ctx context.Context, p domain.Principal, id
 		if !feeStatusNext[before.Status][after.Status] {
 			return domain.Invalid("status", "a "+before.Status+" agreement can't become "+after.Status)
 		}
+		if after.Status == "sent" && before.Status != "sent" && p.ModuleID != "" {
+			after.SignatureModuleID = p.ModuleID
+		}
 		after.UpdatedAt = s.now()
 		if err := t.put(kindFeeAgreement, id, after); err != nil {
 			return err
@@ -207,6 +231,84 @@ func (s *Service) UpdateFeeAgreement(ctx context.Context, p domain.Principal, id
 		return t.event("fee_agreement.updated", "fee_agreement", id, after.MatterID, "Fee agreement "+after.Status, false)
 	})
 	return out, err
+}
+
+// signatureUpdate is the CORE-25 service-call path: sent → signed with signed_on and
+// signed_file_id only, for the module recorded on the agreement.
+func (s *Service) signatureUpdate(ctx context.Context, p domain.Principal, id domain.ID, in FeeAgreementInput) (FeeAgreement, error) {
+	var out FeeAgreement
+	err := s.write(ctx, p, func(t *txn) error {
+		before, err := s.feeAgreement(t.ctx, id)
+		if err != nil {
+			return err
+		}
+		if before.SignatureModuleID == "" || before.SignatureModuleID != p.ModuleID {
+			return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
+		}
+		if before.Status != "sent" {
+			return domain.Invalid("status", "a "+before.Status+" agreement can't become signed by the signature module")
+		}
+		if in.MatterID != nil || in.FeeType != nil || in.AmountCents != nil || in.Services != nil || in.VoidReason != nil {
+			return domain.Invalid("body", "a signature service call may only set status, signed_on and signed_file_id")
+		}
+		if in.Status == nil || *in.Status != "signed" {
+			return domain.Invalid("status", "a signature service call may only move sent to signed")
+		}
+		if in.SignedOn == nil || *in.SignedOn == nil || **in.SignedOn == "" {
+			return domain.Invalid("signed_on", "a signed agreement needs its signed date")
+		}
+		if _, err := time.Parse("2006-01-02", **in.SignedOn); err != nil {
+			return domain.Invalid("signed_on", "must be a date, YYYY-MM-DD")
+		}
+		if in.SignedFileID == nil || *in.SignedFileID == nil || (**in.SignedFileID).IsZero() {
+			return domain.Invalid("signed_file_id", "a signature service call needs the signed file")
+		}
+		switch files := s.d.Receipts.(type) {
+		case MatterFiles:
+			if err := files.MatterFileExists(t.ctx, before.MatterID, **in.SignedFileID); err != nil {
+				return domain.Invalid("signed_file_id", "must be a file on this matter")
+			}
+		case SignedCopies:
+			if err := files.CheckMatterFile(t.ctx, p, before.MatterID, **in.SignedFileID); err != nil {
+				return domain.Invalid("signed_file_id", "must be a file on this matter")
+			}
+		default:
+			return domain.Invalid("signed_file_id", "the file store is not available")
+		}
+		after := before
+		after.Status = "signed"
+		after.SignedOn = **in.SignedOn
+		after.SignedFileID = **in.SignedFileID
+		after.UpdatedAt = s.now()
+		if err := t.put(kindFeeAgreement, id, after); err != nil {
+			return err
+		}
+		if err := t.diff("fee_agreement", id, before, after, ""); err != nil {
+			return err
+		}
+		out = after
+		return t.event("fee_agreement.updated", "fee_agreement", id, after.MatterID, "Fee agreement signed", false)
+	})
+	return out, err
+}
+
+// IsSignatureFile reports whether fileID is the signed copy on an agreement that module
+// owns for signature (CORE-25 markFileStatus).
+func (s *Service) IsSignatureFile(ctx context.Context, module string, fileID domain.ID) (bool, error) {
+	if module == "" || fileID.IsZero() {
+		return false, nil
+	}
+	rows, err := listOf[FeeAgreement](ctx, s.d.Store, kindFeeAgreement)
+	if err != nil {
+		return false, err
+	}
+	for _, r := range rows {
+		if r.SignatureModuleID == module && r.SignedFileID == fileID &&
+			(r.Status == "signed" || r.Status == "sent") {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // FeeAgreementHistory is the agreement's audit rows, newest first, after the read check.

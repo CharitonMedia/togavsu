@@ -4674,7 +4674,7 @@
         "attorney",
         "staff"
       ],
-      "module_delegation": "delegated_viewer",
+      "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -4684,6 +4684,13 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [
@@ -11610,7 +11617,7 @@
         "attorney",
         "staff"
       ],
-      "module_delegation": "delegated_viewer",
+      "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -11620,6 +11627,13 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [

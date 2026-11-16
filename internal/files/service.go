@@ -111,6 +111,9 @@ type Service struct {
 	// moduleOn reports whether a module is installed and enabled; nil refuses every
 	// module principal (SetModuleCheck).
 	moduleOn func(ctx context.Context, module string) (bool, error)
+	// feeSignedFile reports whether fileID is the signed copy for module's fee agreement
+	// (CORE-25 markFileStatus service call). Nil refuses every signature service mark.
+	feeSignedFile func(ctx context.Context, module string, fileID domain.ID) (bool, error)
 
 	mu       sync.Mutex
 	adapters map[domain.ID]cached
@@ -187,7 +190,7 @@ func actorKind(p domain.Principal) string {
 	switch {
 	case p.Source == domain.SourceSystem:
 		return "system"
-	case p.Source == domain.SourceModule:
+	case p.Source == domain.SourceModule, p.Source == domain.SourceService:
 		return "module"
 	case p.Source == domain.SourceAPIToken:
 		return "agent"
@@ -251,6 +254,11 @@ func clientSees(p domain.Principal, f fileRow) bool {
 // refused.
 func (s *Service) SetModuleCheck(fn func(ctx context.Context, module string) (bool, error)) {
 	s.moduleOn = fn
+}
+
+// SetFeeSignatureFile gives the service billing's signed-copy check for CORE-25.
+func (s *Service) SetFeeSignatureFile(fn func(ctx context.Context, module string, fileID domain.ID) (bool, error)) {
+	s.feeSignedFile = fn
 }
 
 // moduleOnly is a module's own token with no viewer (PRD 9.3): no user and no roles, only

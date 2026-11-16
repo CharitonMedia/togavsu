@@ -590,7 +590,7 @@ func actorKind(p domain.Principal) string {
 	switch p.Source {
 	case domain.SourceSystem:
 		return "system"
-	case domain.SourceModule:
+	case domain.SourceModule, domain.SourceService:
 		return "module"
 	case domain.SourceAPIToken:
 		return "agent"
@@ -606,7 +606,7 @@ func sourceOf(p domain.Principal, given string) string {
 		return given
 	}
 	switch p.Source {
-	case domain.SourceModule:
+	case domain.SourceModule, domain.SourceService:
 		if p.ModuleID != "" {
 			return p.ModuleID
 		}

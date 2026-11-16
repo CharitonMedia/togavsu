@@ -2793,7 +2793,7 @@ def _files(api: Contract) -> None:
     for method, path, op, summary, body, event, desc in (
         ("post", "/api/v1/files/{file_id}/rename", "renameFile", "Rename a file", "FileRename", "file.updated", "Changes the only name. The extension stays, except when an editor save converts the file to DOCX. A person may rename a locked file. Doc Tender still cannot replace that name."),
         ("post", "/api/v1/files/{file_id}/move", "moveFile", "Move a file between folders", "FileMove", "file.updated", "Changes the folder record. Bytes stay on the same key."),
-        ("post", "/api/v1/files/{file_id}/status", "markFileStatus", "Mark a file status", "FileStatusWrite", "file.updated", "Sets draft, final, executed, or filed. Received is how client and outside files arrive."),
+        ("post", "/api/v1/files/{file_id}/status", "markFileStatus", "Mark a file status", "FileStatusWrite", "file.updated", "Sets draft, final, executed, or filed. Received is how client and outside files arrive. A signature module service call (CORE-25) may only set executed on that module's signed fee-agreement file."),
         ("post", "/api/v1/files/{file_id}/trash", "trashFile", "Trash a file", None, "file.trashed", "The file stays listed and restorable."),
         ("post", "/api/v1/files/{file_id}/restore", "restoreFile", "Restore a file from trash", None, "file.updated", "Clears trashed_at."),
     ):
