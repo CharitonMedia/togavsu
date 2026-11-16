@@ -1,0 +1,11 @@
+[Unit]
+Description=Continue the Togavsu batch2 build without an open chat
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=2min
+AccuracySec=10s
+Unit=togavsu-build-controller-batch2.service
+
+[Install]
+WantedBy=timers.target

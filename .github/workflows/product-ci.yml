@@ -1,7 +1,7 @@
 name: Product CI
 on:
   push:
-    branches: [main]
+    branches: [main, batch2]
     tags: ['v*']
   pull_request:
 permissions:

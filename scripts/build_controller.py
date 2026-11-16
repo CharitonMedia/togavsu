@@ -61,6 +61,7 @@ PROTECTED = {
     "scripts/build_controller.py", "scripts/test_build_controller.py", "scripts/cursor_agents.py",
     "scripts/check_review.py", "scripts/check_setup.py", "scripts/test_review_gate.py",
     "docs/build/controller-plan.json", "docs/build/tasks.json", "docs/build/review.schema.json",
+    "docs/build/batch2-plan.json", "docs/build/acceptance-batch2.json",
     "docs/build/prompts/codex-review.md", "togavsu-initial-modules-prd.md", "docs/modules/CORE-CHANGES.md", "docs/modules/CORE-CHANGES-2.md",
 } | {"docs/modules/" + _m + "/SPEC.md" for _m in ("documents", "email", "client-portal", "lawpay-docuseal", "quickbooks")}
 MODULES_PRD = ("This is an initial modules task: also read the full togavsu-initial-modules-prd.md, the approved scope for "

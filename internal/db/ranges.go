@@ -26,6 +26,10 @@ func MigrationRanges() []MigrationRange {
 		{Task: "modules", Min: 1000, Max: 1099},
 		{Task: "marketplace", Min: 1100, Max: 1199},
 		{Task: "release", Min: 1200, Max: 1299},
+		{Task: "module-core", Min: 1300, Max: 1399},
+		{Task: "core-update-2a", Min: 1400, Max: 1449},
+		{Task: "core-update-2b", Min: 1450, Max: 1499},
+		{Task: "core-update-2c", Min: 1500, Max: 1549},
 	}
 }
 

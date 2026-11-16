@@ -11,6 +11,13 @@ prd = (root / "togavsu-core-prd.md").read_text()
 MODULES = ("documents", "email", "client-portal", "lawpay-docuseal", "quickbooks")
 rows = [s[2:] for s in prd.split("## 12. Acceptance criteria")[1].splitlines() if s.startswith("- ")]
 assert rows == [x["requirement"] for x in acceptance], "Acceptance index drift"
+# Batch 2 criteria (CU2, IMP, MKT) come from the approved copy in docs/modules/CORE-CHANGES-2.md.
+import re
+changes2 = (root / "docs/modules/CORE-CHANGES-2.md").read_text()
+acceptance2 = json.loads((root / "docs/build/acceptance-batch2.json").read_text())
+rows2 = [{"id": i, "requirement": r} for i, r in re.findall(r"^((?:CU2|IMP|MKT)-\d\d) (.+)$", changes2, re.M)]
+assert rows2 == acceptance2 and len(rows2) == 23, "Batch 2 acceptance index drift"
+ids = ids | {x["id"] for x in acceptance2}
 tasks = {t["id"]: t for t in plan["tasks"]}
 assert len(tasks) == len(plan["tasks"])
 for t in tasks.values():
@@ -57,13 +64,25 @@ for i, a in enumerate(lanes):
             hit = overlaps(a, b)
             assert not hit, (a["id"], b["id"]) + hit
 # Module tasks name sections of the approved initial modules PRD, and those sections exist.
-import re
 mprd = (root / "togavsu-initial-modules-prd.md").read_text()
 headings = set(re.findall(r"^#{2,3} (\d+(?:\.\d+)?)\. ", mprd, re.M)) | set(re.findall(r"^### (\d+\.\d+) ", mprd, re.M))
 for t in tasks.values():
     for s in t.get("module_prd_sections", []):
         assert s in headings, (t["id"], "unknown modules PRD section", s)
+headings2 = set(re.findall(r"^#{2,3} (\d+(?:\.\d+)?)\.? ", changes2, re.M))
+for t in tasks.values():
+    for s in t.get("batch2_sections", []):
+        assert s in headings2, (t["id"], "unknown CORE-CHANGES-2.md section", s)
+# The batch2 controller instance drives a subset of these assignments on the batch2 branch.
+batch2 = json.loads((root / "docs/build/batch2-plan.json").read_text())
+assert batch2["base_branch"] == "batch2"
+assert {k: v for k, v in batch2.items() if k not in ("tasks", "base_branch", "held_tasks")} == {k: v for k, v in controller.items() if k not in ("tasks", "held_tasks")}, "batch2 plan settings differ"
+b2 = {t["id"]: t for t in batch2["tasks"]}
+assert b2 and all(tasks.get(k) == t for k, t in b2.items()), "batch2 plan assignments differ from tasks.json"
+assert all(set(t["depends_on"]) <= b2.keys() for t in b2.values()), "batch2 plan depends outside itself"
+assert set(batch2["held_tasks"]) <= b2.keys()
 for p in ["AGENTS.md","docs/build/WORKFLOW.md","docs/build/review.schema.json","docs/build/prompts/codex-review.md","PONYTAIL-DEBT.md",
-          "togavsu-initial-modules-prd.md","docs/modules/CORE-CHANGES.md"] + ["docs/modules/" + m + "/SPEC.md" for m in MODULES]:
+          "togavsu-initial-modules-prd.md","docs/modules/CORE-CHANGES.md", "docs/modules/CORE-CHANGES-2.md",
+          "docs/build/acceptance-batch2.json", "docs/build/batch2-plan.json"] + ["docs/modules/" + m + "/SPEC.md" for m in MODULES]:
     assert (root / p).is_file(), p
-print("PASS: 52 criteria indexed, dependency graph valid, four disjoint bootstrap assignments, controller plan matches tasks.json, parallel lanes disjoint, module PRD sections exist. Product acceptance pending.")
+print("PASS: 52 core and 23 batch 2 criteria indexed, batch2 plan matches, dependency graph valid, four disjoint bootstrap assignments, controller plan matches tasks.json, parallel lanes disjoint, module PRD sections exist. Product acceptance pending.")

@@ -517,6 +517,10 @@ Doc Tender is the core's file processor. It receives every file that lands in a 
 
 API: /api/v1/doc-tender/jobs (list, status, retry), /api/v1/doc-tender/exceptions (list, resolve), /api/v1/doc-tender/categories and /api/v1/doc-tender/naming (admins write), all also through /mcp. Events: doc\_tender.published and doc\_tender.exception\_opened.
 
+### 8.22 Migration import
+
+Opening invoice import. The approved requirement and its acceptance criteria (IMP-01 to IMP-08) are docs/modules/CORE-CHANGES-2.md section 6, copied unchanged from the batch 2 modules PRD Patrick approved on 2026-11-16.
+
 ## 9. Module interface
 
 ### 9.1 What a module is

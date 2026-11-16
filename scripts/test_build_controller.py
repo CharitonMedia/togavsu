@@ -3275,6 +3275,9 @@ class LaneBackendTests(unittest.TestCase):
             "non-ASCII control file": {"deploy/controller/\u00e9.py": "pass\n"},
             "modules PRD": {"togavsu-initial-modules-prd.md": "scope\n"},
             "module core changes": {"docs/modules/CORE-CHANGES.md": "scope\n"},
+            "batch 2 core changes": {"docs/modules/CORE-CHANGES-2.md": "scope\n"},
+            "batch2 plan": {"docs/build/batch2-plan.json": "{}\n"},
+            "batch 2 acceptance index": {"docs/build/acceptance-batch2.json": "[]\n"},
             "module spec": {"docs/modules/email/SPEC.md": "scope\n"},
         }
         for label, files in cases.items():
