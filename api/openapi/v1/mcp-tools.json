@@ -2741,7 +2741,8 @@
       "roles": [
         "admin",
         "attorney",
-        "staff"
+        "staff",
+        "client"
       ],
       "module_delegation": "delegated_viewer",
       "limit": {
@@ -2844,7 +2845,8 @@
       "roles": [
         "admin",
         "attorney",
-        "staff"
+        "staff",
+        "client"
       ],
       "module_delegation": "delegated_viewer",
       "transfer": {
@@ -2984,7 +2986,8 @@
       "roles": [
         "admin",
         "attorney",
-        "staff"
+        "staff",
+        "client"
       ],
       "module_delegation": "delegated_viewer",
       "limit": {

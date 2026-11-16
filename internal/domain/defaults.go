@@ -46,6 +46,7 @@ const (
 	SidebarDefaultOrder       = 1000
 	InboundWebhookMaxBytes    = 1048576
 	InboundWebhookRatePerMin  = 120
+	ClientAccessDaysAfterClose = 14
 )
 
 // DocCategory is one default filing category.

@@ -514,7 +514,21 @@ SCHEMAS = _register(
                 "included": _ref("Included"),
             },
             ["number", "name", "practice_area_id", "status", "billing_type", "opened_on", "pro_bono", "zero_fee", "unchecked_conflicts", "archived", "custom_fields", "glance"],
-            "A matter. Walled matters are omitted for a caller who is not on the wall.",
+            "A matter for staff. A client receives MatterClient. Walled matters are omitted for a caller who is not on the wall.",
+        ),
+        "MatterClient": _obj(
+            {
+                "id": _uuid(),
+                "number": {"type": "string"},
+                "name": {"type": "string"},
+                "status": _MATTER_STATUS,
+                "practice_area_name": {"type": "string"},
+                "opened_on": _date(),
+                "closed_on": _null(_date()),
+                "responsible_attorney_name": {"type": "string"},
+            },
+            ["id", "number", "name", "status", "practice_area_name", "opened_on", "responsible_attorney_name"],
+            "The client allowlist for matter JSON and MCP. A field that is not here is not returned.",
         ),
         "MatterWrite": _obj(
             {
@@ -1934,6 +1948,11 @@ SCHEMAS = _register(
                 "bar_state": {"type": "string"},
                 "linked_contact_id": _null(_uuid()),
                 "profile_file_id": _null(_uuid()),
+                "access_ended_matters": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "For a client on getMe: closed matters where the access window has ended. Absent for other roles.",
+                },
                 "included": _ref("Included"),
             },
             ["name", "email", "roles", "active"],

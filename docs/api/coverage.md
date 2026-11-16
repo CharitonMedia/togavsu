@@ -78,12 +78,12 @@ It does not claim the handlers or the MCP server are implemented.
 | contact-channels | `PATCH` | `/api/v1/contact-tags/{tag_id}` | `updateContactTag` | required:updateContactTag | admin, attorney, staff | contacts:write |
 | contact-channels, bulk | `POST` | `/api/v1/contact-tags:bulk` | `bulkContactTag` | required:bulkContactTag | admin, attorney, staff | contacts:write |
 | contacts, merge | `POST` | `/api/v1/contacts/{contact_id}/merge` | `mergeContact` | required:mergeContact | admin, attorney | contacts:write |
-| matters, matter-glance, include-extensions | `GET` | `/api/v1/matters` | `listMatter` | required:listMatter | admin, attorney, staff | matters:read |
+| matters, matter-glance, include-extensions | `GET` | `/api/v1/matters` | `listMatter` | required:listMatter | admin, attorney, staff, client | matters:read |
 | matters, matter-glance, include-extensions | `POST` | `/api/v1/matters` | `createMatter` | required:createMatter | admin, attorney, staff | matters:write |
-| matters, matter-glance, include-extensions | `GET` | `/api/v1/matters/{matter_id}` | `getMatter` | required:getMatter | admin, attorney, staff | matters:read |
+| matters, matter-glance, include-extensions | `GET` | `/api/v1/matters/{matter_id}` | `getMatter` | required:getMatter | admin, attorney, staff, client | matters:read |
 | matters, matter-glance, include-extensions | `PATCH` | `/api/v1/matters/{matter_id}` | `updateMatter` | required:updateMatter | admin, attorney, staff | matters:write |
 | matters, matter-glance, include-extensions | `POST` | `/api/v1/matters/{matter_id}/archive` | `archiveMatter` | required:archiveMatter | admin, attorney, staff | matters:write |
-| matters, matter-glance, include-extensions, edit-history | `GET` | `/api/v1/matters/{matter_id}/history` | `historyMatter` | required:historyMatter | admin, attorney, staff | matters:read |
+| matters, matter-glance, include-extensions, edit-history | `GET` | `/api/v1/matters/{matter_id}/history` | `historyMatter` | required:historyMatter | admin, attorney, staff, client | matters:read |
 | matters, matter-glance, include-extensions, bulk | `POST` | `/api/v1/matters:bulk` | `bulkMatter` | required:bulkMatter | admin, attorney, staff | matters:write |
 | matter-close | `GET` | `/api/v1/matters/{matter_id}/close-preview` | `previewMatterClose` | required:previewMatterClose | admin, attorney, staff | matters:read |
 | matter-close | `POST` | `/api/v1/matters/{matter_id}/close` | `closeMatter` | required:closeMatter | admin, attorney, staff | matters:write |

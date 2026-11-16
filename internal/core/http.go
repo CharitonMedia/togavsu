@@ -592,7 +592,21 @@ func (a *App) meJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Unauthenticated("sign in is required"))
 		return
 	}
-	writeJSON(w, http.StatusOK, userJSON(u))
+	out := userJSON(u)
+	if !u.ContactID.IsZero() {
+		out["linked_contact_id"] = u.ContactID
+	} else {
+		out["linked_contact_id"] = nil
+	}
+	if practice.ClientOnly(c.Principal) && a.Practice != nil {
+		n, err := a.Practice.CountAccessEndedMatters(r.Context(), c.Principal)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		out["access_ended_matters"] = n
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // admin authorizes settings and the audit log in the service layer of this package:

@@ -498,7 +498,10 @@ def _identity(api: Contract) -> None:
         "/api/v1/me",
         operation_id="getMe",
         summary="Current user",
-        description="The signed-in profile. Password and TOTP material are not included.",
+        description=(
+            "The signed-in profile. Password and TOTP material are not included. "
+            "A client also receives access_ended_matters, the count of closed matters whose access window has ended."
+        ),
         tag="Identity",
         features=["profile"],
         roles=ANY,
@@ -985,7 +988,7 @@ def _practice(api: Contract) -> None:
         tag="Matters",
         feature="matters",
         singular="matter",
-        read_roles=STAFF,
+        read_roles=STAFF + ["client"],
         write_roles=STAFF,
         read_scope="matters:read",
         write_scope="matters:write",
@@ -996,8 +999,19 @@ def _practice(api: Contract) -> None:
         filters=["q", "status", "practice_area_id", "responsible_user_id", "billing_type", "archived", "custom"],
         archive=True,
         events={"created": "matter.created", "updated": "matter.updated", "archived": "matter.archived"},
-        extra_access=WALL,
+        extra_access={**WALL, "client": "own", "client_schema": "MatterClient"},
         extra_features=["matter-glance", "include-extensions"],
+    )
+    _project_client_matters(api)
+    api.spec["paths"]["/api/v1/matters"]["get"]["description"] = (
+        "Lists matters the caller can see. A client (mode own) sees only matters where their linked contact "
+        "is a client party, newest opened_on first, projected to MatterClient. "
+        "A closed matter stays readable for client_access.days_after_close days after closed_on; then it is omitted. "
+        "Walled matters are omitted for a caller who is not on the wall."
+    )
+    api.spec["paths"]["/api/v1/matters/{matter_id}"]["get"]["description"] = (
+        "One matter. A client receives MatterClient fields only for a matter where their linked contact is a "
+        "client party and the access window is still open. Otherwise not_found."
     )
     api.spec["paths"]["/api/v1/matters/{matter_id}"]["patch"]["description"] = (
         "Patches ordinary fields. status may move among prospect, open, and on_hold. "
@@ -4886,6 +4900,30 @@ def _modules(api: Contract) -> None:
             },
         },
     )
+
+
+def _project_client_matters(api: Contract) -> None:
+    staff_item = {"$ref": "#/components/schemas/Matter"}
+    client_item = {"$ref": "#/components/schemas/MatterClient"}
+    mixed = {"oneOf": [staff_item, client_item]}
+    page = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["data", "page"],
+        "properties": {
+            "data": {"type": "array", "items": mixed},
+            "page": {"$ref": "#/components/schemas/Page"},
+        },
+    }
+    list_op = api.spec["paths"]["/api/v1/matters"]["get"]
+    get_op = api.spec["paths"]["/api/v1/matters/{matter_id}"]["get"]
+    list_op["responses"]["200"]["content"]["application/json"]["schema"] = page
+    get_op["responses"]["200"]["content"]["application/json"]["schema"] = mixed
+    for operation in (list_op, get_op):
+        operation["x-togavsu-access"]["client"] = "own"
+        operation["x-togavsu-access"]["client_schema"] = "MatterClient"
+        operation["x-togavsu-access"]["staff_schema"] = "Matter"
+        operation["x-togavsu-access"]["client_projection"] = "allowlist"
 
 
 def _project_client_invoices(api: Contract) -> None:

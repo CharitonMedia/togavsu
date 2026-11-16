@@ -1507,7 +1507,7 @@
       "get": {
         "operationId": "getMe",
         "summary": "Current user",
-        "description": "The signed-in profile. Password and TOTP material are not included.",
+        "description": "The signed-in profile. Password and TOTP material are not included. A client also receives access_ended_matters, the count of closed matters whose access window has ended.",
         "tags": [
           "Identity"
         ],
@@ -9532,7 +9532,7 @@
       "get": {
         "operationId": "listMatter",
         "summary": "List matters",
-        "description": "Cursor-paginated matters the caller is allowed to see.",
+        "description": "Lists matters the caller can see. A client (mode own) sees only matters where their linked contact is a client party, newest opened_on first, projected to MatterClient. A closed matter stays readable for client_access.days_after_close days after closed_on; then it is omitted. Walled matters are omitted for a caller who is not on the wall.",
         "tags": [
           "Matters"
         ],
@@ -9677,7 +9677,14 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/Matter"
+                        "oneOf": [
+                          {
+                            "$ref": "#/components/schemas/Matter"
+                          },
+                          {
+                            "$ref": "#/components/schemas/MatterClient"
+                          }
+                        ]
                       }
                     },
                     "page": {
@@ -9718,22 +9725,46 @@
           "roles": [
             "admin",
             "attorney",
-            "staff"
+            "staff",
+            "client"
           ],
           "scopes": [
             "matters:read"
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "own",
           "access_inherits": "matter",
+          "client_schema": "MatterClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "staff_schema": "Matter",
+          "client_projection": "allowlist",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
           },
+          "client_fields": [
+            "id",
+            "number",
+            "name",
+            "status",
+            "practice_area_name",
+            "opened_on",
+            "closed_on",
+            "responsible_attorney_name"
+          ],
+          "client_csv_columns": [
+            "id",
+            "number",
+            "name",
+            "status",
+            "practice_area_name",
+            "opened_on",
+            "closed_on",
+            "responsible_attorney_name"
+          ],
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -9849,8 +9880,9 @@
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "own",
           "access_inherits": "matter",
+          "client_schema": "MatterClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "extension_include": {
@@ -9859,7 +9891,18 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "client_projection": "allowlist",
+          "client_fields": [
+            "id",
+            "number",
+            "name",
+            "status",
+            "practice_area_name",
+            "opened_on",
+            "closed_on",
+            "responsible_attorney_name"
+          ]
         },
         "x-togavsu-events": [
           "matter.created"
@@ -9924,7 +9967,7 @@
       "get": {
         "operationId": "getMatter",
         "summary": "Get a matter",
-        "description": "Returns the matter. A matter wall or a missing record is a not_found problem, with the same response either way.",
+        "description": "One matter. A client receives MatterClient fields only for a matter where their linked contact is a client party and the access window is still open. Otherwise not_found.",
         "tags": [
           "Matters"
         ],
@@ -9959,7 +10002,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Matter"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Matter"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MatterClient"
+                    }
+                  ]
                 }
               }
             }
@@ -9989,22 +10039,36 @@
           "roles": [
             "admin",
             "attorney",
-            "staff"
+            "staff",
+            "client"
           ],
           "scopes": [
             "matters:read"
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "own",
           "access_inherits": "matter",
+          "client_schema": "MatterClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "staff_schema": "Matter",
+          "client_projection": "allowlist",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "client_fields": [
+            "id",
+            "number",
+            "name",
+            "status",
+            "practice_area_name",
+            "opened_on",
+            "closed_on",
+            "responsible_attorney_name"
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -10124,8 +10188,9 @@
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "own",
           "access_inherits": "matter",
+          "client_schema": "MatterClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "extension_include": {
@@ -10136,7 +10201,18 @@
           "events_on": "commit",
           "events_on_failure": "none",
           "admin_bypasses_wall": false,
-          "effect_order": "authorize_before_external_effect"
+          "effect_order": "authorize_before_external_effect",
+          "client_projection": "allowlist",
+          "client_fields": [
+            "id",
+            "number",
+            "name",
+            "status",
+            "practice_area_name",
+            "opened_on",
+            "closed_on",
+            "responsible_attorney_name"
+          ]
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -10276,8 +10352,9 @@
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "own",
           "access_inherits": "matter",
+          "client_schema": "MatterClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "extension_include": {
@@ -10288,7 +10365,18 @@
           "events_on": "commit",
           "events_on_failure": "none",
           "admin_bypasses_wall": false,
-          "effect_order": "authorize_before_external_effect"
+          "effect_order": "authorize_before_external_effect",
+          "client_projection": "allowlist",
+          "client_fields": [
+            "id",
+            "number",
+            "name",
+            "status",
+            "practice_area_name",
+            "opened_on",
+            "closed_on",
+            "responsible_attorney_name"
+          ]
         },
         "x-togavsu-events": [
           "matter.archived"
@@ -10432,15 +10520,17 @@
           "roles": [
             "admin",
             "attorney",
-            "staff"
+            "staff",
+            "client"
           ],
           "scopes": [
             "matters:read"
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "own",
           "access_inherits": "matter",
+          "client_schema": "MatterClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "extension_include": {
@@ -10492,6 +10582,17 @@
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
+          "client_projection": "allowlist",
+          "client_fields": [
+            "id",
+            "number",
+            "name",
+            "status",
+            "practice_area_name",
+            "opened_on",
+            "closed_on",
+            "responsible_attorney_name"
+          ],
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -10619,8 +10720,9 @@
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "own",
           "access_inherits": "matter",
+          "client_schema": "MatterClient",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "extension_include": {
@@ -10629,7 +10731,18 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "client_projection": "allowlist",
+          "client_fields": [
+            "id",
+            "number",
+            "name",
+            "status",
+            "practice_area_name",
+            "opened_on",
+            "closed_on",
+            "responsible_attorney_name"
+          ]
         },
         "x-togavsu-events": [
           "matter.created"
@@ -62717,6 +62830,9 @@
               "listUserDirectory",
               "listApiToken",
               "getApiToken",
+              "listMatter",
+              "getMatter",
+              "historyMatter",
               "listInvoice",
               "getInvoice",
               "historyInvoice",
@@ -65944,7 +66060,66 @@
           "custom_fields",
           "glance"
         ],
-        "description": "A matter. Walled matters are omitted for a caller who is not on the wall."
+        "description": "A matter for staff. A client receives MatterClient. Walled matters are omitted for a caller who is not on the wall."
+      },
+      "MatterClient": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "number": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "prospect",
+              "open",
+              "on_hold",
+              "closed"
+            ]
+          },
+          "practice_area_name": {
+            "type": "string"
+          },
+          "opened_on": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date."
+          },
+          "closed_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "description": "Calendar date."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "responsible_attorney_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "name",
+          "status",
+          "practice_area_name",
+          "opened_on",
+          "responsible_attorney_name"
+        ],
+        "description": "The client allowlist for matter JSON and MCP. A field that is not here is not returned."
       },
       "MatterWrite": {
         "type": "object",
@@ -73031,6 +73206,11 @@
               }
             ]
           },
+          "access_ended_matters": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "For a client on getMe: closed matters where the access window has ended. Absent for other roles."
+          },
           "included": {
             "$ref": "#/components/schemas/Included"
           }
@@ -73617,6 +73797,7 @@
           "security.failed_sign_in_limit",
           "security.lockout_seconds",
           "security.api_rate_limit_per_minute",
+          "client_access.days_after_close",
           "practice.case_number_patterns",
           "practice.conflict_score_floor",
           "billing.time_increment_minutes",
@@ -83832,6 +84013,17 @@
       "locked": false,
       "minimum": 1,
       "help": "Requests a minute per API token."
+    },
+    {
+      "key": "client_access.days_after_close",
+      "type": "integer",
+      "tab": "security",
+      "default": 14,
+      "secret": false,
+      "locked": false,
+      "minimum": 0,
+      "maximum": 3650,
+      "help": "Days after closed_on that a client may still read the matter, its shared files and invoices. Default 14. Reopening restores access."
     },
     {
       "key": "practice.case_number_patterns",

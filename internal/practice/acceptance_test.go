@@ -235,7 +235,7 @@ func TestAC020SearchScopesAndWall(t *testing.T) {
 	if err != nil || !searchHas(acctInv, tid(40)) {
 		t.Fatal("accountant invoice search", err, acctInv)
 	}
-	if _, err := svc.Search(ctx, person(tid(9), domain.RoleClient), "2026-0001", ScopeAll); !isCode(err, domain.CodeForbidden) {
+	if _, err := svc.Search(ctx, person(tid(9), domain.RoleClient), "2026-0001", ScopeAll); !isCode(err, domain.CodeNotFound) {
 		t.Fatal(err)
 	}
 

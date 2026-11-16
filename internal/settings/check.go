@@ -468,6 +468,9 @@ func fixedSite(path, fn string) bool {
 		case "ParseCents", "combineCents", "String", "Sub", "addCents", "parsePositive":
 			return true
 		}
+	case strings.HasSuffix(slash, "internal/domain/client_access.go"):
+		// Calendar day offsets for the client access window; days comes from the setting.
+		return fn == "ClientAccessActive"
 	case strings.HasSuffix(slash, "internal/domain/id.go"):
 		// UUIDv7 byte indexes, variant bits, text groups, and the synthetic system-user id.
 		switch fn {

@@ -56,7 +56,7 @@ func TestCountMattersBatchMatchesEachMatter(t *testing.T) {
 
 	// each is CountMatters before batching: the list gate, then visibleMatter per matter.
 	each := func(p domain.Principal, status string, area domain.ID) int {
-		if _, err := svc.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
+		if err := svc.gateMatterList(ctx, p); err != nil {
 			return -1
 		}
 		n := 0

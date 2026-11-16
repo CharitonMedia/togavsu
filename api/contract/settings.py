@@ -54,6 +54,15 @@ SETTINGS: list[dict] = [
     _s("security.lockout_seconds", "integer", "security", 15 * 60, "Lockout length after repeated failed sign-ins.", minimum=1),
     _s("security.api_rate_limit_per_minute", "integer", "security", 600, "Requests a minute per API token.", minimum=1),
     _s(
+        "client_access.days_after_close",
+        "integer",
+        "security",
+        14,
+        "Days after closed_on that a client may still read the matter, its shared files and invoices. Default 14. Reopening restores access.",
+        minimum=0,
+        maximum=3650,
+    ),
+    _s(
         "practice.case_number_patterns",
         "json",
         "practice",

@@ -37,6 +37,7 @@ var definitions = []Definition{
 	{Key: "security.lockout_attempts", Kind: KindInt, Default: "5", Min: 1, Max: 100, HasMin: true, HasMax: true, Tab: TabSecurity, Help: "Failed sign-ins before lockout. Default 5.", PRD: true},
 	{Key: "security.lockout_length", Kind: KindDuration, Default: "15m0s", Min: int64(time.Minute), Max: int64(24 * time.Hour), HasMin: true, HasMax: true, Tab: TabSecurity, Help: "Lockout length. Default 15 minutes.", PRD: true},
 	{Key: "security.api_rate_per_minute", Kind: KindInt, Default: "600", Min: 1, Max: 1000000, HasMin: true, HasMax: true, Tab: TabSecurity, Help: "API requests allowed per minute per token. Default 600.", PRD: true},
+	{Key: "client_access.days_after_close", Kind: KindInt, Default: strconv.Itoa(domain.ClientAccessDaysAfterClose), Min: 0, Max: 3650, HasMin: true, HasMax: true, Tab: TabSecurity, Help: "Days after closed_on that a client may still read the matter, its shared files and invoices. Default 14. Reopening restores access.", PRD: true},
 
 	{Key: "practice.case_number_patterns", Kind: KindJSON, Default: jsonText([]string{domain.DefaultCasePattern}), Tab: TabPractice, Help: "Case-number patterns. The default matches Missouri docket numbers such as 23AR-CV00825.", PRD: true, Special: "regexp_list"},
 	{Key: "practice.conflict_score_minimum", Kind: KindInt, Default: strconv.Itoa(domain.ConflictScoreMinimum), Min: 0, Max: 100, HasMin: true, HasMax: true, Tab: TabPractice, Help: "Lowest conflict score shown, out of 100. Default 60.", PRD: true},

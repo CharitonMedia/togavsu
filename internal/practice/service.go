@@ -160,8 +160,8 @@ func (s *Service) gate(ctx context.Context, p domain.Principal, ref domain.Resou
 	switch d.Reason {
 	case domain.ReasonUnauthenticated:
 		return d, domain.Unauthenticated("sign in required")
-	case domain.ReasonMatterWall:
-		return d, domain.NotFound("matter")
+	case domain.ReasonMatterWall, domain.ReasonClientScope:
+		return d, domain.NotFound(string(ref.Resource))
 	default:
 		return d, domain.Forbidden(d.Reason)
 	}
@@ -208,10 +208,26 @@ func (s *Service) clientMatter(ctx context.Context, p domain.Principal, matterID
 	}
 	for _, party := range s.db.Parties(matterID, user.ContactID) {
 		if party.Role == "client" || party.Role == "authorized user" {
-			return true
+			return s.clientAccessOpen(ctx, matterID)
 		}
 	}
 	return false
+}
+
+// clientAccessOpen applies client_access.days_after_close to a closed matter.
+func (s *Service) clientAccessOpen(ctx context.Context, matterID domain.ID) bool {
+	row, err := s.db.Matter(ctx, matterID)
+	if err != nil {
+		return false
+	}
+	days := s.intSetting(ctx, "client_access.days_after_close", domain.ClientAccessDaysAfterClose)
+	return domain.ClientAccessActive(row.Status, row.ClosedOn, days, s.clock())
+}
+
+// ClientOnly reports a principal whose only firm-facing role is client.
+func ClientOnly(p domain.Principal) bool {
+	return p.HasRole(domain.RoleClient) && !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) &&
+		!p.HasRole(domain.RoleStaff) && !p.HasRole(domain.RoleAccountant)
 }
 
 // batchWalls answers WallReader for one principal from one read of every wall and of the
@@ -250,7 +266,10 @@ func (s *Service) batchWallsFor(ctx context.Context, p domain.Principal) (*batch
 	b.walled, b.allows = src.WallMembers(p.UserID)
 	if user, err := s.db.User(ctx, p.UserID); err == nil && !user.ContactID.IsZero() {
 		for _, party := range s.db.Parties(domain.ID(""), user.ContactID) {
-			if party.Role == "client" || party.Role == "authorized user" {
+			if party.Role != "client" && party.Role != "authorized user" {
+				continue
+			}
+			if s.clientAccessOpen(ctx, party.MatterID) {
 				b.client[party.MatterID] = true
 			}
 		}

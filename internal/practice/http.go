@@ -2,6 +2,7 @@ package practice
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"html/template"
@@ -595,6 +596,10 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Get("format") == "csv" {
+		if ClientOnly(p) {
+			writeErr(w, domain.Forbidden("csv export is not available to clients"))
+			return
+		}
 		csv, err := h.Svc.exportMattersCSV(r.Context(), p, keep)
 		if err != nil {
 			writeErr(w, err)
@@ -620,7 +625,7 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": matterItems(rows), "page": pageInfo(limit, from+len(rows), more)})
+	writeJSON(w, http.StatusOK, map[string]any{"data": h.matterItemsFor(r.Context(), p, rows), "page": pageInfo(limit, from+len(rows), more)})
 }
 
 func (h *Handler) matterJSON(w http.ResponseWriter, r *http.Request) {
@@ -634,7 +639,7 @@ func (h *Handler) matterJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, matterItem(view))
+	writeJSON(w, http.StatusOK, h.matterItemFor(r.Context(), p, view))
 }
 
 func (h *Handler) historyJSON(w http.ResponseWriter, r *http.Request) {
@@ -909,6 +914,45 @@ func matterItems(rows []MatterView) []map[string]any {
 		out = append(out, matterItem(row))
 	}
 	return out
+}
+
+func (h *Handler) matterItemsFor(ctx context.Context, p domain.Principal, rows []MatterView) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, h.matterItemFor(ctx, p, row))
+	}
+	return out
+}
+
+func (h *Handler) matterItemFor(ctx context.Context, p domain.Principal, view MatterView) map[string]any {
+	if ClientOnly(p) {
+		return h.matterClientItem(ctx, view)
+	}
+	return matterItem(view)
+}
+
+// matterClientItem is the MatterClient allowlist (CORE-11).
+func (h *Handler) matterClientItem(ctx context.Context, view MatterView) map[string]any {
+	row := view.Matter
+	areaName := ""
+	if area, err := h.Svc.db.Area(ctx, row.PracticeAreaID); err == nil {
+		areaName = area.Name
+	}
+	attorneyName := ""
+	if !row.ResponsibleAttorneyID.IsZero() {
+		if u, err := h.Svc.db.User(ctx, row.ResponsibleAttorneyID); err == nil {
+			attorneyName = u.Name
+		}
+	}
+	var closed any
+	if row.ClosedOn != "" {
+		closed = row.ClosedOn
+	}
+	return map[string]any{
+		"id": row.ID, "number": row.Number, "name": row.Name, "status": row.Status,
+		"practice_area_name": areaName, "opened_on": row.OpenedOn, "closed_on": closed,
+		"responsible_attorney_name": attorneyName,
+	}
 }
 
 func matterItem(view MatterView) map[string]any {

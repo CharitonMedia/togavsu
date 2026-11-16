@@ -108,20 +108,20 @@ func TestClientSeesOnlySharedMatterItems(t *testing.T) {
 	if _, err := svc.GetMatter(ctx, client, matter.ID); err != nil {
 		t.Fatal("client should read their matter", err)
 	}
-	if _, err := svc.History(ctx, client, "matter", matter.ID); !isCode(err, domain.CodeForbidden) {
+	if _, err := svc.History(ctx, client, "matter", matter.ID); !isCode(err, domain.CodeNotFound) {
 		t.Fatal(err)
 	}
-	if _, err := svc.GetNote(ctx, client, note.ID); !isCode(err, domain.CodeForbidden) {
+	if _, err := svc.GetNote(ctx, client, note.ID); !isCode(err, domain.CodeNotFound) {
 		t.Fatal(err)
 	}
 	runs := len(svc.db.Runs(matter.ID))
-	if _, err := svc.RunConflictCheck(ctx, client, matter.ID); !isCode(err, domain.CodeForbidden) {
+	if _, err := svc.RunConflictCheck(ctx, client, matter.ID); !isCode(err, domain.CodeNotFound) {
 		t.Fatal(err)
 	}
 	if len(svc.db.Runs(matter.ID)) != runs {
 		t.Fatal("client conflict check wrote a run")
 	}
-	if _, _, err := svc.PreviewClose(ctx, client, matter.ID); !isCode(err, domain.CodeForbidden) {
+	if _, _, err := svc.PreviewClose(ctx, client, matter.ID); !isCode(err, domain.CodeNotFound) {
 		t.Fatal(err)
 	}
 	timeline, err := svc.Timeline(ctx, client, matter.ID)

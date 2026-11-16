@@ -31,6 +31,7 @@ func TestPRDDefaults(t *testing.T) {
 		"security.lockout_attempts":             "5",
 		"security.lockout_length":               "15m0s",
 		"security.api_rate_per_minute":          "600",
+		"client_access.days_after_close":        "14",
 		"practice.case_number_patterns":         string(patterns),
 		"practice.conflict_score_minimum":       "60",
 		"practice.party_roles":                  string(roles),
