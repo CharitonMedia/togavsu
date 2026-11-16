@@ -499,6 +499,8 @@ class Remote:
 
 
 LANE_WORKFLOW = ".github/workflows/lane-agent.yml"
+LANE_WORKERS = ("claude", "cursor")
+LANE_MODEL_PATTERN = r"[A-Za-z0-9][A-Za-z0-9.-]{0,60}"  # Mirrors the Lane agent workflow's dispatch check.
 LANE_PROMPT_LIMIT = 60_000  # GitHub caps a workflow_dispatch payload at 65,535 characters.
 LANE_ARTIFACT_LIMIT = 300_000_000
 LANE_DISPATCH_GRACE = dt.timedelta(minutes=15)  # A dispatched run appears within seconds, even while queued.
@@ -511,10 +513,13 @@ class LaneRejected(ValueError):
 
 
 class ActionsRemote(Remote):
-    """Claude Code lanes in GitHub Actions on the Max subscription, behind the Cursor-shaped interface.
+    """Implementation lanes in GitHub Actions, behind the Cursor-shaped interface.
 
-    With new_on_cursor (worker_backend "cursor"), new assignments launch as Cursor Cloud Agents and every
-    agent not in the lane registry runs on Cursor; lanes launched before the switch finish on Actions.
+    Each lane records its worker at creation: "cursor" runs Cursor's CLI on the plan's cursor_model and the
+    repository's Cursor key (worker_backend "cursor", billed to the Cursor subscription), "claude" runs Claude
+    Code on the Max sign-in secret (worker_backend "claude-actions"). A lane keeps its worker until it finishes.
+    With new_on_cursor (worker_backend "cursor-cloud"), new assignments launch as Cursor Cloud Agents instead,
+    and every agent not in the lane registry runs on Cursor; lanes launched before that finish on Actions.
 
     The controller keeps calling cursor()/agent()/run(); this class answers them from a durable lane
     registry and the Lane agent workflow. A lane job holds a read-only token and returns a git bundle;
@@ -524,8 +529,13 @@ class ActionsRemote(Remote):
 
     push_url = "https://github.com/" + REPO + ".git"  # Owner credentials via gh's git credential helper.
 
-    def __init__(self, state_dir, repo_dir, dry=False, new_on_cursor=False):
+    def __init__(self, state_dir, repo_dir, dry=False, new_on_cursor=False, worker="claude", model=None):
+        if worker not in LANE_WORKERS:
+            raise ValueError("Unknown lane worker: " + str(worker))
+        if worker == "cursor" and not re.fullmatch(LANE_MODEL_PATTERN, model or ""):
+            raise ValueError("Cursor lanes need a valid cursor_model")
         self.new_on_cursor = new_on_cursor
+        self.worker, self.model = worker, (model if worker == "cursor" else None)
         self.registry_path = Path(state_dir) / "lane-agents.json"
         self.work_dir = Path(state_dir)
         self.repo_dir = Path(repo_dir)
@@ -590,7 +600,10 @@ class ActionsRemote(Remote):
         if not re.fullmatch(r"[0-9a-f]{40}", starting):
             raise ValueError("Lane starting revision is malformed")
         registry[agent_id] = {"task": task, "branch": "claude/togavsu-" + task + "-" + agent_id[3:11],
-            "starting_sha": starting, "assignment": body["prompt"]["text"], "created_at": now(), "runs": []}
+            "starting_sha": starting, "assignment": body["prompt"]["text"], "created_at": now(), "runs": [],
+            "worker": self.worker}
+        if self.model:
+            registry[agent_id]["model"] = self.model
         run_id = self.dispatch(registry, agent_id, body["prompt"]["text"])
         return {"agent": {"id": agent_id}, "run": {"id": run_id}}
 
@@ -639,10 +652,12 @@ class ActionsRemote(Remote):
         # Persist before the non-idempotent POST: a lost response leaves a findable run ID.
         agent["runs"].append({"id": run_id, "base": base, "dispatched_at": now(), "state": "dispatching"})
         self.store(registry)
+        inputs = {"agent_id": agent_id, "run_id": run_id, "task": agent["task"], "branch": agent["branch"],
+                  "base": base, "prompt_z": packed}
+        if agent.get("worker") == "cursor":
+            inputs.update(worker="cursor", model=agent["model"])  # Lanes from before the field run Claude.
         try:
-            self.gh("actions/workflows/" + Path(LANE_WORKFLOW).name + "/dispatches", "POST", {"ref": "main", "inputs": {
-                "agent_id": agent_id, "run_id": run_id, "task": agent["task"], "branch": agent["branch"],
-                "base": base, "prompt_z": packed}})
+            self.gh("actions/workflows/" + Path(LANE_WORKFLOW).name + "/dispatches", "POST", {"ref": "main", "inputs": inputs})
         except RuntimeError as error:
             if not re.search(r"HTTP 4\d\d", str(error)):
                 raise  # Ambiguous: the run may exist; run() finds it or reports it lost after the grace period.
@@ -1090,8 +1105,9 @@ class Controller:
     def rehome(self, task, operator):
         # Operator path: retire a stopped Cursor record so the next tick launches the task as a fresh lane.
         record = self.tasks.get(task)
-        if self.plan.get("worker_backend") != "claude-actions" or not isinstance(self.remote, ActionsRemote):
-            raise ValueError("Rehoming needs the claude-actions backend")
+        if (self.plan.get("worker_backend", "cursor") not in {"claude-actions", "cursor"}
+                or not isinstance(self.remote, ActionsRemote) or self.remote.new_on_cursor):
+            raise ValueError("Rehoming needs a lane backend (cursor or claude-actions)")
         if not record or record.get("completed"):
             raise ValueError("Task " + str(task) + " has no unfinished record")
         if not isinstance(operator, str) or not operator.strip():
@@ -1107,10 +1123,10 @@ class Controller:
             print("WOULD rehome " + task + " from Cursor agent " + record["agent_id"], flush=True)
             return
         self.state.setdefault("retired_records", {}).setdefault(task, []).append(
-            {"time": now(), "operator": operator, "reason": "rehomed to claude-actions lane", "record": record})
+            {"time": now(), "operator": operator, "reason": "rehomed to a " + self.remote.worker + " lane", "record": record})
         del self.tasks[task]
         self.event(task, "Operator " + operator + " retired Cursor agent " + record["agent_id"]
-            + " for a fresh Claude Code lane launch")
+            + " for a fresh " + ("Cursor CLI" if self.remote.worker == "cursor" else "Claude Code") + " lane launch")
         self.save()
 
     def flag_volume(self, record):
@@ -2037,10 +2053,17 @@ class Controller:
 
 
 def select_remote(plan, state, dry=False):
-    # worker_backend selects who runs new assignments ("cursor", the default, or "claude-actions"); agents
-    # already running keep their own backend until they finish. Every gate after the PR is unchanged.
-    if plan.get("worker_backend", "cursor") == "claude-actions":
+    # worker_backend selects who runs new assignments: "cursor" (the default; Cursor's CLI in a GitHub lane,
+    # on the Cursor subscription), "claude-actions" (Claude Code in a GitHub lane) or "cursor-cloud" (Cursor
+    # Cloud Agents, billed to Cursor's separate prepaid balance). Agents already running keep their own
+    # backend until they finish. Every gate after the PR is unchanged.
+    backend = plan.get("worker_backend", "cursor")
+    if backend == "cursor":
+        return ActionsRemote(state, state.resolve().parent, dry, worker="cursor", model=plan.get("cursor_model", "auto"))
+    if backend == "claude-actions":
         return ActionsRemote(state, state.resolve().parent, dry)
+    if backend != "cursor-cloud":
+        raise ValueError("Unknown worker_backend: " + str(backend))
     if (state / "lane-agents.json").exists():
         return ActionsRemote(state, state.resolve().parent, dry, new_on_cursor=True)
     return Remote()
