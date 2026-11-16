@@ -21,7 +21,6 @@ const deviceGrantUnusedDays = domain.ModuleDeviceUnusedDays
 
 func deviceContextTTL() time.Duration { return 10 * time.Minute }
 
-
 // ModuleDevice is one device grant row for list and create responses.
 type ModuleDevice struct {
 	ID         domain.ID `json:"id"`

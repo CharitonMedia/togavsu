@@ -162,7 +162,7 @@ func (a *App) emitMailFilingAuthorized(ctx context.Context, p domain.Principal, 
 		actor = p.UserID
 	}
 	ev := domain.Event{
-		Meta: domain.Meta{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: actor},
+		Meta:      domain.Meta{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: actor},
 		ActorKind: "module", ActorID: actor, Action: "mail.filing_authorized",
 		RecordType: "matter", RecordID: matter, MatterID: matter,
 		Summary: "Authorized " + p.ModuleID + " to file mail " + messageKey, ClientVisible: false,
