@@ -80,6 +80,70 @@ func TestCORE02BooksReads(t *testing.T) {
 		t.Fatalf("walled invoice get: %d %s", r.code, r.body)
 	}
 
+	x.atty.must(http.StatusOK, "POST", "/api/v1/invoices/"+openInv+"/approve", nil)
+	x.atty.must(http.StatusOK, "POST", "/api/v1/invoices/"+walledInv+"/approve", nil)
+	openSent := x.atty.must(http.StatusOK, "POST", "/api/v1/invoices/"+openInv+"/send", map[string]any{"deliver": "file"})
+	walledSent := x.atty.must(http.StatusOK, "POST", "/api/v1/invoices/"+walledInv+"/send", map[string]any{"deliver": "file"})
+	openPay := x.admin.must(http.StatusCreated, "POST", "/api/v1/payments", map[string]any{
+		"contact_id": openClient, "matter_id": open, "amount_cents": int64(openSent.json["total_cents"].(float64)),
+		"destination": "operating", "method": "check", "invoice_id": openInv,
+	})
+	walledPay := x.atty.must(http.StatusCreated, "POST", "/api/v1/payments", map[string]any{
+		"contact_id": walledClient, "matter_id": walled, "amount_cents": int64(walledSent.json["total_cents"].(float64)),
+		"destination": "operating", "method": "check", "invoice_id": walledInv,
+	})
+	pays := bot.must(http.StatusOK, "GET", "/api/v1/payments", nil)
+	if strings.Contains(pays.body, str(t, walledPay.json, "id")) || !strings.Contains(pays.body, str(t, openPay.json, "id")) {
+		t.Fatalf("payment list: %s", pays.body)
+	}
+	if r := bot.do("GET", "/api/v1/payments/"+str(t, walledPay.json, "id"), nil); r.code != http.StatusNotFound {
+		t.Fatalf("walled payment get: %d %s", r.code, r.body)
+	}
+
+	expType := str(t, x.admin.must(http.StatusCreated, "POST", "/api/v1/expense-types", map[string]any{"name": "Books copy fee"}).json, "id")
+	openExp := x.staff.must(http.StatusCreated, "POST", "/api/v1/expenses", map[string]any{
+		"matter_id": open, "amount_cents": 12_00, "description": "Open copy fee", "incurred_on": "2026-06-01", "expense_type_id": expType,
+	})
+	walledExp := x.atty.must(http.StatusCreated, "POST", "/api/v1/expenses", map[string]any{
+		"matter_id": walled, "amount_cents": 14_00, "description": "Walled copy fee", "incurred_on": "2026-06-01", "expense_type_id": expType,
+	})
+	exps := bot.must(http.StatusOK, "GET", "/api/v1/expenses", nil)
+	if strings.Contains(exps.body, str(t, walledExp.json, "id")) || !strings.Contains(exps.body, str(t, openExp.json, "id")) {
+		t.Fatalf("expense list: %s", exps.body)
+	}
+	if r := bot.do("GET", "/api/v1/expenses/"+str(t, walledExp.json, "id"), nil); r.code != http.StatusNotFound {
+		t.Fatalf("walled expense get: %d %s", r.code, r.body)
+	}
+
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/payments", map[string]any{
+		"contact_id": openClient, "matter_id": open, "amount_cents": 50_00,
+		"destination": "trust", "trust_account_id": x.account, "method": "ach",
+	})
+	x.atty.must(http.StatusCreated, "POST", "/api/v1/payments", map[string]any{
+		"contact_id": walledClient, "matter_id": walled, "amount_cents": 50_00,
+		"destination": "trust", "trust_account_id": x.account, "method": "ach",
+	})
+	ledger := bot.must(http.StatusOK, "GET", "/api/v1/trust-ledger", nil)
+	if strings.Contains(ledger.body, walled) || !strings.Contains(ledger.body, open) {
+		t.Fatalf("trust ledger: %s", ledger.body)
+	}
+	bals := bot.must(http.StatusOK, "GET", "/api/v1/trust/balances", nil)
+	if strings.Contains(bals.body, walled) || !strings.Contains(bals.body, open) {
+		t.Fatalf("trust balances: %s", bals.body)
+	}
+
+	// Lifting the wall returns the walled records on the next read (CU-02).
+	if err := x.app.Practice.SetWall(ctx, x.adminP(), domain.ID(walled), nil); err != nil {
+		t.Fatal(err)
+	}
+	listedAfter := bot.must(http.StatusOK, "GET", "/api/v1/invoices", nil)
+	if !strings.Contains(listedAfter.body, walledInv) {
+		t.Fatalf("invoice list after wall lift: %s", listedAfter.body)
+	}
+	bot.must(http.StatusOK, "GET", "/api/v1/invoices/"+walledInv, nil)
+	bot.must(http.StatusOK, "GET", "/api/v1/payments/"+str(t, walledPay.json, "id"), nil)
+	bot.must(http.StatusOK, "GET", "/api/v1/expenses/"+str(t, walledExp.json, "id"), nil)
+
 	if r := bot.do("POST", "/api/v1/invoice-drafts", map[string]any{"matter_id": open}); r.code != http.StatusForbidden {
 		t.Fatalf("books reader write: %d %s", r.code, r.body)
 	}

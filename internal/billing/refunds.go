@@ -42,9 +42,11 @@ type Refund struct {
 	Status          string       `json:"status"`
 	TrustEntryID    domain.ID    `json:"trust_entry_id,omitempty"`
 	Source          string       `json:"source"`
-	SecretHash      string       `json:"-"`
-	ExpiresAt       time.Time    `json:"-"`
-	Revoked         bool         `json:"-"`
+	// SecretHash / ExpiresAt / Revoked persist in billing_records for the grant path;
+	// RefundView omits them from the API body.
+	SecretHash string    `json:"secret_hash,omitempty"`
+	ExpiresAt  time.Time `json:"expires_at,omitempty"`
+	Revoked    bool      `json:"revoked,omitempty"`
 }
 
 // RefundInput creates a refund.
@@ -139,9 +141,14 @@ func (s *Service) CreatePaymentRefund(ctx context.Context, p domain.Principal, p
 		if err := t.put(kindPayment, pay.ID, pay); err != nil {
 			return err
 		}
-		// SQL payment_refunds / payments columns are the module-linkable mirror (CORE-22/24).
-		// billing_records stays authoritative; a missing projection must not fail the refund.
 		if err := t.put(kindRefund, row.ID, row); err != nil {
+			return err
+		}
+		// SQL payment_refunds / payments columns are the module-linkable mirror (CORE-22/24).
+		if err := s.syncCorePaymentRefund(t.ctx, pay); err != nil {
+			return err
+		}
+		if err := s.upsertCoreRefund(t.ctx, row); err != nil {
 			return err
 		}
 		if err := t.created("payment_refund", row.ID, RefundView(row), ""); err != nil {
@@ -238,6 +245,12 @@ func (s *Service) UpdatePaymentRefundStatus(ctx context.Context, p domain.Princi
 			return err
 		}
 		if err := t.put(kindRefund, row.ID, row); err != nil {
+			return err
+		}
+		if err := s.syncCorePaymentRefund(t.ctx, pay); err != nil {
+			return err
+		}
+		if err := s.upsertCoreRefund(t.ctx, row); err != nil {
 			return err
 		}
 		out = row
@@ -400,7 +413,9 @@ ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, status = EXCLUD
 }
 
 // syncCorePaymentRefund updates payments.refunded_cents and refund_state on the SQL table,
-// upserting the payment row when needed so the refund FK can resolve.
+// upserting the payment row when needed so the refund FK can resolve. Invoice ids stay null
+// here: billing keeps invoices in billing_records, and the SQL invoices table is not the
+// write path, so a projection FK would fail the refund.
 func (s *Service) syncCorePaymentRefund(ctx context.Context, pay Payment) error {
 	pg, ok := s.d.Store.(*Postgres)
 	if !ok {
@@ -408,11 +423,11 @@ func (s *Service) syncCorePaymentRefund(ctx context.Context, pay Payment) error 
 	}
 	conn := audit.Conn(ctx, pg.pool)
 	_, err := conn.ExecContext(ctx, `INSERT INTO payments (id, created_at, updated_at, created_by, contact_id, matter_id, amount_cents, destination, method, reference_number, status, invoice_id, trust_entry_id, source, refunded_cents, refund_state)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
-ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, refunded_cents = EXCLUDED.refunded_cents, refund_state = EXCLUDED.refund_state`,
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL,$12,$13,$14,$15)
+ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, refunded_cents = EXCLUDED.refunded_cents, refund_state = EXCLUDED.refund_state, trust_entry_id = COALESCE(EXCLUDED.trust_entry_id, payments.trust_entry_id)`,
 		string(pay.ID), pay.CreatedAt.UnixMicro(), pay.UpdatedAt.UnixMicro(), string(pay.CreatedBy),
 		string(pay.ContactID), string(pay.MatterID), int64(pay.AmountCents), pay.Destination, pay.Method,
-		pay.ReferenceNumber, pay.Status, nullID(pay.InvoiceID), nullID(pay.TrustEntryID), pay.Source,
+		pay.ReferenceNumber, pay.Status, nullID(pay.TrustEntryID), pay.Source,
 		int64(pay.RefundedCents), pay.RefundState)
 	return err
 }

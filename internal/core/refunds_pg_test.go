@@ -82,4 +82,10 @@ func TestPaymentRefundsAPI(t *testing.T) {
 	if entries := x.count(`SELECT COUNT(*) FROM trust_ledger WHERE entry_type = 'refund' AND matter_id = $1`, matter); entries != 1 {
 		t.Fatalf("trust refund ledger rows: %d", entries)
 	}
+	if rows := x.count(`SELECT COUNT(*) FROM payment_refunds WHERE payment_id = $1`, trustID); rows != 1 {
+		t.Fatalf("payment_refunds projection: %d", rows)
+	}
+	if rows := x.count(`SELECT COUNT(*) FROM payments WHERE id = $1 AND refunded_cents = 4000`, trustID); rows != 1 {
+		t.Fatalf("payments refund columns: %d", rows)
+	}
 }

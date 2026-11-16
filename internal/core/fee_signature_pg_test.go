@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/modules"
 )
 
@@ -120,4 +121,25 @@ func TestCORE25FeeAgreementSignatureCallback(t *testing.T) {
 
 	// Staff may still mark status without the signature path.
 	x.staff.must(http.StatusOK, "POST", "/api/v1/files/"+otherFile+"/status", map[string]any{"status": "final"})
+
+	// Service call on a matter walled after send is not_found (PRD 4.1).
+	walledMatter, _ := x.matter("Estate of Walled Sign", "walled-sign@client.example", nil)
+	walledAg := x.staff.must(http.StatusCreated, "POST", "/api/v1/fee-agreements", map[string]any{
+		"matter_id": walledMatter, "fee_type": "hourly", "services_description": "Walled probate",
+	})
+	walledID := str(t, walledAg.json, "id")
+	ct2 := x.staff.must(http.StatusCreated, "POST", "/api/v1/modules/matter-clock/context-tokens", map[string]any{})
+	tok2 := str(t, ct2.json, "token")
+	if r := bot.do("PATCH", "/api/v1/fee-agreements/"+walledID, map[string]any{"status": "sent"}, modules.ContextHeader, tok2); r.code != http.StatusOK {
+		t.Fatalf("send on soon-walled matter: %d %s", r.code, r.body)
+	}
+	if err := x.app.Practice.SetWall(ctx, x.adminP(), domain.ID(walledMatter), []domain.ID{domain.ID(x.attyID)}); err != nil {
+		t.Fatal(err)
+	}
+	walledFile := str(t, x.upload(x.atty, walledMatter, "walled-signed.pdf", "application/pdf", []byte("%PDF-1.4 walled"), nil), "id")
+	if r := bot.do("PATCH", "/api/v1/fee-agreements/"+walledID, map[string]any{
+		"status": "signed", "signed_on": "2026-11-16", "signed_file_id": walledFile,
+	}); r.code != http.StatusNotFound || r.json["code"] != "not_found" {
+		t.Fatalf("sign behind wall: %d %s", r.code, r.body)
+	}
 }

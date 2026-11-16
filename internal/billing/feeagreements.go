@@ -245,6 +245,14 @@ func (s *Service) signatureUpdate(ctx context.Context, p domain.Principal, id do
 		if before.SignatureModuleID == "" || before.SignatureModuleID != p.ModuleID {
 			return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
 		}
+		// Service principals sit outside every wall (PRD 4.1): a walled matter is not_found.
+		view, err := s.d.Walls.View(t.ctx, p, before.MatterID)
+		if err != nil {
+			return err
+		}
+		if view.Walled {
+			return domain.NotFound("matter")
+		}
 		if before.Status != "sent" {
 			return domain.Invalid("status", "a "+before.Status+" agreement can't become signed by the signature module")
 		}
