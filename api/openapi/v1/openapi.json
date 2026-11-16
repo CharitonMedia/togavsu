@@ -48866,8 +48866,8 @@
       },
       "post": {
         "operationId": "createNotification",
-        "summary": "Create a notification",
-        "description": "Creates one notification. A repeated Idempotency-Key with the same body returns the original result.",
+        "summary": "Create notifications for resolved recipients",
+        "description": "Resolves recipients from user_id, audience, or recipient_roles (service call only), drops wall-excluded users, creates one notification per recipient, and emails when the preference has email on. Answer: {created, notification_ids}.",
         "tags": [
           "Shell"
         ],
@@ -48890,7 +48890,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Notification"
+                  "$ref": "#/components/schemas/CreateNotificationResult"
                 }
               }
             }
@@ -48939,7 +48939,8 @@
           "creation_separate": true,
           "recipient": "named_on_create",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "notification.created"
@@ -73741,30 +73742,85 @@
       "NotificationWrite": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {
-          "user_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "kind": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string",
-            "minLength": 1
-          },
-          "link": {
-            "type": "string"
-          }
-        },
         "required": [
-          "user_id",
           "kind",
           "title",
           "link"
         ],
-        "description": "A module sends a notification. The actor is the token, not a field in the body."
+        "properties": {
+          "kind": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Notification kind. A module token may send only its declared kinds as {module_id}.{kind}."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "link": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Site path. A module token's link must start with /modules/{module_id}/ or /portal/{module_id}/."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional matter. Required for audience except admins. Wall drops excluded recipients."
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "One active user. With matter_id the user must read the matter."
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "responsible_attorney",
+              "matter_team",
+              "admins",
+              "admins_and_responsible_attorney"
+            ],
+            "description": "Matter audience. matter_id may be omitted only for admins."
+          },
+          "recipient_roles": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "accountant"
+              ]
+            },
+            "description": "Service call only: active users holding any of these roles."
+          }
+        },
+        "description": "createNotification body (CORE-03). Exactly one of user_id, audience, or recipient_roles. The actor is the token, not a field in the body."
+      },
+      "CreateNotificationResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "notification_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUIDv7."
+            }
+          }
+        },
+        "required": [
+          "created",
+          "notification_ids"
+        ],
+        "description": "One notification row per resolved recipient after wall drops."
       },
       "SearchHit": {
         "type": "object",
@@ -80892,23 +80948,56 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "user_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "description": "Notification kind. A module token may send only its declared kinds as {module_id}.{kind}."
           },
           "title": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 200
           },
           "link": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "description": "Site path. A module token's link must start with /modules/{module_id}/ or /portal/{module_id}/."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional matter. Required for audience except admins. Wall drops excluded recipients."
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "One active user. With matter_id the user must read the matter."
+          },
+          "audience": {
+            "type": "string",
+            "enum": [
+              "responsible_attorney",
+              "matter_team",
+              "admins",
+              "admins_and_responsible_attorney"
+            ],
+            "description": "Matter audience. matter_id may be omitted only for admins."
+          },
+          "recipient_roles": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "accountant"
+              ]
+            },
+            "description": "Service call only: active users holding any of these roles."
           }
         },
-        "description": "A module sends a notification. The actor is the token, not a field in the body. Patch: every field is optional."
+        "description": "createNotification body (CORE-03). Exactly one of user_id, audience, or recipient_roles. The actor is the token, not a field in the body. Patch: every field is optional."
       },
       "HelpSectionWritePatch": {
         "type": "object",

@@ -2190,10 +2190,48 @@ SCHEMAS = _register(
             ["user_id", "kind", "title", "link"],
             "A notification for one user.",
         ),
-        "NotificationWrite": _obj(
-            {"user_id": _uuid(), "kind": {"type": "string"}, "title": {"type": "string", "minLength": 1}, "link": {"type": "string"}},
-            ["user_id", "kind", "title", "link"],
-            "A module sends a notification. The actor is the token, not a field in the body.",
+        "NotificationWrite": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["kind", "title", "link"],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Notification kind. A module token may send only its declared kinds as {module_id}.{kind}.",
+                },
+                "title": {"type": "string", "minLength": 1, "maxLength": 200},
+                "link": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Site path. A module token's link must start with /modules/{module_id}/ or /portal/{module_id}/.",
+                },
+                "matter_id": _uuid("Optional matter. Required for audience except admins. Wall drops excluded recipients."),
+                "user_id": _uuid("One active user. With matter_id the user must read the matter."),
+                "audience": _enum(
+                    ["responsible_attorney", "matter_team", "admins", "admins_and_responsible_attorney"],
+                    "Matter audience. matter_id may be omitted only for admins.",
+                ),
+                "recipient_roles": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": True,
+                    "items": _enum(["admin", "accountant"]),
+                    "description": "Service call only: active users holding any of these roles.",
+                },
+            },
+            "description": (
+                "createNotification body (CORE-03). Exactly one of user_id, audience, or recipient_roles. "
+                "The actor is the token, not a field in the body."
+            ),
+        },
+        "CreateNotificationResult": _obj(
+            {
+                "created": {"type": "integer", "minimum": 0},
+                "notification_ids": _arr(_uuid()),
+            },
+            ["created", "notification_ids"],
+            "One notification row per resolved recipient after wall drops.",
         ),
         "SearchHit": _obj(
             {

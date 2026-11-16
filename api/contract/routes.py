@@ -3538,6 +3538,13 @@ def _shell(api: Contract) -> None:
         created["x-togavsu-access"].pop(key, None)
     created["x-togavsu-access"]["creation_separate"] = True
     created["x-togavsu-access"]["recipient"] = "named_on_create"
+    created["summary"] = "Create notifications for resolved recipients"
+    created["description"] = (
+        "Resolves recipients from user_id, audience, or recipient_roles (service call only), drops wall-excluded "
+        "users, creates one notification per recipient, and emails when the preference has email on. "
+        "Answer: {created, notification_ids}."
+    )
+    created["responses"]["201"]["content"]["application/json"]["schema"] = {"$ref": "#/components/schemas/CreateNotificationResult"}
     api.add(
         "post",
         "/api/v1/notifications/{notification_id}/read",

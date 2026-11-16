@@ -77,6 +77,21 @@ type Timers interface {
 	Timers(ctx context.Context, p domain.Principal) ([]TimerRow, error)
 }
 
+// ModuleNotifyGroup is one enabled module's notification kinds (CORE-03).
+type ModuleNotifyGroup struct {
+	ModuleID   string
+	ModuleName string
+	Kinds      []ModuleNotifyKind
+}
+
+// ModuleNotifyKind is one module kind in the preferences grid.
+type ModuleNotifyKind struct {
+	Kind         string
+	Label        string
+	DefaultInApp bool
+	DefaultEmail bool
+}
+
 // Deps wires the service. Store and Settings are required.
 type Deps struct {
 	Store    Store
@@ -91,8 +106,10 @@ type Deps struct {
 	Mailer   Mailer
 	// Badges are the sidebar counts by entry id, each counting only records p can read.
 	Badges map[string]func(ctx context.Context, p domain.Principal) (int, error)
-	Now    func() time.Time
-	IDs    func() (domain.ID, error)
+	// ModuleNotifyKinds lists enabled modules' notification kinds for the prefs grid (CORE-03).
+	ModuleNotifyKinds func(ctx context.Context) ([]ModuleNotifyGroup, error)
+	Now               func() time.Time
+	IDs               func() (domain.ID, error)
 }
 
 // Service is the dashboard application service.
@@ -121,6 +138,12 @@ func New(d Deps) (*Service, error) {
 		d.IDs = domain.NewID
 	}
 	return &Service{d: d, navs: newNavRegistry()}, nil
+}
+
+// SetModuleNotifyKinds wires enabled-module notification kinds after the module
+// runtime is up (CORE-03).
+func (s *Service) SetModuleNotifyKinds(fn func(ctx context.Context) ([]ModuleNotifyGroup, error)) {
+	s.d.ModuleNotifyKinds = fn
 }
 
 // Catalog is the widget catalog the service loads from.

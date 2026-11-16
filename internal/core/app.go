@@ -375,6 +375,34 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.Modules = ext.Modules
+	// CORE-03: createNotification kind checks, preference grid groups, and email wants.
+	if ext.Modules != nil && app.Trust != nil {
+		mods := ext.Modules
+		app.Trust.DeclaredKind = mods.DeclaresNotificationKind
+		if ui.Dashboard != nil {
+			ui.Dashboard.SetModuleNotifyKinds(func(ctx context.Context) ([]dashboard.ModuleNotifyGroup, error) {
+				groups, err := mods.NotificationKindGroups(ctx)
+				if err != nil {
+					return nil, err
+				}
+				out := make([]dashboard.ModuleNotifyGroup, 0, len(groups))
+				for _, g := range groups {
+					row := dashboard.ModuleNotifyGroup{ModuleID: g.ModuleID, ModuleName: g.ModuleName}
+					for _, k := range g.Kinds {
+						row.Kinds = append(row.Kinds, dashboard.ModuleNotifyKind{
+							Kind: k.Kind, Label: k.Label, DefaultInApp: k.DefaultInApp, DefaultEmail: k.DefaultEmail,
+						})
+					}
+					out = append(out, row)
+				}
+				return out, nil
+			})
+			dash := ui.Dashboard
+			app.Trust.EmailWanted = func(ctx context.Context, user domain.ID, kind string) (bool, error) {
+				return dash.Wants(ctx, user, kind, "email")
+			}
+		}
+	}
 	// Payment processor grants go out through the module runtime (initiateProcessorPayment).
 	if ext.Modules != nil {
 		app.Billing.SetProcessors(ext.Modules)

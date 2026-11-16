@@ -795,22 +795,17 @@ func (h *Handler) sendNotification(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct {
-		UserID domain.ID `json:"user_id"`
-		Kind   string    `json:"kind"`
-		Title  string    `json:"title"`
-		Link   string    `json:"link"`
-	}
+	var body NotificationWrite
 	if err := decode(r, &body); err != nil {
 		writeErr(w, err)
 		return
 	}
-	n, err := h.Svc.SendNotification(r.Context(), p, body.UserID, body.Kind, body.Title, body.Link)
+	out, err := h.Svc.CreateNotification(r.Context(), p, body)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, n)
+	writeJSON(w, http.StatusCreated, out)
 }
 
 func (h *Handler) readAll(w http.ResponseWriter, r *http.Request) {

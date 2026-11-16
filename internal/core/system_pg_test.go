@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -48,7 +49,11 @@ func TestReleaseSystemNotificationsAndMail(t *testing.T) {
 		t.Fatalf("notification to an inactive user: %d", r.code)
 	}
 	sent := admin.must(http.StatusCreated, "POST", "/api/v1/notifications", map[string]any{"user_id": staffID, "kind": "module.alert", "title": "Synthetic module alert", "link": "/m/matter-clock/"})
-	nid := str(t, sent.json, "id")
+	ids, _ := sent.json["notification_ids"].([]any)
+	if sent.json["created"] != float64(1) || len(ids) != 1 {
+		t.Fatalf("createNotification result: %s", sent.body)
+	}
+	nid := fmt.Sprint(ids[0])
 	list := staff.must(http.StatusOK, "GET", "/api/v1/notifications", nil)
 	if !strings.Contains(list.body, "Synthetic module alert") {
 		t.Fatal(list.body)

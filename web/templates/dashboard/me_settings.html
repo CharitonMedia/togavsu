@@ -22,7 +22,8 @@
   <input type="hidden" name="csrf" value="{{$.CSRF}}">
   <h2>Notifications</h2>
   <table class="prefs"><thead><tr><th>Kind</th><th>In-app</th><th>Email</th></tr></thead><tbody>
-  {{range .Prefs}}<tr><td>{{index $.Page.Labels .Kind}}</td>
+  {{$prev := ""}}{{range .Prefs}}{{if and .Group (ne .Group $prev)}}<tr><th colspan="3">{{.Group}}</th></tr>{{$prev = .Group}}{{end}}
+  <tr><td>{{index $.Page.Labels .Kind}}</td>
     <td><input type="checkbox" name="{{.Kind}}.in_app" aria-label="{{index $.Page.Labels .Kind}} in-app"{{if .InApp}} checked{{end}}></td>
     <td><input type="checkbox" name="{{.Kind}}.email" aria-label="{{index $.Page.Labels .Kind}} email"{{if .Email}} checked{{end}}{{if .EmailRequired}} disabled title="The trust below-zero email can't be turned off."{{end}}>{{if .EmailRequired}} <span class="muted">always on</span>{{end}}</td></tr>{{end}}
   </tbody></table>

@@ -208,7 +208,8 @@ func (s *Service) firmChannels(ctx context.Context) firmChannels {
 }
 
 // NotificationPrefs is p's grid: the firm defaults with p's choices on top. A locked
-// email (the trust below-zero email) stays on whatever p stored.
+// email (the trust below-zero email) stays on whatever p stored. Enabled modules' kinds
+// follow under each module's name (CORE-03).
 func (s *Service) NotificationPrefs(ctx context.Context, p domain.Principal) ([]NotificationPref, error) {
 	if err := staff(p); err != nil {
 		return nil, err
@@ -233,7 +234,27 @@ func (s *Service) NotificationPrefs(ctx context.Context, p domain.Principal) ([]
 		}
 		out = append(out, row)
 	}
+	for _, g := range s.moduleNotifyGroups(ctx) {
+		for _, k := range g.Kinds {
+			row := NotificationPref{Group: g.ModuleName, Kind: k.Kind, Label: k.Label, InApp: k.DefaultInApp, Email: k.DefaultEmail}
+			if m, ok := byKind[k.Kind]; ok {
+				row.InApp, row.Email = m.InApp, m.Email
+			}
+			out = append(out, row)
+		}
+	}
 	return out, nil
+}
+
+func (s *Service) moduleNotifyGroups(ctx context.Context) []ModuleNotifyGroup {
+	if s.d.ModuleNotifyKinds == nil {
+		return nil
+	}
+	g, err := s.d.ModuleNotifyKinds(ctx)
+	if err != nil {
+		return nil
+	}
+	return g
 }
 
 // PutNotificationPrefs saves p's grid. Turning off a required email is refused.
@@ -245,6 +266,11 @@ func (s *Service) PutNotificationPrefs(ctx context.Context, p domain.Principal, 
 	known := map[string]bool{}
 	for _, k := range NotificationKinds {
 		known[k.Kind] = true
+	}
+	for _, g := range s.moduleNotifyGroups(ctx) {
+		for _, k := range g.Kinds {
+			known[k.Kind] = true
+		}
 	}
 	seen := map[string]bool{}
 	var store []NotificationPref

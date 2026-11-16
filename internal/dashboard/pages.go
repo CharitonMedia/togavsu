@@ -782,6 +782,11 @@ func (h *Handler) meSettingsPage(w http.ResponseWriter, r *http.Request, p domai
 	for _, k := range NotificationKinds {
 		labels[k.Kind] = k.Label
 	}
+	for _, row := range prefs {
+		if row.Label != "" {
+			labels[row.Kind] = row.Label
+		}
+	}
 	return "me_settings.html", "My settings", meView{Settings: m, Prefs: prefs, Labels: labels, FirmIdle: h.Svc.FirmIdleSeconds(r.Context()) / 60, Error: r.URL.Query().Get("error")}, nil
 }
 
@@ -827,20 +832,17 @@ func (h *Handler) meSettingsPost(r *http.Request, p domain.Principal) (string, s
 }
 
 func (h *Handler) notifyPrefsPost(r *http.Request, p domain.Principal) (string, string, error) {
-	var rows []NotificationPref
-	for _, k := range NotificationKinds {
-		rows = append(rows, NotificationPref{Kind: k.Kind, InApp: r.FormValue(k.Kind+".in_app") == "on", Email: r.FormValue(k.Kind+".email") == "on"})
-	}
 	current, err := h.Svc.NotificationPrefs(r.Context(), p)
 	if err != nil {
 		return "/me/settings", "", err
 	}
-	for i := range rows {
-		for _, c := range current {
-			if c.Kind == rows[i].Kind && c.EmailRequired {
-				rows[i].Email = true // a disabled checkbox posts nothing
-			}
+	var rows []NotificationPref
+	for _, c := range current {
+		row := NotificationPref{Kind: c.Kind, InApp: r.FormValue(c.Kind+".in_app") == "on", Email: r.FormValue(c.Kind+".email") == "on"}
+		if c.EmailRequired {
+			row.Email = true // a disabled checkbox posts nothing
 		}
+		rows = append(rows, row)
 	}
 	if _, err := h.Svc.PutNotificationPrefs(r.Context(), p, rows); err != nil {
 		return "/me/settings", "", err

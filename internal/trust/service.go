@@ -85,6 +85,10 @@ type Service struct {
 	sink     func(context.Context, domain.TrustBalance) error
 	now      func() time.Time
 	newID    func() (domain.ID, error)
+	// DeclaredKind and EmailWanted are CORE-03 hooks the core sets after modules and
+	// dashboard prefs are up. Nil skips the check (DeclaredKind) or email (EmailWanted).
+	DeclaredKind DeclaredModuleKind
+	EmailWanted  NotificationEmailWanted
 }
 
 // New checks the required dependencies.
