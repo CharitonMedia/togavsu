@@ -42,6 +42,8 @@ It does not claim the handlers or the MCP server are implemented.
 | users | `GET` | `/api/v1/users/{user_id}` | `getUser` | required:getUser | admin | users:read |
 | users | `PATCH` | `/api/v1/users/{user_id}` | `updateUser` | required:updateUser | admin | users:write |
 | users | `POST` | `/api/v1/users/{user_id}/deactivate` | `deactivateUser` | required:deactivateUser | admin | users:write |
+| firm-profile | `GET` | `/api/v1/firm-profile` | `getFirmProfile` | required:getFirmProfile | admin, attorney, staff, accountant, client | firm:read |
+| user-directory | `GET` | `/api/v1/user-directory` | `listUserDirectory` | required:listUserDirectory | admin, attorney, staff, client | users:directory |
 | api-tokens, profile | `GET` | `/api/v1/api-tokens` | `listApiToken` | required:listApiToken | admin, attorney, staff, accountant, client | tokens:read |
 | api-tokens | `POST` | `/api/v1/api-tokens` | `createApiToken` | required:createApiToken | admin | tokens:write |
 | api-tokens, profile | `GET` | `/api/v1/api-tokens/{token_id}` | `getApiToken` | required:getApiToken | admin, attorney, staff, accountant, client | tokens:read |
@@ -444,4 +446,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 438.
+Operations: 440.

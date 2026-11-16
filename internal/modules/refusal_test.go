@@ -98,26 +98,26 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 
 func TestCheckAllReportsUnknownScopes(t *testing.T) {
 	raw := samplePackage(t, func(f map[string][]byte) {
-		replace(f, modules.ManifestFile, "permissions:\n", "permissions:\n  - scope: books:read\n    reason: r\n  - scope: views:other.view:read\n    reason: r\n  - scope: firm:read\n    reason: r\n")
+		replace(f, modules.ManifestFile, "permissions:\n", "permissions:\n  - scope: books:read\n    reason: r\n  - scope: views:other.view:read\n    reason: r\n  - scope: firm:read\n    reason: r\n  - scope: mail:send\n    reason: r\n")
 	})
 	_, _, refs := modules.CheckAll(raw)
 	if len(refs) != 2 {
 		t.Fatalf("refusals: %v", refs)
 	}
-	for i, want := range []string{"books:read", "firm:read"} {
+	for i, want := range []string{"books:read", "mail:send"} {
 		r := refs[i]
 		if r.Code != modules.RefuseUnknownScope || r.Kind != modules.KindScope || r.Value != want || r.APICode != domain.CodeValidation {
 			t.Fatalf("refusal %d: %+v", i, r)
 		}
 	}
-	if refs[0].Path != "permissions[0]" || refs[1].Path != "permissions[2]" {
+	if refs[0].Path != "permissions[0]" || refs[1].Path != "permissions[3]" {
 		t.Fatalf("paths: %s %s", refs[0].Path, refs[1].Path)
 	}
 	// The install check itself still reads scopes only at approval, as before.
 	if _, _, err := modules.CheckPackage(raw); err != nil {
 		t.Fatalf("install check: %v", err)
 	}
-	if identity.KnownScope("books:read") || !identity.KnownScope("matters:read") || !identity.KnownScope("views:a.b:read") {
+	if identity.KnownScope("books:read") || !identity.KnownScope("firm:read") || !identity.KnownScope("matters:read") || !identity.KnownScope("views:a.b:read") {
 		t.Fatal("KnownScope")
 	}
 }

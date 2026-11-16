@@ -66,6 +66,8 @@ DELEGABLE_SCOPES = {
     "help:read",
     "help:write",
     "markers:write",
+    "firm:read",
+    "users:directory",
 }
 
 # Operations that accept a module service principal with no viewer (CORE-01), and a

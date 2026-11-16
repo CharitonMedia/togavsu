@@ -21,6 +21,9 @@
       "name": "Identity"
     },
     {
+      "name": "Settings"
+    },
+    {
       "name": "Contacts"
     },
     {
@@ -67,9 +70,6 @@
     },
     {
       "name": "Help"
-    },
-    {
-      "name": "Settings"
     },
     {
       "name": "AI"
@@ -3986,6 +3986,294 @@
               "path",
               "query",
               "idempotency_key"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/firm-profile": {
+      "get": {
+        "operationId": "getFirmProfile",
+        "summary": "Get the firm profile",
+        "description": "Returns name, short_name, address, phone, email, website, logo_file_id and time_zone from the firm.* settings, plus client_portal (client portal colors and label from Appearance). Read only; writes stay on the admin settings. Every role, including client, may read.",
+        "tags": [
+          "Settings"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FirmProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "firm-profile"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant",
+            "client"
+          ],
+          "scopes": [
+            "firm:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "own",
+          "module_delegation": "delegated_viewer"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getFirmProfile",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/user-directory": {
+      "get": {
+        "operationId": "listUserDirectory",
+        "summary": "List the user directory",
+        "description": "Cursor-paginated directory rows: id, name, roles and active. No email, auth or rate fields. Filters: ids (up to 100), role, active. A client caller receives only id and name for active users who hold a staff, attorney or admin role.",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from page.next_cursor."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 50
+            },
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "$ref": "#/components/schemas/Uuid"
+              }
+            },
+            "description": "Up to 100 user ids. When set, only those users are returned."
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "attorney",
+                "staff",
+                "accountant",
+                "client"
+              ],
+              "description": "One role. A user may hold several."
+            },
+            "description": "Role filter. Matches users who hold this role."
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Active filter."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/UserDirectoryEntry"
+                      }
+                    },
+                    "page": {
+                      "$ref": "#/components/schemas/Page"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "user-directory"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "client"
+          ],
+          "scopes": [
+            "users:directory"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "own",
+          "module_delegation": "delegated_viewer",
+          "client_schema": "UserDirectoryClient",
+          "client_projection": "allowlist",
+          "client_fields": [
+            "id",
+            "name"
+          ],
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "listUserDirectory",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
             ]
           }
         },
@@ -61941,6 +62229,8 @@
               "getMe",
               "getMeSettings",
               "listSessions",
+              "getFirmProfile",
+              "listUserDirectory",
               "listApiToken",
               "getApiToken",
               "listInvoice",
@@ -72806,6 +73096,136 @@
           "mode"
         ],
         "description": "The same rows as the appearance.* settings. A change is visible on the next page load."
+      },
+      "ClientPortalTheme": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "client_header": {
+            "type": "string",
+            "description": "Client portal header color from Appearance."
+          },
+          "label": {
+            "type": "string",
+            "description": "Client portal label from Appearance."
+          }
+        },
+        "required": [
+          "client_header",
+          "label"
+        ],
+        "description": "Client portal colors and label as Appearance supplies them."
+      },
+      "FirmProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "short_name": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "website": {
+            "type": "string"
+          },
+          "logo_file_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "File id of the firm logo."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_zone": {
+            "type": "string"
+          },
+          "client_portal": {
+            "$ref": "#/components/schemas/ClientPortalTheme"
+          }
+        },
+        "required": [
+          "name",
+          "short_name",
+          "address",
+          "phone",
+          "email",
+          "website",
+          "logo_file_id",
+          "time_zone",
+          "client_portal"
+        ],
+        "description": "Firm profile from firm.* settings plus the client portal appearance. Read only."
+      },
+      "UserDirectoryEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "name": {
+            "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "attorney",
+                "staff",
+                "accountant",
+                "client"
+              ],
+              "description": "One role. A user may hold several."
+            }
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "roles",
+          "active"
+        ],
+        "description": "One directory row. No email, auth or rate fields. A client caller receives only id and name."
+      },
+      "UserDirectoryClient": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "description": "Client projection of a directory row: active staff, attorney or admin users only."
       },
       "Me": {
         "$ref": "#/components/schemas/User"
@@ -83793,6 +84213,10 @@
       "description": "Upload, rename, move, and trash files."
     },
     {
+      "scope": "firm:read",
+      "description": "Read the firm profile: name, contact details, time zone, and client portal appearance."
+    },
+    {
       "scope": "help:read",
       "description": "Read help sections, items, and the guide."
     },
@@ -83935,6 +84359,10 @@
     {
       "scope": "updates:admin",
       "description": "Read update history and start an update."
+    },
+    {
+      "scope": "users:directory",
+      "description": "Read the firm user directory (id, name, roles, active). No email or auth fields."
     },
     {
       "scope": "users:read",

@@ -11,6 +11,7 @@ STAFF = ["admin", "attorney", "staff"]
 BILLING = ["admin", "attorney", "staff", "accountant"]
 FIRM = ["admin", "attorney", "staff", "accountant"]
 ANY = ["admin", "attorney", "staff", "accountant", "client"]
+DIRECTORY = ["admin", "attorney", "staff", "client"]
 VIEWER = {"module_delegation": "delegated_viewer"}
 
 WALL = {"matter_wall": True, "access_inherits": "matter"}
@@ -786,6 +787,44 @@ def _identity(api: Contract) -> None:
         scopes=["users:write"],
         response="User",
         events=["user.updated"],
+    )
+    api.add(
+        "get",
+        "/api/v1/firm-profile",
+        operation_id="getFirmProfile",
+        summary="Get the firm profile",
+        description=(
+            "Returns name, short_name, address, phone, email, website, logo_file_id and time_zone from the firm.* "
+            "settings, plus client_portal (client portal colors and label from Appearance). Read only; writes stay "
+            "on the admin settings. Every role, including client, may read."
+        ),
+        tag="Settings",
+        features=["firm-profile"],
+        roles=ANY,
+        scopes=["firm:read"],
+        response="FirmProfile",
+        writes=False,
+        extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "get",
+        "/api/v1/user-directory",
+        operation_id="listUserDirectory",
+        summary="List the user directory",
+        description=(
+            "Cursor-paginated directory rows: id, name, roles and active. No email, auth or rate fields. "
+            "Filters: ids (up to 100), role, active. A client caller receives only id and name for active users "
+            "who hold a staff, attorney or admin role."
+        ),
+        tag="Identity",
+        features=["user-directory"],
+        roles=DIRECTORY,
+        scopes=["users:directory"],
+        response_schema=_page("UserDirectoryEntry"),
+        paginate=True,
+        query=["ids", "role", "active"],
+        writes=False,
+        extra_access={**VIEWER, "client": "own", "client_schema": "UserDirectoryClient"},
     )
     api.resource(
         collection="/api/v1/api-tokens",

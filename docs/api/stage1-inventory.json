@@ -3,10 +3,10 @@
   "stage": "1b",
   "purpose": "Source index and contract checks. The simulator and its tests are retained. Generated documents are no longer byte-identical to the baseline after the named corrections.",
   "baseline_artifacts": {
-    "api/openapi/v1/openapi.json": "78cc34c30723de3014d555ec185b9d2649a72634db56387396b8dff82efe68d0",
+    "api/openapi/v1/openapi.json": "58815feaf02d131be7fbac547bc0327e6cc398c46cf2e2b6e828f116a935fd13",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
-    "api/openapi/v1/mcp-tools.json": "3dc9fdfa93035684d86cce4c1bcd276f7c71b9c25de5537d7c4ce631642ccb93",
-    "docs/api/coverage.md": "ea9ee13f02b1588ce63423e76944d60381b6b71bb7b4b04047289033fefef95a"
+    "api/openapi/v1/mcp-tools.json": "7138b55643d2a259c1a354e0d50f81f79594e9f663c61eab295377f57080d1e4",
+    "docs/api/coverage.md": "1e3208e1225571dab023c993fd84dd420bc6fab9ed2effd7b3d7505b9543009b"
   },
   "deletion_blocked": true,
   "deletion_block_reason": "Simulator tests remain. Unexpanded domain batches are not complete. Runtime fixtures are not executed.",
@@ -79,10 +79,10 @@
     "runtime_fixtures": 52
   },
   "artifacts": {
-    "api/openapi/v1/openapi.json": "78cc34c30723de3014d555ec185b9d2649a72634db56387396b8dff82efe68d0",
+    "api/openapi/v1/openapi.json": "58815feaf02d131be7fbac547bc0327e6cc398c46cf2e2b6e828f116a935fd13",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
-    "api/openapi/v1/mcp-tools.json": "3dc9fdfa93035684d86cce4c1bcd276f7c71b9c25de5537d7c4ce631642ccb93",
-    "docs/api/coverage.md": "ea9ee13f02b1588ce63423e76944d60381b6b71bb7b4b04047289033fefef95a"
+    "api/openapi/v1/mcp-tools.json": "7138b55643d2a259c1a354e0d50f81f79594e9f663c61eab295377f57080d1e4",
+    "docs/api/coverage.md": "1e3208e1225571dab023c993fd84dd420bc6fab9ed2effd7b3d7505b9543009b"
   },
   "intentional_generated_deltas": [
     {

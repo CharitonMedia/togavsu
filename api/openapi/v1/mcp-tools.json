@@ -1096,6 +1096,99 @@
       }
     },
     {
+      "name": "getFirmProfile",
+      "method": "GET",
+      "path": "/api/v1/firm-profile",
+      "features": [
+        "firm-profile"
+      ],
+      "scopes": [
+        "firm:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ],
+      "module_delegation": "delegated_viewer",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "listUserDirectory",
+      "method": "GET",
+      "path": "/api/v1/user-directory",
+      "features": [
+        "user-directory"
+      ],
+      "scopes": [
+        "users:directory"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "client"
+      ],
+      "module_delegation": "delegated_viewer",
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 50
+      },
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
       "name": "listApiToken",
       "method": "GET",
       "path": "/api/v1/api-tokens",

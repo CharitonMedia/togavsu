@@ -2042,6 +2042,47 @@ SCHEMAS = _register(
             ["preset", "staff_sidebar", "staff_header", "staff_page", "staff_accent", "client_header", "heading_font", "body_font", "text_size", "mode"],
             "The same rows as the appearance.* settings. A change is visible on the next page load.",
         ),
+        "ClientPortalTheme": _obj(
+            {
+                "client_header": {"type": "string", "description": "Client portal header color from Appearance."},
+                "label": {"type": "string", "description": "Client portal label from Appearance."},
+            },
+            ["client_header", "label"],
+            "Client portal colors and label as Appearance supplies them.",
+        ),
+        "FirmProfile": _obj(
+            {
+                "name": {"type": "string"},
+                "short_name": {"type": "string"},
+                "address": {"type": "string"},
+                "phone": {"type": "string"},
+                "email": {"type": "string"},
+                "website": {"type": "string"},
+                "logo_file_id": _null(_uuid("File id of the firm logo.")),
+                "time_zone": {"type": "string"},
+                "client_portal": _ref("ClientPortalTheme"),
+            },
+            ["name", "short_name", "address", "phone", "email", "website", "logo_file_id", "time_zone", "client_portal"],
+            "Firm profile from firm.* settings plus the client portal appearance. Read only.",
+        ),
+        "UserDirectoryEntry": _obj(
+            {
+                "id": _uuid(),
+                "name": {"type": "string"},
+                "roles": _arr(_ROLE),
+                "active": {"type": "boolean"},
+            },
+            ["id", "name", "roles", "active"],
+            "One directory row. No email, auth or rate fields. A client caller receives only id and name.",
+        ),
+        "UserDirectoryClient": _obj(
+            {
+                "id": _uuid(),
+                "name": {"type": "string"},
+            },
+            ["id", "name"],
+            "Client projection of a directory row: active staff, attorney or admin users only.",
+        ),
         "Me": _ref("User"),
         "MeSettings": _obj(
             {
@@ -3307,6 +3348,20 @@ QUERY = {
     "attorney_only": _query("attorney_only", {"type": "boolean"}, "Attorney-only file filter."),
     "practice_area_id": _query("practice_area_id", _ref("Uuid"), "Practice area filter."),
     "active": _query("active", {"type": "boolean"}, "Active filter."),
+    "role": _query("role", _ROLE, "Role filter. Matches users who hold this role."),
+    "ids": {
+        "name": "ids",
+        "in": "query",
+        "required": False,
+        "style": "form",
+        "explode": True,
+        "schema": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {"$ref": "#/components/schemas/Uuid"},
+        },
+        "description": "Up to 100 user ids. When set, only those users are returned.",
+    },
     "view": _query("view", _enum(["day", "week", "month"]), "Calendar view."),
     "disposition": _query("disposition", _enum(["inline", "attachment"]), "Download disposition."),
     "confirm": _query("confirm", {"type": "boolean"}, "Must be true to download a quarantined version."),

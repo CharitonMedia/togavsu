@@ -13,6 +13,8 @@ var catalog = map[string]struct{}{
 	"sessions:read": {}, "sessions:write": {},
 	"tokens:read": {}, "tokens:write": {},
 	"users:read": {}, "users:write": {},
+	"users:directory": {},
+	"firm:read": {},
 	"contacts:read": {}, "contacts:write": {},
 	"matters:read": {}, "matters:write": {},
 	"markers:write": {},
@@ -89,17 +91,18 @@ func roleScopes(role domain.Role) map[string]struct{} {
 			"trust:read", "trust:write", "reports:read", "search:use",
 			"notifications:read", "notifications:write", "layouts:read", "layouts:write",
 			"help:read", "events:read", "doc_tender:read", "conflicts:read", "conflicts:write",
-			"users:read", "settings:read",
+			"users:read", "users:directory", "settings:read", "firm:read",
 		)
 	case domain.RoleAccountant:
 		return scopeSet(
 			"profile:read", "profile:write", "sessions:read", "sessions:write", "tokens:read",
-			"invoices:read", "payments:read", "trust:read", "reports:read", "files:read",
+			"invoices:read", "payments:read", "trust:read", "reports:read", "files:read", "firm:read",
 		)
 	case domain.RoleClient:
 		return scopeSet(
 			"profile:read", "profile:write", "sessions:read", "sessions:write", "tokens:read",
 			"matters:read", "files:read", "invoices:read", "notes:read", "calendar:read", "deadlines:read",
+			"firm:read", "users:directory",
 		)
 	default:
 		return map[string]struct{}{}
