@@ -144,6 +144,10 @@ type App struct {
 	// by Close so a hold released during shutdown starts nothing.
 	bgMu     sync.Mutex
 	bgClosed bool
+
+	// revokeDevicesForUser, when set, overrides Modules.RevokeDevicesForUser after
+	// deactivate (tests inject a failure to assert the error reaches the client).
+	revokeDevicesForUser func(context.Context, domain.Principal, domain.ID) error
 }
 
 // Migrate applies every embedded core migration to dsn in schema core.

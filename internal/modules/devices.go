@@ -192,30 +192,28 @@ WHERE id = $2 AND revoked_at IS NULL`, now, string(deviceID))
 }
 
 // RevokeDevicesForUser revokes every active grant for a deactivated user (CORE-28).
+// Idempotent: already-revoked grants are skipped, so a retry after a partial failure succeeds.
 func (s *Service) RevokeDevicesForUser(ctx context.Context, p domain.Principal, userID domain.ID) error {
-	rows, err := s.q(ctx).QueryContext(ctx, `SELECT id, module_id FROM core.module_devices
-WHERE user_id = $1 AND revoked_at IS NULL`, string(userID))
-	if err != nil {
-		return err
-	}
-	var pending []struct{ id, module string }
-	for rows.Next() {
-		var id, module string
-		if err := rows.Scan(&id, &module); err != nil {
-			rows.Close()
-			return err
-		}
-		pending = append(pending, struct{ id, module string }{id, module})
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if len(pending) == 0 {
-		return nil
-	}
 	now := s.now().UnixMicro()
 	return s.commit(ctx, func(ctx context.Context) error {
+		rows, err := s.q(ctx).QueryContext(ctx, `SELECT id, module_id FROM core.module_devices
+WHERE user_id = $1 AND revoked_at IS NULL`, string(userID))
+		if err != nil {
+			return err
+		}
+		var pending []struct{ id, module string }
+		for rows.Next() {
+			var id, module string
+			if err := rows.Scan(&id, &module); err != nil {
+				rows.Close()
+				return err
+			}
+			pending = append(pending, struct{ id, module string }{id, module})
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
 		for _, row := range pending {
 			res, err := s.q(ctx).ExecContext(ctx, `UPDATE core.module_devices SET revoked_at = $1, updated_at = $1
 WHERE id = $2 AND revoked_at IS NULL`, now, row.id)
@@ -224,6 +222,7 @@ WHERE id = $2 AND revoked_at IS NULL`, now, row.id)
 			}
 			n, _ := res.RowsAffected()
 			if n == 0 {
+				// Already revoked since the SELECT (or a prior attempt); treat as done.
 				continue
 			}
 			if _, err := s.d.Audit.Record(ctx, p, audit.Change{

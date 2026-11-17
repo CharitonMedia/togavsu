@@ -183,6 +183,10 @@ func TestPGModuleDevicesLapse(t *testing.T) {
 	if err := e.svc.RevokeDevicesForUser(e.ctx, e.admin, staffID); err != nil {
 		t.Fatal(err)
 	}
+	// Idempotent: a retry after a successful (or partial) revoke must succeed.
+	if err := e.svc.RevokeDevicesForUser(e.ctx, e.admin, staffID); err != nil {
+		t.Fatalf("idempotent re-revoke: %v", err)
+	}
 	if e.count(`SELECT COUNT(*) FROM core.module_devices WHERE id = $1 AND revoked_at IS NOT NULL`, freshID) != 1 {
 		t.Fatal("deactivate revoke did not mark grant")
 	}

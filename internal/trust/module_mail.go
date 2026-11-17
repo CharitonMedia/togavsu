@@ -271,10 +271,7 @@ func currentPrimaryEmail(emails []domain.ContactEmail, today string) string {
 		if !e.Primary || e.Email == "" {
 			continue
 		}
-		if e.EffectiveTo != "" && e.EffectiveTo < today {
-			continue
-		}
-		if e.EffectiveFrom != "" && e.EffectiveFrom > today {
+		if !domain.EffectiveOn(e.EffectiveFrom, e.EffectiveTo, today) {
 			continue
 		}
 		return e.Email

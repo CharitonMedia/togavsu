@@ -65,6 +65,19 @@ type ContactEmail struct {
 
 func (ContactEmail) TableName() string { return "contact_emails" }
 
+// EffectiveOn reports whether a dated contact row (email, phone, address) is current on today.
+// An empty effective_to is open-ended; effective_to <= today excludes (end-exclusive), matching
+// the contact readers and mail matchers.
+func EffectiveOn(from, to, today string) bool {
+	if to != "" && to <= today {
+		return false
+	}
+	if from != "" && from > today {
+		return false
+	}
+	return true
+}
+
 // ContactPhone is one historical E.164 phone.
 type ContactPhone struct {
 	Meta

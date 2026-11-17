@@ -341,13 +341,7 @@ func currentPrimaryAddressRow(rows []domain.ContactAddress, today string) *domai
 }
 
 func effectiveOn(from, to, today string) bool {
-	if to != "" && to <= today {
-		return false
-	}
-	if from != "" && from > today {
-		return false
-	}
-	return true
+	return domain.EffectiveOn(from, to, today)
 }
 
 func sameMailingAddress(prev domain.ContactAddress, next MeMailingAddress) bool {

@@ -189,10 +189,15 @@ func (s *Service) UpdatePaymentRefundStatus(ctx context.Context, p domain.Princi
 	var dp domain.Principal
 	var err error
 	if grant != "" {
-		_, dp, err = s.refundGrant(ctx, p, grant)
-		if err != nil {
-			return Refund{}, err
+		grantRow, principal, grantErr := s.refundGrant(ctx, p, grant)
+		if grantErr != nil {
+			return Refund{}, grantErr
 		}
+		// The grant authenticates one pending refund; refuse using it for another.
+		if grantRow.ID != refundID || grantRow.PaymentID != paymentID {
+			return Refund{}, domain.Forbidden("the refund authorization is missing, invalid, expired or revoked")
+		}
+		dp = principal
 	} else {
 		if err := viewerless(p); err != nil {
 			return Refund{}, err

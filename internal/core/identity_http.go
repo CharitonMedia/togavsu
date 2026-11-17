@@ -231,9 +231,11 @@ func (a *App) deactivateUserJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	// CORE-28: device grants lapse when the user is deactivated.
-	if a.ext != nil && a.ext.Modules != nil {
-		_ = a.ext.Modules.RevokeDevicesForUser(r.Context(), p, id)
+	// CORE-28: device grants lapse when the user is deactivated. Surface revoke errors
+	// so the admin can retry; RevokeDevicesForUser is idempotent for that retry.
+	if err := a.revokeDevicesAfterDeactivate(r.Context(), p, id); err != nil {
+		writeErr(w, err)
+		return
 	}
 	row, err := acc.User(r.Context(), p, id)
 	if err != nil {
@@ -241,6 +243,16 @@ func (a *App) deactivateUserJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, userRowJSON(row))
+}
+
+func (a *App) revokeDevicesAfterDeactivate(ctx context.Context, p domain.Principal, userID domain.ID) error {
+	if a.revokeDevicesForUser != nil {
+		return a.revokeDevicesForUser(ctx, p, userID)
+	}
+	if a.ext != nil && a.ext.Modules != nil {
+		return a.ext.Modules.RevokeDevicesForUser(ctx, p, userID)
+	}
+	return nil
 }
 
 func (a *App) updateMeJSON(w http.ResponseWriter, r *http.Request) {
