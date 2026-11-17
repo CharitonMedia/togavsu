@@ -106,6 +106,10 @@ func upsertCorePayment(ctx context.Context, conn audit.Querier, pay Payment) err
 	if by.IsZero() {
 		by = domain.SystemUserID
 	}
+	refundState := pay.RefundState
+	if refundState == "" {
+		refundState = "none"
+	}
 	_, err := conn.ExecContext(ctx, `INSERT INTO payments (
 id, created_at, updated_at, created_by, contact_id, matter_id, amount_cents, destination, method,
 reference_number, status, invoice_id, trust_entry_id, source, refunded_cents, refund_state)
@@ -119,7 +123,7 @@ refunded_cents = EXCLUDED.refunded_cents, refund_state = EXCLUDED.refund_state`,
 		string(pay.ID), pay.CreatedAt.UnixMicro(), pay.UpdatedAt.UnixMicro(), string(by),
 		string(pay.ContactID), string(pay.MatterID), int64(pay.AmountCents), pay.Destination, pay.Method,
 		pay.ReferenceNumber, pay.Status, nullID(pay.InvoiceID), nullID(pay.TrustEntryID), pay.Source,
-		int64(pay.RefundedCents), pay.RefundState)
+		int64(pay.RefundedCents), refundState)
 	return err
 }
 
@@ -127,10 +131,6 @@ func upsertCoreExpense(ctx context.Context, conn audit.Querier, exp Expense) err
 	by := exp.CreatedBy
 	if by.IsZero() {
 		by = domain.SystemUserID
-	}
-	billable := 0
-	if exp.Billable {
-		billable = 1
 	}
 	_, err := conn.ExecContext(ctx, `INSERT INTO expenses (
 id, created_at, updated_at, created_by, matter_id, incurred_on, description, amount_cents,
@@ -143,8 +143,16 @@ billable = EXCLUDED.billable, markup_percent = EXCLUDED.markup_percent, file_id 
 invoice_id = EXCLUDED.invoice_id`,
 		string(exp.ID), exp.CreatedAt.UnixMicro(), exp.UpdatedAt.UnixMicro(), string(by),
 		string(exp.MatterID), exp.IncurredOn, exp.Description, int64(exp.AmountCents),
-		exp.ExpenseType, billable, exp.MarkupPercent, nullID(exp.FileID), nullID(exp.InvoiceID))
+		exp.ExpenseType, expenseBillableFlag(exp.Billable), exp.MarkupPercent, nullID(exp.FileID), nullID(exp.InvoiceID))
 	return err
+}
+
+// expenseBillableFlag stores a boolean expense column as 0 or 1.
+func expenseBillableFlag(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 // RebuildCoreRows backfills core.invoices, core.payments and core.expenses from
@@ -157,50 +165,53 @@ func (p *Postgres) RebuildCoreRows(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
+			type doc struct {
+				id, body string
+			}
+			var docs []doc
 			for rows.Next() {
-				var id, body string
-				if err := rows.Scan(&id, &body); err != nil {
+				var d doc
+				if err := rows.Scan(&d.id, &d.body); err != nil {
 					rows.Close()
 					return err
 				}
+				docs = append(docs, d)
+			}
+			err = rows.Err()
+			rows.Close()
+			if err != nil {
+				return err
+			}
+			// Load first, then write: one connection cannot Exec while Rows are open.
+			for _, d := range docs {
 				var v any
 				switch kind {
 				case kindInvoice:
 					var inv Invoice
-					if err := json.Unmarshal([]byte(body), &inv); err != nil {
-						rows.Close()
+					if err := json.Unmarshal([]byte(d.body), &inv); err != nil {
 						return err
 					}
 					v = inv
 				case kindPayment:
 					var pay Payment
-					if err := json.Unmarshal([]byte(body), &pay); err != nil {
-						rows.Close()
+					if err := json.Unmarshal([]byte(d.body), &pay); err != nil {
 						return err
 					}
 					v = pay
 				case kindExpense:
 					var exp Expense
-					if err := json.Unmarshal([]byte(body), &exp); err != nil {
-						rows.Close()
+					if err := json.Unmarshal([]byte(d.body), &exp); err != nil {
 						return err
 					}
 					v = exp
 				}
-				if err := syncCoreBillingRows(ctx, conn, kind, id, v); err != nil {
-					rows.Close()
+				if err := syncCoreBillingRows(ctx, conn, kind, d.id, v); err != nil {
 					return err
 				}
-				if err := reconcileCoreRow(ctx, conn, kind, id, v); err != nil {
-					rows.Close()
+				if err := reconcileCoreRow(ctx, conn, kind, d.id, v); err != nil {
 					return err
 				}
 			}
-			if err := rows.Err(); err != nil {
-				rows.Close()
-				return err
-			}
-			rows.Close()
 		}
 		return nil
 	})

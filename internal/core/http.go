@@ -446,12 +446,12 @@ func (a *App) limitServiceCall(ctx context.Context, p domain.Principal, op strin
 		return nil
 	}
 	limit, err := strconv.Atoi(raw)
-	if err != nil || limit < 1 {
+	if err != nil || !serviceCallLimitOK(limit) {
 		return nil
 	}
 	id := p.ModuleID + "\x00" + op
 	now := time.Now().UTC()
-	window := time.Minute
+	window := serviceCallWindow()
 	a.svcHitMu.Lock()
 	defer a.svcHitMu.Unlock()
 	if a.svcHits == nil {
@@ -470,6 +470,12 @@ func (a *App) limitServiceCall(ctx context.Context, p domain.Principal, op strin
 	a.svcHits[id] = append(kept, now)
 	return nil
 }
+
+// serviceCallWindow is the minute named by modules.service_call_limit.* (CORE-30).
+func serviceCallWindow() time.Duration { return time.Minute }
+
+// serviceCallLimitOK rejects non-positive limits from a corrupt setting value.
+func serviceCallLimitOK(n int) bool { return n >= 1 }
 
 // status is the HTTP status for err: identity's own codes go through shared, and the
 // two setup codes are conflicts.

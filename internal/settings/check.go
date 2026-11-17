@@ -700,6 +700,15 @@ func fixedSite(path, fn string) bool {
 		case "CreatePaymentRefund", "UpdatePaymentRefundStatus", "completeRefund", "refundedPending", "positive":
 			return true
 		}
+	case strings.HasSuffix(slash, "internal/billing/core_rows.go"):
+		// Boolean expense column stored as 0/1 (CORE-36).
+		return fn == "expenseBillableFlag"
+	case strings.HasSuffix(slash, "internal/core/http.go"):
+		// Per-operation service-principal window named by modules.service_call_limit.* (CORE-30).
+		switch fn {
+		case "serviceCallWindow", "serviceCallLimitOK", "enforceServiceCallLimit":
+			return true
+		}
 	case strings.HasSuffix(slash, "internal/core/mail_auth.go"):
 		// Match/filing token TTL and secret width (CORE-26/27).
 		switch fn {
