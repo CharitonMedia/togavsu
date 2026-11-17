@@ -1,8 +1,8 @@
 {
   "task_id": "desk-fix-settings-plain-values",
   "status": "pass",
-  "scope": "Desk fix: plain setting values on the admin Settings page (case number examples with derivation, Advanced switch, plain editors for durations/bytes/lists/retries/notifications/colors/naming/model prices), plus Codex checkpoint resolutions for phone CSS, non-aligned byte editors, custom-pattern display, overflow refusal, and OpenAPI catalog. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
-  "tested_revision": "54c330548cc9996b95f6de33bcae6ea1c4311e50",
+  "scope": "Desk fix: plain setting values on the admin Settings page (case number examples with derivation, Advanced switch, plain editors for durations/bytes/lists/retries/notifications/colors/naming/model prices), plus Codex checkpoint resolutions for phone CSS, non-aligned byte editors, custom-pattern display, overflow refusal, OpenAPI catalog, and gofmt. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
+  "tested_revision": "c3629fd476cc7f8b90de80eca28c70bda07fd7d7",
   "prd_sections": [
     "8.7"
   ],
@@ -11,17 +11,17 @@
     {
       "command": "go vet ./...",
       "exit_code": 0,
-      "seconds": 9
+      "seconds": 3
     },
     {
       "command": "go test -count=1 -timeout 45m ./internal/...",
       "exit_code": 0,
-      "seconds": 182
+      "seconds": 163
     },
     {
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 35
+      "seconds": 34
     }
   ],
   "codex_resolutions": [
@@ -60,8 +60,8 @@
     "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
   ],
   "simplification": {
-    "net_lines_this_fix": 153,
+    "net_lines_codex_fix": 152,
     "ponytail_debt_sections": 13,
-    "note": "No new PONYTAIL-DEBT entries. fixedSite exemptions extended for scaleDuration/scaleBytes. Companion docs/api/stage1-inventory.json and api/tests/test_stage1.py updated so the owned OpenAPI catalog change passes api/check.sh."
+    "note": "No new PONYTAIL-DEBT entries. fixedSite exemptions extended for scaleDuration/scaleBytes. Companion docs/api/stage1-inventory.json and api/tests/test_stage1.py updated so the owned OpenAPI catalog change passes api/check.sh. gofmt applied to pages.go and plain converters (Core tests gate)."
   }
 }
