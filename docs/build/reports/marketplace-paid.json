@@ -1,0 +1,78 @@
+{
+  "task_id": "marketplace-paid",
+  "status": "pass",
+  "tested_revision": "6fa475a6ea03fabd9827663eb041f968eec1c286",
+  "tests": [
+    {
+      "name": "marketplace-package",
+      "command": "go test -count=1 -timeout 300s ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "mkt-acceptance",
+      "command": "go test -count=1 -timeout 180s -v -run 'TestMKT0' ./marketplace/",
+      "exit_code": 0
+    }
+  ],
+  "passed_acceptance_ids": [
+    "MKT-01",
+    "MKT-02",
+    "MKT-03",
+    "MKT-04",
+    "MKT-05",
+    "MKT-06",
+    "MKT-07"
+  ],
+  "pending_acceptance_ids": [],
+  "phase_cases": [
+    {
+      "id": "structured-price",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT01StructuredPrice$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-01"]
+    },
+    {
+      "id": "signed-upload",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT02SignedUpload$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-02"]
+    },
+    {
+      "id": "subscribe-license",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT03SubscribeLicense$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-03"]
+    },
+    {
+      "id": "renewal",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT04PriceChangeNotice$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-04"]
+    },
+    {
+      "id": "cancel",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT05Cancel$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-05"]
+    },
+    {
+      "id": "no-card-or-secret",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT06NoCardOrSecret$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-06"]
+    },
+    {
+      "id": "stripe-faked",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT07StripeFaked$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-07"]
+    }
+  ]
+}
