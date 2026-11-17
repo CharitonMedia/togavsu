@@ -1,20 +1,20 @@
 # Core changes for the second batch of modules
 
-The core and marketplace parts of the approved batch 2 modules PRD (approved by Patrick on 2026-11-16), copied unchanged: its fixed decisions that bind the core, section 4 (module API update 2, CORE-30 to CORE-37), section 5 (shared module rules the coretest harness serves), section 6 (migration import: opening invoices, core PRD section 8.22), the license bullet of section 15.5 (the key the marketplace issues and the paid module checks), section 17 (marketplace paid listings) and sections 18.3 and 18.4 (tests and review gate). The nine modules build in their own repositories, CharitonMedia/togavsu-<id>, from the public kit only; keep every name in this file exactly as given, because those repositories are written against it. This file outranks docs/modules/CORE-CHANGES.md where they differ for CORE-30 onward.
+The core and marketplace parts of the approved batch 2 modules PRD (approved by Patrick on 2026-11-16), copied unchanged: its fixed decisions that bind the core, section 4 (module API update 2, CORE-30 to CORE-37), section 5 (shared module rules the coretest harness serves), section 6 (migration import: opening invoices, core PRD section 8.22), the license bullet of section 15.5 (the key the provider issues and the paid module checks), section 17 (marketplace listings, with no selling or billing in Togavsu) and sections 18.3 and 18.4 (tests and review gate). The nine modules build in their own repositories, CharitonMedia/togavsu-<id>, from the public kit only; keep every name in this file exactly as given, because those repositories are written against it. This file outranks docs/modules/CORE-CHANGES.md where they differ for CORE-30 onward.
 
-Source: togavsu-modules-batch2-prd.md as approved, SHA-256 f4fb200f30a9d05c96e0388b498f46ffb8691b1b88638e0a3d0c23d4f6d330ef.
+Source: togavsu-modules-batch2-prd.md as approved, SHA-256 d36dd2781883b9e8b90aba431483aa97e843c400082d72a2a35b286a72e3fb41, with Patrick's 2026-11-17 ruling that selling, billing and licensing belong to each module's provider.
 
 ## Fixed decisions that bind the core
 
-- **Order.** Batch 1's module API update (CORE-01 to CORE-29) lands first. Then module API update 2 (CORE-30 onward) and the opening invoice import ship as one signed core update. The marketplace paid-listing work builds beside it. Then the nine modules build in parallel. Section 18 has the order.
+- **Order.** Batch 1's module API update (CORE-01 to CORE-29) lands first. Then module API update 2 (CORE-30 onward) and the opening invoice import ship as one signed core update. The marketplace listing work builds beside it. Then the nine modules build in parallel. Section 18 has the order.
 - **Public kit only.** Every module is built only from the public kit (pkg/modulekit, cmd/togavsu-module, pkg/modulekit/coretest), the public API and the docs, the same way an outside author would build one. This batch tests the module system for future contributors as much as it ships features. A gap a module hits goes into docs/modules/CONTRIBUTOR-GAPS.md and gets fixed in the core, never worked around inside the module.
 - **Self-contained.** No module reads core tables. Each has its own schema, mod_{id} with hyphens as underscores, links to core records by id with ON DELETE RESTRICT, and copies no core record. Every file is a core file record. Modules reach each other only through core-brokered service contracts (CORE-31), never by calling another module's address.
 - **Access comes from the core.** Walls, roles and attorney-only rules are decided in the core's service layer for every module call. A service call runs as the module's service principal, which sits outside every wall: a walled matter's records are left out of its lists and not_found on its gets.
 - **No restarts.** Installing, configuring, updating, disabling and removing a module never restarts the core.
 - **Endpoints for agents.** Every action on a module screen is also a JSON endpoint under /m/{id}/api/, authenticated by a context token from POST /api/v1/modules/{id}/context-tokens. Each module serves /m/{id}/api/openapi.json and lists its endpoints in its help guide.
 - **Every tunable is a setting.** Any value a firm might change is a module setting, checked by settings.CheckModule. Limits an outside service fixes stay constants.
-- **Credentials at runtime only.** Zoom, Google, NotebookLM connector, Stripe and AI keys are entered by the firm admin, or for the marketplace by its operator, at runtime. Secrets sit in the core's sealed secret store or as secret settings, never in a module table, log or response. The build creates no service credential and never uses client data.
-- **Outside services are faked in every test.** No test, CI job or default setting reaches Zoom, Google, NotebookLM, Stripe or an AI provider.
+- **Credentials at runtime only.** Zoom, Google, NotebookLM connector and AI keys are entered by the firm admin, or for the marketplace by its operator, at runtime. Secrets sit in the core's sealed secret store or as secret settings, never in a module table, log or response. The build creates no service credential and never uses client data.
+- **Outside services are faked in every test.** No test, CI job or default setting reaches Zoom, Google, NotebookLM, a payment service or an AI provider.
 - **AI goes through the core.** Every model call is a createAiCall with a task the manifest declares in ai_tasks. The module never holds a provider key, and the core's router, wall check and call log apply.
 - **Time.** Every stored time is timestamptz. Provider timestamps pass through as ISO strings. Date-only values stay dates. "Today" is computed in the firm's time zone. Unified's naive-timestamp bug is the reason.
 - **Release stays private.** Images and packages stay private, and no listing goes public, until Patrick says so. The build tests against a local marketplace.
@@ -132,26 +132,25 @@ IMP-08 The collections panel, aging and statements include imported invoices exa
 
 ### 15.5 Behavior
 
-- **The license.** The module reads its license key from its secret settings. The key is an Ed25519-signed statement from the marketplace naming the firm's install id, the module, and the paid-through date, and the module checks it offline against the marketplace's public key built into the image. It renews the key from the marketplace once a day. After the paid-through date plus a grace period setting (14 days), Generate package stops with a plain message; every questionnaire, answer and document already made stays readable and downloadable. The core enforces nothing.
+- **The license.** Chariton Media sells and bills the module itself, outside Togavsu; the marketplace and the core take no part. The module reads its license key from its secret settings, where the firm admin enters it. The key is an Ed25519-signed statement from Chariton Media naming the firm's install id, the module, and the paid-through date, and the module checks it offline against Chariton Media's public key built into the image. Chariton Media issues keys with the repo's cmd/issue-license tool and its own private key, kept outside Togavsu and outside the repo; a renewal is a new key the admin enters. After the paid-through date plus a grace period setting (14 days), Generate package stops with a plain message; every questionnaire, answer and document already made stays readable and downloadable. The core enforces nothing.
 
-## 17. Marketplace: paid listings and submission
+## 17. Marketplace: listings and submission
+
+Patrick's ruling of Nov 17, 2026 (section 1): selling, billing, licensing and price changes are the module provider's business, not Togavsu's. The marketplace lists, installs and checks package signatures. It never sells, charges, subscribes, renews, refunds or issues a license.
 
 ### 17.1 Price from the manifest
 
-The listing takes its price from the manifest's structured price (CORE-35) at first upload. The author can change the listing price on the marketplace without a new package. A change applies to new subscriptions at once, and to existing ones at their next renewal after a notice period setting (30 days), with the notice emailed to each subscribing firm's admin. This closes the CONTRIBUTOR-GAPS row "listing ignores the manifest's price".
+The listing takes its price from the manifest's structured price (CORE-35) at first upload and shows it as the provider's own information, beside the line "Sold and licensed by {author}. Togavsu doesn't sell or bill this module." The author can change the listed price and a link to their own sales page on the marketplace without a new package; the change shows at once and touches no install. This closes the CONTRIBUTOR-GAPS row "listing ignores the manifest's price".
 
 ### 17.2 Upload takes the signed file
 
 POST /v1/authors/me/packages takes the kit's signed package file as its body, unchanged. The jq step in MODULE-KIT.md goes away. This closes its CONTRIBUTOR-GAPS row.
 
-### 17.3 Subscriptions and licenses
+### 17.3 Selling stays with the provider
 
-- **Authors sell through their own Stripe account.** An author connects a Stripe account to their marketplace author account through Stripe Connect. Chariton Media connects its own for mo-estate-planning. The marketplace's platform fee is an operator setting, default 0 percent. Keys are entered by the operator at runtime.
-- **A firm subscribes** from the listing through Stripe Checkout, naming its Togavsu install id. The marketplace then issues the license key (section 15.5), shows it once, and sends it to the install, where the admin approves it into the module's secret settings.
-- **Renewal.** The marketplace serves the current key at an endpoint the module calls daily with its install id and a signature from the install's key.
-- **Cancel** stops renewal; the key runs to its paid-through date.
+- **No billing in Togavsu.** The marketplace has no checkout, subscription, renewal, refund, payment-service connection, platform fee or price-change notice, and stores no payment detail or license key.
+- **A paid module checks its own license.** A provider that charges issues its own key and its module checks it, as mo-estate-planning does (section 15.5). The firm admin enters the key in the module's secret settings. The core and the marketplace enforce nothing.
 - **The operator never reviews, tests or warrants a paid module,** the same as a free one. The listing keeps the core PRD 10.2 notice.
-- **The marketplace stores** subscriptions and keys in its state, never a card number; Stripe holds payment details.
 
 ### 17.4 Public marketplace
 
@@ -163,19 +162,19 @@ Each module repo gets a release workflow, as batch 1 PRD section 11 describes: b
 
 ### 17.6 Acceptance
 
-MKT-01 A package with a structured price lists at that price; a package with the old string still lists.
+MKT-01 A package with a structured price lists that price as the provider's information, with the "Sold and licensed by" line; a package with the old string still lists.
 
 MKT-02 Uploading the kit's signed file unchanged succeeds; a tampered one is refused.
 
-MKT-03 A firm subscribes through fake Stripe, gets a license key bound to its install id, and the module accepts it; a key for another install id is refused.
+MKT-03 The author changes the listed price and sales link without a new package; the listing shows both at once, and nothing is charged, sent or changed on any install.
 
-MKT-04 A price change emails subscribers and takes effect at the next renewal after the notice period.
+MKT-04 A priced module installs from the local marketplace with no key and no payment step.
 
-MKT-05 Cancel stops renewal and the key runs out on its date.
+MKT-05 The marketplace has no checkout, subscription, renewal, refund, payment-service connection, platform fee or price-change notice: no route, setting, state record, email or dependency for any of them.
 
-MKT-06 No card number or Stripe secret ever appears in marketplace state, logs or responses.
+MKT-06 No payment detail, license key or provider secret appears in marketplace state, logs or responses.
 
-MKT-07 No test reaches Stripe.
+MKT-07 No marketplace test or code path reaches a payment service or any outside host; test helpers refuse any other host.
 
 ## Tests and review gate (batch 2 PRD 18.3 and 18.4)
 
