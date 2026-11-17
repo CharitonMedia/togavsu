@@ -20,8 +20,9 @@ paths do not overlap.
    - Show every listing when the search box is empty (browse), and the matches when `q` is
      set. Pulled listings never show.
    - Each listing: name, version, author, price, the operator's warning when flagged, and
-     the permissions it asks for inside a closed `<details>` labelled "Permissions (N)",
-     each scope with its reason where the listing carries one.
+     the permission scopes it asks for inside a closed `<details>` labelled
+     "Permissions (N)". Listings carry scopes only; do not change the listing contract or
+     fetch packages to show reasons here (the reasons show at approval after install).
    - Price: the listing's price text; when that is empty, the manifest's `price`; when both
      are empty, "Free". Add the manifest price to what the core reads from a listing if it
      is not already there.
