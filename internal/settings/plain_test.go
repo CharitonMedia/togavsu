@@ -265,4 +265,3 @@ func TestDisplayPlainDefaults(t *testing.T) {
 		}
 	}
 }
-

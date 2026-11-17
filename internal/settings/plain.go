@@ -481,11 +481,11 @@ func ParseNotificationsForm(form url.Values) (string, error) {
 
 // ColorRow is one named color for the plain custom-colors editor.
 type ColorRow struct {
-	Key      string
-	Label    string
-	Custom   bool
-	Value    string // #rrggbb when Custom
-	Preset   string // current preset color for comparison
+	Key    string
+	Label  string
+	Custom bool
+	Value  string // #rrggbb when Custom
+	Preset string // current preset color for comparison
 }
 
 // ColorRows builds the color editor from stored JSON and the active preset colors.

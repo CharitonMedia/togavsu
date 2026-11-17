@@ -60,7 +60,7 @@ var funcs = template.FuncMap{
 	"url":   func(t Target) string { return t.URL() },
 	"join":  strings.Join,
 	"lower": strings.ToLower,
-	"dict": templateDict,
+	"dict":  templateDict,
 	"when": func(t time.Time) string {
 		if t.IsZero() {
 			return ""
@@ -1025,29 +1025,29 @@ type roleLayoutView struct {
 }
 
 type adminView struct {
-	Tabs           []struct{ ID, Label string }
-	Tab            string
-	Settings       []settingRow
-	Advanced       []settingRow
-	AdvancedOpen   bool
-	Error          string
-	Appearance     Appearance
-	Presets        []Preset
-	Fonts          []string
-	Roles          []roleLayoutView
-	Help           []helpSectionView
-	Users          []UserRow
-	Roles5         []domain.Role
-	Tokens         []TokenRow
-	Scopes         []ScopeInfo
-	Issued         *IssuedView
-	Owners         []domain.User
-	Seats          Seats
-	Problems       []ProblemReport
-	Audit          []AuditRow
-	HelpPath       string
-	Modules        any
-	AICalls        any
+	Tabs         []struct{ ID, Label string }
+	Tab          string
+	Settings     []settingRow
+	Advanced     []settingRow
+	AdvancedOpen bool
+	Error        string
+	Appearance   Appearance
+	Presets      []Preset
+	Fonts        []string
+	Roles        []roleLayoutView
+	Help         []helpSectionView
+	Users        []UserRow
+	Roles5       []domain.Role
+	Tokens       []TokenRow
+	Scopes       []ScopeInfo
+	Issued       *IssuedView
+	Owners       []domain.User
+	Seats        Seats
+	Problems     []ProblemReport
+	Audit        []AuditRow
+	HelpPath     string
+	Modules      any
+	AICalls      any
 }
 
 func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Principal) (string, string, any, error) {
