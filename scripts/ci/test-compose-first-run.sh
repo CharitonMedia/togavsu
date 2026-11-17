@@ -17,7 +17,7 @@ cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
     compose ps -a || true
-    compose logs --no-color --tail 80 core migrate dbinit postgres || true
+    compose logs --no-color --tail 80 core migrate dbinit postgres togavsu-marketplace || true
   fi
   compose down -v --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$work"
@@ -26,7 +26,21 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 compose down -v --remove-orphans >/dev/null 2>&1 || true
-compose up -d --build --wait --wait-timeout 300
+# Include the marketplace profile so a permissions mistake on marketsecrets fails CI.
+compose --profile marketplace up -d --build --wait --wait-timeout 300
+
+# Startup check: GET /v1/listings answers 200 from inside the network (no published port).
+# caddy is alpine and already on the compose network.
+i=0
+until compose exec -T caddy wget -qO- http://togavsu-marketplace:8090/v1/listings >/dev/null; do
+  i=$((i + 1))
+  if [ "$i" -gt 60 ]; then
+    echo "marketplace did not answer GET /v1/listings on the internal network" >&2
+    exit 1
+  fi
+  sleep 1
+done
+echo "marketplace answered GET /v1/listings under the marketplace profile"
 
 wait_health() {
   i=0

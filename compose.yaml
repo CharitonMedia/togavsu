@@ -13,6 +13,7 @@ services:
       - appsecrets:/appsecrets
       - adminsecrets:/adminsecrets
       - backupkey:/backupkey
+      - marketsecrets:/marketsecrets
     restart: "no"
 
   postgres:
@@ -180,6 +181,29 @@ services:
       - "8080"
     restart: unless-stopped
 
+  # Optional marketplace beside the firm stack (PRD 10). Off by default; start with
+  # docker compose --profile marketplace up -d. Internal network only: no published port.
+  # Plain http confers no key trust; add the publishing author's public key under Trusted
+  # local signing keys, set Marketplace Address to http://togavsu-marketplace:8090, and
+  # publish with togavsu-module publish -market http://togavsu-marketplace:8090.
+  togavsu-marketplace:
+    profiles: ["marketplace"]
+    build:
+      context: .
+      dockerfile: marketplace/Dockerfile
+    image: togavsu-marketplace:local
+    user: "65532:65532"
+    volumes:
+      - ./deploy/marketplace/config.json:/etc/togavsu-marketplace/config.json:ro
+      - marketsecrets:/marketsecrets:ro
+      - marketdata:/var/lib/togavsu-marketplace
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    expose:
+      - "8090"
+    restart: unless-stopped
+
 volumes:
   pgdata:
   pgsecrets:
@@ -192,3 +216,5 @@ volumes:
   backups:
   supervisor_data:
   core_data:
+  marketsecrets:
+  marketdata:

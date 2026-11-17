@@ -1,0 +1,6 @@
+{
+  "listen": "0.0.0.0:8090",
+  "data_dir": "/var/lib/togavsu-marketplace",
+  "operator_token_file": "/marketsecrets/operator_token",
+  "secure_cookies": false
+}

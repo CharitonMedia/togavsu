@@ -122,6 +122,8 @@ func writeErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.As(err, &inv):
 		problem(w, http.StatusBadRequest, "validation", inv.Error())
+	case errors.Is(err, shared.ErrDigestMismatch):
+		problem(w, http.StatusBadRequest, "digest_mismatch", "the digest does not match the package bytes")
 	case errors.Is(err, ErrNotFound):
 		problem(w, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, ErrPulled):
@@ -307,11 +309,19 @@ func (s *Server) apiUpload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// The kit's signed package file (listing_id, version, immutable, manifest, digest,
+	// package_base64, signature, key_id) plus optional price_note. Unknown fields are
+	// still refused. The old three-field body (package_base64, signature, key_id) works.
 	var b struct {
-		PackageBase64 string  `json:"package_base64"`
-		Signature     string  `json:"signature"`
-		KeyID         string  `json:"key_id"`
-		PriceNote     *string `json:"price_note"`
+		PackageBase64 string          `json:"package_base64"`
+		Signature     string          `json:"signature"`
+		KeyID         string          `json:"key_id"`
+		Digest        string          `json:"digest"`
+		ListingID     string          `json:"listing_id"`
+		Version       string          `json:"version"`
+		Immutable     bool            `json:"immutable"`
+		Manifest      json.RawMessage `json:"manifest"`
+		PriceNote     *string         `json:"price_note"`
 	}
 	if err := decode(r, shared.MaxPackageBytes()/3*4+s.maxJSON, &b); err != nil {
 		writeErr(w, err)
@@ -320,6 +330,10 @@ func (s *Server) apiUpload(w http.ResponseWriter, r *http.Request) {
 	pkg, err := base64.StdEncoding.DecodeString(b.PackageBase64)
 	if err != nil {
 		writeErr(w, invalid("package_base64", "the package must be standard base64"))
+		return
+	}
+	if b.Digest != "" && b.Digest != shared.Digest(pkg) {
+		writeErr(w, shared.ErrDigestMismatch)
 		return
 	}
 	l, err := s.M.Publish(a, Upload{Package: pkg, Signature: b.Signature, KeyID: b.KeyID, PriceNote: b.PriceNote})

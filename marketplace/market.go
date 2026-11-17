@@ -362,7 +362,8 @@ type Upload struct {
 
 // Publish checks an upload's signer and signature, reads its manifest and adds it as a new
 // immutable version of the listing named by the manifest's module id. Nothing in the
-// package is run or reviewed.
+// package is run or reviewed. When PriceNote is unset, the listing's price is the
+// manifest's price (trimmed, same length bound as a note); a set PriceNote overrides it.
 func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 	if len(up.Package) == 0 || int64(len(up.Package)) > shared.MaxPackageBytes() {
 		return shared.Listing{}, invalid("package", "the package is empty or too large")
@@ -396,6 +397,10 @@ func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 	if err := json.Unmarshal(man.Raw, &manifest); err != nil {
 		return shared.Listing{}, invalid("package", "the manifest is unreadable")
 	}
+	price, err := listingPrice(up.PriceNote, man.Raw)
+	if err != nil {
+		return shared.Listing{}, err
+	}
 	digest := shared.Digest(up.Package)
 	if err := m.store.putPackage(digest, up.Package); err != nil {
 		return shared.Listing{}, err
@@ -420,16 +425,11 @@ func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 				}
 			}
 			l.Versions = append(l.Versions, v)
-			if up.PriceNote != nil {
-				l.PriceNote = strings.TrimSpace(*up.PriceNote)
-			}
+			l.PriceNote = price
 			out = *l
 			return nil
 		}
-		l := ListingRecord{ID: man.ID, AuthorID: a.ID, Versions: []Version{v}, CreatedAt: now}
-		if up.PriceNote != nil {
-			l.PriceNote = strings.TrimSpace(*up.PriceNote)
-		}
+		l := ListingRecord{ID: man.ID, AuthorID: a.ID, Versions: []Version{v}, PriceNote: price, CreatedAt: now}
 		st.Listings = append(st.Listings, l)
 		out = l
 		return nil
@@ -438,6 +438,22 @@ func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 		return shared.Listing{}, err
 	}
 	return m.view(out), nil
+}
+
+// listingPrice is the upload's price_note when set, otherwise the manifest's price.
+func listingPrice(note *string, manifest json.RawMessage) (string, error) {
+	if note != nil {
+		return strings.TrimSpace(*note), nil
+	}
+	var priced struct {
+		Price string `json:"price"`
+	}
+	_ = json.Unmarshal(manifest, &priced)
+	price := strings.TrimSpace(priced.Price)
+	if utf8.RuneCountInString(price) > shared.MaxNoteRunes() {
+		return "", invalid("price", "the manifest price is too long")
+	}
+	return price, nil
 }
 
 // --- Reads ---
