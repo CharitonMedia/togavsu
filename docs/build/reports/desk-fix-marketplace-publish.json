@@ -1,0 +1,51 @@
+{
+  "task_id": "desk-fix-marketplace-publish",
+  "status": "pass",
+  "scope": "Lane B desk fix: marketplace upload accepts the kit's signed package file (digest checked), listing price defaults from the manifest price, togavsu-module publish / modulekit.Publish, and Compose profile marketplace with bootstrap marketsecrets. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
+  "tested_revision": "bc36ad893d1d8a898cfb7fe17a2e21f4d9c88eba",
+  "prd_sections": ["10"],
+  "acceptance_ids": [],
+  "tests": [
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "seconds": 5
+    },
+    {
+      "command": "go test -count=1 -timeout 20m ./marketplace/... ./pkg/modulekit/... ./cmd/togavsu-module/...",
+      "exit_code": 0,
+      "seconds": 10,
+      "note": "TOGAVSU_TEST_DATABASE_URL pointed at a disposable Docker postgres:17 for pkg/modulekit/coretest (CI=1 on the lane runner)"
+    },
+    {
+      "command": "python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "command": "sh scripts/ci/test-bootstrap.sh",
+      "exit_code": 0,
+      "seconds": 3
+    }
+  ],
+  "implemented": [
+    "POST /v1/authors/me/packages accepts the kit signed package file fields plus optional price_note; digest mismatch returns digest_mismatch; unknown fields still refused; three-field body still works",
+    "Listing price defaults to the manifest price when price_note is omitted; price_note still overrides",
+    "modulekit.Publish and togavsu-module publish: create/sign-in author, register/prove key, upload files; already listed same digest; conflicting bytes error",
+    "compose.yaml togavsu-marketplace under profile marketplace; marketsecrets + marketdata; deploy/marketplace/config.json; bootstrap writes operator_token once root:65532 0640/0750",
+    "scripts/ci/check-compose.py, test-bootstrap.sh, test-compose-first-run.sh checks from the desk-fix spec",
+    "Docs: marketplace/README.md, deploy/marketplace/README.md, MODULE-KIT.md submit via publish, CONTRIBUTOR-GAPS upload-body and price rows fixed"
+  ],
+  "pending": [
+    "GitHub CI (including Core tests and Codex checkpoint) on the controller-published head of claude/togavsu-desk-fix-marketplace-publish-e6192263 (this lane cannot push)",
+    "scripts/ci/test-compose-first-run.sh marketplace startup check not re-run here (full Compose image build); CI will exercise it",
+    "Lane A (desk-fix-marketplace-catalog) owns the core catalog UI, BaseURL http://togavsu-marketplace allowance, and related core tests",
+    "No acceptance_ids on this desk-fix assignment; not a phase completion claim",
+    "No public internet marketplace yet (Compose profile only)"
+  ],
+  "simplification": {
+    "net_lines": 769,
+    "ponytail_debt_sections": 13,
+    "note": "No new PONYTAIL-DEBT entries in this lane (Lane A owns the plain-http marketplace debt). Reused marketplace HTTP API and DisallowUnknownFields; Publish is a thin HTTP client over existing author/key/upload routes."
+  }
+}
