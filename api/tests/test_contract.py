@@ -2655,9 +2655,14 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(policy["scope_bypasses_viewer_role"])
         self.assertFalse(policy["grants_admin"])
         self.assertEqual(policy["context_header"], "X-Togavsu-Context-Token")
+        # CORE-30 widens getMatter/listMatter to service principal; other viewer ops stay viewer-only.
+        for operation_id in ("getMatter", "listMatter"):
+            self.assertEqual(
+                _operation(self.spec, operation_id)["x-togavsu-access"]["module_delegation"],
+                "delegated_viewer_or_service_principal",
+                operation_id,
+            )
         for operation_id in (
-            "getMatter",
-            "listMatter",
             "updateFileMetadata",
             "createTimeEntry",
             "runEditor",
@@ -2674,9 +2679,12 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(policy["noninteractive"]["firmwide_bypass"])
         self.assertTrue(policy["noninteractive"]["attorney_only_redaction"])
         for operation_id in background:
+            # CORE-30: createNote is also a service-principal op; a mail filing grant still
+            # lists it, but module_delegation is delegated_viewer_or_service_principal.
+            want = "delegated_viewer_or_service_principal" if operation_id == "createNote" else "delegated_viewer_or_noninteractive"
             self.assertEqual(
                 _operation(self.spec, operation_id)["x-togavsu-access"]["module_delegation"],
-                "delegated_viewer_or_noninteractive",
+                want,
                 operation_id,
             )
         for case in policy["noninteractive_cases"]:

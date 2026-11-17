@@ -33,6 +33,9 @@ func (h *Handler) contactsJSON(w http.ResponseWriter, r *http.Request) {
 	kind := q.Get("kind")
 	tag := q.Get("tag")
 	query := strings.ToLower(q.Get("q"))
+	// CORE-30: email and phone are exact-match only (service-call lookup).
+	emailExact := strings.TrimSpace(q.Get("email"))
+	phoneExact := strings.TrimSpace(q.Get("phone"))
 	var out []map[string]any
 	for _, row := range rows {
 		if kind != "" && row.Kind != kind {
@@ -49,6 +52,30 @@ func (h *Handler) contactsJSON(w http.ResponseWriter, r *http.Request) {
 			for _, item := range h.Svc.db.Tags(row.ID) {
 				if strings.EqualFold(item.Tag, tag) {
 					found = true
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		if emailExact != "" {
+			found := false
+			for _, e := range h.Svc.db.Emails(row.ID) {
+				if e.Email == emailExact {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		if phoneExact != "" {
+			found := false
+			for _, ph := range h.Svc.db.Phones(row.ID) {
+				if ph.PhoneE164 == phoneExact {
+					found = true
+					break
 				}
 			}
 			if !found {
