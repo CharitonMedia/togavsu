@@ -150,6 +150,19 @@ func TestExtensionsMarketplaceCatalog(t *testing.T) {
 	if !strings.Contains(problem, "pulled") && !strings.Contains(problem, "can't be installed") {
 		t.Fatalf("expected plain pulled sentence, got %q", problem)
 	}
+
+	// Failed marketplace update shows a plain update sentence (not "installed").
+	publishMatterClockVersion(t, call, authorKey, keyID, "2.1.0")
+	if code, b := call("POST", "/v1/operator/listings/matter-clock/pull", extOperatorToken, map[string]any{"note": "Synthetic update pull."}); code != http.StatusOK {
+		t.Fatalf("pull matter-clock: %d %s", code, b)
+	}
+	_, updProblem := x.tabForm(x.admin, "update", url.Values{"module_id": {"matter-clock"}, "version": {"2.1.0"}}, nil)
+	if updProblem == "" || strings.Contains(updProblem, "yanked:") || strings.Contains(strings.ToLower(updProblem), "could not be installed") {
+		t.Fatalf("plain update error: %q", updProblem)
+	}
+	if !strings.Contains(updProblem, "updated") && !strings.Contains(updProblem, "can't be updated") {
+		t.Fatalf("expected plain update sentence, got %q", updProblem)
+	}
 }
 
 // publishCatalog publishes matter-clock (priced) plus two free modules.

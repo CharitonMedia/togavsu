@@ -192,7 +192,7 @@ func (m modulesAdmin) Act(r *http.Request, p domain.Principal, action string) (s
 		}
 		v, err := svc.InstallFromMarketplace(ctx, p, listingID, version)
 		if err != nil {
-			return "", installPlain(name, err)
+			return "", installPlain(name, err, false)
 		}
 		return v.Name + " is installed and waits for your permission decisions.", nil
 	case "permissions":
@@ -244,7 +244,7 @@ func (m modulesAdmin) Act(r *http.Request, p domain.Principal, action string) (s
 		}
 		if err != nil {
 			if strings.TrimSpace(r.FormValue("version")) != "" {
-				return "", installPlain(name, err)
+				return "", installPlain(name, err, true)
 			}
 			return "", err
 		}
@@ -288,22 +288,32 @@ func (m modulesAdmin) Act(r *http.Request, p domain.Principal, action string) (s
 	return "", domain.NotFound("action")
 }
 
-// installPlain turns a marketplace or module install failure into one plain sentence
-// naming the module, for the tab's alert (never raw error text).
-func installPlain(name string, err error) error {
+// installPlain turns a marketplace or module install/update failure into one plain
+// sentence naming the module, for the tab's alert (never raw error text).
+func installPlain(name string, err error, update bool) error {
 	if name == "" {
 		name = "That module"
 	}
-	msg := name + " could not be installed from the marketplace."
+	done := "installed"
+	generic := name + " could not be installed from the marketplace."
+	if update {
+		done = "updated"
+		generic = name + " could not be updated from the marketplace."
+	}
+	msg := generic
 	var me *marketplace.Error
 	if errors.As(err, &me) {
 		switch me.Code {
 		case "yanked":
-			msg = name + " was pulled from the marketplace and can't be installed from there."
+			if update {
+				msg = name + " was pulled from the marketplace and can't be updated from there."
+			} else {
+				msg = name + " was pulled from the marketplace and can't be installed from there."
+			}
 		case "unsigned_module", "tampered_module":
-			msg = name + " failed verification and was not installed."
+			msg = name + " failed verification and was not " + done + "."
 		case "marketplace_unconfigured", "unavailable":
-			msg = name + " could not be installed because the marketplace isn't reachable."
+			msg = name + " could not be " + done + " because the marketplace isn't reachable."
 		}
 		return &domain.APIError{Code: me.Code, Message: msg}
 	}
@@ -311,13 +321,15 @@ func installPlain(name string, err error) error {
 	if errors.As(err, &api) {
 		switch api.Code {
 		case modules.CodeUnsigned, modules.CodeTampered:
-			msg = name + " failed verification and was not installed."
+			msg = name + " failed verification and was not " + done + "."
 		case domain.CodeConflict:
-			msg = name + " is already installed; update it instead."
-		default:
-			if api.Message != "" && !strings.Contains(api.Message, ":") {
-				msg = name + " could not be installed: " + api.Message
+			if !update {
+				msg = name + " is already installed; update it instead."
 			}
+		case modules.CodeMigration:
+			msg = name + " could not be " + done + " because its database migration was refused."
+		case modules.CodeDeclined:
+			msg = name + " could not be " + done + " because a required permission was declined."
 		}
 		return &domain.APIError{Code: api.Code, Message: msg, Field: api.Field}
 	}

@@ -61,6 +61,12 @@ func BaseURL(addr string) (*url.URL, error) {
 }
 
 // httpHostAllowed reports whether plain http may reach host.
+//
+// ponytail: ceiling: plain http only for loopback and togavsu-marketplace; a name on
+// the firm's Docker network can still be answered by something else, so that name
+// confers reach but not key trust (see TrustsMarketplaceKeys). Upgrade path: require
+// https for every non-loopback marketplace. trigger: any marketplace reached across a
+// network the firm does not control.
 func httpHostAllowed(host string) bool {
 	if host == "localhost" || host == ComposeMarketplaceHost {
 		return true
@@ -72,6 +78,12 @@ func httpHostAllowed(host string) bool {
 // TrustsMarketplaceKeys reports whether marketplace-published signing keys may be
 // fetched and used to verify installs for addr. https and loopback http keep that
 // trust; plain http to togavsu-marketplace does not (only trusted local keys verify).
+//
+// ponytail: ceiling: over http://togavsu-marketplace listings, packages and alerts are
+// unauthenticated and marketplace-published keys are never fetched or trusted (only
+// trusted local keys verify an install). Upgrade path: require https (and key trust)
+// for every non-loopback marketplace. trigger: any marketplace reached across a
+// network the firm does not control.
 func TrustsMarketplaceKeys(addr string) bool {
 	u, err := BaseURL(addr)
 	if err != nil {
