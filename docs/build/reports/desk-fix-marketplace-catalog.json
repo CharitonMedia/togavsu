@@ -1,8 +1,8 @@
 {
   "task_id": "desk-fix-marketplace-catalog",
   "status": "pass",
-  "scope": "Desk fix Lane A: Admin Modules marketplace catalog (browse when search is empty, Install/Installed/Update states, plain errors, unreachable message, http://togavsu-marketplace without marketplace key trust). status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
-  "tested_revision": "8a57c88f6db29f8ded4f5d2c91d9f1cb221fb9fa",
+  "scope": "Desk fix Lane A: Admin Modules marketplace catalog (browse when search is empty, Install/Installed/Update states, plain errors, unreachable message, http://togavsu-marketplace without marketplace key trust). status pass means the required local commands on this revision exited 0. It is not full product acceptance. CI correction: phone-width Modules tab no longer overflows on Install-from-file (#pkg).",
+  "tested_revision": "dcb219eea1a37f97bfc21d3cf3b1072c4b1ac149",
   "prd_sections": [
     "10"
   ],
@@ -11,12 +11,23 @@
     {
       "command": "go vet ./...",
       "exit_code": 0,
-      "seconds": 4
+      "seconds": 8
     },
     {
       "command": "go test -count=1 -timeout 45m ./internal/...",
       "exit_code": 0,
-      "seconds": 206
+      "seconds": 160
+    },
+    {
+      "command": "go test -count=1 ./web/static/ -run TestModulesPhoneKeepsFileInputsInsideViewport",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "command": "sh tests/ui/run.sh",
+      "exit_code": 0,
+      "seconds": 199,
+      "note": "Regression for Supervisor tests / TestUIVisualQC: admin Modules at Width 390 with three listings; no horizontal overflow"
     }
   ],
   "implemented": [
@@ -25,17 +36,21 @@
     "BrowseError and install failures are plain sentences; unreachable shows the address message and Settings Modules link",
     "BaseURL allows plain http on loopback and togavsu-marketplace; over http://togavsu-marketplace marketplace keys are not fetched or trusted (local keys only); https and loopback unchanged",
     "Card compose-http note, trusted-keys hint, marketplace_address help text, and PONYTAIL-DEBT marketplace ceiling 4",
-    "Phone-width QC entry (Width 390) for Modules with three listings; CSS prevents horizontal overflow; catalog and compose-http trust tests extended"
+    "Phone-width QC entry (Width 390) for Modules with three listings; CSS constrains form-grid file inputs and #install-module so #pkg stays inside the viewport; web/static TestModulesPhoneKeepsFileInputsInsideViewport regression"
   ],
   "pending": [
-    "GitHub CI (Core tests, API contract tests) and Codex checkpoint on the controller-published head of claude/togavsu-desk-fix-marketplace-catalog-5ccf1f60 (this lane cannot push)",
+    "GitHub CI (Core tests, API contract tests, Supervisor tests / UI QC) on the controller-published head of claude/togavsu-desk-fix-marketplace-catalog-5ccf1f60 (this lane cannot push)",
     "Lane B (desk-fix-marketplace-publish) owns marketplace upload/price default, togavsu-module publish, and compose marketplace service",
-    "TestUIVisualQC Modules phone entry is seeded and registered; full browser QC needs TOGAVSU_UI_QC_OUT and TOGAVSU_UI_QC_NODE_MODULES (skipped locally without them)",
     "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
   ],
   "simplification": {
-    "net_lines": 402,
+    "net_lines": 468,
     "ponytail_debt_sections": 68,
-    "note": "Added Marketplace ceiling 4 for plain-http compose host without key trust. fixedSite exemption for NewerVersion/versionParts. No second marketplace card or install route."
+    "note": "CI fix adds 66 lines (CSS media rules + static regression). Marketplace ceiling 4 unchanged. No second marketplace card or install route."
+  },
+  "ci_correction": {
+    "failed_check": "Supervisor tests / TestUIVisualQC",
+    "root_cause": "horizontal overflow on /admin?tab=modules at Width 390: scrollWidth 396 > clientWidth 390; INPUT#pkg unreachable at right=396",
+    "fix": "constrain .form-grid input[type=file] and #install-module under @media (max-width:700px); CSS regression test; re-ran tests/ui/run.sh PASS"
   }
 }
