@@ -57,7 +57,8 @@ func (d *Durable) EnableProjection(ctx context.Context) error {
 // projectOrder writes referenced rows before the rows that reference them.
 var projectOrder = func() map[string]int {
 	out := map[string]int{}
-	for i, kind := range []string{"area", "county", "contact", "referral", "matter", "event"} {
+	// note is CORE-36: POST /api/v1/notes must land in core.notes for module FKs.
+	for i, kind := range []string{"area", "county", "contact", "referral", "matter", "event", "note"} {
 		out[kind] = i + projectFirst
 	}
 	return out
@@ -148,6 +149,15 @@ formation_state = EXCLUDED.formation_state, formation_date = EXCLUDED.formation_
 VALUES ($1,$2,$3,$4,$5,$6,(SELECT id FROM contacts WHERE id = $7),$8) ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at,
 name = EXCLUDED.name, kind = EXCLUDED.kind, contact_id = EXCLUDED.contact_id, active = EXCLUDED.active`,
 			append(meta(r.Meta), r.Name, r.Kind, optional(r.ContactID), bit(r.Active))...)
+		return err
+	case domain.Note:
+		_, err := tx.ExecContext(ctx, `INSERT INTO notes (id, created_at, updated_at, created_by, matter_id, contact_id, author_id, title, body, pinned, status)
+VALUES ($1,$2,$3,$4,(SELECT id FROM matters WHERE id = $5),(SELECT id FROM contacts WHERE id = $6),
+COALESCE((SELECT id FROM users WHERE id = $7), $8),$9,$10,$11,$12)
+ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, matter_id = EXCLUDED.matter_id, contact_id = EXCLUDED.contact_id,
+author_id = EXCLUDED.author_id, title = EXCLUDED.title, body = EXCLUDED.body, pinned = EXCLUDED.pinned, status = EXCLUDED.status`,
+			append(meta(r.Meta), optional(r.MatterID), optional(r.ContactID), optional(r.AuthorID), string(domain.SystemUserID),
+				r.Title, r.Body, bit(r.Pinned), r.Status)...)
 		return err
 	case domain.Matter:
 		_, err := tx.ExecContext(ctx, `INSERT INTO matters (id, created_at, updated_at, created_by, number, name, practice_area_id, status, stage,

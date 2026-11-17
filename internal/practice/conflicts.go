@@ -227,7 +227,7 @@ func (s *Service) DecideConflict(ctx context.Context, p domain.Principal, hitID 
 	if err := s.record(ctx, p, []change{{
 		MatterID: run.MatterID, Entity: "matter", EntityID: run.MatterID, Field: "conflict_reason",
 		Old: prevReason, New: review.Reason, Reason: decision, Kind: "update", AttorneyOnly: true,
-		Action: "conflict.decided", Summary: "Recorded a conflict decision",
+		Action: "conflict_check.decided", Summary: "Recorded a conflict decision",
 	}}); err != nil {
 		return Hit{}, err
 	}

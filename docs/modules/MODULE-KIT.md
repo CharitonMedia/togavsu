@@ -225,10 +225,11 @@ refusal.
   may never request.
 - `core_records`, `core_relations`: the record names `data` declarations take and the core
   tables a migration may reference.
+- `core_items`: the `CORE-NN` items this core binary has built (CORE-36). Each entry is a
+  heading in `CORE-CHANGES.md` or `CORE-CHANGES-2.md`.
 
-It does not say which CORE items a core has built: the core keeps no such record yet
-(`CONTRIBUTOR-GAPS.md`). Until it does, `-strict` tells you when a pending entry holds
-nothing back, which is when its part's core item has landed.
+`-strict` still tells you when a pending entry holds nothing back, which is when its
+part's core item has landed.
 
 ## Building and signing before your core items land
 
@@ -399,11 +400,12 @@ publishes with no local key, and approves its permissions as for a file install.
 
 `coretest.New(t)` opens the core the release image runs (`core.Open`, every domain, the
 admin page, the module runtime, the trust root) on a fresh database reached through a
-non-superuser core role, as Compose sets it up. The one stand-in is the supervisor:
-deploying a module starts the handler the test registered for its id, in process, with
-the secrets the core handed over. The database comes from `TOGAVSU_TEST_DATABASE_URL`, a
-Postgres superuser URL; `New` skips without it and fails in CI. The database, the core
-role, the module logins and the servers are removed at cleanup.
+non-superuser core role, as Compose sets it up. Stand-ins: the supervisor (deploy starts
+the registered handler in process), SMTP mail (`c.Mail`, CORE-29), and Doc Tender markdown
+renditions (`c.SeedMarkdownRendition` / `c.OpenMarkdownRendition`, CORE-36) without
+converters. The database comes from `TOGAVSU_TEST_DATABASE_URL`, a Postgres superuser URL;
+`New` skips without it and fails in CI. The database, the core role, the module logins
+and the servers are removed at cleanup.
 
 ```go
 func TestAcceptance(t *testing.T) {

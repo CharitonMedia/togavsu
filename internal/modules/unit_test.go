@@ -179,6 +179,9 @@ func TestWebhookSignature(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	body := []byte(`{"id":"e1"}`)
 	sig := modules.SignWebhook("s3cret", now, body)
+	if !strings.HasPrefix(sig, "sha256=") || len(sig) != len("sha256=")+64 {
+		t.Fatalf("contract format: %q", sig)
+	}
 	if err := modules.VerifyWebhook("s3cret", sig, body, now, time.Minute); err != nil {
 		t.Fatal(err)
 	}
@@ -188,8 +191,8 @@ func TestWebhookSignature(t *testing.T) {
 	if err := modules.VerifyWebhook("s3cret", sig, []byte(`{"id":"e2"}`), now, time.Minute); err == nil {
 		t.Fatal("changed body accepted")
 	}
-	if err := modules.VerifyWebhook("s3cret", sig, body, now.Add(time.Hour), time.Minute); err == nil {
-		t.Fatal("stale signature accepted")
+	if err := modules.VerifyWebhook("s3cret", "t=1,v1=deadbeef", body, now, time.Minute); err == nil {
+		t.Fatal("legacy t=,v1= format accepted")
 	}
 }
 

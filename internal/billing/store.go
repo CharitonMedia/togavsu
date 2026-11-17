@@ -204,13 +204,22 @@ func (p *Postgres) Put(ctx context.Context, kind, id string, v any) error {
 	if err != nil {
 		return err
 	}
-	if err := syncProjections(ctx, audit.Conn(ctx, p.pool), kind, id, v); err != nil {
+	conn := audit.Conn(ctx, p.pool)
+	if err := syncProjections(ctx, conn, kind, id, v); err != nil {
 		return err
+	}
+	// CORE-36: keep section-5 invoice/payment/expense rows in step for module FKs.
+	// Only on the composed core (PublishEvents): billing-package tests lack practice
+	// matter projection and core migration 1300 refund columns.
+	if p.publish {
+		if err := syncCoreBillingRows(ctx, conn, kind, id, v); err != nil {
+			return err
+		}
 	}
 	// Billing's events also go to core.events in the same transaction, so the module
 	// runtime delivers time, expense, invoice and payment writes to subscribers.
 	if ev, ok := v.(domain.Event); ok && kind == kindEvent && p.publish {
-		return db.PublishEvent(ctx, audit.Conn(ctx, p.pool), ev)
+		return db.PublishEvent(ctx, conn, ev)
 	}
 	return nil
 }
