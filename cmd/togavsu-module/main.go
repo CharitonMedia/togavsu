@@ -405,11 +405,10 @@ func publishCmd(args []string, stdout io.Writer, code *int) error {
 	}
 	got, err := modulekit.Publish(modulekit.PublishRequest{
 		Market: *market, Priv: priv, Name: *name, Email: *email,
-		Password: strings.TrimSpace(string(pass)), Files: files,
+		Password: passwordLine(pass), Files: files,
 	})
-	if err != nil {
-		return err
-	}
+	// Files listed before a later failure are already on the marketplace, so print them
+	// before reporting the error.
 	for _, p := range got {
 		status := "listed"
 		if p.Already {
@@ -417,7 +416,14 @@ func publishCmd(args []string, stdout io.Writer, code *int) error {
 		}
 		fmt.Fprintf(stdout, "%s %s %s\n", p.ModuleID, p.Version, status)
 	}
-	return nil
+	return err
+}
+
+// passwordLine is the password file's contents without its final line ending. Other
+// whitespace is part of the password: the marketplace checks it verbatim.
+func passwordLine(b []byte) string {
+	s := strings.TrimSuffix(string(b), "\n")
+	return strings.TrimSuffix(s, "\r")
 }
 
 func accepts(args []string, stdout io.Writer, code *int) error {

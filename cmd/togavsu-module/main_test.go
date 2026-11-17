@@ -563,6 +563,28 @@ func TestPublishSubmitsSignedFiles(t *testing.T) {
 	if code != exitOK || !strings.Contains(stdout, "matter-clock 1.0.0 already listed") {
 		t.Fatalf("already: %d %s %s", code, stdout, errs)
 	}
+	// A later file that fails still leaves the earlier result printed.
+	bad := write(t, "bad.signed.json", "not a signed package")
+	code, stdout, errs = cli("publish", "-market", hs.URL, "-key", seed, "-name", "CLI Author",
+		"-email", "cli@example.test", "-password-file", pass, out, bad)
+	if code == exitOK || !strings.Contains(stdout, "matter-clock 1.0.0 already listed") {
+		t.Fatalf("partial: %d %s %s", code, stdout, errs)
+	}
+}
+
+func TestPasswordLineKeepsSignificantWhitespace(t *testing.T) {
+	for in, want := range map[string]string{
+		"secret\n":      "secret",
+		"secret\r\n":    "secret",
+		"secret":        "secret",
+		" secret \n":    " secret ",
+		"secret\t\n":    "secret\t",
+		"two lines\n\n": "two lines\n",
+	} {
+		if got := passwordLine([]byte(in)); got != want {
+			t.Errorf("passwordLine(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
 
 func TestKeyPrintsThePublicKeyAndProves(t *testing.T) {
