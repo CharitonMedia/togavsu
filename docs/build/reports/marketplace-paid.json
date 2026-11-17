@@ -1,7 +1,7 @@
 {
   "task_id": "marketplace-paid",
   "status": "pass",
-  "tested_revision": "d6f8d72f62e46368ee9d4b7cebfefa2c36cf5edf",
+  "tested_revision": "a28e91997f7c7c99965b3bf2ce14ddb1d4e823c1",
   "tests": [
     {
       "name": "marketplace package",
@@ -66,6 +66,51 @@
     {
       "name": "missing-license-seed",
       "command": "go test -count=1 -timeout 60s -run '^TestMissingLicenseSeedFailsClosed$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "cancel-then-recomplete-refused",
+      "command": "go test -count=1 -timeout 60s -run '^TestCancelThenRecompleteRefused$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "invoice-paid-dedup-and-first",
+      "command": "go test -count=1 -timeout 60s -run '^TestInvoicePaidDedupAndFirstInvoice$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "cancel-stripe-failure",
+      "command": "go test -count=1 -timeout 60s -run '^TestCancelStripeFailureKeepsActive$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "price-change-mailer-retry",
+      "command": "go test -count=1 -timeout 60s -run '^TestPriceChangeRequiresMailerAndRetry$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "note-only-price-refused",
+      "command": "go test -count=1 -timeout 60s -run '^TestNoteOnlyPriceRefusedForPaidListing$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "stripe-price-update-item-product",
+      "command": "go test -count=1 -timeout 60s -run '^TestStripePriceUpdateRequiresItemAndProduct$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "module-clean-settings",
+      "command": "go test ./internal/settings/ -run TestModuleClean -count=1",
+      "exit_code": 0
+    },
+    {
+      "name": "gofmt",
+      "command": "gofmt -l .",
+      "exit_code": 0
+    },
+    {
+      "name": "go-vet",
+      "command": "go vet ./...",
       "exit_code": 0
     }
   ],
