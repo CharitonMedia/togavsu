@@ -36,10 +36,7 @@ import (
 // instant's UTC date is on or before paid_through. Grace periods are the module's
 // concern; this check does not add any.
 
-const (
-	licensePrefix   = "togavsu-license-v1"
-	licenseKeyParts = 3
-)
+const licensePrefix = "togavsu-license-v1"
 
 // ErrLicenseInvalid means the key is malformed, the signature fails, the install or
 // module does not match, or the paid-through date has passed.
@@ -79,15 +76,21 @@ func IssueLicense(priv ed25519.PrivateKey, installID, moduleID string, paidThrou
 
 // ParseLicenseKey splits and verifies the signature, returning the statement.
 func ParseLicenseKey(key string, pub ed25519.PublicKey) (LicenseStatement, error) {
-	parts := strings.Split(key, ".")
-	if len(parts) != licenseKeyParts || parts[0] != licensePrefix {
+	prefixDot := licensePrefix + "."
+	if !strings.HasPrefix(key, prefixDot) {
 		return LicenseStatement{}, ErrLicenseInvalid
 	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	rest := key[len(prefixDot):]
+	dot := strings.LastIndex(rest, ".")
+	if dot < int(0) {
+		return LicenseStatement{}, ErrLicenseInvalid
+	}
+	payloadB64, sigB64 := rest[:dot], rest[dot+len("."):]
+	payload, err := base64.RawURLEncoding.DecodeString(payloadB64)
 	if err != nil {
 		return LicenseStatement{}, ErrLicenseInvalid
 	}
-	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	sig, err := base64.RawURLEncoding.DecodeString(sigB64)
 	if err != nil {
 		return LicenseStatement{}, ErrLicenseInvalid
 	}
@@ -103,13 +106,17 @@ func ParseLicenseKey(key string, pub ed25519.PublicKey) (LicenseStatement, error
 }
 
 func parseLicensePayload(payload []byte) (LicenseStatement, error) {
-	lines := strings.Split(string(payload), "\n")
-	// Expect prefix, three fields, and a final empty line from the trailing newline.
-	if len(lines) < 5 || lines[0] != licensePrefix || lines[len(lines)-1] != "" {
+	text := string(payload)
+	if !strings.HasSuffix(text, "\n") {
+		return LicenseStatement{}, ErrLicenseInvalid
+	}
+	text = strings.TrimSuffix(text, "\n")
+	prefix, rest, ok := strings.Cut(text, "\n")
+	if !ok || prefix != licensePrefix {
 		return LicenseStatement{}, ErrLicenseInvalid
 	}
 	var st LicenseStatement
-	for _, line := range lines[1 : len(lines)-1] {
+	for _, line := range strings.Split(rest, "\n") {
 		k, v, ok := strings.Cut(line, "=")
 		if !ok {
 			return LicenseStatement{}, ErrLicenseInvalid
@@ -146,7 +153,7 @@ func CheckLicense(key string, pub ed25519.PublicKey, wantInstallID, wantModuleID
 	if st.InstallID != wantInstallID || st.ModuleID != wantModuleID {
 		return ErrLicenseInvalid
 	}
-	day := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	day := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), int(0), int(0), int(0), int(0), time.UTC)
 	if day.After(st.PaidThrough) {
 		return ErrLicenseInvalid
 	}

@@ -223,7 +223,7 @@ func TestMKT04PriceChangeNotice(t *testing.T) {
 		t.Fatalf("set price %d %s", r.code, r.body)
 	}
 	mails := e.m.Mails()
-	if len(mails) != 1 || mails[0].To != "admin@firm.test" || !strings.Contains(mails[0].Body, "75.00") {
+	if len(mails) != 1 || mails[0].To != "admin@firm.test" || !strings.Contains(mails[0].Body, "75.00") || mails[0].Status != mailSent {
 		t.Fatalf("notice mail: %+v", mails)
 	}
 	delivered := e.mailer.Delivered()
@@ -248,23 +248,40 @@ func TestMKT04PriceChangeNotice(t *testing.T) {
 	if sub.Price.AmountCents != 5000 {
 		t.Fatalf("price applied early: %+v", sub)
 	}
-	// Before notice ends, invoice.paid extends term but keeps the old price.
-	if _, err := e.m.ApplyInvoicePaid(sub.StripeSubscription); err != nil {
+	// Before notice ends, invoice.paid extends term but keeps the old price on Stripe.
+	period1 := throughBefore.AddDate(0, 1, 0)
+	if _, err := e.m.ApplyInvoicePaid(InvoicePaidInfo{
+		EventID: "evt_before_notice", InvoiceID: "in_before_notice",
+		StripeSubscription: sub.StripeSubscription, BillingReason: "subscription_cycle",
+		PeriodEnd: period1,
+	}); err != nil {
 		t.Fatalf("invoice before notice: %v", err)
 	}
 	sub, _ = e.m.Subscription("install-1", "mo-estate-planning")
 	if sub.Price.AmountCents != 5000 || sub.PendingPrice == nil {
 		t.Fatalf("price applied before notice via invoice: %+v", sub)
 	}
-	if !sub.PaidThrough.After(throughBefore) {
-		t.Fatalf("invoice did not extend paid_through: %v", sub.PaidThrough)
+	if !sub.PaidThrough.Equal(period1) {
+		t.Fatalf("invoice did not set paid_through from period_end: %v want %v", sub.PaidThrough, period1)
 	}
 	if e.fake.SubscriptionAmount(sub.StripeSubscription) != 5000 {
 		t.Fatalf("stripe amount changed early: %d", e.fake.SubscriptionAmount(sub.StripeSubscription))
 	}
-	// After notice period, next invoice.paid applies the new price and updates Stripe.
+	// After notice period, ApplyDuePriceChanges (via renew or webhook) updates Stripe
+	// before the renewal invoice is billed.
 	e.now = e.now.Add(31 * 24 * time.Hour)
-	payload := InvoicePaidEvent(sub.StripeSubscription)
+	if _, err := e.m.ApplyDuePriceChanges(); err != nil {
+		t.Fatalf("apply due price: %v", err)
+	}
+	sub, _ = e.m.Subscription("install-1", "mo-estate-planning")
+	if sub.Price.AmountCents != 7500 || sub.PendingPrice != nil {
+		t.Fatalf("price not applied at notice end: %+v", sub)
+	}
+	if e.fake.SubscriptionAmount(sub.StripeSubscription) != 7500 {
+		t.Fatalf("stripe amount not updated before renewal invoice: %d", e.fake.SubscriptionAmount(sub.StripeSubscription))
+	}
+	period2 := period1.AddDate(0, 1, 0)
+	payload := InvoicePaidEventFull("evt_after_notice", "in_after_notice", sub.StripeSubscription, "subscription_cycle", period2.Unix())
 	sigHeader := SignWebhook(payload, e.m.WebhookSecret(), e.m.now())
 	req, _ := http.NewRequest("POST", e.srv.URL+"/v1/stripe/webhook", bytes.NewReader(payload))
 	req.Header.Set("Stripe-Signature", sigHeader)
@@ -278,11 +295,8 @@ func TestMKT04PriceChangeNotice(t *testing.T) {
 		t.Fatalf("webhook %d", res.StatusCode)
 	}
 	sub, _ = e.m.Subscription("install-1", "mo-estate-planning")
-	if sub.Price.AmountCents != 7500 || sub.PendingPrice != nil {
-		t.Fatalf("price not applied: %+v", sub)
-	}
-	if e.fake.SubscriptionAmount(sub.StripeSubscription) != 7500 {
-		t.Fatalf("stripe amount not updated: %d", e.fake.SubscriptionAmount(sub.StripeSubscription))
+	if !sub.PaidThrough.Equal(period2) {
+		t.Fatalf("renewal invoice paid_through: %v want %v", sub.PaidThrough, period2)
 	}
 	p, _ := e.m.ListingPriceOf("mo-estate-planning")
 	if p.AmountCents != 7500 {
@@ -327,7 +341,11 @@ func TestMKT05Cancel(t *testing.T) {
 	if err := CheckLicense(renewed, pub, "install-c", "mo-estate-planning", e.m.now()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.m.ApplyInvoicePaid(sub.StripeSubscription); err != nil {
+	if _, err := e.m.ApplyInvoicePaid(InvoicePaidInfo{
+		EventID: "evt_after_cancel", InvoiceID: "in_after_cancel",
+		StripeSubscription: sub.StripeSubscription, BillingReason: "subscription_cycle",
+		PeriodEnd: sub.PaidThrough.AddDate(0, 1, 0),
+	}); err != nil {
 		t.Fatalf("invoice after cancel: %v", err)
 	}
 	sub2, _ := e.m.Subscription("install-c", "mo-estate-planning")
@@ -682,5 +700,181 @@ func TestSMTPMailDelivery(t *testing.T) {
 	defer fake.mu.Unlock()
 	if len(fake.Messages) == 0 || !strings.Contains(fake.Messages[0], "75.00") {
 		t.Fatalf("smtp messages: %+v", fake.Messages)
+	}
+}
+
+func TestCancelThenRecompleteRefused(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Replay Author", "replay@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	_, sessionID := e.subscribe("mo-estate-planning", "install-replay", "admin@replay.test", installPriv)
+	sub, _ := e.m.Subscription("install-replay", "mo-estate-planning")
+	through := sub.PaidThrough
+	cancelSig := shared.Sign(installPriv, CancelProofMessage("install-replay", "mo-estate-planning"))
+	if r := e.do("POST", "/v1/subscriptions/cancel", "", map[string]any{
+		"install_id": "install-replay", "module_id": "mo-estate-planning", "signature": cancelSig,
+	}); r.code != http.StatusOK {
+		t.Fatalf("cancel %d %s", r.code, r.body)
+	}
+	if r := e.do("POST", "/v1/stripe/checkout/complete", "", map[string]any{"session_id": sessionID}); r.code != http.StatusBadRequest {
+		t.Fatalf("re-complete after cancel: %d %s", r.code, r.body)
+	}
+	sub2, _ := e.m.Subscription("install-replay", "mo-estate-planning")
+	if sub2.Status != subCanceled || !sub2.PaidThrough.Equal(through) {
+		t.Fatalf("re-complete mutated cancel state: %+v", sub2)
+	}
+}
+
+func TestInvoicePaidDedupAndFirstInvoice(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Invoice Author", "invoice@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.subscribe("mo-estate-planning", "install-inv", "admin@inv.test", installPriv)
+	sub, _ := e.m.Subscription("install-inv", "mo-estate-planning")
+	through := sub.PaidThrough
+	// First subscription_create invoice must not stack another interval.
+	if _, err := e.m.ApplyInvoicePaid(InvoicePaidInfo{
+		EventID: "evt_create", InvoiceID: "in_create", StripeSubscription: sub.StripeSubscription,
+		BillingReason: "subscription_create", PeriodEnd: through,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sub, _ = e.m.Subscription("install-inv", "mo-estate-planning")
+	if !sub.PaidThrough.Equal(through) {
+		t.Fatalf("subscription_create extended paid_through: %v -> %v", through, sub.PaidThrough)
+	}
+	next := through.AddDate(0, 1, 0)
+	if _, err := e.m.ApplyInvoicePaid(InvoicePaidInfo{
+		EventID: "evt_cycle", InvoiceID: "in_cycle", StripeSubscription: sub.StripeSubscription,
+		BillingReason: "subscription_cycle", PeriodEnd: next,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sub, _ = e.m.Subscription("install-inv", "mo-estate-planning")
+	if !sub.PaidThrough.Equal(next) {
+		t.Fatalf("cycle paid_through %v want %v", sub.PaidThrough, next)
+	}
+	// Duplicate event id must not extend again.
+	later := next.AddDate(0, 1, 0)
+	if _, err := e.m.ApplyInvoicePaid(InvoicePaidInfo{
+		EventID: "evt_cycle", InvoiceID: "in_cycle_dup_body", StripeSubscription: sub.StripeSubscription,
+		BillingReason: "subscription_cycle", PeriodEnd: later,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sub, _ = e.m.Subscription("install-inv", "mo-estate-planning")
+	if !sub.PaidThrough.Equal(next) {
+		t.Fatalf("duplicate event extended paid_through: %v", sub.PaidThrough)
+	}
+}
+
+func TestCancelStripeFailureKeepsActive(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Cancel Fail", "cancelfail@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.subscribe("mo-estate-planning", "install-cf", "admin@cf.test", installPriv)
+	e.fake.FailCancel = true
+	cancelSig := shared.Sign(installPriv, CancelProofMessage("install-cf", "mo-estate-planning"))
+	if _, err := e.m.CancelSubscription("install-cf", "mo-estate-planning", cancelSig); err == nil {
+		t.Fatal("expected stripe cancel failure")
+	}
+	sub, _ := e.m.Subscription("install-cf", "mo-estate-planning")
+	if sub.Status != subActive || sub.CancelAtPeriodEnd {
+		t.Fatalf("local cancel committed despite stripe failure: %+v", sub)
+	}
+	if e.fake.SubscriptionCanceled(sub.StripeSubscription) {
+		t.Fatal("stripe marked canceled despite failure")
+	}
+}
+
+func TestPriceChangeRequiresMailerAndRetry(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Mail Gate", "mailgate@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.subscribe("mo-estate-planning", "install-mg", "admin@mg.test", installPriv)
+	e.m.SetMailer(nil)
+	if r := e.do("PATCH", "/v1/authors/me/listings/mo-estate-planning/price", a.token, ListingPrice{
+		AmountCents: 2000, Currency: "USD", Interval: "month",
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("price change without mailer: %d %s", r.code, r.body)
+	}
+	e.m.SetMailer(e.mailer)
+	e.mailer.FailNext = true
+	r := e.do("PATCH", "/v1/authors/me/listings/mo-estate-planning/price", a.token, ListingPrice{
+		AmountCents: 2000, Currency: "USD", Interval: "month",
+	})
+	if r.code != http.StatusBadRequest {
+		t.Fatalf("failed delivery: %d %s", r.code, r.body)
+	}
+	mails := e.m.Mails()
+	if len(mails) != 1 || mails[0].Status != mailFailed {
+		t.Fatalf("expected failed mail queued: %+v", mails)
+	}
+	sub, _ := e.m.Subscription("install-mg", "mo-estate-planning")
+	noticed := ""
+	if sub.PendingPrice != nil {
+		noticed = sub.PendingPrice.NoticedAt
+	}
+	if noticed == "" {
+		t.Fatal("pending price missing after failed mail")
+	}
+	if err := e.m.RetryPendingMail(); err != nil {
+		t.Fatal(err)
+	}
+	mails = e.m.Mails()
+	if mails[0].Status != mailSent || mails[0].SentAt.IsZero() {
+		t.Fatalf("retry did not deliver: %+v", mails)
+	}
+	sub2, _ := e.m.Subscription("install-mg", "mo-estate-planning")
+	if sub2.PendingPrice == nil || sub2.PendingPrice.NoticedAt != noticed {
+		t.Fatalf("retry restarted notice period: %+v", sub2.PendingPrice)
+	}
+}
+
+func TestNoteOnlyPriceRefusedForPaidListing(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Note Price", "noteprice@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	if r := e.do("PATCH", "/v1/authors/me/listings/mo-estate-planning/price", a.token, ListingPrice{
+		Note: "contact us",
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("note-only price: %d %s", r.code, r.body)
+	}
+}
+
+func TestStripePriceUpdateRequiresItemAndProduct(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Stripe Item", "stripeitem@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.subscribe("mo-estate-planning", "install-si", "admin@si.test", installPriv)
+	sub, _ := e.m.Subscription("install-si", "mo-estate-planning")
+	if err := e.m.stripe.UpdateSubscriptionPrice(sub.StripeSubscription, 2500, "usd", "month"); err != nil {
+		t.Fatal(err)
+	}
+	if e.fake.SubscriptionAmount(sub.StripeSubscription) != 2500 {
+		t.Fatalf("amount %d", e.fake.SubscriptionAmount(sub.StripeSubscription))
 	}
 }

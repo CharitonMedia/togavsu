@@ -56,7 +56,9 @@ func (m *Market) ConnectStripe(a Author) (accountID string, err error) {
 
 // SetListingPrice changes the listing price. New subscriptions use it at once. Existing
 // ones keep the old price until the next renewal after the notice period, and each
-// subscribing admin is emailed.
+// subscribing admin is emailed. A paid listing's replacement price must be a complete
+// structured price. Notice mail requires a configured mailer; undelivered notices stay
+// queued for RetryPendingMail without restarting the notice period.
 func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice) (shared.Listing, error) {
 	if err := price.validate(); err != nil {
 		return shared.Listing{}, err
@@ -65,9 +67,36 @@ func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice)
 		return shared.Listing{}, invalid("price", "a price is required")
 	}
 	now := m.now()
-	effective := now.Add(time.Duration(m.noticeDays) * 24 * time.Hour)
+	days := m.noticeDays
+	if days <= int(0) {
+		days = Defaults().PriceChangeNoticeDays
+	}
+	effective := now.Add(dur("h", days*Defaults().HoursPerDay))
 	var out ListingRecord
 	var pendingMail []MailRecord
+	var needMail bool
+	m.read(func(st *State) {
+		for _, s := range st.Subscriptions {
+			if s.ListingID == listingID && s.Status == subActive {
+				needMail = true
+			}
+		}
+	})
+	if needMail && m.mailer == nil {
+		return shared.Listing{}, invalid("mail", "a mailer (smtp_addr) is required to notice subscribers of a price change")
+	}
+	// When replacing a paid structured price, require another complete paid price.
+	var wasPaid bool
+	m.read(func(st *State) {
+		for _, l := range st.Listings {
+			if l.ID == listingID && l.Price.paidStructured() {
+				wasPaid = true
+			}
+		}
+	})
+	if wasPaid && !price.paidStructured() {
+		return shared.Listing{}, invalid("price", "a paid listing requires amount_cents, currency and interval")
+	}
 	err := m.commit(func(st *State) error {
 		var l *ListingRecord
 		for i := range st.Listings {
@@ -103,7 +132,7 @@ func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice)
 			body := "The price of " + listingID + " will change to " + price.Display() +
 				" for renewals on or after " + effective.UTC().Format("2006-01-02") +
 				". New subscriptions use the new price immediately."
-			rec := MailRecord{ID: string(mailID), To: s.AdminEmail, Subject: subject, Body: body, SentAt: now}
+			rec := MailRecord{ID: string(mailID), To: s.AdminEmail, Subject: subject, Body: body, Status: mailPending}
 			st.Mails = append(st.Mails, rec)
 			pendingMail = append(pendingMail, rec)
 		}
@@ -113,18 +142,75 @@ func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice)
 		return shared.Listing{}, err
 	}
 	for _, msg := range pendingMail {
-		if err := m.sendMail(msg.To, msg.Subject, msg.Body); err != nil {
+		if err := m.deliverMail(msg.ID); err != nil {
 			return shared.Listing{}, err
 		}
 	}
 	return m.view(out), nil
 }
 
-func (m *Market) sendMail(to, subject, body string) error {
+func (m *Market) deliverMail(id string) error {
 	if m.mailer == nil {
+		return invalid("mail", "no mailer is configured")
+	}
+	var msg MailRecord
+	found := false
+	m.read(func(st *State) {
+		for _, x := range st.Mails {
+			if x.ID == id {
+				msg, found = x, true
+			}
+		}
+	})
+	if !found {
+		return ErrNotFound
+	}
+	if msg.Status == mailSent {
 		return nil
 	}
-	return m.mailer.Send(to, subject, body)
+	err := m.mailer.Send(msg.To, msg.Subject, msg.Body)
+	now := m.now()
+	_ = m.commit(func(st *State) error {
+		for i := range st.Mails {
+			if st.Mails[i].ID != id {
+				continue
+			}
+			if err != nil {
+				st.Mails[i].Status = mailFailed
+				st.Mails[i].LastErr = err.Error()
+				return nil
+			}
+			st.Mails[i].Status = mailSent
+			st.Mails[i].SentAt = now
+			st.Mails[i].LastErr = ""
+			return nil
+		}
+		return ErrNotFound
+	})
+	return err
+}
+
+// RetryPendingMail redelivers queued notices that are not yet sent. It does not change
+// pending price EffectiveAt values.
+func (m *Market) RetryPendingMail() error {
+	if m.mailer == nil {
+		return invalid("mail", "no mailer is configured")
+	}
+	var ids []string
+	m.read(func(st *State) {
+		for _, x := range st.Mails {
+			if x.Status == mailPending || x.Status == mailFailed {
+				ids = append(ids, x.ID)
+			}
+		}
+	})
+	var first error
+	for _, id := range ids {
+		if err := m.deliverMail(id); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
 }
 
 // StartCheckout begins Stripe Checkout for a firm subscription. The install id is named
@@ -184,7 +270,7 @@ func (m *Market) StartCheckout(listingID, installID, adminEmail, installPubPEM, 
 		return CheckoutSession{}, "", invalid("stripe", "the author has not connected Stripe")
 	}
 	price := listing.Price
-	if price.empty() || price.AmountCents <= 0 {
+	if !price.paidStructured() {
 		return CheckoutSession{}, "", invalid("price", "this listing is not sold as a paid subscription")
 	}
 	subID, err := domain.NewID()
@@ -214,7 +300,8 @@ func (m *Market) StartCheckout(listingID, installID, adminEmail, installPubPEM, 
 
 // CompleteCheckout activates the subscription only after Stripe reports the Checkout
 // Session as complete with payment_status paid. The Stripe subscription id is taken
-// from Stripe, never from the caller (§17.3).
+// from Stripe, never from the caller (§17.3). A session whose subscription has left
+// pending (including canceled) or already shown its key is refused.
 func (m *Market) CompleteCheckout(sessionID string) (licenseKey string, sub SubscriptionRecord, err error) {
 	if m.stripe == nil {
 		return "", SubscriptionRecord{}, invalid("stripe", "stripe is not configured")
@@ -259,9 +346,9 @@ func (m *Market) CompleteCheckout(sessionID string) (licenseKey string, sub Subs
 				return invalid("session", "checkout subscription_id does not match the pending subscription")
 			}
 		}
-		if s.Status == subActive && s.LicenseShown {
+		if s.Status != subPending || s.LicenseShown {
 			sub = *s
-			return invalid("session", "the license key was already shown")
+			return invalid("session", "checkout is no longer pending")
 		}
 		paidThrough := addInterval(now, s.Price.Interval)
 		key, err := IssueLicense(m.licensePriv, s.InstallID, s.ListingID, paidThrough)
@@ -284,21 +371,56 @@ func errorsLicenseKey() error {
 }
 
 func addInterval(from time.Time, interval string) time.Time {
+	d := Defaults()
 	switch interval {
 	case "year":
-		return from.UTC().AddDate(1, 0, 0)
+		return from.UTC().AddDate(d.IntervalYearStep, int(0), int(0))
 	default:
-		return from.UTC().AddDate(0, 1, 0)
+		return from.UTC().AddDate(int(0), d.IntervalMonthStep, int(0))
 	}
 }
 
 // CancelSubscription stops renewal after the install proves possession of its key; the
-// license runs to its paid-through date. A forged or missing signature is refused.
+// license runs to its paid-through date. Stripe cancel must succeed before local state
+// is committed so a failed Stripe call stays retryable.
 func (m *Market) CancelSubscription(installID, moduleID, signature string) (SubscriptionRecord, error) {
 	installID = strings.TrimSpace(installID)
 	moduleID = strings.TrimSpace(moduleID)
-	var out SubscriptionRecord
 	var stripeSub string
+	var found bool
+	var verifyErr error
+	m.read(func(st *State) {
+		for i := range st.Subscriptions {
+			s := &st.Subscriptions[i]
+			if s.InstallID != installID || s.ListingID != moduleID || s.Status != subActive {
+				continue
+			}
+			found = true
+			pub, err := shared.ParsePublicKeyPEM(s.InstallPublicKey)
+			if err != nil {
+				verifyErr = invalid("install_public_key_pem", "the stored install key is unreadable")
+				return
+			}
+			if shared.VerifySignature(pub, CancelProofMessage(installID, moduleID), signature) != nil {
+				verifyErr = invalid("signature", "the signature does not prove this install")
+				return
+			}
+			stripeSub = s.StripeSubscription
+			return
+		}
+	})
+	if verifyErr != nil {
+		return SubscriptionRecord{}, verifyErr
+	}
+	if !found {
+		return SubscriptionRecord{}, ErrNotFound
+	}
+	if stripeSub != "" && m.stripe != nil {
+		if err := m.stripe.CancelSubscription(stripeSub); err != nil {
+			return SubscriptionRecord{}, err
+		}
+	}
+	var out SubscriptionRecord
 	err := m.commit(func(st *State) error {
 		for i := range st.Subscriptions {
 			s := &st.Subscriptions[i]
@@ -312,31 +434,28 @@ func (m *Market) CancelSubscription(installID, moduleID, signature string) (Subs
 				}
 				s.CancelAtPeriodEnd = true
 				s.Status = subCanceled
-				stripeSub = s.StripeSubscription
 				out = *s
 				return nil
 			}
 		}
 		return ErrNotFound
 	})
-	if err != nil {
-		return SubscriptionRecord{}, err
-	}
-	if stripeSub != "" && m.stripe != nil {
-		_ = m.stripe.CancelSubscription(stripeSub)
-	}
-	return out, nil
+	return out, err
 }
 
 // RenewLicense re-serves the current key when the install proves possession of its key.
 // It never extends paid_through: that happens only on a Stripe-verified invoice.paid
 // event (ApplyInvoicePaid). Canceled subscriptions still fetch the key until paid_through.
+// When a pending price's notice period has elapsed, Stripe is updated before the next bill.
 func (m *Market) RenewLicense(installID, moduleID, signature string) (string, time.Time, error) {
 	if len(m.licensePriv) != ed25519.PrivateKeySize {
 		return "", time.Time{}, errorsLicenseKey()
 	}
 	installID = strings.TrimSpace(installID)
 	moduleID = strings.TrimSpace(moduleID)
+	if _, err := m.ApplyDuePriceChanges(); err != nil {
+		return "", time.Time{}, err
+	}
 	var key string
 	var paidThrough time.Time
 	now := m.now()
@@ -358,8 +477,8 @@ func (m *Market) RenewLicense(installID, moduleID, signature string) (string, ti
 		if shared.VerifySignature(pub, RenewProofMessage(installID, moduleID), signature) != nil {
 			return invalid("signature", "the signature does not prove this install")
 		}
-		day := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
-		throughDay := time.Date(s.PaidThrough.UTC().Year(), s.PaidThrough.UTC().Month(), s.PaidThrough.UTC().Day(), 0, 0, 0, 0, time.UTC)
+		day := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), int(0), int(0), int(0), int(0), time.UTC)
+		throughDay := time.Date(s.PaidThrough.UTC().Year(), s.PaidThrough.UTC().Month(), s.PaidThrough.UTC().Day(), int(0), int(0), int(0), int(0), time.UTC)
 		if day.After(throughDay) {
 			return ErrLicenseInvalid
 		}
@@ -373,18 +492,106 @@ func (m *Market) RenewLicense(installID, moduleID, signature string) (string, ti
 	return key, paidThrough, err
 }
 
-// ApplyInvoicePaid extends paid_through after Stripe reports a paid invoice for the
-// subscription. Pending price changes whose notice period has elapsed are applied and
-// the Stripe subscription amount is updated to match.
-func (m *Market) ApplyInvoicePaid(stripeSubID string) (SubscriptionRecord, error) {
-	stripeSubID = strings.TrimSpace(stripeSubID)
+// ApplyDuePriceChanges updates Stripe (and local subscription price) for pending price
+// changes whose notice period has ended, before the next renewal invoice is billed.
+func (m *Market) ApplyDuePriceChanges() ([]SubscriptionRecord, error) {
+	now := m.now()
+	type due struct {
+		stripeSub string
+		price     ListingPrice
+		subID     string
+	}
+	var todos []due
+	err := m.commit(func(st *State) error {
+		for i := range st.Subscriptions {
+			s := &st.Subscriptions[i]
+			if s.Status != subActive || s.PendingPrice == nil || s.PendingPrice.StripeSynced {
+				continue
+			}
+			eff, err := time.Parse(time.RFC3339Nano, s.PendingPrice.EffectiveAt)
+			if err != nil || now.Before(eff) {
+				continue
+			}
+			p := s.PendingPrice.Price
+			if !p.paidStructured() {
+				return invalid("price", "pending price is not a complete structured price")
+			}
+			todos = append(todos, due{stripeSub: s.StripeSubscription, price: p, subID: s.ID})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out []SubscriptionRecord
+	for _, t := range todos {
+		if m.stripe != nil && t.stripeSub != "" {
+			if err := m.stripe.UpdateSubscriptionPrice(t.stripeSub, t.price.AmountCents, t.price.Currency, t.price.Interval); err != nil {
+				return out, err
+			}
+		}
+		err := m.commit(func(st *State) error {
+			for i := range st.Subscriptions {
+				s := &st.Subscriptions[i]
+				if s.ID != t.subID || s.PendingPrice == nil {
+					continue
+				}
+				s.Price = t.price
+				s.PendingPrice.StripeSynced = true
+				s.PendingPrice = nil
+				out = append(out, *s)
+				return nil
+			}
+			return nil
+		})
+		if err != nil {
+			return out, err
+		}
+	}
+	return out, nil
+}
+
+// ApplyInvoicePaid sets paid_through from the invoice period end after Stripe reports a
+// paid invoice. Event and invoice ids are recorded so redeliveries do not extend again.
+// subscription_create invoices do not stack an extra period on top of CompleteCheckout.
+func (m *Market) ApplyInvoicePaid(info InvoicePaidInfo) (SubscriptionRecord, error) {
+	stripeSubID := strings.TrimSpace(info.StripeSubscription)
 	if stripeSubID == "" {
 		return SubscriptionRecord{}, invalid("subscription", "stripe subscription id is required")
 	}
-	now := m.now()
+	eventID := strings.TrimSpace(info.EventID)
+	invoiceID := strings.TrimSpace(info.InvoiceID)
+	if _, err := m.ApplyDuePriceChanges(); err != nil {
+		return SubscriptionRecord{}, err
+	}
 	var out SubscriptionRecord
-	var priceUpdate *ListingPrice
 	err := m.commit(func(st *State) error {
+		if eventID != "" {
+			for _, id := range st.ProcessedStripeEvents {
+				if id == eventID {
+					for i := range st.Subscriptions {
+						if st.Subscriptions[i].StripeSubscription == stripeSubID {
+							out = st.Subscriptions[i]
+							return nil
+						}
+					}
+					return ErrNotFound
+				}
+			}
+		}
+		if invoiceID != "" {
+			for _, id := range st.ProcessedStripeInvoices {
+				if id == invoiceID {
+					for i := range st.Subscriptions {
+						if st.Subscriptions[i].StripeSubscription == stripeSubID {
+							out = st.Subscriptions[i]
+							return nil
+						}
+					}
+					return ErrNotFound
+				}
+			}
+		}
 		var s *SubscriptionRecord
 		for i := range st.Subscriptions {
 			x := &st.Subscriptions[i]
@@ -395,33 +602,33 @@ func (m *Market) ApplyInvoicePaid(stripeSubID string) (SubscriptionRecord, error
 		if s == nil {
 			return ErrNotFound
 		}
+		if eventID != "" {
+			st.ProcessedStripeEvents = append(st.ProcessedStripeEvents, eventID)
+		}
+		if invoiceID != "" {
+			st.ProcessedStripeInvoices = append(st.ProcessedStripeInvoices, invoiceID)
+		}
 		if s.Status != subActive || s.CancelAtPeriodEnd {
-			// Canceled / cancel-at-period-end: do not extend; key still runs to paid_through.
 			out = *s
 			return nil
 		}
-		if s.PendingPrice != nil {
-			eff, err := time.Parse(time.RFC3339Nano, s.PendingPrice.EffectiveAt)
-			if err == nil && !now.Before(eff) {
-				s.Price = s.PendingPrice.Price
-				s.PendingPrice = nil
-				p := s.Price
-				priceUpdate = &p
+		// First invoice for a new subscription: CompleteCheckout already set paid_through.
+		if info.BillingReason == "subscription_create" {
+			if !info.PeriodEnd.IsZero() && info.PeriodEnd.After(s.PaidThrough) {
+				s.PaidThrough = info.PeriodEnd.UTC()
 			}
+			out = *s
+			return nil
 		}
-		s.PaidThrough = addInterval(s.PaidThrough, s.Price.Interval)
+		if !info.PeriodEnd.IsZero() {
+			s.PaidThrough = info.PeriodEnd.UTC()
+		} else {
+			s.PaidThrough = addInterval(s.PaidThrough, s.Price.Interval)
+		}
 		out = *s
 		return nil
 	})
-	if err != nil {
-		return SubscriptionRecord{}, err
-	}
-	if priceUpdate != nil && m.stripe != nil {
-		if err := m.stripe.UpdateSubscriptionPrice(stripeSubID, priceUpdate.AmountCents, priceUpdate.Currency, priceUpdate.Interval); err != nil {
-			return out, err
-		}
-	}
-	return out, nil
+	return out, err
 }
 
 // PlatformFeePercent returns the operator platform fee setting (default 0).
@@ -431,9 +638,10 @@ func (m *Market) PlatformFeePercent() int {
 	return n
 }
 
-// SetPlatformFeePercent sets the Connect application fee percent (0–100).
+// SetPlatformFeePercent sets the Connect application fee percent (0–max).
 func (m *Market) SetPlatformFeePercent(n int) error {
-	if n < 0 || n > 100 {
+	max := Defaults().MaxPlatformFeePercent
+	if n < int(0) || n > max {
 		return invalid("platform_fee_percent", "must be 0 to 100")
 	}
 	return m.commit(func(st *State) error {
@@ -567,10 +775,10 @@ func (m *Market) WebhookSecret() string {
 	return m.webhookSecret
 }
 
-// SetNoticeDays sets the price-change notice period in days (default 30).
+// SetNoticeDays sets the price-change notice period in days (default from fixed.json).
 func (m *Market) SetNoticeDays(days int) {
-	if days <= 0 {
-		days = 30
+	if days <= int(0) {
+		days = Defaults().PriceChangeNoticeDays
 	}
 	m.mu.Lock()
 	m.noticeDays = days
@@ -581,7 +789,7 @@ func (m *Market) SetNoticeDays(days int) {
 // configured, a license seed file is required so restarts keep the same public key.
 func (m *Market) ApplyConfig(cfg Config) error {
 	m.SetNoticeDays(cfg.PriceChangeNoticeDays)
-	if cfg.PlatformFeePercent != 0 {
+	if cfg.PlatformFeePercent != int(0) {
 		if err := m.SetPlatformFeePercent(cfg.PlatformFeePercent); err != nil {
 			return err
 		}
@@ -619,7 +827,7 @@ func (m *Market) ApplyConfig(cfg Config) error {
 	if addr := strings.TrimSpace(cfg.SMTPAddr); addr != "" {
 		from := strings.TrimSpace(cfg.SMTPFrom)
 		if from == "" {
-			from = "marketplace@localhost"
+			from = cfg.DefaultSMTPFrom
 		}
 		m.SetMailer(SMTPMailer{Addr: addr, From: from})
 	}

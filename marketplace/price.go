@@ -25,17 +25,26 @@ type PendingPriceChange struct {
 	Price       ListingPrice `json:"price"`
 	NoticedAt   string       `json:"noticed_at"`
 	EffectiveAt string       `json:"effective_at"`
+	// StripeSynced is set once the Stripe subscription was updated to the new price
+	// after EffectiveAt (before the next renewal invoice is billed).
+	StripeSynced bool `json:"stripe_synced,omitempty"`
 }
 
 func (p ListingPrice) empty() bool {
-	return p.AmountCents == 0 && p.Currency == "" && p.Interval == "" && strings.TrimSpace(p.Note) == ""
+	return p.AmountCents == int64(0) && p.Currency == "" && p.Interval == "" && strings.TrimSpace(p.Note) == ""
+}
+
+// paidStructured reports a complete paid subscription price (amount, currency, interval).
+func (p ListingPrice) paidStructured() bool {
+	return p.AmountCents > int64(0) && p.Currency != "" && (p.Interval == "month" || p.Interval == "year")
 }
 
 // Display is the human price text shown on listing pages and in price_note.
 func (p ListingPrice) Display() string {
-	if p.AmountCents > 0 && p.Currency != "" && (p.Interval == "month" || p.Interval == "year") {
-		major := p.AmountCents / 100
-		minor := p.AmountCents % 100
+	cfg := Defaults()
+	if p.paidStructured() {
+		major := p.AmountCents / cfg.CentsPerMajorUnit
+		minor := p.AmountCents % cfg.CentsPerMajorUnit
 		base := fmt.Sprintf("%s %d.%02d per %s", strings.ToUpper(p.Currency), major, minor, p.Interval)
 		if n := strings.TrimSpace(p.Note); n != "" {
 			return base + " — " + n
@@ -52,12 +61,13 @@ func (p ListingPrice) validate() error {
 	if utf8.RuneCountInString(p.Note) > shared.MaxNoteRunes() {
 		return invalid("price", "the price note is too long")
 	}
-	if p.AmountCents < 0 {
+	if p.AmountCents < int64(0) {
 		return invalid("price", "amount_cents cannot be negative")
 	}
-	if p.AmountCents > 0 {
+	if p.AmountCents > int64(0) {
+		cfg := Defaults()
 		cur := strings.ToUpper(strings.TrimSpace(p.Currency))
-		if len(cur) != 3 {
+		if len(cur) != cfg.CurrencyCodeLength {
 			return invalid("price", "currency must be a three-letter code")
 		}
 		if p.Interval != "month" && p.Interval != "year" {

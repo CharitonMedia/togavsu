@@ -463,18 +463,29 @@ func (s *Server) apiStripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	secret := s.M.WebhookSecret()
-	if err := VerifyWebhookSignature(body, r.Header.Get("Stripe-Signature"), secret, s.now(), 5*time.Minute); err != nil {
+	if err := VerifyWebhookSignature(body, r.Header.Get("Stripe-Signature"), secret, s.now(), Defaults().StripeWebhookTolerance()); err != nil {
 		writeErr(w, err)
 		return
 	}
 	var evt struct {
+		ID   string `json:"id"`
 		Type string `json:"type"`
 		Data struct {
 			Object struct {
-				Object       string `json:"object"`
-				Subscription string `json:"subscription"`
-				Paid         bool   `json:"paid"`
-				Status       string `json:"status"`
+				ID            string `json:"id"`
+				Object        string `json:"object"`
+				Subscription  string `json:"subscription"`
+				Paid          bool   `json:"paid"`
+				Status        string `json:"status"`
+				BillingReason string `json:"billing_reason"`
+				PeriodEnd     int64  `json:"period_end"`
+				Lines         struct {
+					Data []struct {
+						Period struct {
+							End int64 `json:"end"`
+						} `json:"period"`
+					} `json:"data"`
+				} `json:"lines"`
 			} `json:"object"`
 		} `json:"data"`
 	}
@@ -491,7 +502,18 @@ func (s *Server) apiStripeWebhook(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, invalid("subscription", "invoice.paid event is missing subscription"))
 		return
 	}
-	sub, err := s.M.ApplyInvoicePaid(subID)
+	periodEndUnix := evt.Data.Object.PeriodEnd
+	if periodEndUnix == int64(0) && len(evt.Data.Object.Lines.Data) > int(0) {
+		periodEndUnix = evt.Data.Object.Lines.Data[int(0)].Period.End
+	}
+	var periodEnd time.Time
+	if periodEndUnix > int64(0) {
+		periodEnd = time.Unix(periodEndUnix, int64(0)).UTC()
+	}
+	sub, err := s.M.ApplyInvoicePaid(InvoicePaidInfo{
+		EventID: evt.ID, InvoiceID: evt.Data.Object.ID, StripeSubscription: subID,
+		BillingReason: evt.Data.Object.BillingReason, PeriodEnd: periodEnd,
+	})
 	if err != nil {
 		writeErr(w, err)
 		return

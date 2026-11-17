@@ -115,12 +115,15 @@ type OperatorSettings struct {
 }
 
 // MailRecord is one outbound email the marketplace queued (price-change notices).
+// Status is pending until delivery succeeds; SentAt is set only on success.
 type MailRecord struct {
 	ID      string    `json:"id"`
 	To      string    `json:"to"`
 	Subject string    `json:"subject"`
 	Body    string    `json:"body"`
-	SentAt  time.Time `json:"sent_at"`
+	Status  string    `json:"status"`
+	SentAt  time.Time `json:"sent_at,omitempty"`
+	LastErr string    `json:"last_error,omitempty"`
 }
 
 // State is everything the service stores apart from package bytes.
@@ -133,6 +136,10 @@ type State struct {
 	Subscriptions []SubscriptionRecord `json:"subscriptions"`
 	Mails         []MailRecord         `json:"mails"`
 	Settings      OperatorSettings     `json:"settings"`
+	// ProcessedStripeEvents records Stripe event ids already applied (webhook dedup).
+	ProcessedStripeEvents []string `json:"processed_stripe_events,omitempty"`
+	// ProcessedStripeInvoices records Stripe invoice ids already applied.
+	ProcessedStripeInvoices []string `json:"processed_stripe_invoices,omitempty"`
 }
 
 // fileStore persists State and package bytes under dir.

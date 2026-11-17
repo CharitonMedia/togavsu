@@ -1,12 +1,17 @@
 package marketplace
 
 import (
-	"fmt"
-	"net"
 	"net/smtp"
 	"strings"
 	"sync"
 	"time"
+)
+
+// Mail delivery status values persisted on MailRecord.
+const (
+	mailPending = "pending"
+	mailSent    = "sent"
+	mailFailed  = "failed"
 )
 
 // MailSender delivers outbound marketplace mail (price-change notices). Implementations
@@ -15,12 +20,14 @@ type MailSender interface {
 	Send(to, subject, body string) error
 }
 
-// RecordingMailer is the in-process sender used in tests and as the default when SMTP is
-// unset: every Send is kept for inspection. Production deployments set smtp_addr.
+// RecordingMailer is the in-process sender used in tests: every Send is kept for
+// inspection. Production deployments set smtp_addr.
 type RecordingMailer struct {
 	mu   sync.Mutex
 	Sent []MailRecord
 	now  func() time.Time
+	// FailNext, when true, makes the next Send return an error (tests).
+	FailNext bool
 }
 
 // NewRecordingMailer returns a mailer that records deliveries.
@@ -35,7 +42,11 @@ func NewRecordingMailer(now func() time.Time) *RecordingMailer {
 func (m *RecordingMailer) Send(to, subject, body string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.Sent = append(m.Sent, MailRecord{To: to, Subject: subject, Body: body, SentAt: m.now()})
+	if m.FailNext {
+		m.FailNext = false
+		return invalid("mail", "synthetic mail delivery failure")
+	}
+	m.Sent = append(m.Sent, MailRecord{To: to, Subject: subject, Body: body, SentAt: m.now(), Status: mailSent})
 	return nil
 }
 
@@ -59,7 +70,7 @@ type SMTPMailer struct {
 func (m SMTPMailer) Send(to, subject, body string) error {
 	from := strings.TrimSpace(m.From)
 	if from == "" {
-		from = "marketplace@localhost"
+		from = Defaults().DefaultSMTPFrom
 	}
 	to = strings.TrimSpace(to)
 	if to == "" {
@@ -71,101 +82,4 @@ func (m SMTPMailer) Send(to, subject, body string) error {
 		"MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" +
 		body + "\r\n")
 	return smtp.SendMail(m.Addr, m.Auth, from, []string{to}, msg)
-}
-
-// StartFakeSMTP listens on 127.0.0.1 and accepts SMTP messages for tests. It never
-// contacts an external relay.
-type FakeSMTP struct {
-	Addr     string
-	ln       net.Listener
-	mu       sync.Mutex
-	Messages []string
-}
-
-// StartFakeSMTP starts a minimal SMTP acceptor on 127.0.0.1.
-func StartFakeSMTP() (*FakeSMTP, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, err
-	}
-	f := &FakeSMTP{Addr: ln.Addr().String(), ln: ln}
-	go f.serve()
-	return f, nil
-}
-
-// Close stops the fake SMTP server.
-func (f *FakeSMTP) Close() error {
-	if f.ln != nil {
-		return f.ln.Close()
-	}
-	return nil
-}
-
-func (f *FakeSMTP) serve() {
-	for {
-		c, err := f.ln.Accept()
-		if err != nil {
-			return
-		}
-		go f.handle(c)
-	}
-}
-
-func (f *FakeSMTP) handle(c net.Conn) {
-	defer c.Close()
-	_ = c.SetDeadline(time.Now().Add(5 * time.Second))
-	writeSMTP(c, "220 fake.smtp ESMTP")
-	buf := make([]byte, 0, 4096)
-	tmp := make([]byte, 1024)
-	dataMode := false
-	for {
-		n, err := c.Read(tmp)
-		if n > 0 {
-			buf = append(buf, tmp[:n]...)
-		}
-		for {
-			var line string
-			if dataMode {
-				if i := strings.Index(string(buf), "\r\n.\r\n"); i >= 0 {
-					msg := string(buf[:i])
-					f.mu.Lock()
-					f.Messages = append(f.Messages, msg)
-					f.mu.Unlock()
-					buf = buf[i+5:]
-					dataMode = false
-					writeSMTP(c, "250 OK")
-					continue
-				}
-				break
-			}
-			i := strings.Index(string(buf), "\r\n")
-			if i < 0 {
-				break
-			}
-			line = string(buf[:i])
-			buf = buf[i+2:]
-			upper := strings.ToUpper(line)
-			switch {
-			case strings.HasPrefix(upper, "EHLO"), strings.HasPrefix(upper, "HELO"):
-				writeSMTP(c, "250 OK")
-			case strings.HasPrefix(upper, "MAIL FROM:"), strings.HasPrefix(upper, "RCPT TO:"):
-				writeSMTP(c, "250 OK")
-			case upper == "DATA":
-				writeSMTP(c, "354 End data with <CR><LF>.<CR><LF>")
-				dataMode = true
-			case upper == "QUIT":
-				writeSMTP(c, "221 Bye")
-				return
-			default:
-				writeSMTP(c, "250 OK")
-			}
-		}
-		if err != nil {
-			return
-		}
-	}
-}
-
-func writeSMTP(c net.Conn, line string) {
-	_, _ = fmt.Fprintf(c, "%s\r\n", line)
 }

@@ -62,7 +62,7 @@ Checkout completion (`POST /v1/stripe/checkout/complete`) confirms payment by fe
 
 The license signing seed (`license_seed_file`) is required whenever Stripe is configured. `Open` never mints a random key; without a seed, paid and license endpoints fail closed so modules that embed the marketplace public key keep verifying across restarts.
 
-Price-change notices are queued in state and delivered through `smtp_addr` (or a test `RecordingMailer`).
+Price-change notices are queued in state with delivery status (`pending` / `sent` / `failed`) and delivered through `smtp_addr` (or a test `RecordingMailer`). A price change that would notice active subscribers is refused when no mailer is configured. Failed deliveries stay queued for `RetryPendingMail` and do not restart the notice period. `paid_through` advances from Stripe `invoice.paid` period end (deduped by event and invoice id); pending price changes update Stripe when the notice period ends, before the next renewal is billed.
 
 ## API
 
@@ -95,7 +95,7 @@ Paid subscriptions (fake Stripe in every test; helpers refuse non-local Stripe h
 | --- | --- | --- |
 | POST | `/v1/listings/{id}/checkout` | `{install_id, admin_email, install_public_key_pem}` → Checkout session naming the install id. Paid listings only; pulled and free listings are refused. |
 | POST | `/v1/stripe/checkout/complete` | `{session_id}` only. Confirms with Stripe (`complete` + `paid`), then issues the license key once. |
-| POST | `/v1/stripe/webhook` | Signed Stripe events. `invoice.paid` extends `paid_through` and applies due price changes (updates Stripe amount). |
+| POST | `/v1/stripe/webhook` | Signed Stripe events. `invoice.paid` sets `paid_through` from the invoice period end (deduped). Due price changes update Stripe when the notice period ends, before renewal billing. |
 | POST | `/v1/licenses/renew` | Daily key fetch with install signature. Never extends `paid_through`; `extend: true` is refused. |
 | POST | `/v1/subscriptions/cancel` | `{install_id, module_id, signature}` — install-signed cancel proof. Stops renewal; key runs to paid-through. |
 

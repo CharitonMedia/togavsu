@@ -9,12 +9,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -62,8 +59,9 @@ func (s *Stripe) doForm(method, path string, form url.Values, dst any) error {
 		return err
 	}
 	defer res.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if res.StatusCode >= 300 {
+	cfg := Defaults()
+	b, _ := io.ReadAll(io.LimitReader(res.Body, cfg.StripeResponseMaxBytes))
+	if res.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("marketplace: stripe %s: %s", res.Status, truncateForLog(string(b)))
 	}
 	if dst == nil {
@@ -75,8 +73,9 @@ func (s *Stripe) doForm(method, path string, form url.Values, dst any) error {
 func truncateForLog(s string) string {
 	// Never echo card numbers or secret-shaped values into errors that might be logged.
 	s = redactSecrets(s)
-	if len(s) > 200 {
-		return s[:200] + "…"
+	cfg := Defaults()
+	if len(s) > cfg.StripeErrorLogRunes {
+		return s[:cfg.StripeErrorLogRunes] + "…"
 	}
 	return s
 }
@@ -85,7 +84,7 @@ func redactSecrets(s string) string {
 	for _, p := range []string{"sk_live_", "sk_test_", "rk_live_", "rk_test_", "whsec_"} {
 		for {
 			i := strings.Index(s, p)
-			if i < 0 {
+			if i < int(0) {
 				break
 			}
 			j := i + len(p)
@@ -96,25 +95,26 @@ func redactSecrets(s string) string {
 			s = s[:i] + "[stripe-secret-redacted]" + s[j:]
 		}
 	}
-	// Card-shaped digit runs (13–19 digits), including spaced/dashed groups.
+	// Card-shaped digit runs, including spaced/dashed groups.
+	cfg := Defaults()
 	var out strings.Builder
-	for i := 0; i < len(s); {
+	for i := int(0); i < len(s); {
 		if s[i] >= '0' && s[i] <= '9' {
 			j := i
-			digits := 0
+			digits := int(0)
 			for j < len(s) {
 				if s[j] >= '0' && s[j] <= '9' {
 					digits++
 					j++
 					continue
 				}
-				if (s[j] == ' ' || s[j] == '-') && j+1 < len(s) && s[j+1] >= '0' && s[j+1] <= '9' {
+				if (s[j] == ' ' || s[j] == '-') && j+len("0") < len(s) && s[j+len("0")] >= '0' && s[j+len("0")] <= '9' {
 					j++
 					continue
 				}
 				break
 			}
-			if digits >= 13 && digits <= 19 {
+			if digits >= cfg.CardDigitMin && digits <= cfg.CardDigitMax {
 				out.WriteString("[card-redacted]")
 				i = j
 				continue
@@ -166,11 +166,11 @@ func (s *Stripe) CreateCheckoutSession(in CheckoutInput) (CheckoutSession, error
 	form.Set("line_items[0][price_data][unit_amount]", fmt.Sprintf("%d", in.AmountCents))
 	form.Set("line_items[0][price_data][recurring][interval]", in.Interval)
 	form.Set("line_items[0][price_data][product_data][name]", in.ProductName)
-	form.Set("line_items[0][quantity]", "1")
+	form.Set("line_items[0][quantity]", fmt.Sprintf("%d", Defaults().StripeCheckoutQuantity))
 	if in.ConnectedAccountID != "" {
 		form.Set("subscription_data[transfer_data][destination]", in.ConnectedAccountID)
 	}
-	if in.PlatformFeePercent > 0 {
+	if in.PlatformFeePercent > int(0) {
 		form.Set("subscription_data[application_fee_percent]", fmt.Sprintf("%d", in.PlatformFeePercent))
 	}
 	var out CheckoutSession
@@ -239,23 +239,68 @@ func (s *Stripe) GetCheckoutSession(sessionID string) (CheckoutSessionDetail, er
 	}, nil
 }
 
-// UpdateSubscriptionPrice changes the recurring amount on a Stripe subscription so the
-// billed price stays in step with a marketplace price change after the notice period.
+// StripeSubscriptionDetail is the fields needed to replace a subscription item's price.
+type StripeSubscriptionDetail struct {
+	ID      string
+	ItemID  string
+	Product string
+}
+
+// GetSubscription fetches a Stripe subscription's first item id and product id.
+func (s *Stripe) GetSubscription(stripeSubID string) (StripeSubscriptionDetail, error) {
+	stripeSubID = strings.TrimSpace(stripeSubID)
+	if stripeSubID == "" {
+		return StripeSubscriptionDetail{}, invalid("subscription", "stripe subscription id is required")
+	}
+	var raw struct {
+		ID    string `json:"id"`
+		Items struct {
+			Data []struct {
+				ID    string `json:"id"`
+				Price struct {
+					Product string `json:"product"`
+				} `json:"price"`
+			} `json:"data"`
+		} `json:"items"`
+	}
+	if err := s.doForm(http.MethodGet, "/v1/subscriptions/"+url.PathEscape(stripeSubID), nil, &raw); err != nil {
+		return StripeSubscriptionDetail{}, err
+	}
+	if len(raw.Items.Data) == 0 || raw.Items.Data[int(0)].ID == "" || raw.Items.Data[int(0)].Price.Product == "" {
+		return StripeSubscriptionDetail{}, errors.New("marketplace: stripe subscription item or product missing")
+	}
+	item := raw.Items.Data[int(0)]
+	return StripeSubscriptionDetail{ID: raw.ID, ItemID: item.ID, Product: item.Price.Product}, nil
+}
+
+// UpdateSubscriptionPrice changes the recurring amount on an existing Stripe subscription
+// item. Real Stripe requires the item id and a product (or Price id); the local fake
+// enforces the same fields.
 func (s *Stripe) UpdateSubscriptionPrice(stripeSubID string, amountCents int64, currency, interval string) error {
+	detail, err := s.GetSubscription(stripeSubID)
+	if err != nil {
+		return err
+	}
 	form := url.Values{}
+	form.Set("items[0][id]", detail.ItemID)
 	form.Set("items[0][price_data][currency]", strings.ToLower(currency))
 	form.Set("items[0][price_data][unit_amount]", fmt.Sprintf("%d", amountCents))
 	form.Set("items[0][price_data][recurring][interval]", interval)
+	form.Set("items[0][price_data][product]", detail.Product)
 	form.Set("proration_behavior", "none")
 	return s.doForm(http.MethodPost, "/v1/subscriptions/"+url.PathEscape(stripeSubID), form, &struct{}{})
 }
 
 // VerifyWebhookSignature checks a Stripe-Signature header (t=…,v1=…) over the raw body.
 // secret is the webhook signing secret from the operator's secret file (never stored in state).
+// tolerance must be positive; callers pass Config.StripeWebhookTolerance().
 func VerifyWebhookSignature(payload []byte, sigHeader, secret string, now time.Time, tolerance time.Duration) error {
 	secret = strings.TrimSpace(secret)
 	if secret == "" {
 		return invalid("stripe_webhook", "webhook signing secret is not configured")
+	}
+	if !(tolerance > time.Duration(int(0))) {
+		return invalid("stripe_webhook", "webhook signature tolerance must be positive")
 	}
 	var ts int64
 	var v1 string
@@ -276,13 +321,10 @@ func VerifyWebhookSignature(payload []byte, sigHeader, secret string, now time.T
 			v1 = v
 		}
 	}
-	if ts == 0 || v1 == "" {
+	if ts == int64(0) || v1 == "" {
 		return invalid("stripe_webhook", "Stripe-Signature must include t and v1")
 	}
-	if tolerance <= 0 {
-		tolerance = 5 * time.Minute
-	}
-	eventTime := time.Unix(ts, 0).UTC()
+	eventTime := time.Unix(ts, int64(0)).UTC()
 	if now.Sub(eventTime) > tolerance || eventTime.Sub(now) > tolerance {
 		return invalid("stripe_webhook", "signature timestamp is outside the allowed window")
 	}
@@ -304,8 +346,6 @@ func SignWebhook(payload []byte, secret string, t time.Time) string {
 	_, _ = mac.Write(payload)
 	return fmt.Sprintf("t=%d,v1=%s", ts, hex.EncodeToString(mac.Sum(nil)))
 }
-
-// --- Fake Stripe (tests only) ---
 
 // ErrStripeHostRefused means a test helper was pointed at a non-local Stripe host.
 var ErrStripeHostRefused = errors.New("marketplace: stripe test helpers refuse any host that is not local")
@@ -329,198 +369,11 @@ func RequireLocalStripeBase(base string) error {
 	}
 }
 
-// FakeStripe is a local Stripe stand-in for tests. It never contacts api.stripe.com.
-type FakeStripe struct {
-	Server  *httptest.Server
-	BaseURL string
-	mu      sync.Mutex
-	seq     atomic.Uint64
-	accts   map[string]struct{}
-	sess    map[string]fakeSession
-	subs    map[string]fakeSub
-}
-
-type fakeSession struct {
-	ID             string
-	URL            string
-	SubscriptionID string // marketplace subscription id in metadata
-	InstallID      string
-	ModuleID       string
-	Completed      bool
-	PaymentStatus  string // unpaid until CompleteCheckout; then paid
-	StripeSubID    string
-	AmountCents    int64
-	Currency       string
-	Interval       string
-}
-
-type fakeSub struct {
-	ID                string
-	CancelAtPeriodEnd bool
-	AmountCents       int64
-	Currency          string
-	Interval          string
-	ItemID            string
-}
-
-// StartFakeStripe listens on 127.0.0.1 and serves a minimal Stripe API. The returned
-// BaseURL always passes RequireLocalStripeBase.
-func StartFakeStripe() *FakeStripe {
-	f := &FakeStripe{accts: map[string]struct{}{}, sess: map[string]fakeSession{}, subs: map[string]fakeSub{}}
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/accounts", f.createAccount)
-	mux.HandleFunc("POST /v1/checkout/sessions", f.createCheckout)
-	mux.HandleFunc("POST /v1/subscriptions/{id}", f.updateSub)
-	mux.HandleFunc("GET /v1/checkout/sessions/{id}", f.getSession)
-	f.Server = httptest.NewServer(mux)
-	f.BaseURL = f.Server.URL
-	return f
-}
-
-// Close shuts the fake server down.
-func (f *FakeStripe) Close() { f.Server.Close() }
-
-func (f *FakeStripe) nextID(prefix string) string {
-	return fmt.Sprintf("%s_fake_%d", prefix, f.seq.Add(1))
-}
-
-func (f *FakeStripe) createAccount(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	id := f.nextID("acct")
-	f.mu.Lock()
-	f.accts[id] = struct{}{}
-	f.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{"id": id, "object": "account", "type": "express"})
-}
-
-func (f *FakeStripe) createCheckout(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	id := f.nextID("cs")
-	subMeta := r.Form.Get("metadata[subscription_id]")
-	install := r.Form.Get("metadata[install_id]")
-	module := r.Form.Get("metadata[module_id]")
-	amount, _ := strconv.ParseInt(r.Form.Get("line_items[0][price_data][unit_amount]"), 10, 64)
-	currency := r.Form.Get("line_items[0][price_data][currency]")
-	interval := r.Form.Get("line_items[0][price_data][recurring][interval]")
-	stripeSub := f.nextID("sub")
-	itemID := f.nextID("si")
-	sess := fakeSession{
-		ID: id, URL: f.BaseURL + "/pay/" + id, SubscriptionID: subMeta,
-		InstallID: install, ModuleID: module, StripeSubID: stripeSub,
-		PaymentStatus: "unpaid", AmountCents: amount, Currency: currency, Interval: interval,
-	}
-	f.mu.Lock()
-	f.sess[id] = sess
-	f.subs[stripeSub] = fakeSub{
-		ID: stripeSub, AmountCents: amount, Currency: currency, Interval: interval, ItemID: itemID,
-	}
-	f.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{"id": id, "object": "checkout.session", "url": sess.URL, "status": "open", "payment_status": "unpaid"})
-}
-
-func (f *FakeStripe) getSession(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	f.mu.Lock()
-	s, ok := f.sess[id]
-	f.mu.Unlock()
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	status := "open"
-	pay := s.PaymentStatus
-	if pay == "" {
-		pay = "unpaid"
-	}
-	if s.Completed {
-		status = "complete"
-		pay = "paid"
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id": s.ID, "object": "checkout.session", "status": status, "payment_status": pay, "url": s.URL,
-		"client_reference_id": s.InstallID,
-		"metadata": map[string]string{
-			"install_id": s.InstallID, "module_id": s.ModuleID, "subscription_id": s.SubscriptionID,
-		},
-		"subscription": s.StripeSubID,
-	})
-}
-
-func (f *FakeStripe) updateSub(w http.ResponseWriter, r *http.Request) {
-	_ = r.ParseForm()
-	id := r.PathValue("id")
-	f.mu.Lock()
-	sub, ok := f.subs[id]
-	if !ok {
-		f.mu.Unlock()
-		http.NotFound(w, r)
-		return
-	}
-	if r.Form.Get("cancel_at_period_end") == "true" {
-		sub.CancelAtPeriodEnd = true
-	}
-	if v := r.Form.Get("items[0][price_data][unit_amount]"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-			sub.AmountCents = n
-		}
-	}
-	if v := r.Form.Get("items[0][price_data][currency]"); v != "" {
-		sub.Currency = v
-	}
-	if v := r.Form.Get("items[0][price_data][recurring][interval]"); v != "" {
-		sub.Interval = v
-	}
-	f.subs[id] = sub
-	f.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"id": id, "object": "subscription", "cancel_at_period_end": sub.CancelAtPeriodEnd,
-		"items": map[string]any{"data": []map[string]any{{
-			"id": sub.ItemID,
-			"price": map[string]any{
-				"unit_amount": sub.AmountCents, "currency": sub.Currency,
-				"recurring": map[string]any{"interval": sub.Interval},
-			},
-		}}},
-	})
-}
-
-// CompleteCheckout marks the session paid and returns the marketplace subscription id,
-// install id, module id and Stripe subscription id. Tests call this to simulate Stripe
-// Checkout succeeding before the marketplace confirms via GetCheckoutSession.
-func (f *FakeStripe) CompleteCheckout(sessionID string) (marketplaceSubID, installID, moduleID, stripeSubID string, err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	s, ok := f.sess[sessionID]
-	if !ok {
-		return "", "", "", "", ErrNotFound
-	}
-	s.Completed = true
-	s.PaymentStatus = "paid"
-	f.sess[sessionID] = s
-	return s.SubscriptionID, s.InstallID, s.ModuleID, s.StripeSubID, nil
-}
-
-// SubscriptionCanceled reports whether cancel_at_period_end is set on a fake sub.
-func (f *FakeStripe) SubscriptionCanceled(stripeSubID string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.subs[stripeSubID].CancelAtPeriodEnd
-}
-
-// SubscriptionAmount returns the recurring unit amount stored on a fake subscription.
-func (f *FakeStripe) SubscriptionAmount(stripeSubID string) int64 {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.subs[stripeSubID].AmountCents
-}
-
-// InvoicePaidEvent builds a minimal invoice.paid JSON body naming the Stripe subscription.
-func InvoicePaidEvent(stripeSubID string) []byte {
-	b, _ := json.Marshal(map[string]any{
-		"id": "evt_fake_invoice_paid", "object": "event", "type": "invoice.paid",
-		"data": map[string]any{"object": map[string]any{
-			"object": "invoice", "subscription": stripeSubID, "paid": true, "status": "paid",
-		}},
-	})
-	return b
+// InvoicePaidInfo is the Stripe invoice.paid payload fields the marketplace applies.
+type InvoicePaidInfo struct {
+	EventID            string
+	InvoiceID          string
+	StripeSubscription string
+	BillingReason      string
+	PeriodEnd          time.Time
 }
