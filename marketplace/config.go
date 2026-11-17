@@ -59,10 +59,27 @@ func LoadConfig(path string) (Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return c, fmt.Errorf("marketplace: %s: %w", path, err)
 	}
-	if c.DataDir == "" || c.Listen == "" || c.AuthorSessionHours <= int(0) || c.OperatorSessionMinutes <= int(0) {
-		return c, errors.New("marketplace: listen, data_dir and positive session lengths are required")
+	if err := validateConfig(c); err != nil {
+		return c, err
 	}
 	return c, nil
+}
+
+// validateConfig refuses incomplete session settings and non-positive price/sales tunables.
+func validateConfig(c Config) error {
+	if c.DataDir == "" || c.Listen == "" || c.AuthorSessionHours <= int(0) || c.OperatorSessionMinutes <= int(0) {
+		return errors.New("marketplace: listen, data_dir and positive session lengths are required")
+	}
+	if c.CentsPerMajorUnit < int64(1) {
+		return errors.New("marketplace: cents_per_major_unit must be at least 1")
+	}
+	if c.CurrencyCodeLength < 1 {
+		return errors.New("marketplace: currency_code_length must be at least 1")
+	}
+	if c.MaxSalesURLRunes < 1 {
+		return errors.New("marketplace: max_sales_url_runes must be at least 1")
+	}
+	return nil
 }
 
 // OperatorToken reads the operator's bearer token from its file. A short token is

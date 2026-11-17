@@ -251,8 +251,9 @@ func TestUploadAndListing(t *testing.T) {
 	}
 	var l shared.Listing
 	e.do("GET", "/v1/listings/matter-clock", "", nil).json(t, &l)
-	if l.Author != "Synthetic Author" || l.SigningKey != a.keyID || l.SigningKeyPEM == "" || l.Version != "0.2.0" || l.PriceNote != price || l.Notice != shared.Notice {
-		t.Fatalf("listing %+v", l)
+	wantNote := WirePriceNote(price, "Synthetic Author")
+	if l.Author != "Synthetic Author" || l.SigningKey != a.keyID || l.SigningKeyPEM == "" || l.Version != "0.2.0" || l.PriceNote != wantNote || l.Notice != shared.Notice {
+		t.Fatalf("listing %+v want price_note %q", l, wantNote)
 	}
 	if strings.Join(l.Permissions, ",") != "matters:read,time:read,notes:write" || len(l.VersionHistory) != 2 || l.VersionHistory[0].Version != "0.1.0" {
 		t.Fatalf("listing permissions/history %+v", l)

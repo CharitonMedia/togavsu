@@ -25,7 +25,7 @@ Read API (the core; no credentials):
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/v1/listings?q=` | Search. Pulled listings never appear. Includes `price`, `provider_disclaimer`, optional `sales_url`. |
+| GET | `/v1/listings?q=` | Search. Pulled listings never appear. `price_note` carries the rendered price and the provider disclaimer. Structured price and sales URL stay on the HTML listing page. |
 | GET | `/v1/listings/{id}` | One listing, pulled or not. |
 | GET | `/v1/listings/{id}/versions/{version}/package` | Signed package. 410 when pulled. No payment or license step. |
 | GET | `/v1/alerts?module_id=&module_id=&since=` | Flags and pulls. |

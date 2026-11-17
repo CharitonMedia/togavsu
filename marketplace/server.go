@@ -163,7 +163,7 @@ func bearer(r *http.Request) string {
 
 func (s *Server) apiSearch(w http.ResponseWriter, r *http.Request) {
 	list := s.M.Search(r.URL.Query().Get("q"))
-	out := make([]map[string]any, 0, len(list))
+	out := make([]shared.Listing, 0, len(list))
 	for _, l := range list {
 		out = append(out, s.listingBody(l))
 	}
@@ -179,27 +179,13 @@ func (s *Server) apiListing(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.listingBody(l))
 }
 
-func (s *Server) listingBody(l shared.Listing) map[string]any {
-	body := map[string]any{
-		"id": l.ID, "module_id": l.ModuleID, "name": l.Name, "author": l.Author,
-		"signing_key": l.SigningKey, "signing_key_pem": l.SigningKeyPEM, "version": l.Version,
-		"permissions": l.Permissions, "version_history": l.VersionHistory, "price_note": l.PriceNote,
-		"flagged": l.Flagged, "pulled": l.Pulled, "notice": l.Notice,
-		"provider_disclaimer": ProviderDisclaimer(l.Author),
-	}
-	if l.FlagNote != "" {
-		body["flag_note"] = l.FlagNote
-	}
-	if l.ListingFlagged {
-		body["listing_flagged"] = true
-	}
-	if p, err := s.M.ListingPriceOf(l.ID); err == nil && !p.empty() {
-		body["price"] = p
-	}
-	if u, err := s.M.ListingSalesURL(l.ID); err == nil && u != "" {
-		body["sales_url"] = u
-	}
-	return body
+// listingBody returns the published shared.Listing wire shape. Structured price and
+// sales_url stay in the marketplace store and on the HTML listing page; they are not
+// added to the JSON contract (core-update-2c owns that). The rendered price plus the
+// provider disclaimer travel through price_note so additionalProperties:false stays green.
+func (s *Server) listingBody(l shared.Listing) shared.Listing {
+	l.PriceNote = WirePriceNote(l.PriceNote, l.Author)
+	return l
 }
 
 func (s *Server) apiPackage(w http.ResponseWriter, r *http.Request) {

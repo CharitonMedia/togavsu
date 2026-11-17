@@ -54,7 +54,8 @@ func (e *env) publishPriced(a author, id, version string, price any) []byte {
 	return pkg
 }
 
-// MKT-01: structured price lists at that price; old string still lists; provider disclaimer.
+// MKT-01: structured price lists at that price; old string still lists; provider disclaimer
+// travels through price_note (no extra wire keys).
 func TestMKT01StructuredPrice(t *testing.T) {
 	e := newEnv(t)
 	a := e.author("Paid Author", "paid@example.test")
@@ -62,30 +63,40 @@ func TestMKT01StructuredPrice(t *testing.T) {
 	e.publishPriced(a, "mo-estate-planning", "1.0.0", structured)
 	var body map[string]any
 	e.do("GET", "/v1/listings/mo-estate-planning", "", nil).json(t, &body)
-	if body["price_note"] == "" || !strings.Contains(body["price_note"].(string), "USD") || !strings.Contains(body["price_note"].(string), "49.00") {
-		t.Fatalf("structured display: %+v", body["price_note"])
-	}
-	price, _ := body["price"].(map[string]any)
-	if int(price["amount_cents"].(float64)) != 4900 || price["currency"] != "USD" || price["interval"] != "month" {
-		t.Fatalf("structured price: %+v", price)
-	}
-	disc, _ := body["provider_disclaimer"].(string)
+	assertListingWire(t, body)
+	note, _ := body["price_note"].(string)
 	wantDisc := "Sold and licensed by Paid Author. Togavsu doesn't sell or bill this module."
-	if disc != wantDisc {
-		t.Fatalf("disclaimer: %q", disc)
+	if !strings.Contains(note, "USD") || !strings.Contains(note, "49.00") || !strings.Contains(note, wantDisc) {
+		t.Fatalf("structured price_note: %q", note)
+	}
+	stored, err := e.m.ListingPriceOf("mo-estate-planning")
+	if err != nil || stored.AmountCents != 4900 || stored.Currency != "USD" || stored.Interval != "month" {
+		t.Fatalf("store structured price: %+v %v", stored, err)
 	}
 	page := e.do("GET", "/listings/mo-estate-planning", "", nil)
 	if page.code != http.StatusOK || (!strings.Contains(string(page.body), wantDisc) && !strings.Contains(string(page.body), htmlEscape(wantDisc))) {
 		t.Fatalf("listing page missing disclaimer: %d %s", page.code, page.body)
 	}
+	if !strings.Contains(string(page.body), "49.00") {
+		t.Fatalf("listing page missing rendered price: %s", page.body)
+	}
 	b := e.author("Free Author", "free@example.test")
 	e.publishPriced(b, "documents", "1.0.0", "Free")
 	e.do("GET", "/v1/listings/documents", "", nil).json(t, &body)
-	if body["price_note"] != "Free" {
-		t.Fatalf("string price: %+v", body)
+	assertListingWire(t, body)
+	note, _ = body["price_note"].(string)
+	if !strings.HasPrefix(note, "Free.") || !strings.Contains(note, "Free Author") || !strings.Contains(note, "Togavsu doesn't sell or bill this module.") {
+		t.Fatalf("string price_note: %q", note)
 	}
-	if !strings.Contains(body["provider_disclaimer"].(string), "Free Author") {
-		t.Fatalf("string listing disclaimer: %+v", body["provider_disclaimer"])
+}
+
+// assertListingWire refuses extra keys that break additionalProperties:false on shared.Listing.
+func assertListingWire(t *testing.T, body map[string]any) {
+	t.Helper()
+	for _, bad := range []string{"provider_disclaimer", "price", "sales_url"} {
+		if _, ok := body[bad]; ok {
+			t.Fatalf("listing JSON must not include %q (contract extension belongs to core-update-2c): %+v", bad, body)
+		}
 	}
 }
 
@@ -171,24 +182,31 @@ func TestMKT03PriceEdit(t *testing.T) {
 	}
 	var beforePkg shared.SignedPackage
 	before.json(t, &beforePkg)
+	salesURL := "https://author.example.test/buy/mo-estate-planning"
 	r := e.do("PATCH", "/v1/authors/me/listings/mo-estate-planning/price", a.token, map[string]any{
 		"amount_cents": 5900, "currency": "USD", "interval": "month", "note": "raised",
-		"sales_url": "https://author.example.test/buy/mo-estate-planning",
+		"sales_url": salesURL,
 	})
 	if r.code != http.StatusOK {
 		t.Fatalf("price edit: %d %s", r.code, r.body)
 	}
 	var body map[string]any
 	r.json(t, &body)
-	price, _ := body["price"].(map[string]any)
-	if int(price["amount_cents"].(float64)) != 5900 {
-		t.Fatalf("new price: %+v", price)
-	}
-	if body["sales_url"] != "https://author.example.test/buy/mo-estate-planning" {
-		t.Fatalf("sales_url: %+v", body["sales_url"])
-	}
-	if !strings.Contains(body["price_note"].(string), "59.00") {
+	assertListingWire(t, body)
+	if !strings.Contains(body["price_note"].(string), "59.00") || !strings.Contains(body["price_note"].(string), "Sold and licensed by Price Author") {
 		t.Fatalf("price_note: %+v", body["price_note"])
+	}
+	stored, err := e.m.ListingPriceOf("mo-estate-planning")
+	if err != nil || stored.AmountCents != 5900 {
+		t.Fatalf("store price after edit: %+v %v", stored, err)
+	}
+	gotSales, err := e.m.ListingSalesURL("mo-estate-planning")
+	if err != nil || gotSales != salesURL {
+		t.Fatalf("store sales_url: %q %v", gotSales, err)
+	}
+	page := e.do("GET", "/listings/mo-estate-planning", "", nil)
+	if page.code != http.StatusOK || !strings.Contains(string(page.body), salesURL) {
+		t.Fatalf("HTML listing must show sales_url: %d %s", page.code, page.body)
 	}
 	after := e.do("GET", "/v1/listings/mo-estate-planning/versions/1.0.0/package", "", nil)
 	if after.code != http.StatusOK {
@@ -211,12 +229,14 @@ func TestMKT03PriceEdit(t *testing.T) {
 		t.Fatalf("paid to free: %d %s", free.code, free.body)
 	}
 	free.json(t, &body)
-	if body["price_note"] != "Free" {
-		t.Fatalf("free price_note: %+v", body["price_note"])
+	assertListingWire(t, body)
+	note, _ := body["price_note"].(string)
+	if !strings.HasPrefix(note, "Free.") || !strings.Contains(note, "Sold and licensed by") {
+		t.Fatalf("free price_note: %q", note)
 	}
-	price, _ = body["price"].(map[string]any)
-	if price["amount_cents"] != nil && int(price["amount_cents"].(float64)) != 0 {
-		t.Fatalf("free must clear amount: %+v", price)
+	stored, err = e.m.ListingPriceOf("mo-estate-planning")
+	if err != nil || stored.AmountCents != 0 || stored.Note != "Free" {
+		t.Fatalf("free must clear amount in store: %+v %v", stored, err)
 	}
 
 	// Currency / interval edits are normalised (trim + uppercase).
@@ -227,9 +247,10 @@ func TestMKT03PriceEdit(t *testing.T) {
 		t.Fatalf("normalise edit: %d %s", norm.code, norm.body)
 	}
 	norm.json(t, &body)
-	price, _ = body["price"].(map[string]any)
-	if price["currency"] != "USD" || price["interval"] != "month" {
-		t.Fatalf("normalised price: %+v", price)
+	assertListingWire(t, body)
+	stored, err = e.m.ListingPriceOf("mo-estate-planning")
+	if err != nil || stored.Currency != "USD" || stored.Interval != "month" {
+		t.Fatalf("normalised store price: %+v %v", stored, err)
 	}
 	if !strings.Contains(body["price_note"].(string), "USD") || strings.Contains(body["price_note"].(string), "USD  ") {
 		t.Fatalf("display after normalise: %+v", body["price_note"])
@@ -271,7 +292,7 @@ func TestConfigOverridesPriceAndSalesURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.SecureCookies = false
-	cfg.CentsPerMajorUnit = 10 // example default is 100; 100 cents → "10.00" with unit 10
+	cfg.CentsPerMajorUnit = 10 // example default is 100; 100 cents → "10.0" with unit 10
 	cfg.MaxSalesURLRunes = 40
 	cfg.CurrencyCodeLength = 3
 	if err := e.m.ApplyConfig(cfg); err != nil {
@@ -283,9 +304,13 @@ func TestConfigOverridesPriceAndSalesURL(t *testing.T) {
 	})
 	var body map[string]any
 	e.do("GET", "/v1/listings/config-mod", "", nil).json(t, &body)
+	assertListingWire(t, body)
 	note, _ := body["price_note"].(string)
-	if !strings.Contains(note, "10.00") || strings.Contains(note, "1.00") {
+	if !strings.Contains(note, "10.0") || strings.Contains(note, "1.00") || strings.Contains(note, "10.00") {
 		t.Fatalf("ApplyConfig cents_per_major_unit must change display: %q", note)
+	}
+	if !strings.Contains(note, "Sold and licensed by Config Author") {
+		t.Fatalf("price_note must carry disclaimer: %q", note)
 	}
 	long := "https://author.example.test/" + strings.Repeat("x", 40)
 	r := e.do("PATCH", "/v1/authors/me/listings/config-mod/price", a.token, map[string]any{
@@ -293,6 +318,77 @@ func TestConfigOverridesPriceAndSalesURL(t *testing.T) {
 	})
 	if r.code != http.StatusBadRequest {
 		t.Fatalf("max_sales_url_runes from config must bind: %d %s", r.code, r.body)
+	}
+}
+
+func TestLoadConfigRefusesBadTunables(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, overlay map[string]any) string {
+		t.Helper()
+		base := map[string]any{
+			"listen": ":0", "data_dir": dir, "operator_token_file": filepath.Join(dir, "tok"),
+			"author_session_hours": 1, "operator_session_minutes": 1,
+			"cents_per_major_unit": 100, "currency_code_length": 3, "max_sales_url_runes": 2048,
+		}
+		for k, v := range overlay {
+			base[k] = v
+		}
+		path := filepath.Join(dir, name)
+		raw, err := json.Marshal(base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	for _, tc := range []struct {
+		name    string
+		overlay map[string]any
+		want    string
+	}{
+		{"cents", map[string]any{"cents_per_major_unit": 0}, "cents_per_major_unit"},
+		{"currency", map[string]any{"currency_code_length": 0}, "currency_code_length"},
+		{"sales", map[string]any{"max_sales_url_runes": 0}, "max_sales_url_runes"},
+	} {
+		path := write(tc.name+".json", tc.overlay)
+		_, err := LoadConfig(path)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: want error naming %q, got %v", tc.name, tc.want, err)
+		}
+		cfg := Defaults()
+		cfg.DataDir = dir
+		cfg.Listen = ":0"
+		cfg.AuthorSessionHours = 1
+		cfg.OperatorSessionMinutes = 1
+		switch tc.name {
+		case "cents":
+			cfg.CentsPerMajorUnit = 0
+		case "currency":
+			cfg.CurrencyCodeLength = 0
+		case "sales":
+			cfg.MaxSalesURLRunes = 0
+		}
+		m, err := Open(dir, cfg.AuthorSession(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := m.ApplyConfig(cfg); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("ApplyConfig %s: want error naming %q, got %v", tc.name, tc.want, err)
+		}
+	}
+}
+
+func TestFormatMajorMinorDigits(t *testing.T) {
+	if got := formatMajorMinor(4900, 100); got != "49.00" {
+		t.Fatalf("100 unit: %q", got)
+	}
+	if got := formatMajorMinor(4900, 1); got != "4900" {
+		t.Fatalf("1 unit (e.g. JPY): %q", got)
+	}
+	if got := formatMajorMinor(100, 10); got != "10.0" {
+		t.Fatalf("10 unit: %q", got)
 	}
 }
 

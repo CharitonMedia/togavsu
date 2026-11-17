@@ -132,6 +132,9 @@ func (m *Market) ListingSalesURL(id string) (string, error) {
 // ApplyConfig stores the loaded service config so price display, validation and sales
 // URL limits follow the operator's overrides (not only fixed.json defaults).
 func (m *Market) ApplyConfig(cfg Config) error {
+	if err := validateConfig(cfg); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.cfg = cfg
