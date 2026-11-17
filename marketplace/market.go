@@ -54,6 +54,7 @@ type Market struct {
 	now   func() time.Time
 	// tokenLife is how long an author session lasts.
 	tokenLife time.Duration
+	cfg       Config
 }
 
 // Open loads the state in dir.
@@ -66,7 +67,14 @@ func Open(dir string, tokenLife time.Duration, now func() time.Time) (*Market, e
 	if err != nil {
 		return nil, err
 	}
-	return &Market{st: st, store: fsStore, now: func() time.Time { return now().UTC() }, tokenLife: tokenLife}, nil
+	return &Market{st: st, store: fsStore, now: func() time.Time { return now().UTC() }, tokenLife: tokenLife, cfg: Defaults()}, nil
+}
+
+// config returns a copy of the loaded service config.
+func (m *Market) config() Config {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cfg
 }
 
 // commit saves the state after fn changes it; a failed save restores the old state.
@@ -404,7 +412,8 @@ func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 	if err := json.Unmarshal(man.Raw, &manifest); err != nil {
 		return shared.Listing{}, invalid("package", "the manifest is unreadable")
 	}
-	fromManifest, err := parseManifestPrice(manifest)
+	cfg := m.config()
+	fromManifest, err := parseManifestPriceWith(manifest, cfg)
 	if err != nil {
 		return shared.Listing{}, err
 	}
@@ -438,7 +447,7 @@ func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 		if price.empty() && up.PriceNote != nil {
 			price = ListingPrice{Note: strings.TrimSpace(*up.PriceNote)}
 		}
-		l := ListingRecord{ID: man.ID, AuthorID: a.ID, Versions: []Version{v}, CreatedAt: now, Price: price, PriceNote: price.Display()}
+		l := ListingRecord{ID: man.ID, AuthorID: a.ID, Versions: []Version{v}, CreatedAt: now, Price: price, PriceNote: price.display(cfg)}
 		st.Listings = append(st.Listings, l)
 		out = l
 		return nil

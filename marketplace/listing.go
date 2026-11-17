@@ -27,8 +27,11 @@ func (m *Market) SetListingPrice(a Author, listingID string, edit ListingEdit) (
 	if edit.Price == nil && edit.SalesURL == nil {
 		return ListingEditResult{}, invalid("body", "price or sales_url is required")
 	}
+	cfg := m.config()
 	if edit.Price != nil {
-		if err := edit.Price.validate(); err != nil {
+		norm := edit.Price.normalize()
+		edit.Price = &norm
+		if err := edit.Price.validateWith(cfg); err != nil {
 			return ListingEditResult{}, err
 		}
 		if edit.Price.empty() {
@@ -38,7 +41,7 @@ func (m *Market) SetListingPrice(a Author, listingID string, edit ListingEdit) (
 	var sales string
 	if edit.SalesURL != nil {
 		var err error
-		sales, err = normalizeSalesURL(*edit.SalesURL)
+		sales, err = normalizeSalesURL(*edit.SalesURL, cfg)
 		if err != nil {
 			return ListingEditResult{}, err
 		}
@@ -58,12 +61,8 @@ func (m *Market) SetListingPrice(a Author, listingID string, edit ListingEdit) (
 			return ErrForbidden
 		}
 		if edit.Price != nil {
-			// When replacing a structured paid price, require another complete price.
-			if l.Price.paidStructured() && !edit.Price.paidStructured() {
-				return invalid("price", "a paid listing requires amount_cents, currency and interval")
-			}
 			l.Price = *edit.Price
-			l.PriceNote = edit.Price.Display()
+			l.PriceNote = edit.Price.display(cfg)
 		}
 		if edit.SalesURL != nil {
 			l.SalesURL = sales
@@ -77,12 +76,11 @@ func (m *Market) SetListingPrice(a Author, listingID string, edit ListingEdit) (
 	return ListingEditResult{Listing: m.view(out)}, nil
 }
 
-func normalizeSalesURL(raw string) (string, error) {
+func normalizeSalesURL(raw string, cfg Config) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", nil
 	}
-	cfg := Defaults()
 	if utf8.RuneCountInString(raw) > cfg.MaxSalesURLRunes {
 		return "", invalid("sales_url", "the sales page link is too long")
 	}
@@ -131,9 +129,11 @@ func (m *Market) ListingSalesURL(id string) (string, error) {
 	return u, nil
 }
 
-// ApplyConfig applies service config. Kept so the binary can call it after Open; there
-// is no Stripe, license seed or mailer to attach.
+// ApplyConfig stores the loaded service config so price display, validation and sales
+// URL limits follow the operator's overrides (not only fixed.json defaults).
 func (m *Market) ApplyConfig(cfg Config) error {
-	_ = cfg
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cfg = cfg
 	return nil
 }

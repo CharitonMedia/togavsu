@@ -1,8 +1,10 @@
 package marketplace
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"testing"
 
 	shared "github.com/CharitonMedia/togavsu/internal/marketplace"
+	"github.com/CharitonMedia/togavsu/pkg/modulekit"
 )
 
 func pkgWithPrice(t *testing.T, id, version string, price any, perms ...string) []byte {
@@ -27,27 +30,24 @@ func pkgWithPrice(t *testing.T, id, version string, price any, perms ...string) 
 	return b
 }
 
-func signedFile(a author, p []byte) map[string]any {
-	dig := shared.Digest(p)
-	man, _ := shared.ReadManifest(p)
-	var manifest map[string]any
-	_ = json.Unmarshal(man.Raw, &manifest)
-	return map[string]any{
-		"listing_id":     man.ID,
-		"version":        man.Version,
-		"immutable":      true,
-		"manifest":       manifest,
-		"digest":         dig,
-		"signature":      shared.Sign(a.priv, p),
-		"key_id":         a.keyID,
-		"package_base64": base64.StdEncoding.EncodeToString(p),
+// kitSignedFile is the kit's SignFile output as a JSON object (immutable:false, manifest:null).
+func kitSignedFile(t *testing.T, a author, p []byte) map[string]any {
+	t.Helper()
+	raw, err := modulekit.SignFile(a.priv, p)
+	if err != nil {
+		t.Fatal(err)
 	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	return body
 }
 
 func (e *env) publishPriced(a author, id, version string, price any) []byte {
 	e.t.Helper()
 	pkg := pkgWithPrice(e.t, id, version, price, "matters:read")
-	r := e.do("POST", "/v1/authors/me/packages", a.token, signedFile(a, pkg))
+	r := e.do("POST", "/v1/authors/me/packages", a.token, kitSignedFile(e.t, a, pkg))
 	if r.code != http.StatusCreated {
 		e.t.Fatalf("publish %d %s", r.code, r.body)
 	}
@@ -89,26 +89,72 @@ func TestMKT01StructuredPrice(t *testing.T) {
 	}
 }
 
-// MKT-02: kit signed file unchanged succeeds; tampered refused.
+// MKT-02: kit SignFile body unchanged succeeds; a tampered byte is refused; metadata
+// mismatches on listing_id, version, immutable and manifest are refused.
 func TestMKT02SignedUpload(t *testing.T) {
 	e := newEnv(t)
 	a := e.author("Upload Author", "upload@example.test")
 	p := pkgWithPrice(t, "matter-clock", "1.0.0", "Included", "matters:read")
-	good := signedFile(a, p)
+	raw, err := modulekit.SignFile(a.priv, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var good map[string]any
+	if err := json.Unmarshal(raw, &good); err != nil {
+		t.Fatal(err)
+	}
 	if r := e.do("POST", "/v1/authors/me/packages", a.token, good); r.code != http.StatusCreated {
-		t.Fatalf("good signed file: %d %s", r.code, r.body)
+		t.Fatalf("kit SignFile upload: %d %s", r.code, r.body)
 	}
-	tampered := append([]byte{}, p...)
-	tampered[len(tampered)-1] ^= 0xff
-	bad := signedFile(a, p)
-	bad["package_base64"] = base64.StdEncoding.EncodeToString(tampered)
-	if r := e.do("POST", "/v1/authors/me/packages", a.token, bad); r.code != http.StatusBadRequest {
-		t.Fatalf("tampered digest left: %d %s", r.code, r.body)
+
+	// Tamper one byte of the kit file and refuse under DisallowUnknownFields + digest check.
+	tamperedFile := append([]byte{}, raw...)
+	// Flip a byte inside package_base64 (after the JSON keys) so the body still parses.
+	idx := bytes.Index(tamperedFile, []byte(`"package_base64"`))
+	if idx < 0 {
+		t.Fatal("signed file missing package_base64")
 	}
-	bad2 := signedFile(a, p)
-	bad2["digest"] = "sha256:" + strings.Repeat("0", 64)
-	if r := e.do("POST", "/v1/authors/me/packages", a.token, bad2); r.code != http.StatusBadRequest {
-		t.Fatalf("wrong digest: %d %s", r.code, r.body)
+	for i := idx; i < len(tamperedFile); i++ {
+		if tamperedFile[i] >= 'A' && tamperedFile[i] <= 'Z' {
+			tamperedFile[i] ^= 0x01
+			break
+		}
+	}
+	var badFile map[string]any
+	if err := json.Unmarshal(tamperedFile, &badFile); err != nil {
+		t.Fatalf("tampered kit file must still be JSON: %v", err)
+	}
+	if r := e.do("POST", "/v1/authors/me/packages", a.token, badFile); r.code != http.StatusBadRequest {
+		t.Fatalf("tampered kit file: %d %s", r.code, r.body)
+	}
+
+	p2 := pkgWithPrice(t, "matter-clock", "1.0.1", "Included", "matters:read")
+	for _, tc := range []struct {
+		field string
+		patch func(map[string]any)
+	}{
+		{"listing_id", func(m map[string]any) { m["listing_id"] = "other-module" }},
+		{"version", func(m map[string]any) { m["version"] = "9.9.9" }},
+		{"immutable", func(m map[string]any) { m["immutable"] = true }},
+		{"manifest", func(m map[string]any) {
+			m["manifest"] = map[string]any{"id": "matter-clock", "name": "wrong", "version": "1.0.1", "permissions": []any{"matters:read"}}
+		}},
+	} {
+		body := kitSignedFile(t, a, p2)
+		tc.patch(body)
+		if r := e.do("POST", "/v1/authors/me/packages", a.token, body); r.code != http.StatusBadRequest {
+			t.Fatalf("tampered %s: %d %s", tc.field, r.code, r.body)
+		}
+	}
+	// Correct marketplace-shaped metadata (immutable:true + matching manifest) still uploads.
+	okMeta := kitSignedFile(t, a, p2)
+	man, _ := shared.ReadManifest(p2)
+	var pkgMan map[string]any
+	_ = json.Unmarshal(man.Raw, &pkgMan)
+	okMeta["immutable"] = true
+	okMeta["manifest"] = pkgMan
+	if r := e.do("POST", "/v1/authors/me/packages", a.token, okMeta); r.code != http.StatusCreated {
+		t.Fatalf("matching immutable+manifest: %d %s", r.code, r.body)
 	}
 }
 
@@ -155,6 +201,98 @@ func TestMKT03PriceEdit(t *testing.T) {
 	}
 	if afterPkg.PackageBase64 != beforePkg.PackageBase64 {
 		t.Fatal("package bytes changed after price edit")
+	}
+
+	// §17.1: author may change a paid structured price to free (string / note).
+	free := e.do("PATCH", "/v1/authors/me/listings/mo-estate-planning/price", a.token, map[string]any{
+		"note": "Free",
+	})
+	if free.code != http.StatusOK {
+		t.Fatalf("paid to free: %d %s", free.code, free.body)
+	}
+	free.json(t, &body)
+	if body["price_note"] != "Free" {
+		t.Fatalf("free price_note: %+v", body["price_note"])
+	}
+	price, _ = body["price"].(map[string]any)
+	if price["amount_cents"] != nil && int(price["amount_cents"].(float64)) != 0 {
+		t.Fatalf("free must clear amount: %+v", price)
+	}
+
+	// Currency / interval edits are normalised (trim + uppercase).
+	norm := e.do("PATCH", "/v1/authors/me/listings/mo-estate-planning/price", a.token, map[string]any{
+		"amount_cents": 100, "currency": "usd ", "interval": " month ",
+	})
+	if norm.code != http.StatusOK {
+		t.Fatalf("normalise edit: %d %s", norm.code, norm.body)
+	}
+	norm.json(t, &body)
+	price, _ = body["price"].(map[string]any)
+	if price["currency"] != "USD" || price["interval"] != "month" {
+		t.Fatalf("normalised price: %+v", price)
+	}
+	if !strings.Contains(body["price_note"].(string), "USD") || strings.Contains(body["price_note"].(string), "USD  ") {
+		t.Fatalf("display after normalise: %+v", body["price_note"])
+	}
+}
+
+func TestFractionalAmountCentsRefused(t *testing.T) {
+	e := newEnv(t)
+	a := e.author("Frac Author", "frac@example.test")
+	man := map[string]any{
+		"id": "frac-mod", "name": "Frac", "version": "1.0.0", "permissions": []string{"matters:read"},
+		"price": map[string]any{"amount_cents": 49.99, "currency": "USD", "interval": "month"},
+	}
+	raw, _ := json.Marshal(man)
+	pkg, err := shared.BuildPackage(raw, map[string][]byte{"migrations/0001_init.sql": []byte("-- synthetic\n")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := e.do("POST", "/v1/authors/me/packages", a.token, kitSignedFile(t, a, pkg))
+	if r.code != http.StatusBadRequest {
+		t.Fatalf("fractional amount_cents: %d %s", r.code, r.body)
+	}
+	if !strings.Contains(strings.ToLower(string(r.body)), "amount_cents") {
+		t.Fatalf("expected amount_cents error: %s", r.body)
+	}
+}
+
+func TestConfigOverridesPriceAndSalesURL(t *testing.T) {
+	e := newEnv(t)
+	// Load config.example.json and override display / sales-url tunables.
+	example, err := os.ReadFile("config.example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Defaults()
+	dec := json.NewDecoder(bytes.NewReader(example))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SecureCookies = false
+	cfg.CentsPerMajorUnit = 10 // example default is 100; 100 cents → "10.00" with unit 10
+	cfg.MaxSalesURLRunes = 40
+	cfg.CurrencyCodeLength = 3
+	if err := e.m.ApplyConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	a := e.author("Config Author", "config@example.test")
+	e.publishPriced(a, "config-mod", "1.0.0", map[string]any{
+		"amount_cents": 100, "currency": "USD", "interval": "month",
+	})
+	var body map[string]any
+	e.do("GET", "/v1/listings/config-mod", "", nil).json(t, &body)
+	note, _ := body["price_note"].(string)
+	if !strings.Contains(note, "10.00") || strings.Contains(note, "1.00") {
+		t.Fatalf("ApplyConfig cents_per_major_unit must change display: %q", note)
+	}
+	long := "https://author.example.test/" + strings.Repeat("x", 40)
+	r := e.do("PATCH", "/v1/authors/me/listings/config-mod/price", a.token, map[string]any{
+		"sales_url": long,
+	})
+	if r.code != http.StatusBadRequest {
+		t.Fatalf("max_sales_url_runes from config must bind: %d %s", r.code, r.body)
 	}
 }
 
@@ -277,7 +415,7 @@ func TestMKT06NoPaymentOrKeyData(t *testing.T) {
 	}
 }
 
-// MKT-07: test helpers refuse any outside host.
+// MKT-07: test helpers refuse any outside host (wired into tryURL / do).
 func TestMKT07NoOutsideHost(t *testing.T) {
 	if err := RequireLocalBaseURL("http://127.0.0.1:9"); err != nil {
 		t.Fatalf("loopback refused: %v", err)
@@ -296,5 +434,13 @@ func TestMKT07NoOutsideHost(t *testing.T) {
 		if err := RequireLocalBaseURL(bad); err == nil {
 			t.Fatalf("outside host accepted: %q", bad)
 		}
+	}
+	e := newEnv(t)
+	_, err := e.tryURL("GET", "https://api.stripe.com/v1/charges", "", nil)
+	if !errors.Is(err, ErrOutsideHostRefused) {
+		t.Fatalf("helper must refuse outside host before dialing: %v", err)
+	}
+	if r := e.do("GET", "/healthz", "", nil); r.code != http.StatusNoContent {
+		t.Fatalf("local helper still works: %d %s", r.code, r.body)
 	}
 }

@@ -52,4 +52,4 @@ There is no checkout, subscription, renewal, refund, payment-service, platform-f
 go test -count=1 ./marketplace/
 ```
 
-Test helpers refuse any outside host (`RequireLocalBaseURL`). Outside payment providers are never dialed.
+Test helpers refuse any outside host (`RequireLocalBaseURL` in the test package, called from `env.do` / `env.doURL`). Outside payment providers are never dialed.

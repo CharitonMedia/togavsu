@@ -359,12 +359,52 @@ func (s *Server) apiUpload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, invalid("package_base64", "the package must be standard base64"))
 		return
 	}
+	if err := checkUploadPackageMeta(b.ListingID, b.Version, b.Immutable, b.Manifest, pkg); err != nil {
+		writeErr(w, err)
+		return
+	}
 	l, err := s.M.Publish(a, Upload{Package: pkg, Signature: b.Signature, KeyID: b.KeyID, Digest: b.Digest, PriceNote: b.PriceNote})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, s.listingBody(l))
+}
+
+// checkUploadPackageMeta refuses a signed-file body whose listing_id, version, immutable
+// or manifest disagree with the package bytes (kit SignFile or a marketplace download).
+func checkUploadPackageMeta(listingID, version string, immutable *bool, manifest map[string]any, pkg []byte) error {
+	if listingID == "" && version == "" && immutable == nil && manifest == nil {
+		return nil
+	}
+	man, err := shared.ReadManifest(pkg)
+	if err != nil {
+		return invalid("package", "the package needs a "+shared.ManifestName+" with id, name, version and permissions")
+	}
+	if listingID != "" && listingID != man.ID {
+		return invalid("listing_id", "listing_id does not match the package")
+	}
+	if version != "" && version != man.Version {
+		return invalid("version", "version does not match the package")
+	}
+	var pkgMan map[string]any
+	if err := json.Unmarshal(man.Raw, &pkgMan); err != nil {
+		return invalid("package", "the manifest is unreadable")
+	}
+	if manifest != nil {
+		want, _ := json.Marshal(pkgMan)
+		got, _ := json.Marshal(manifest)
+		if !bytes.Equal(want, got) {
+			return invalid("manifest", "manifest does not match the package")
+		}
+	}
+	if immutable != nil && *immutable && manifest == nil {
+		// Marketplace download shape is immutable:true with a matching manifest. The kit
+		// SignFile shape is immutable:false and manifest:null. immutable:true without a
+		// matching manifest is a mismatch.
+		return invalid("immutable", "immutable does not match the signed package")
+	}
+	return nil
 }
 
 func (s *Server) apiSetPrice(w http.ResponseWriter, r *http.Request) {

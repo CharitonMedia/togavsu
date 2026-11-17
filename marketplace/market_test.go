@@ -47,6 +47,9 @@ func (e *env) open() {
 	if err != nil {
 		e.t.Fatal(err)
 	}
+	if err := m.ApplyConfig(cfg); err != nil {
+		e.t.Fatal(err)
+	}
 	s, err := NewServer(m, cfg, opToken, e.clock)
 	if err != nil {
 		e.t.Fatal(err)
@@ -74,12 +77,28 @@ func (r resp) json(t *testing.T, dst any) {
 
 func (e *env) do(method, path, token string, body any) resp {
 	e.t.Helper()
+	r, err := e.tryURL(method, e.srv.URL+path, token, body)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return r
+}
+
+// tryURL is the HTTP test helper. It refuses any non-local URL before dialing (MKT-07).
+func (e *env) tryURL(method, rawURL, token string, body any) (resp, error) {
+	e.t.Helper()
+	if err := RequireLocalBaseURL(rawURL); err != nil {
+		return resp{}, err
+	}
 	var rd io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
 		rd = bytes.NewReader(b)
 	}
-	req, _ := http.NewRequest(method, e.srv.URL+path, rd)
+	req, err := http.NewRequest(method, rawURL, rd)
+	if err != nil {
+		return resp{}, err
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -88,11 +107,11 @@ func (e *env) do(method, path, token string, body any) resp {
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		e.t.Fatal(err)
+		return resp{}, err
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(res.Body)
-	return resp{code: res.StatusCode, body: b, hdr: res.Header}
+	return resp{code: res.StatusCode, body: b, hdr: res.Header}, nil
 }
 
 type author struct {
@@ -447,7 +466,11 @@ func TestOperatorPages(t *testing.T) {
 	jar, _ := cookiejar.New(nil)
 	c := &http.Client{Jar: jar}
 	post := func(path string, form url.Values) *http.Response {
-		res, err := c.PostForm(e.srv.URL+path, form)
+		raw := e.srv.URL + path
+		if err := RequireLocalBaseURL(raw); err != nil {
+			t.Fatal(err)
+		}
+		res, err := c.PostForm(raw, form)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -492,7 +515,11 @@ func TestOperatorPages(t *testing.T) {
 		t.Fatal("pull form")
 	}
 	post("/operator/logout", url.Values{"csrf": {m[1]}})
-	res, _ = c.Get(e.srv.URL + "/operator")
+	opURL := e.srv.URL + "/operator"
+	if err := RequireLocalBaseURL(opURL); err != nil {
+		t.Fatal(err)
+	}
+	res, _ = c.Get(opURL)
 	body, _ = io.ReadAll(res.Body)
 	if !strings.Contains(string(body), "Operator sign in") {
 		t.Fatal("still signed in after logout")

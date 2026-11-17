@@ -10,7 +10,7 @@ import (
 var ErrOutsideHostRefused = errors.New("marketplace: test helpers refuse any host that is not local")
 
 // RequireLocalBaseURL refuses any base URL that is not a local test server.
-// Every marketplace test helper that would dial an outside service must call this (MKT-07).
+// Test helpers that dial must call this (MKT-07).
 func RequireLocalBaseURL(base string) error {
 	u, err := url.Parse(strings.TrimSpace(base))
 	if err != nil || u.Scheme == "" || u.Host == "" {
