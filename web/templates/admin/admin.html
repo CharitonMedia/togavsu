@@ -121,6 +121,28 @@
 {{end}}
 
 {{if eq .Tab "modules"}}{{with .Modules}}
+<section class="card" id="marketplace"><h2>Marketplace</h2>
+<p class="muted">Address: <code class="clip">{{.Address}}</code></p>
+{{if .ComposeHTTP}}<p class="hint">This marketplace is reached without https, so only your trusted local keys can approve an install. <a href="#trusted-keys">Trusted local signing keys</a></p>{{end}}
+<form method="get" action="/admin" class="inline market-search"><input type="hidden" name="tab" value="modules"><label for="mq">Search the marketplace</label> <input id="mq" name="q" value="{{.Query}}"> <button type="submit">Search</button></form>
+{{if .BrowseError}}<p class="error" role="alert">{{.BrowseError}}</p>{{end}}
+{{if .Unreachable}}<p class="error" role="alert">The marketplace isn't reachable at {{.Address}}.</p>
+<p>Set <a href="/admin?tab=modules#s-modules.marketplace_address">Marketplace Address</a> in Settings, on the Modules tab.</p>
+<p class="hint">Install from a file stays available below.</p>
+{{else}}{{range .Listings}}<article class="listing" id="listing-{{.ID}}"><h3>{{.Name}} <span class="muted">{{.Version}} by {{.Author}}</span></h3>
+{{if .Flagged}}<p class="warning" role="alert">{{.FlagText}}</p>{{end}}
+<p class="muted">{{.Notice}}</p>
+<p>Price: {{if .PriceNote}}{{.PriceNote}}{{else}}Free{{end}} · signed by <code class="clip">{{.SigningKey}}</code></p>
+<details class="listing-perms"><summary>Permissions ({{len .Permissions}})</summary>
+<ul>{{range .Permissions}}<li><code>{{.}}</code></li>{{end}}</ul>
+</details>
+{{if eq .Action "install"}}<form method="post" action="/admin/modules/install-listing" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="listing_id" value="{{.ID}}"><input type="hidden" name="version" value="{{.Version}}"><button type="submit">Install</button></form>
+{{else if eq .Action "update"}}<form method="post" action="/admin/modules/update" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}"><input type="hidden" name="version" value="{{.Version}}"><button type="submit">Update to {{.Version}}</button></form>
+{{else if eq .Action "installed"}}<span class="muted">Installed</span>
+{{else if eq .Action "installed_newer"}}<span class="muted">Installed {{.InstalledVersion}}</span>{{end}}
+</article>{{else}}<p class="hint">No marketplace listings to show.</p>{{end}}{{end}}
+</section>
+
 <section class="card" id="module-alerts"><h2>Marketplace alerts</h2>
 {{if .CheckError}}<p class="error" role="alert">The marketplace check failed: {{.CheckError}}</p>{{end}}
 <p class="muted">Last check {{if .Check.AttemptedAt.IsZero}}not run yet{{else}}{{when .Check.AttemptedAt}}{{if .Check.LastError}} (failed: {{.Check.LastError}}){{end}}{{end}}. Nothing is switched off remotely: you decide whether to keep, disable, update or remove a module.</p>
@@ -178,21 +200,11 @@
 <section class="card" id="trusted-keys"><h2>Trusted local signing keys</h2>
 {{if .Keys}}<table><thead><tr><th>Name</th><th>Key id</th><th></th></tr></thead><tbody>{{range .Keys}}<tr id="key-{{.ID}}"><td>{{.Name}}</td><td><code>{{.KeyID}}</code></td>
 <td><form method="post" action="/admin/modules/key-delete" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="key_id" value="{{.ID}}"><button type="submit" class="danger">Remove</button></form></td></tr>{{end}}</tbody></table>
-{{else}}<p class="hint">No trusted local keys. Keys published through the marketplace are trusted without being listed here.</p>{{end}}
+{{else}}<p class="hint">No trusted local keys. Over https or loopback, keys published through the marketplace are trusted without being listed here.</p>{{end}}
 <form method="post" action="/admin/modules/key-add" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
 <label for="key-name">Name</label><input id="key-name" name="name" required maxlength="200" placeholder="Our patched builds">
 <label for="key-pem">Ed25519 public key (PEM)</label><textarea id="key-pem" name="public_key_pem" rows="4" required></textarea>
 <div><button type="submit">Add key</button></div></form>
-</section>
-
-<section class="card" id="marketplace"><h2>Marketplace</h2>
-<form method="get" action="/admin" class="inline"><input type="hidden" name="tab" value="modules"><label for="mq">Search the marketplace</label> <input id="mq" name="q" value="{{.Query}}"> <button type="submit">Search</button></form>
-{{if .BrowseError}}<p class="error" role="alert">{{.BrowseError}}</p>{{end}}
-{{range .Listings}}<article class="listing" id="listing-{{.ID}}"><h3>{{.Name}} <span class="muted">{{.Version}} by {{.Author}}</span></h3>
-{{if .Flagged}}<p class="warning" role="alert">{{.FlagText}}</p>{{end}}
-<p class="muted">{{.Notice}}</p><p>Permissions: {{range $i, $s := .Permissions}}{{if $i}}, {{end}}<code>{{$s}}</code>{{end}} · {{.PriceNote}} · signed by <code>{{.SigningKey}}</code></p>
-<form method="post" action="/admin/modules/install-listing" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="listing_id" value="{{.ID}}"><input type="hidden" name="version" value="{{.Version}}"><button type="submit">Install {{.Version}}</button></form>
-</article>{{end}}
 </section>
 {{end}}{{end}}
 

@@ -136,19 +136,40 @@ func TestReadManifest(t *testing.T) {
 
 func TestBaseURL(t *testing.T) {
 	for addr, ok := range map[string]bool{
-		"https://marketplace.example.test":    true,
-		"https://marketplace.example.test/":   true,
-		"http://127.0.0.1:8090":               true,
-		"http://localhost:8090":               true,
-		"http://marketplace.example.test":     false,
-		"togavsu-marketplace":                 false,
-		"ftp://marketplace.example.test":      false,
-		"https://user:pw@marketplace.example": false,
-		"":                                    false,
+		"https://marketplace.example.test":     true,
+		"https://marketplace.example.test/":    true,
+		"http://127.0.0.1:8090":                true,
+		"http://localhost:8090":                true,
+		"http://togavsu-marketplace:8090":      true,
+		"http://togavsu-marketplace":           true,
+		"http://marketplace.example.test":      false,
+		"http://other-single-label":            false,
+		"togavsu-marketplace":                  false,
+		"ftp://marketplace.example.test":       false,
+		"https://user:pw@marketplace.example":  false,
+		"":                                     false,
 	} {
 		if _, err := BaseURL(addr); (err == nil) != ok {
 			t.Errorf("%q: %v", addr, err)
 		}
+	}
+	if !TrustsMarketplaceKeys("https://marketplace.example.test") || !TrustsMarketplaceKeys("http://127.0.0.1:8090") || !TrustsMarketplaceKeys("http://localhost:8090") {
+		t.Fatal("https and loopback must trust marketplace keys")
+	}
+	if TrustsMarketplaceKeys("http://togavsu-marketplace:8090") || TrustsMarketplaceKeys("togavsu-marketplace") {
+		t.Fatal("plain http to togavsu-marketplace must not trust marketplace keys")
+	}
+	if !IsComposeMarketplaceHTTP("http://togavsu-marketplace:8090") || IsComposeMarketplaceHTTP("http://127.0.0.1:8090") {
+		t.Fatal("compose http detection")
+	}
+}
+
+func TestNewerVersion(t *testing.T) {
+	if !NewerVersion("1.1.0", "1.0.0") || NewerVersion("1.0.0", "1.0.0") || NewerVersion("1.0.0", "1.1.0") {
+		t.Fatal("semver compare")
+	}
+	if NewerVersion("", "1.0.0") || !NewerVersion("1.0.0", "") {
+		t.Fatal("empty installed")
 	}
 }
 

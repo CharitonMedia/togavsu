@@ -10,6 +10,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/modules/yamlsubset"
@@ -46,6 +47,49 @@ func ValidModuleID(id string) bool { return moduleID.MatchString(id) }
 
 // ValidVersion reports whether v is a version string the marketplace accepts.
 func ValidVersion(v string) bool { return versionForm.MatchString(v) }
+
+// NewerVersion reports whether listed is a newer release than installed by dotted
+// numeric compare (pre-release and build suffixes ignored for the numeric parts).
+// Equal versions are not newer. Unparseable versions fall back to string inequality.
+func NewerVersion(listed, installed string) bool {
+	if listed == "" || listed == installed {
+		return false
+	}
+	if installed == "" {
+		return true
+	}
+	lp, okL := versionParts(listed)
+	ip, okI := versionParts(installed)
+	if !okL || !okI {
+		return listed != installed
+	}
+	for i := 0; i < 4; i++ {
+		if lp[i] != ip[i] {
+			return lp[i] > ip[i]
+		}
+	}
+	return false
+}
+
+func versionParts(v string) ([4]int, bool) {
+	v = strings.TrimPrefix(v, "v")
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) == 0 || len(parts) > 4 {
+		return [4]int{}, false
+	}
+	var out [4]int
+	for i, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 {
+			return [4]int{}, false
+		}
+		out[i] = n
+	}
+	return out, true
+}
 
 // ReadManifest finds togavsu-module.yaml at the root of a package (a tar archive, gzip
 // compressed or not) and reads it. Call it only after Verify passes. The whole archive is

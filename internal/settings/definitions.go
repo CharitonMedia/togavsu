@@ -155,7 +155,7 @@ var definitions = []Definition{
 	{Key: "ai.model_prices", Label: "Model Prices", Kind: KindJSON, Default: "{}", Tab: TabAI, Help: "Price per model in cents per million tokens. A model with no price costs 0 cents in the AI call log.", Special: "model_prices"},
 	{Key: "ai.task_overrides", Label: "Per-Task Model Overrides", Kind: KindJSON, Default: "{}", Tab: TabAI, Help: "Per-task provider and model overrides."},
 
-	{Key: "modules.marketplace_address", Label: "Marketplace Address", Kind: KindString, Default: domain.MarketplaceAddress, Tab: TabModules, Help: "Marketplace the firm checks. Default is the Togavsu marketplace.", PRD: true},
+	{Key: "modules.marketplace_address", Label: "Marketplace Address", Kind: KindString, Default: domain.MarketplaceAddress, Tab: TabModules, Help: "Marketplace the firm checks: an https address, or http://togavsu-marketplace:8090 for the marketplace that runs beside Togavsu, which installs only modules signed by your trusted local keys.", PRD: true},
 	{Key: "modules.alert_check", Label: "Module Check Frequency", Kind: KindEnum, Default: "daily", Allowed: []string{"hourly", "daily", "weekly"}, Tab: TabModules, Help: "How often installed modules are checked for flags and pulls. Default daily.", PRD: true},
 	{Key: "modules.replace_time", Label: "Time and Billing Replacement Module", Kind: KindString, Tab: TabModules, Help: "Module id that replaces time and invoicing. Empty keeps the core."},
 	{Key: "modules.replace_trust", Label: "Trust Replacement Module", Kind: KindString, Tab: TabModules, Help: "Module id that replaces trust. Empty keeps the core."},

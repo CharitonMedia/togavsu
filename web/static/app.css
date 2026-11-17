@@ -159,7 +159,17 @@ tr.changed td:first-child{border-left:3px solid var(--accent)}
   .setting-form{flex-direction:column;align-items:stretch;max-width:100%}
   .color-row{flex-direction:column;align-items:flex-start}
   .card{max-width:100%;min-width:0}
+  /* Modules marketplace catalog: keep listings and search inside a phone viewport. */
+  #marketplace,.listing,.market-search{max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-word}
+  .market-search{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .market-search input{min-width:0;flex:1 1 8rem;max-width:100%;box-sizing:border-box}
+  .listing h3,.listing code,.listing-perms{max-width:100%;overflow-wrap:anywhere}
 }
+.listing{margin:0 0 14px;padding:0 0 12px;border-bottom:1px solid var(--line);max-width:100%;min-width:0}
+.listing:last-child{border-bottom:0;padding-bottom:0}
+.listing-perms{margin:8px 0}
+.listing-perms ul{margin:6px 0 0;padding-left:1.2rem}
+.market-search{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
 @media (prefers-color-scheme:dark){:root[data-mode=device]{--surface:#1f242b;--text:#e8e6e1;--muted:#a9b0ba;--line:#343b45}}
 :root[data-mode=dark]{--surface:#1f242b;--text:#e8e6e1;--muted:#a9b0ba;--line:#343b45}
 /* Account screens: user chip picture, role and scope checkboxes, one-time secrets. */

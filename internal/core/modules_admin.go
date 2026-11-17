@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -23,6 +24,15 @@ type adminModule struct {
 	Settings  []modules.SettingValue
 }
 
+// marketListing is one browsable marketplace listing on the tab, with the install /
+// update / installed state for the firm's current modules.
+type marketListing struct {
+	marketplace.Listing
+	// Action is install, update, installed or installed_newer.
+	Action           string
+	InstalledVersion string
+}
+
 // modulesPanel is the tab's data.
 type modulesPanel struct {
 	Modules     []adminModule
@@ -33,8 +43,16 @@ type modulesPanel struct {
 	Check       marketplace.CheckStatus
 	CheckError  string
 	Query       string
-	Listings    []marketplace.Listing
+	Listings    []marketListing
 	BrowseError string
+	// Address is modules.marketplace_address as stored.
+	Address string
+	// Unreachable is true when the address is the placeholder, refused or the
+	// marketplace could not be reached; the card shows the settings link instead of
+	// raw errors.
+	Unreachable bool
+	// ComposeHTTP is true when Address is plain http to togavsu-marketplace.
+	ComposeHTTP bool
 }
 
 // Panel opens the tab. Opening it runs the marketplace flag and pull check (PRD 10.5);
@@ -61,6 +79,7 @@ func (m modulesAdmin) Panel(r *http.Request, p domain.Principal) (any, error) {
 		return nil, err
 	}
 	v.Candidates = map[string][]string{}
+	installed := map[string]string{}
 	for _, mv := range views {
 		row := adminModule{View: mv}
 		if mv.Replaces != nil {
@@ -79,6 +98,9 @@ func (m modulesAdmin) Panel(r *http.Request, p domain.Principal) (any, error) {
 				return nil, err
 			}
 		}
+		if mv.Status != modules.StatusRemoved && mv.Status != modules.StatusCancelled {
+			installed[mv.ID] = mv.Version
+		}
 		v.Modules = append(v.Modules, row)
 	}
 	if v.Domains, err = m.x.Modules.DomainHandlers(ctx, p); err != nil {
@@ -87,15 +109,58 @@ func (m modulesAdmin) Panel(r *http.Request, p domain.Principal) (any, error) {
 	if v.Keys, err = m.x.Market.Keys(ctx, p); err != nil {
 		return nil, err
 	}
-	if v.Query = strings.TrimSpace(r.URL.Query().Get("q")); v.Query != "" {
-		if v.Listings, err = m.x.Market.Listings(ctx, p, v.Query); err != nil {
-			if isForbidden(err) {
-				return nil, err
-			}
-			v.BrowseError = err.Error()
+	v.Query = strings.TrimSpace(r.URL.Query().Get("q"))
+	v.Address = strings.TrimSpace(m.x.Market.Address(ctx))
+	v.ComposeHTTP = marketplace.IsComposeMarketplaceHTTP(v.Address)
+	if _, err := marketplace.BaseURL(v.Address); err != nil {
+		v.Unreachable = true
+		return v, nil
+	}
+	ls, err := m.x.Market.Listings(ctx, p, v.Query)
+	if err != nil {
+		if isForbidden(err) {
+			return nil, err
 		}
+		if marketplaceUnreachable(err) {
+			v.Unreachable = true
+		} else {
+			v.BrowseError = browsePlain(err)
+		}
+		return v, nil
+	}
+	for _, l := range ls {
+		row := marketListing{Listing: l, Action: "install"}
+		if ver, ok := installed[l.ID]; ok {
+			row.InstalledVersion = ver
+			switch {
+			case ver == l.Version:
+				row.Action = "installed"
+			case marketplace.NewerVersion(l.Version, ver):
+				row.Action = "update"
+			default:
+				// Installed version is newer than the listed one: never offer a downgrade.
+				row.Action = "installed_newer"
+			}
+		}
+		v.Listings = append(v.Listings, row)
 	}
 	return v, nil
+}
+
+func marketplaceUnreachable(err error) bool {
+	var me *marketplace.Error
+	if errors.As(err, &me) {
+		return me.Code == "marketplace_unconfigured" || me.Code == "unavailable"
+	}
+	return errors.Is(err, marketplace.ErrNotConfigured) || errors.Is(err, marketplace.ErrUnavailable)
+}
+
+func browsePlain(err error) string {
+	var me *marketplace.Error
+	if errors.As(err, &me) && me.Message != "" {
+		return me.Message
+	}
+	return "The marketplace could not be searched."
 }
 
 func isForbidden(err error) bool {
@@ -120,9 +185,14 @@ func (m modulesAdmin) Act(r *http.Request, p domain.Principal, action string) (s
 		}
 		return v.Name + " is installed and waits for your permission decisions.", nil
 	case "install-listing":
-		v, err := svc.InstallFromMarketplace(ctx, p, r.FormValue("listing_id"), r.FormValue("version"))
+		listingID, version := r.FormValue("listing_id"), r.FormValue("version")
+		name := listingID
+		if l, err := m.x.Market.Listing(ctx, p, listingID); err == nil && l.Name != "" {
+			name = l.Name
+		}
+		v, err := svc.InstallFromMarketplace(ctx, p, listingID, version)
 		if err != nil {
-			return "", err
+			return "", installPlain(name, err)
 		}
 		return v.Name + " is installed and waits for your permission decisions.", nil
 	case "permissions":
@@ -159,7 +229,11 @@ func (m modulesAdmin) Act(r *http.Request, p domain.Principal, action string) (s
 	case "update":
 		var res modules.UpdateResult
 		var err error
+		name := id
 		if ver := strings.TrimSpace(r.FormValue("version")); ver != "" {
+			if l, lerr := m.x.Market.Listing(ctx, p, id); lerr == nil && l.Name != "" {
+				name = l.Name
+			}
 			res, err = svc.UpdateFromMarketplace(ctx, p, id, ver)
 		} else {
 			raw, ferr := packageFile(r)
@@ -169,6 +243,9 @@ func (m modulesAdmin) Act(r *http.Request, p domain.Principal, action string) (s
 			res, err = svc.Update(ctx, p, id, raw)
 		}
 		if err != nil {
+			if strings.TrimSpace(r.FormValue("version")) != "" {
+				return "", installPlain(name, err)
+			}
 			return "", err
 		}
 		return res.Module.Name + " update: " + strings.ReplaceAll(res.Outcome, "_", " ") + ".", nil
@@ -209,6 +286,42 @@ func (m modulesAdmin) Act(r *http.Request, p domain.Principal, action string) (s
 		return "Trusted key removed.", nil
 	}
 	return "", domain.NotFound("action")
+}
+
+// installPlain turns a marketplace or module install failure into one plain sentence
+// naming the module, for the tab's alert (never raw error text).
+func installPlain(name string, err error) error {
+	if name == "" {
+		name = "That module"
+	}
+	msg := name + " could not be installed from the marketplace."
+	var me *marketplace.Error
+	if errors.As(err, &me) {
+		switch me.Code {
+		case "yanked":
+			msg = name + " was pulled from the marketplace and can't be installed from there."
+		case "unsigned_module", "tampered_module":
+			msg = name + " failed verification and was not installed."
+		case "marketplace_unconfigured", "unavailable":
+			msg = name + " could not be installed because the marketplace isn't reachable."
+		}
+		return &domain.APIError{Code: me.Code, Message: msg}
+	}
+	var api *domain.APIError
+	if errors.As(err, &api) {
+		switch api.Code {
+		case modules.CodeUnsigned, modules.CodeTampered:
+			msg = name + " failed verification and was not installed."
+		case domain.CodeConflict:
+			msg = name + " is already installed; update it instead."
+		default:
+			if api.Message != "" && !strings.Contains(api.Message, ":") {
+				msg = name + " could not be installed: " + api.Message
+			}
+		}
+		return &domain.APIError{Code: api.Code, Message: msg, Field: api.Field}
+	}
+	return &domain.APIError{Code: "unavailable", Message: msg}
 }
 
 // packageFile reads the form's package upload. The route capped the body already.
