@@ -7,12 +7,8 @@ import (
 	"time"
 )
 
-// Notice is one admin message waiting for core system mail.
-//
-// ponytail: the supervisor appends an outbox file instead of speaking SMTP,
-// ceiling: no message leaves the host, upgrade: the core mailer drains this
-// file through the firm's system mail, trigger: SMTP settings or the email
-// module can send.
+// Notice is one admin message waiting for core system mail. The core's DeliverMail
+// drains this file through systemMailer (CORE-05).
 type Notice struct {
 	Time    time.Time `json:"time"`
 	Subject string    `json:"subject"`
@@ -26,6 +22,13 @@ type Outbox struct {
 
 func OpenOutbox(path string) *Outbox {
 	return &Outbox{path: path, now: time.Now}
+}
+
+func (o *Outbox) Path() string {
+	if o == nil {
+		return ""
+	}
+	return o.path
 }
 
 func (o *Outbox) Notify(_ context.Context, subject, body string) error {
@@ -48,13 +51,73 @@ func (o *Outbox) Notify(_ context.Context, subject, body string) error {
 }
 
 func (o *Outbox) List() ([]Notice, error) {
+	raw, err := o.read()
+	if err != nil {
+		return nil, err
+	}
+	return parseNotices(raw)
+}
+
+// Take renames the outbox aside and returns its notices so the core can send them.
+// A concurrent Notify that creates a new outbox after the rename is left for the next Take.
+func (o *Outbox) Take() ([]Notice, error) {
+	if o == nil || o.path == "" {
+		return nil, nil
+	}
+	pending := o.path + ".draining"
+	if err := os.Rename(o.path, pending); err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	raw, err := os.ReadFile(pending)
+	if err != nil {
+		_ = os.Rename(pending, o.path)
+		return nil, err
+	}
+	out, err := parseNotices(raw)
+	if err != nil {
+		_ = os.Rename(pending, o.path)
+		return nil, err
+	}
+	if err := os.Remove(pending); err != nil && !os.IsNotExist(err) {
+		return out, err
+	}
+	return out, nil
+}
+
+// PutAll appends notices back (failed sends stay queued for the next drain).
+func (o *Outbox) PutAll(notices []Notice) error {
+	if o == nil || o.path == "" || len(notices) == 0 {
+		return nil
+	}
+	f, err := os.OpenFile(o.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	for _, n := range notices {
+		line, err := json.Marshal(n)
+		if err != nil {
+			return err
+		}
+		if _, err := f.Write(append(line, '\n')); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (o *Outbox) read() ([]byte, error) {
 	raw, err := os.ReadFile(o.path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
-	if err != nil {
-		return nil, err
-	}
+	return raw, err
+}
+
+func parseNotices(raw []byte) ([]Notice, error) {
 	var out []Notice
 	for _, line := range bytesSplit(raw) {
 		if len(line) == 0 {

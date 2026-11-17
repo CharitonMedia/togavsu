@@ -708,6 +708,7 @@ func (noPractice) Contact(context.Context, domain.ID) (domain.Contact, error) {
 	return domain.Contact{}, domain.NotFound("contact")
 }
 func (noPractice) Parties(domain.ID, domain.ID) []domain.MatterParty { return nil }
+func (noPractice) Emails(domain.ID) []domain.ContactEmail            { return nil }
 
 type noWalls struct{}
 

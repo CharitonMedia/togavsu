@@ -484,8 +484,8 @@ func TestTwoComposeProjectsStaySeparate(t *testing.T) {
 		if cfg.DockerNetwork != project+"_default" || cfg.AppSecretsVolume != project+"_appsecrets" {
 			t.Fatalf("config %+v", cfg)
 		}
-		if got := CoreBinds(CoreVolumes{AppSecrets: cfg.AppSecretsVolume, Data: cfg.CoreDataVolume}); len(got) != 3 || got[0] != project+"_appsecrets:/appsecrets:ro" ||
-			got[2] != project+"_core_data:/var/lib/togavsu-core" {
+		if got := CoreBinds(CoreVolumes{AppSecrets: cfg.AppSecretsVolume, Data: cfg.CoreDataVolume, SupervisorData: project + "_supervisor_data"}); len(got) != 4 || got[0] != project+"_appsecrets:/appsecrets:ro" ||
+			got[2] != project+"_core_data:/var/lib/togavsu-core" || got[3] != project+"_supervisor_data:"+SupervisorDataDir {
 			t.Fatalf("binds %v", got)
 		}
 	}
@@ -534,9 +534,9 @@ func TestMigratorUnconfigured(t *testing.T) {
 // mounts the core's secrets read-only and never the superuser volume; only the update
 // migrator gets the superuser volume, read-only.
 func TestCoreAndMigratorSecretMounts(t *testing.T) {
-	v := CoreVolumes{AppSecrets: "p_appsecrets", AdminSecrets: "p_adminsecrets", BackupKey: "p_backupkey", Data: "p_core_data"}
+	v := CoreVolumes{AppSecrets: "p_appsecrets", AdminSecrets: "p_adminsecrets", BackupKey: "p_backupkey", Data: "p_core_data", SupervisorData: "p_supervisor_data"}
 	core := strings.Join(CoreBinds(v), " ")
-	if core != "p_appsecrets:/appsecrets:ro p_backupkey:/backupkey p_core_data:/var/lib/togavsu-core" {
+	if core != "p_appsecrets:/appsecrets:ro p_backupkey:/backupkey p_core_data:/var/lib/togavsu-core p_supervisor_data:"+SupervisorDataDir {
 		t.Fatalf("core binds %s", core)
 	}
 	if strings.Contains(core, "adminsecrets") {

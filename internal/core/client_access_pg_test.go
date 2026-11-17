@@ -69,6 +69,12 @@ func TestCORE14ClientAccess(t *testing.T) {
 	if r := portal.do("GET", "/api/v1/matters", nil); r.code != http.StatusForbidden || r.json["code"] != "password_change_required" {
 		t.Fatalf("matters while must_change: %d %s", r.code, r.body)
 	}
+	if r := portal.do("POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}); r.code != http.StatusForbidden || r.json["code"] != "password_change_required" {
+		t.Fatalf("mcp while must_change: %d %s", r.code, r.body)
+	}
+	if r := portal.do("GET", "/practice/matters", nil); r.code != http.StatusSeeOther || !strings.Contains(r.loc, "/portal/security") {
+		t.Fatalf("non-portal page while must_change: %d loc=%q body=%s", r.code, r.loc, r.body)
+	}
 	portal.must(http.StatusNoContent, "POST", "/api/v1/me/password", map[string]any{
 		"current_password": pw, "new_password": "synthetic-changed-password",
 	})

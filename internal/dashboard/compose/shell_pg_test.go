@@ -51,7 +51,11 @@ var notScreens = map[string]string{
 	"/ui/timers":                            "timer fragment",
 	"/modules/{module_id}/widgets/{widget}": "home widget fragment",
 	"/modules/{module_id}/tabs/{tab}":       "needs an installed module; core TestExtensionsUIModules checks the shell",
-	"/modules/{module_id}/matter-items/{item}": "needs an installed module; core TestExtensionsMatterItems checks the shell",
+	"/modules/{module_id}/matter-items/{item}":               "needs an installed module; core TestExtensionsMatterItems checks the shell",
+	"/modules/{module_id}/tabs/{tab}/context-token":          "JSON for a module frame bridge; not a screen",
+	"/modules/{module_id}/widgets/{widget}/context-token":    "JSON for a module frame bridge; not a screen",
+	"/modules/{module_id}/matter-items/{item}/context-token": "JSON for a module frame bridge; not a screen",
+	"/modules/{module_id}/device-connect":                    "device grant QR/connect page is module-owned; core TestCORE27 covers it",
 }
 
 // routePattern finds a GET route's pattern in Go source: "GET /path".

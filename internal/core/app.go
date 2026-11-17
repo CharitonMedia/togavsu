@@ -56,6 +56,10 @@ type Config struct {
 	// DataDir holds upload staging, editor run folders and the default local-disk
 	// backend. Empty is DataDir (the core volume); tests give a temporary folder.
 	DataDir string
+	// SupervisorMailOutbox is the supervisor's mail-outbox.jsonl path (CORE-05).
+	// Empty is SupervisorMailOutboxPath; tests point at a temp file. A missing file
+	// is a no-op drain.
+	SupervisorMailOutbox string
 	// WordcraftCLI and EditorDist locate LawCraft's builds. Empty uses the image paths;
 	// a missing binary or folder leaves those features answering that they are absent.
 	WordcraftCLI string
@@ -110,6 +114,8 @@ type App struct {
 	Modules *modules.Service
 	Market  *marketplace.Service
 	sysMail *systemMailer
+	// supervisorMailOutbox is Config.SupervisorMailOutbox (resolved), drained by DeliverMail.
+	supervisorMailOutbox string
 
 	// providerURLs is Config.ProviderURLs, for the AI tab's Provider check.
 	providerURLs map[string]string
@@ -297,6 +303,10 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		Practice: practice.NewWithKey(store, reg, cfg.Key), Store: store, ledger: ledger,
 	}
 	app.sysMail = sysMail
+	app.supervisorMailOutbox = cfg.SupervisorMailOutbox
+	if app.supervisorMailOutbox == "" {
+		app.supervisorMailOutbox = SupervisorMailOutboxPath
+	}
 	sub, err := fs.Sub(web.Practice, "templates/practice")
 	if err != nil {
 		return fail(err)

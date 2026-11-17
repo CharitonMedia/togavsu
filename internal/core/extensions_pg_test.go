@@ -446,12 +446,14 @@ func TestExtensionsMatterItems(t *testing.T) {
 	action := "/modules/matter-notes/matter-items/letter?matter_id=" + open
 	screen := x.staff.must(http.StatusOK, "GET", "/practice/matters/"+open, nil)
 	for _, want := range []string{`id="module-matter-notes"`, `<iframe src="` + panel + `"`,
-		// Outer iframe loads a core frame page; allow-same-origin lets the nested CORE-09 bridge use the session.
-		`sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-same-origin"`,
+		`sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox"`,
 		`<a class="button" href="` + action + `">Draft a letter</a>`, "Matter notes"} {
 		if !strings.Contains(screen.body, want) {
 			t.Fatalf("matter screen lacks %q:\n%s", want, screen.body)
 		}
+	}
+	if strings.Contains(screen.body, "allow-same-origin") {
+		t.Fatalf("matter-screen frame must not get allow-same-origin:\n%s", screen.body)
 	}
 	for path, page := range map[string]string{panel: "/m/matter-notes/notes?", action: "/m/matter-notes/letter?"} {
 		r := x.staff.must(http.StatusOK, "GET", path, nil)

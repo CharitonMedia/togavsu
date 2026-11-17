@@ -150,11 +150,17 @@ func (a *App) deliverTrustMail(ctx context.Context, every time.Duration) {
 	}
 }
 
-// DeliverMail sends every queued trust mail now and returns how many went out.
+// DeliverMail sends every queued trust mail now, then drains the supervisor's
+// mail-outbox.jsonl through systemMailer (CORE-05), and returns how many went out.
 func (a *App) DeliverMail(ctx context.Context) (int, error) {
 	a.mailMu.Lock()
 	defer a.mailMu.Unlock()
-	return a.Trust.DeliverMail(ctx, a.sysMail.AsSender())
+	n, err := a.Trust.DeliverMail(ctx, a.sysMail.AsSender())
+	n2, err2 := a.drainSupervisorMail(ctx)
+	if err == nil {
+		err = err2
+	}
+	return n + n2, err
 }
 
 // entryTypeScoped are the contract operations whose scopes depend on the body's

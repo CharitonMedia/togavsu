@@ -7,12 +7,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/modules"
+	"github.com/CharitonMedia/togavsu/internal/supervisor"
 )
 
 // TestCORE05SystemMailRouting: route through module (202), SMTP fallback on
@@ -175,6 +177,71 @@ func TestCORE05SystemMailTimeoutSameKey(t *testing.T) {
 	}
 	if len(x.smtp.messages()) != before {
 		t.Fatal("SMTP used after successful module retry")
+	}
+}
+
+// TestCORE05SupervisorOutboxDrain: DeliverMail routes supervisor mail-outbox notices
+// through systemMailer (update_failure kind) so email-module routing and SMTP fallback apply.
+func TestCORE05SupervisorOutboxDrain(t *testing.T) {
+	outPath := filepath.Join(t.TempDir(), "mail-outbox.jsonl")
+	x := newExt(t, func(c *Config) { c.SupervisorMailOutbox = outPath })
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+
+	var mu sync.Mutex
+	var posts []map[string]any
+	x.rt.Handle("mail-router", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/system-mail" {
+			http.NotFound(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var msg map[string]any
+		_ = json.Unmarshal(body, &msg)
+		mu.Lock()
+		posts = append(posts, msg)
+		mu.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	pkg := x.build(func(f map[string][]byte) {
+		m := string(f[modules.ManifestFile])
+		m = strings.Replace(m, "id: matter-clock", "id: mail-router", 1)
+		m = strings.Replace(m, "name: Matter Clock", "name: Mail Router", 1)
+		m = strings.Replace(m, "  events: /events\n", "  events: /events\n  system_mail: /system-mail\n", 1)
+		m = strings.Replace(m, "permissions:\n", "permissions:\n  - scope: mail:system\n    reason: Deliver system mail.\n    required: false\n", 1)
+		f[modules.ManifestFile] = []byte(m)
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("mail-router")
+	x.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/mail.route_through_email_module", map[string]any{"value": true})
+
+	box := supervisor.OpenOutbox(outPath)
+	if err := box.Notify(context.Background(), "Update failed", "The signed release could not be applied."); err != nil {
+		t.Fatal(err)
+	}
+	before := len(x.smtp.messages())
+	n, err := x.app.DeliverMail(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n < 1 {
+		t.Fatalf("DeliverMail sent %d, want at least the supervisor notice", n)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(posts) != 1 {
+		t.Fatalf("module posts=%d want 1 (got SMTP=%d)", len(posts), len(x.smtp.messages())-before)
+	}
+	if posts[0]["kind"] != "update_failure" || posts[0]["subject"] != "Update failed" {
+		t.Fatalf("module body: %+v", posts[0])
+	}
+	left, err := box.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 0 {
+		t.Fatalf("outbox still has %d notices", len(left))
 	}
 }
 

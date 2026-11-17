@@ -55,8 +55,22 @@ func (a *App) elevateBooksReader(r *http.Request, p *domain.Principal, c identit
 	return nil
 }
 
+// requireBooksService refuses every caller except a module service principal that
+// elevateBooksReader has already raised to the accountant books reader (CORE-02).
+// Cookie sessions and viewer context tokens must not read contact PII here.
+func (a *App) requireBooksService(r *http.Request) (domain.Principal, error) {
+	p, err := a.principal(r)
+	if err != nil {
+		return p, err
+	}
+	if p.Source != domain.SourceService || p.ModuleID == "" || !p.UserID.IsZero() || !p.HasRole(domain.RoleAccountant) {
+		return p, domain.Forbidden("module token with books:read is required")
+	}
+	return p, nil
+}
+
 func (a *App) booksProfileJSON(w http.ResponseWriter, r *http.Request) {
-	if _, err := a.principal(r); err != nil {
+	if _, err := a.requireBooksService(r); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -69,7 +83,7 @@ func (a *App) booksProfileJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) booksMatterJSON(w http.ResponseWriter, r *http.Request) {
-	p, err := a.principal(r)
+	p, err := a.requireBooksService(r)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -83,7 +97,7 @@ func (a *App) booksMatterJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) booksContactJSON(w http.ResponseWriter, r *http.Request) {
-	p, err := a.principal(r)
+	p, err := a.requireBooksService(r)
 	if err != nil {
 		writeErr(w, err)
 		return

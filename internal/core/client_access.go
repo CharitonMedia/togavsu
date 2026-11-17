@@ -22,12 +22,13 @@ func (a *App) clientAccessRoutes(m *http.ServeMux) {
 }
 
 // passwordChangeGate forces clients with must_change_password onto /portal/security
-// and answers 403 password_change_required on other API calls (CORE-14).
+// and answers 403 password_change_required on every other API or /mcp call (CORE-14).
+// Static assets stay open so the security page can load; every other page redirects.
 func (a *App) passwordChangeGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if path == "/api/v1/me/password" || path == "/api/v1/auth/logout" ||
-			path == "/portal/security" || path == "/portal/sign-out" || path == "/mcp" {
+			path == "/portal/security" || path == "/portal/sign-out" || passwordChangeStatic(path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -41,12 +42,20 @@ func (a *App) passwordChangeGate(next http.Handler) http.Handler {
 			writeErr(w, &domain.APIError{Code: "password_change_required", Message: "change your password before continuing"})
 			return
 		}
-		if strings.HasPrefix(path, "/portal") {
-			http.Redirect(w, r, "/portal/security", http.StatusSeeOther)
-			return
-		}
-		next.ServeHTTP(w, r)
+		http.Redirect(w, r, "/portal/security", http.StatusSeeOther)
 	})
+}
+
+func passwordChangeStatic(path string) bool {
+	if uiOpenPath(path) {
+		return true
+	}
+	for _, p := range staticPrefixes {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *App) clientAccessCaller(w http.ResponseWriter, r *http.Request, write bool) (domain.Principal, bool) {

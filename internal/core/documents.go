@@ -31,6 +31,10 @@ import (
 // default local-disk storage backend (a Docker volume in compose.yaml).
 const DataDir = "/var/lib/togavsu-core"
 
+// SupervisorMailOutboxPath is the default path of the supervisor notice file the core
+// drains through systemMailer (CORE-05). Matches supervisor.SupervisorDataDir/MailOutboxFile.
+const SupervisorMailOutboxPath = "/var/lib/togavsu/mail-outbox.jsonl"
+
 // WordcraftCLI and EditorDist are where the core image puts LawCraft's headless build
 // and its browser editor, both built at the pinned commit (PRD 8.20).
 const (

@@ -174,4 +174,29 @@ func TestCORE02BooksReads(t *testing.T) {
 	if r := nobooks.do("GET", "/api/v1/books/profile", nil); r.code != http.StatusForbidden {
 		t.Fatalf("books profile without books:read: %d %s", r.code, r.body)
 	}
+
+	// Staff session, client session and viewer-context calls must not read books PII.
+	for _, c := range []*client{x.staff, x.admin} {
+		if r := c.do("GET", "/api/v1/books/matters/"+open, nil); r.code != http.StatusForbidden {
+			t.Fatalf("session books matter: %d %s", r.code, r.body)
+		}
+		if r := c.do("GET", "/api/v1/books/contacts/"+openClient, nil); r.code != http.StatusForbidden {
+			t.Fatalf("session books contact: %d %s", r.code, r.body)
+		}
+		if r := c.do("GET", "/api/v1/books/profile", nil); r.code != http.StatusForbidden {
+			t.Fatalf("session books profile: %d %s", r.code, r.body)
+		}
+	}
+	cli, _ := enrollUser(t, x.app, x.srv.URL, x.admin, "Books Client", "books.client@example.com", domain.RoleClient)
+	if r := cli.do("GET", "/api/v1/books/contacts/"+openClient, nil); r.code != http.StatusForbidden {
+		t.Fatalf("client books contact: %d %s", r.code, r.body)
+	}
+	ct := x.staff.must(http.StatusCreated, "POST", "/api/v1/modules/matter-clock/context-tokens", map[string]any{})
+	tok := str(t, ct.json, "token")
+	if r := bot.do("GET", "/api/v1/books/contacts/"+openClient, nil, modules.ContextHeader, tok); r.code != http.StatusForbidden {
+		t.Fatalf("viewer-context books contact: %d %s", r.code, r.body)
+	}
+	if r := bot.do("GET", "/api/v1/books/matters/"+open, nil, modules.ContextHeader, tok); r.code != http.StatusForbidden {
+		t.Fatalf("viewer-context books matter: %d %s", r.code, r.body)
+	}
 }

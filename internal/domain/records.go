@@ -173,11 +173,12 @@ func (ReferralSource) TableName() string { return "referral_sources" }
 // User is a person who can sign in.
 type User struct {
 	Meta
-	Name                   string `db:"name"`
-	Email                  string `db:"email"`
-	Roles                  string `db:"roles"`
-	Active                 bool   `db:"active"`
-	MustChangePassword     bool   `db:"must_change_password"`
+	Name   string `db:"name"`
+	Email  string `db:"email"`
+	Roles  string `db:"roles"`
+	Active bool   `db:"active"`
+	// MustChangePassword is set by CORE-14 (core migration 1303). Not in db Embedded schema.
+	MustChangePassword     bool   `db:"-"`
 	DefaultHourlyRateCents Cents  `db:"default_hourly_rate_cents"`
 	ContactID              ID     `db:"contact_id"`
 	BarNumber              string `db:"bar_number"`
@@ -252,15 +253,16 @@ func (SettingRow) TableName() string { return "settings" }
 // FeeAgreement is the one active fee agreement on a matter.
 type FeeAgreement struct {
 	Meta
-	MatterID          ID     `db:"matter_id"`
-	FeeType           string `db:"fee_type"`
-	AmountCents       Cents  `db:"amount_cents"`
-	Services          string `db:"services"`
-	Status            string `db:"status"`
-	SignedOn          string `db:"signed_on"`
-	VoidReason        string `db:"void_reason"`
-	FileID            ID     `db:"file_id"`
-	SignatureModuleID string `db:"signature_module_id"`
+	MatterID    ID     `db:"matter_id"`
+	FeeType     string `db:"fee_type"`
+	AmountCents Cents  `db:"amount_cents"`
+	Services    string `db:"services"`
+	Status      string `db:"status"`
+	SignedOn    string `db:"signed_on"`
+	VoidReason  string `db:"void_reason"`
+	FileID      ID     `db:"file_id"`
+	// SignatureModuleID is set by CORE-28 (core migration 1305). Not in db Embedded schema.
+	SignatureModuleID string `db:"-"`
 }
 
 func (FeeAgreement) TableName() string { return "fee_agreements" }
@@ -364,8 +366,9 @@ type Payment struct {
 	InvoiceID       ID     `db:"invoice_id"`
 	TrustEntryID    ID     `db:"trust_entry_id"`
 	Source          string `db:"source"`
-	RefundedCents   Cents  `db:"refunded_cents" json:"refunded_cents"`
-	RefundState     string `db:"refund_state" json:"refund_state"`
+	// RefundedCents and RefundState are CORE-24 aggregates (core migration 1300). Not in db Embedded schema.
+	RefundedCents Cents  `db:"-" json:"refunded_cents"`
+	RefundState   string `db:"-" json:"refund_state"`
 }
 
 func (Payment) TableName() string { return "payments" }
@@ -618,7 +621,8 @@ type File struct {
 	Origin           string `db:"origin"`
 	AttorneyOnly     bool   `db:"attorney_only"`
 	SharedWithClient bool   `db:"shared_with_client"`
-	Library          bool   `db:"library"`
+	// Library is set by CORE-17 (core migration 1302). Not in db Embedded schema.
+	Library          bool   `db:"-"`
 	Source           string `db:"source"`
 	ArrivedName      string `db:"arrived_name"`
 	LockedFields     string `db:"locked_fields"`

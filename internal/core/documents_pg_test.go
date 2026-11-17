@@ -1706,9 +1706,12 @@ func TestCoreDataDirMatchesTheSupervisorMount(t *testing.T) {
 	if supervisor.CoreDataDir != DataDir {
 		t.Fatalf("supervisor mounts the core data volume at %s, the core uses %s", supervisor.CoreDataDir, DataDir)
 	}
-	binds := supervisor.CoreBinds(supervisor.CoreVolumes{AppSecrets: "p_appsecrets", Data: "p_core_data"})
-	if len(binds) != 3 || binds[2] != "p_core_data:"+DataDir {
+	binds := supervisor.CoreBinds(supervisor.CoreVolumes{AppSecrets: "p_appsecrets", Data: "p_core_data", SupervisorData: "p_supervisor_data"})
+	if len(binds) != 4 || binds[2] != "p_core_data:"+DataDir || binds[3] != "p_supervisor_data:"+supervisor.SupervisorDataDir {
 		t.Fatalf("replacement core binds %v", binds)
+	}
+	if SupervisorMailOutboxPath != supervisor.SupervisorDataDir+"/"+supervisor.MailOutboxFile {
+		t.Fatalf("supervisor mail outbox path %q", SupervisorMailOutboxPath)
 	}
 }
 
