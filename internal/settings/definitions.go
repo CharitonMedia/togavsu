@@ -38,7 +38,8 @@ var definitions = []Definition{
 	{Key: "security.lockout_length", Label: "Lockout Length", Kind: KindDuration, Default: "15m0s", Min: int64(time.Minute), Max: int64(24 * time.Hour), HasMin: true, HasMax: true, Tab: TabSecurity, Help: "Lockout length. Default 15 minutes.", PRD: true},
 	{Key: "security.api_rate_per_minute", Label: "API Requests per Minute", Kind: KindInt, Default: "600", Min: 1, Max: 1000000, HasMin: true, HasMax: true, Tab: TabSecurity, Help: "API requests allowed per minute per token. Default 600.", PRD: true},
 
-	{Key: "practice.case_number_patterns", Label: "Case Number Patterns", Kind: KindJSON, Default: jsonText([]string{domain.DefaultCasePattern}), Tab: TabPractice, Help: "Case-number patterns. The default matches Missouri docket numbers such as 23AR-CV00825.", PRD: true, Special: "regexp_list"},
+	{Key: "practice.case_number_examples", Label: "Case Number Formats", Kind: KindJSON, Default: jsonText([]string{"23AR-CV00825"}), Tab: TabPractice, Help: "Type one real case number per line in each format your courts use. Togavsu learns the format from the example.", Special: "case_examples"},
+	{Key: "practice.case_number_patterns", Label: "Case Number Patterns", Kind: KindJSON, Default: jsonText([]string{domain.DefaultCasePattern}), Tab: TabPractice, Help: "Case-number patterns used when matching matters that still need a case number. Prefer Case Number Formats unless you need a custom pattern.", PRD: true, Special: "regexp_list"},
 	{Key: "practice.conflict_score_minimum", Label: "Lowest Conflict Score Shown", Kind: KindInt, Default: strconv.Itoa(domain.ConflictScoreMinimum), Min: 0, Max: 100, HasMin: true, HasMax: true, Tab: TabPractice, Help: "Lowest conflict score shown, out of 100. Default 60.", PRD: true},
 	{Key: "practice.party_roles", Label: "Party Roles", Kind: KindJSON, Default: jsonText(domain.DefaultPartyRoles()), Tab: TabPractice, Help: "Party roles offered on a matter.", PRD: true},
 	{Key: "practice.markers", Label: "Matter Markers", Kind: KindJSON, Default: jsonText(domain.DefaultMarkers()), Tab: TabPractice, Help: "Core matter markers. The firm can add its own.", PRD: true},
@@ -151,7 +152,7 @@ var definitions = []Definition{
 	{Key: "ai.categorizing_model", Label: "Categorizing Model", Kind: KindString, Default: domain.LabelingModel, Tab: TabAI, Help: "Categorizing model. Default gpt-6.1-sol once an OpenAI key is set; otherwise the primary strong model.", PRD: true},
 	{Key: "ai.labeling_allow_local", Label: "Allow Local Labeling", Kind: KindBool, Default: "false", Tab: TabAI, Help: "Labeling never runs on a local endpoint.", Locked: true, PRD: true},
 	{Key: "ai.categorizing_allow_local", Label: "Allow Local Categorizing", Kind: KindBool, Default: "false", Tab: TabAI, Help: "Categorizing never runs on a local endpoint.", Locked: true, PRD: true},
-	{Key: "ai.model_prices", Label: "Model Prices", Kind: KindJSON, Default: "{}", Tab: TabAI, Help: "Price per model in cents per million tokens, as {\"model\": {\"input\": cents, \"output\": cents}}. A model with no price costs 0 cents in the AI call log.", Special: "model_prices"},
+	{Key: "ai.model_prices", Label: "Model Prices", Kind: KindJSON, Default: "{}", Tab: TabAI, Help: "Price per model in cents per million tokens. A model with no price costs 0 cents in the AI call log.", Special: "model_prices"},
 	{Key: "ai.task_overrides", Label: "Per-Task Model Overrides", Kind: KindJSON, Default: "{}", Tab: TabAI, Help: "Per-task provider and model overrides."},
 
 	{Key: "modules.marketplace_address", Label: "Marketplace Address", Kind: KindString, Default: domain.MarketplaceAddress, Tab: TabModules, Help: "Marketplace the firm checks. Default is the Togavsu marketplace.", PRD: true},

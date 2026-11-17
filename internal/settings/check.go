@@ -536,6 +536,24 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "internal/settings/seal.go"):
 		// AES-256-GCM keys are 32 bytes. That width is not a firm setting.
 		return fn == "NewSealingStore"
+	case strings.HasSuffix(slash, "internal/settings/plain.go"):
+		// Plain admin editors convert stored Go durations and byte counts to amount+unit
+		// forms. Unit sizes (ns/µs/ms/s/min/h/day, 1<<20 MB, 1<<30 GB) are the Go/IEC
+		// scales, not firm tunables; the stored values remain the registry settings.
+		switch fn {
+		case "FormatDurationPlain", "DurationParts", "ParseDurationPlain", "scaleDuration",
+			"FormatBytesPlain", "BytesParts", "ParseBytesPlain", "scaleBytes",
+			"parsePlainDelay", "FormatModelPricesPlain", "plural":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/settings/case_pattern.go"):
+		// Example length and digit/letter run widths are format bounds for deriving a
+		// regexp from a sample case number, not firm settings.
+		return fn == "DeriveCasePattern"
+	case strings.HasSuffix(slash, "internal/dashboard/settings_view.go"):
+		// templateDict walks key/value pairs for nested HTML templates. The step of two
+		// is a map literal shape, not a firm limit.
+		return fn == "templateDict"
 	case strings.HasSuffix(slash, "internal/identity/params.go"):
 		// Argon2id, RFC 6238 TOTP, the API password minimum, the AES-256 width,
 		// the one-proof rule, and the minute named by security.api_rate_per_minute.

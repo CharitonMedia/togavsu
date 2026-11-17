@@ -72177,6 +72177,7 @@
           "security.failed_sign_in_limit",
           "security.lockout_seconds",
           "security.api_rate_limit_per_minute",
+          "practice.case_number_examples",
           "practice.case_number_patterns",
           "practice.conflict_score_floor",
           "billing.time_increment_minutes",
@@ -81889,6 +81890,17 @@
       "locked": false,
       "minimum": 1,
       "help": "Requests a minute per API token."
+    },
+    {
+      "key": "practice.case_number_examples",
+      "type": "json",
+      "tab": "practice",
+      "default": [
+        "23AR-CV00825"
+      ],
+      "secret": false,
+      "locked": false,
+      "help": "Type one real case number per line in each format your courts use. Togavsu learns the format from the example."
     },
     {
       "key": "practice.case_number_patterns",

@@ -1,0 +1,88 @@
+{
+  "task_id": "desk-fix-settings-plain-values",
+  "status": "pass",
+  "scope": "Desk fix: plain setting values on the admin Settings page (case number examples with derivation, Advanced switch, plain editors for durations/bytes/lists/retries/notifications/colors/naming/model prices), plus Codex checkpoint resolutions including audit-after-commit for paired case-number writes, multiline Default/value CSS, sub-millisecond duration units, fractional model-price display, and admin form-save coverage. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
+  "tested_revision": "0a91918debb7c4ae72f73d215fec187bc0a9119e",
+  "prd_sections": [
+    "8.7"
+  ],
+  "acceptance_ids": [],
+  "tests": [
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "seconds": 8
+    },
+    {
+      "command": "go test -count=1 -timeout 45m ./internal/...",
+      "exit_code": 0,
+      "seconds": 176
+    },
+    {
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "seconds": 32
+    },
+    {
+      "command": "go test -count=1 -timeout 20m -v -run '^TestUIVisualQC$' ./internal/dashboard/compose/",
+      "exit_code": 0,
+      "seconds": 135,
+      "note": "Includes Width 390 Firm/Practice/Files/AI settings pages with Advanced closed and open; multiline Default/value white-space check"
+    }
+  ],
+  "codex_resolutions": [
+    {
+      "finding": "P1 phone-width CSS nth-child widths beat stacked media rules; page not usable at 390",
+      "resolution": "Stacked settings cells use width:auto/max-width:100% with table-layout:auto; topbar search min-width and closed menu panels constrained so document scrollWidth stays at 390"
+    },
+    {
+      "finding": "P1 BytesParts mislabels non-MB-aligned values as MB",
+      "resolution": "BytesParts returns unit bytes for non-aligned counts; editor offers bytes/MB/GB; unchanged Save stores the same count; regression tests added"
+    },
+    {
+      "finding": "P1 paired case-number audits not atomic with the store write",
+      "resolution": "setCaseExamples commits both writes first, then records both SettingChanged events; TestSetCaseNumberExamplesFailedPairRecordsNoAudit"
+    },
+    {
+      "finding": "P2 custom patterns should replace examples in the Case Number Formats row",
+      "resolution": "Template shows the Advanced hint and an empty textarea instead of pre-filled examples; UI test PATCHes patterns then renders Practice"
+    },
+    {
+      "finding": "P2 ParseBytesPlain/ParseDurationPlain silent int64 overflow",
+      "resolution": "scaleBytes and scaleDuration refuse overflowing amounts with a plain error; failure-path tests added"
+    },
+    {
+      "finding": "P2 practice.case_number_examples missing from contract/OpenAPI",
+      "resolution": "Added to api/contract/settings.py, regenerated api/openapi/v1/openapi.json, updated stage1 inventory digest and intentional delta"
+    },
+    {
+      "finding": "P2 multiline Default/value cells collapse newlines (word lists, retry schedule)",
+      "resolution": "app.css sets white-space:pre-line on .setting-default and .setting-value; ui-qc.mjs fails phone-width pages when multiline cells collapse; Practice Default HTML keeps newlines"
+    },
+    {
+      "finding": "P2 sub-millisecond durations truncate to whole milliseconds",
+      "resolution": "FormatDurationPlain/DurationParts/ParseDurationPlain offer microseconds and nanoseconds for non-ms-aligned values; editor unit picker includes them; round-trip and admin form tests for 500µs and 1.5ms"
+    },
+    {
+      "finding": "P2 FormatModelPricesPlain rounds fractional cents with %.0f",
+      "resolution": "Uses strconv.FormatFloat with exact precision; unit and admin UI tests for 0.4 / 15.5"
+    }
+  ],
+  "implemented": [
+    "practice.case_number_examples (Case Number Formats) with derivation into practice.case_number_patterns in one transaction; 23AR-CV00825 derives the current default pattern exactly; audits recorded only after commit",
+    "Advanced details per tab, closed by default, open with ?advanced=1 (no JavaScript)",
+    "Plain editors and Default column for durations (including sub-ms), byte sizes (including non-MB-aligned via bytes unit), string lists, retry schedule, notifications grid, custom colors, naming sample, model prices/task overrides summaries",
+    "Stored formats, keys, API and audit log unchanged; plain form saves convert to the same stored strings the old text form would store",
+    "Phone-width layout usable at 390; QC entries for Firm, Practice, Files and AI with Advanced closed and open; TestUIVisualQC PASS locally",
+    "practice.case_number_examples listed in SettingKey and x-togavsu-settings"
+  ],
+  "pending": [
+    "GitHub CI and Codex checkpoint on the controller-published head of claude/togavsu-desk-fix-settings-plain-values-e5791ad6 (this lane cannot push)",
+    "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
+  ],
+  "simplification": {
+    "net_lines_codex_fix": 156,
+    "ponytail_debt_sections": 13,
+    "note": "No new PONYTAIL-DEBT entries. fixedSite exemptions already cover FormatDurationPlain/DurationParts/ParseDurationPlain/plural. Companion docs/api/stage1-inventory.json and api/tests/test_stage1.py updated earlier so the owned OpenAPI catalog change passes api/check.sh."
+  }
+}
