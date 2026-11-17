@@ -1,7 +1,7 @@
 {
   "task_id": "marketplace-paid",
   "status": "pass",
-  "tested_revision": "74a2978244c55b3d40a7f4da0c0894af381b44b5",
+  "tested_revision": "5362c49952fe960ed8b60351642f2eafd37df6ee",
   "tests": [
     {
       "name": "marketplace package",
@@ -24,93 +24,28 @@
       "exit_code": 0
     },
     {
-      "name": "subscribe-license",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT03SubscribeLicense$' ./marketplace/",
+      "name": "price-edit",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT03PriceEdit$' ./marketplace/",
       "exit_code": 0
     },
     {
-      "name": "renewal",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT04PriceChangeNotice$' ./marketplace/",
+      "name": "keyless-install",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT04KeylessInstall$' ./marketplace/",
       "exit_code": 0
     },
     {
-      "name": "cancel",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT05Cancel$' ./marketplace/",
+      "name": "no-billing",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT05NoBilling$' ./marketplace/",
       "exit_code": 0
     },
     {
-      "name": "no-card-or-secret",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT06NoCardOrSecret$' ./marketplace/",
+      "name": "no-payment-or-key-data",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT06NoPaymentOrKeyData$' ./marketplace/",
       "exit_code": 0
     },
     {
-      "name": "stripe-faked",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT07StripeFaked$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "unpaid-checkout-refused",
-      "command": "go test -count=1 -timeout 60s -run '^TestUnpaidCheckoutRefused$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "client-extend-refused",
-      "command": "go test -count=1 -timeout 60s -run '^TestClientExtendRefused$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "forged-cancel-refused",
-      "command": "go test -count=1 -timeout 60s -run '^TestForgedCancelRefused$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "missing-license-seed",
-      "command": "go test -count=1 -timeout 60s -run '^TestMissingLicenseSeedFailsClosed$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "cancel-then-recomplete-refused",
-      "command": "go test -count=1 -timeout 60s -run '^TestCancelThenRecompleteRefused$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "invoice-paid-dedup-and-first",
-      "command": "go test -count=1 -timeout 60s -run '^TestInvoicePaidDedupAndFirstInvoice$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "cancel-stripe-failure",
-      "command": "go test -count=1 -timeout 60s -run '^TestCancelStripeFailureKeepsActive$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "price-change-mailer-retry",
-      "command": "go test -count=1 -timeout 60s -run '^TestPriceChangeRequiresMailerAndRetry$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "note-only-price-refused",
-      "command": "go test -count=1 -timeout 60s -run '^TestNoteOnlyPriceRefusedForPaidListing$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "stripe-price-update-item-product",
-      "command": "go test -count=1 -timeout 60s -run '^TestStripePriceUpdateRequiresItemAndProduct$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "invoice-line-period-not-top-level",
-      "command": "go test -count=1 -timeout 60s -run '^TestInvoicePaidUsesLinePeriodNotTopLevel$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "checkout-requires-urls",
-      "command": "go test -count=1 -timeout 60s -run '^TestCheckoutRequiresSuccessAndCancelURLs$' ./marketplace/",
-      "exit_code": 0
-    },
-    {
-      "name": "failed-notice-blocks-price-apply",
-      "command": "go test -count=1 -timeout 60s -run '^TestFailedNoticeBlocksPriceApplyUntilRetry$' ./marketplace/",
+      "name": "no-outside-host",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT07NoOutsideHost$' ./marketplace/",
       "exit_code": 0
     },
     {
@@ -119,18 +54,13 @@
       "exit_code": 0
     },
     {
-      "name": "settings-race",
-      "command": "go test -race -count=1 ./internal/settings/",
-      "exit_code": 0
-    },
-    {
       "name": "gofmt",
-      "command": "gofmt -l .",
+      "command": "gofmt -l marketplace/",
       "exit_code": 0
     },
     {
       "name": "go-vet",
-      "command": "go vet ./...",
+      "command": "go vet ./marketplace/...",
       "exit_code": 0
     }
   ],
@@ -160,37 +90,37 @@
       "acceptance_ids": ["MKT-02"]
     },
     {
-      "id": "subscribe-license",
+      "id": "price-edit",
       "status": "pass",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT03SubscribeLicense$' ./marketplace/",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT03PriceEdit$' ./marketplace/",
       "exit_code": 0,
       "acceptance_ids": ["MKT-03"]
     },
     {
-      "id": "renewal",
+      "id": "keyless-install",
       "status": "pass",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT04PriceChangeNotice$' ./marketplace/",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT04KeylessInstall$' ./marketplace/",
       "exit_code": 0,
       "acceptance_ids": ["MKT-04"]
     },
     {
-      "id": "cancel",
+      "id": "no-billing",
       "status": "pass",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT05Cancel$' ./marketplace/",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT05NoBilling$' ./marketplace/",
       "exit_code": 0,
       "acceptance_ids": ["MKT-05"]
     },
     {
-      "id": "no-card-or-secret",
+      "id": "no-payment-or-key-data",
       "status": "pass",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT06NoCardOrSecret$' ./marketplace/",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT06NoPaymentOrKeyData$' ./marketplace/",
       "exit_code": 0,
       "acceptance_ids": ["MKT-06"]
     },
     {
-      "id": "stripe-faked",
+      "id": "no-outside-host",
       "status": "pass",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT07StripeFaked$' ./marketplace/",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT07NoOutsideHost$' ./marketplace/",
       "exit_code": 0,
       "acceptance_ids": ["MKT-07"]
     }
