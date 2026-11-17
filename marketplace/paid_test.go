@@ -99,7 +99,7 @@ func (e *paidEnv) subscribe(listingID, installID, adminEmail string, installPriv
 	r := e.do("POST", "/v1/listings/"+listingID+"/checkout", "", map[string]any{
 		"install_id": installID, "admin_email": adminEmail,
 		"install_public_key_pem": shared.PublicKeyPEM(pub),
-		"success_url":            "https://example.test/ok",
+		"success_url":            "https://example.test/ok?session_id={CHECKOUT_SESSION_ID}",
 		"cancel_url":             "https://example.test/no",
 	})
 	if r.code != http.StatusCreated {
@@ -375,6 +375,8 @@ func TestMKT06NoCardOrSecret(t *testing.T) {
 	checkout := e.do("POST", "/v1/listings/mo-estate-planning/checkout", "", map[string]any{
 		"install_id": "install-s", "admin_email": "admin@s.test",
 		"install_public_key_pem": shared.PublicKeyPEM(pub),
+		"success_url":            "https://example.test/ok?session_id={CHECKOUT_SESSION_ID}",
+		"cancel_url":             "https://example.test/no",
 	})
 	var ck struct {
 		SessionID string `json:"session_id"`
@@ -497,6 +499,8 @@ func TestUnpaidCheckoutRefused(t *testing.T) {
 	r := e.do("POST", "/v1/listings/mo-estate-planning/checkout", "", map[string]any{
 		"install_id": "install-u", "admin_email": "admin@u.test",
 		"install_public_key_pem": shared.PublicKeyPEM(pub),
+		"success_url":            "https://example.test/ok?session_id={CHECKOUT_SESSION_ID}",
+		"cancel_url":             "https://example.test/no",
 	})
 	if r.code != http.StatusCreated {
 		t.Fatalf("checkout %d %s", r.code, r.body)
@@ -609,6 +613,8 @@ func TestPulledAndFreeCheckoutRefused(t *testing.T) {
 	if r := e.do("POST", "/v1/listings/mo-estate-planning/checkout", "", map[string]any{
 		"install_id": "install-p", "admin_email": "admin@p.test",
 		"install_public_key_pem": shared.PublicKeyPEM(pub),
+		"success_url":            "https://example.test/ok?session_id={CHECKOUT_SESSION_ID}",
+		"cancel_url":             "https://example.test/no",
 	}); r.code != http.StatusGone {
 		t.Fatalf("pulled checkout: %d %s", r.code, r.body)
 	}
@@ -617,6 +623,8 @@ func TestPulledAndFreeCheckoutRefused(t *testing.T) {
 	if r := e.do("POST", "/v1/listings/documents/checkout", "", map[string]any{
 		"install_id": "install-free", "admin_email": "admin@free.test",
 		"install_public_key_pem": shared.PublicKeyPEM(pub),
+		"success_url":            "https://example.test/ok?session_id={CHECKOUT_SESSION_ID}",
+		"cancel_url":             "https://example.test/no",
 	}); r.code != http.StatusBadRequest {
 		t.Fatalf("free checkout: %d %s", r.code, r.body)
 	}
@@ -819,8 +827,17 @@ func TestPriceChangeRequiresMailerAndRetry(t *testing.T) {
 	r := e.do("PATCH", "/v1/authors/me/listings/mo-estate-planning/price", a.token, ListingPrice{
 		AmountCents: 2000, Currency: "USD", Interval: "month",
 	})
-	if r.code != http.StatusBadRequest {
-		t.Fatalf("failed delivery: %d %s", r.code, r.body)
+	if r.code != http.StatusOK {
+		t.Fatalf("failed delivery should still save change: %d %s", r.code, r.body)
+	}
+	var priceBody map[string]any
+	r.json(t, &priceBody)
+	notices, _ := priceBody["notices"].([]any)
+	if len(notices) != 1 {
+		t.Fatalf("notices: %+v", priceBody["notices"])
+	}
+	if n0, _ := notices[0].(map[string]any); n0["status"] != mailFailed {
+		t.Fatalf("expected failed notice status: %+v", notices[0])
 	}
 	mails := e.m.Mails()
 	if len(mails) != 1 || mails[0].Status != mailFailed {
@@ -876,5 +893,118 @@ func TestStripePriceUpdateRequiresItemAndProduct(t *testing.T) {
 	}
 	if e.fake.SubscriptionAmount(sub.StripeSubscription) != 2500 {
 		t.Fatalf("amount %d", e.fake.SubscriptionAmount(sub.StripeSubscription))
+	}
+}
+
+// Real Stripe invoice.paid: top-level period_end is the previous usage period; the newly
+// paid term is only in lines.data[].period.end. Parent.subscription_details also names the sub.
+func TestInvoicePaidUsesLinePeriodNotTopLevel(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Line Period", "lineperiod@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.subscribe("mo-estate-planning", "install-lp", "admin@lp.test", installPriv)
+	sub, _ := e.m.Subscription("install-lp", "mo-estate-planning")
+	oldThrough := sub.PaidThrough
+	newThrough := oldThrough.AddDate(0, 1, 0)
+	payload := InvoicePaidEventRealShape(
+		"evt_line_period", "in_line_period", sub.StripeSubscription,
+		"subscription_cycle", oldThrough.Unix(), newThrough.Unix(),
+	)
+	sigHeader := SignWebhook(payload, e.m.WebhookSecret(), e.m.now())
+	req, _ := http.NewRequest("POST", e.srv.URL+"/v1/stripe/webhook", bytes.NewReader(payload))
+	req.Header.Set("Stripe-Signature", sigHeader)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("webhook %d", res.StatusCode)
+	}
+	sub, _ = e.m.Subscription("install-lp", "mo-estate-planning")
+	if !sub.PaidThrough.Equal(newThrough) {
+		t.Fatalf("paid_through used top-level period_end: got %v want %v (old %v)", sub.PaidThrough, newThrough, oldThrough)
+	}
+}
+
+func TestCheckoutRequiresSuccessAndCancelURLs(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("URL Author", "urlauth@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	pub := installPriv.Public().(ed25519.PublicKey)
+	base := map[string]any{
+		"install_id": "install-url", "admin_email": "admin@url.test",
+		"install_public_key_pem": shared.PublicKeyPEM(pub),
+	}
+	if r := e.do("POST", "/v1/listings/mo-estate-planning/checkout", "", base); r.code != http.StatusBadRequest {
+		t.Fatalf("missing urls: %d %s", r.code, r.body)
+	}
+	base["success_url"] = "https://firm.test/ok"
+	base["cancel_url"] = "https://firm.test/no"
+	if r := e.do("POST", "/v1/listings/mo-estate-planning/checkout", "", base); r.code != http.StatusBadRequest {
+		t.Fatalf("success_url without session placeholder: %d %s", r.code, r.body)
+	}
+	base["success_url"] = "https://firm.test/ok?session_id={CHECKOUT_SESSION_ID}"
+	if r := e.do("POST", "/v1/listings/mo-estate-planning/checkout", "", base); r.code != http.StatusCreated {
+		t.Fatalf("valid urls: %d %s", r.code, r.body)
+	}
+}
+
+func TestFailedNoticeBlocksPriceApplyUntilRetry(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Block Price", "blockprice@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.subscribe("mo-estate-planning", "install-bp", "admin@bp.test", installPriv)
+	e.mailer.FailNext = true
+	r := e.do("PATCH", "/v1/authors/me/listings/mo-estate-planning/price", a.token, ListingPrice{
+		AmountCents: 2000, Currency: "USD", Interval: "month",
+	})
+	if r.code != http.StatusOK {
+		t.Fatalf("price change with failed mail should succeed with status: %d %s", r.code, r.body)
+	}
+	var body map[string]any
+	r.json(t, &body)
+	notices, _ := body["notices"].([]any)
+	if len(notices) != 1 {
+		t.Fatalf("notices in response: %+v", body["notices"])
+	}
+	n0, _ := notices[0].(map[string]any)
+	if n0["status"] != mailFailed {
+		t.Fatalf("notice status: %+v", n0)
+	}
+	e.now = e.now.Add(31 * 24 * time.Hour)
+	if _, err := e.m.ApplyDuePriceChanges(); err != nil {
+		t.Fatal(err)
+	}
+	sub, _ := e.m.Subscription("install-bp", "mo-estate-planning")
+	if sub.Price.AmountCents != 1000 || sub.PendingPrice == nil {
+		t.Fatalf("price applied before notice delivered: %+v", sub)
+	}
+	if r := e.do("POST", "/v1/operator/mail/retry", opToken, map[string]any{}); r.code != http.StatusOK {
+		t.Fatalf("operator mail retry: %d %s", r.code, r.body)
+	}
+	mails := e.m.Mails()
+	if len(mails) != 1 || mails[0].Status != mailSent {
+		t.Fatalf("retry via operator: %+v", mails)
+	}
+	if _, err := e.m.ApplyDuePriceChanges(); err != nil {
+		t.Fatal(err)
+	}
+	sub, _ = e.m.Subscription("install-bp", "mo-estate-planning")
+	if sub.Price.AmountCents != 2000 || sub.PendingPrice != nil {
+		t.Fatalf("price not applied after notice sent: %+v", sub)
 	}
 }

@@ -246,17 +246,38 @@ func InvoicePaidEvent(stripeSubID string) []byte {
 	return InvoicePaidEventFull("evt_fake_invoice_paid", "in_fake_1", stripeSubID, "subscription_cycle", 0)
 }
 
-// InvoicePaidEventFull builds an invoice.paid event with explicit ids, billing_reason and period end unix.
+// InvoicePaidEventFull builds an invoice.paid event with Stripe's real period shape: the
+// top-level period_end is the previous usage period (or zero), and lines.data[0].period.end
+// is the newly paid term. Prefer InvoicePaidEventRealShape when both ends matter.
 func InvoicePaidEventFull(eventID, invoiceID, stripeSubID, billingReason string, periodEndUnix int64) []byte {
+	previous := int64(0)
+	if periodEndUnix > int64(0) {
+		// Approximate the prior period end so tests that used top-level period_end alone would fail.
+		previous = periodEndUnix - int64(30*24*60*60)
+	}
+	return InvoicePaidEventRealShape(eventID, invoiceID, stripeSubID, billingReason, previous, periodEndUnix)
+}
+
+// InvoicePaidEventRealShape builds invoice.paid with explicit previous (top-level) and new
+// (line item) period ends, and names the subscription only under parent.subscription_details
+// (newer Stripe API shape) so both parsers stay covered.
+func InvoicePaidEventRealShape(eventID, invoiceID, stripeSubID, billingReason string, previousPeriodEndUnix, newTermEndUnix int64) []byte {
 	b, _ := json.Marshal(map[string]any{
 		"id": eventID, "object": "event", "type": "invoice.paid",
 		"data": map[string]any{"object": map[string]any{
-			"id": invoiceID, "object": "invoice", "subscription": stripeSubID,
+			"id": invoiceID, "object": "invoice",
 			"paid": true, "status": "paid", "billing_reason": billingReason,
+			"period_end": previousPeriodEndUnix,
 			"lines": map[string]any{"data": []map[string]any{{
-				"period": map[string]any{"end": periodEndUnix},
+				"type":   "subscription",
+				"period": map[string]any{"end": newTermEndUnix},
 			}}},
-			"period_end": periodEndUnix,
+			"parent": map[string]any{
+				"type": "subscription_details",
+				"subscription_details": map[string]any{
+					"subscription": stripeSubID,
+				},
+			},
 		}},
 	})
 	return b

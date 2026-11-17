@@ -62,7 +62,7 @@ Checkout completion (`POST /v1/stripe/checkout/complete`) confirms payment by fe
 
 The license signing seed (`license_seed_file`) is required whenever Stripe is configured. `Open` never mints a random key; without a seed, paid and license endpoints fail closed so modules that embed the marketplace public key keep verifying across restarts.
 
-Price-change notices are queued in state with delivery status (`pending` / `sent` / `failed`) and delivered through `smtp_addr` (or a test `RecordingMailer`). A price change that would notice active subscribers is refused when no mailer is configured. Failed deliveries stay queued for `RetryPendingMail` and do not restart the notice period. `paid_through` advances from Stripe `invoice.paid` period end (deduped by event and invoice id); pending price changes update Stripe when the notice period ends, before the next renewal is billed.
+Price-change notices are queued in state with delivery status (`pending` / `sent` / `failed`) and delivered through `smtp_addr` (or a test `RecordingMailer`). A price change that would notice active subscribers is refused when no mailer is configured. Once saved, the author API returns success with per-notice delivery status even if SMTP fails. Failed deliveries stay queued for `RetryPendingMail` (periodic loop in `cmd/marketplace`, and `POST /v1/operator/mail/retry`) and do not restart the notice period. A pending price change does not update Stripe until its notice mail is `sent` and the notice period has ended. `paid_through` advances from Stripe `invoice.paid` line-item `period.end` (not the invoice top-level `period_end`, which is the previous usage period), deduped by event and invoice id.
 
 ## API
 
@@ -87,15 +87,15 @@ Authors (bearer token from `/v1/sessions`):
 | POST | `/v1/authors/me/keys/{key_id}/verify` | `{signature}` of `proof_message` with the private key (`togavsu-module key -key <seed file> -prove <proof_message>`, or `modulekit.ProveKey`). Only verified keys sign uploads or are published. |
 | POST | `/v1/authors/me/packages` | The kit's signed package file as the body, unchanged (`listing_id`, `version`, `immutable`, `manifest`, `digest`, `signature`, `key_id`, `package_base64`). A digest or signature that does not match the bytes is refused. The three-field body still works for older callers. Price comes from the manifest on first listing. |
 | POST | `/v1/authors/me/stripe/connect` | Creates a Stripe Connect account for the author; stores only `acct_…`, never a secret. |
-| PATCH | `/v1/authors/me/listings/{id}/price` | Author price change (`amount_cents`, `currency`, `interval`, `note`). New subscriptions use it at once; existing ones get email and apply it at the next renewal after the notice period (default 30 days). |
+| PATCH | `/v1/authors/me/listings/{id}/price` | Author price change (`amount_cents`, `currency`, `interval`, `note`). New subscriptions use it at once; existing ones get email and apply it after the notice period once the notice is delivered. Response includes `notices` with delivery status. |
 
 Paid subscriptions (fake Stripe in every test; helpers refuse non-local Stripe hosts):
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| POST | `/v1/listings/{id}/checkout` | `{install_id, admin_email, install_public_key_pem}` → Checkout session naming the install id. Paid listings only; pulled and free listings are refused. |
+| POST | `/v1/listings/{id}/checkout` | `{install_id, admin_email, install_public_key_pem, success_url, cancel_url}` → Checkout session naming the install id. `success_url` must include `{CHECKOUT_SESSION_ID}`. Paid listings only; pulled and free listings are refused. |
 | POST | `/v1/stripe/checkout/complete` | `{session_id}` only. Confirms with Stripe (`complete` + `paid`), then issues the license key once. |
-| POST | `/v1/stripe/webhook` | Signed Stripe events. `invoice.paid` sets `paid_through` from the invoice period end (deduped). Due price changes update Stripe when the notice period ends, before renewal billing. |
+| POST | `/v1/stripe/webhook` | Signed Stripe events. `invoice.paid` sets `paid_through` from the subscription line’s `period.end` (deduped). Due price changes update Stripe when the notice was delivered and the notice period ends, before renewal billing. |
 | POST | `/v1/licenses/renew` | Daily key fetch with install signature. Never extends `paid_through`; `extend: true` is refused. |
 | POST | `/v1/subscriptions/cancel` | `{install_id, module_id, signature}` — install-signed cancel proof. Stops renewal; key runs to paid-through. |
 
@@ -106,6 +106,7 @@ Operator (bearer operator token):
 | POST | `/v1/operator/listings/{id}/flag` | `{note, version?}`. The note is required. Installs stay possible. |
 | POST | `/v1/operator/listings/{id}/pull` | `{note?}`. Out of search; no marketplace installs. |
 | GET/PATCH | `/v1/operator/settings` | `platform_fee_percent` (default 0). |
+| POST | `/v1/operator/mail/retry` | Redeliver queued price-change notices (`pending` / `failed`). The service also retries on `mail_retry_interval_seconds`. |
 
 Pages: `/` (search), `/listings/{id}` (author, verified key, permissions, version history, price, the notice and any warning), `/operator` (sign in with the operator token, then flag and pull with CSRF-protected forms).
 

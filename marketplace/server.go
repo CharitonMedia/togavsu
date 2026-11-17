@@ -90,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("POST /v1/operator/listings/{listing_id}/pull", s.apiPull)
 	m.HandleFunc("GET /v1/operator/settings", s.apiOperatorSettings)
 	m.HandleFunc("PATCH /v1/operator/settings", s.apiOperatorSettingsPatch)
+	m.HandleFunc("POST /v1/operator/mail/retry", s.apiOperatorMailRetry)
 	// Pages.
 	m.HandleFunc("GET /{$}", s.pageSearch)
 	m.HandleFunc("GET /listings/{listing_id}", s.pageListing)
@@ -398,12 +399,20 @@ func (s *Server) apiSetPrice(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	l, err := s.M.SetListingPrice(a, r.PathValue("listing_id"), b)
+	res, err := s.M.SetListingPrice(a, r.PathValue("listing_id"), b)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.listingBody(l))
+	body := s.listingBody(res.Listing)
+	notices := make([]map[string]any, 0, len(res.Notices))
+	for _, n := range res.Notices {
+		notices = append(notices, map[string]any{
+			"id": n.ID, "to": n.To, "status": n.Status, "last_error": n.LastErr,
+		})
+	}
+	body["notices"] = notices
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) apiCheckout(w http.ResponseWriter, r *http.Request) {
@@ -418,11 +427,15 @@ func (s *Server) apiCheckout(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if b.SuccessURL == "" {
-		b.SuccessURL = "https://example.test/success"
+	b.SuccessURL = strings.TrimSpace(b.SuccessURL)
+	b.CancelURL = strings.TrimSpace(b.CancelURL)
+	if b.SuccessURL == "" || !strings.Contains(b.SuccessURL, "{CHECKOUT_SESSION_ID}") {
+		writeErr(w, invalid("success_url", "success_url is required and must include {CHECKOUT_SESSION_ID}"))
+		return
 	}
 	if b.CancelURL == "" {
-		b.CancelURL = "https://example.test/cancel"
+		writeErr(w, invalid("cancel_url", "cancel_url is required"))
+		return
 	}
 	sess, subID, err := s.M.StartCheckout(r.PathValue("listing_id"), b.InstallID, b.AdminEmail, b.InstallPublicKeyPEM, b.SuccessURL, b.CancelURL)
 	if err != nil {
@@ -471,22 +484,7 @@ func (s *Server) apiStripeWebhook(w http.ResponseWriter, r *http.Request) {
 		ID   string `json:"id"`
 		Type string `json:"type"`
 		Data struct {
-			Object struct {
-				ID            string `json:"id"`
-				Object        string `json:"object"`
-				Subscription  string `json:"subscription"`
-				Paid          bool   `json:"paid"`
-				Status        string `json:"status"`
-				BillingReason string `json:"billing_reason"`
-				PeriodEnd     int64  `json:"period_end"`
-				Lines         struct {
-					Data []struct {
-						Period struct {
-							End int64 `json:"end"`
-						} `json:"period"`
-					} `json:"data"`
-				} `json:"lines"`
-			} `json:"object"`
+			Object stripeInvoiceObject `json:"object"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &evt); err != nil {
@@ -497,15 +495,12 @@ func (s *Server) apiStripeWebhook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"received": true, "ignored": evt.Type})
 		return
 	}
-	subID := strings.TrimSpace(evt.Data.Object.Subscription)
+	subID := evt.Data.Object.stripeSubscriptionID()
 	if subID == "" {
 		writeErr(w, invalid("subscription", "invoice.paid event is missing subscription"))
 		return
 	}
-	periodEndUnix := evt.Data.Object.PeriodEnd
-	if periodEndUnix == int64(0) && len(evt.Data.Object.Lines.Data) > int(0) {
-		periodEndUnix = evt.Data.Object.Lines.Data[int(0)].Period.End
-	}
+	periodEndUnix := evt.Data.Object.paidTermEndUnix()
 	var periodEnd time.Time
 	if periodEndUnix > int64(0) {
 		periodEnd = time.Unix(periodEndUnix, int64(0)).UTC()
@@ -522,6 +517,51 @@ func (s *Server) apiStripeWebhook(w http.ResponseWriter, r *http.Request) {
 		"received": true, "install_id": sub.InstallID, "module_id": sub.ListingID,
 		"paid_through": sub.PaidThrough.UTC().Format("2006-01-02"),
 	})
+}
+
+// stripeInvoiceObject is the invoice payload on invoice.paid. Newer Stripe API versions
+// nest the subscription under parent.subscription_details; older ones use subscription.
+type stripeInvoiceObject struct {
+	ID            string `json:"id"`
+	Object        string `json:"object"`
+	Subscription  string `json:"subscription"`
+	Paid          bool   `json:"paid"`
+	Status        string `json:"status"`
+	BillingReason string `json:"billing_reason"`
+	PeriodEnd     int64  `json:"period_end"`
+	Lines         struct {
+		Data []struct {
+			Type   string `json:"type"`
+			Period struct {
+				End int64 `json:"end"`
+			} `json:"period"`
+		} `json:"data"`
+	} `json:"lines"`
+	Parent struct {
+		Type                string `json:"type"`
+		SubscriptionDetails struct {
+			Subscription string `json:"subscription"`
+		} `json:"subscription_details"`
+	} `json:"parent"`
+}
+
+func (o stripeInvoiceObject) stripeSubscriptionID() string {
+	if id := strings.TrimSpace(o.Subscription); id != "" {
+		return id
+	}
+	return strings.TrimSpace(o.Parent.SubscriptionDetails.Subscription)
+}
+
+// paidTermEndUnix is the end of the newly paid term. On real Stripe invoices the
+// top-level period_end is the previous usage period; the new term is only in
+// lines.data[].period.end.
+func (o stripeInvoiceObject) paidTermEndUnix() int64 {
+	for _, line := range o.Lines.Data {
+		if line.Period.End > int64(0) {
+			return line.Period.End
+		}
+	}
+	return int64(0)
 }
 
 func (s *Server) apiCancelSub(w http.ResponseWriter, r *http.Request) {
@@ -641,6 +681,32 @@ func (s *Server) apiOperatorSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"platform_fee_percent": s.M.PlatformFeePercent()})
+}
+
+func (s *Server) apiOperatorMailRetry(w http.ResponseWriter, r *http.Request) {
+	if !s.operator(r) {
+		writeErr(w, ErrUnauthorized)
+		return
+	}
+	err := s.M.RetryPendingMail()
+	pending, failed, sent := int(0), int(0), int(0)
+	for _, m := range s.M.Mails() {
+		switch m.Status {
+		case mailPending:
+			pending++
+		case mailFailed:
+			failed++
+		case mailSent:
+			sent++
+		}
+	}
+	body := map[string]any{
+		"pending": pending, "failed": failed, "sent": sent,
+	}
+	if err != nil {
+		body["error"] = err.Error()
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) apiOperatorSettingsPatch(w http.ResponseWriter, r *http.Request) {

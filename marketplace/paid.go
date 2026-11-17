@@ -1,6 +1,7 @@
 package marketplace
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
@@ -54,17 +55,25 @@ func (m *Market) ConnectStripe(a Author) (accountID string, err error) {
 	return id, err
 }
 
+// PriceChangeResult is the listing after a price change plus notice delivery status.
+// The change is saved even when some notices fail; failed notices stay queued for
+// RetryPendingMail and block ApplyDuePriceChanges until sent.
+type PriceChangeResult struct {
+	Listing shared.Listing
+	Notices []MailRecord
+}
+
 // SetListingPrice changes the listing price. New subscriptions use it at once. Existing
 // ones keep the old price until the next renewal after the notice period, and each
 // subscribing admin is emailed. A paid listing's replacement price must be a complete
 // structured price. Notice mail requires a configured mailer; undelivered notices stay
 // queued for RetryPendingMail without restarting the notice period.
-func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice) (shared.Listing, error) {
+func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice) (PriceChangeResult, error) {
 	if err := price.validate(); err != nil {
-		return shared.Listing{}, err
+		return PriceChangeResult{}, err
 	}
 	if price.empty() {
-		return shared.Listing{}, invalid("price", "a price is required")
+		return PriceChangeResult{}, invalid("price", "a price is required")
 	}
 	now := m.now()
 	days := m.noticeDays
@@ -83,7 +92,7 @@ func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice)
 		}
 	})
 	if needMail && m.mailer == nil {
-		return shared.Listing{}, invalid("mail", "a mailer (smtp_addr) is required to notice subscribers of a price change")
+		return PriceChangeResult{}, invalid("mail", "a mailer (smtp_addr) is required to notice subscribers of a price change")
 	}
 	// When replacing a paid structured price, require another complete paid price.
 	var wasPaid bool
@@ -95,7 +104,7 @@ func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice)
 		}
 	})
 	if wasPaid && !price.paidStructured() {
-		return shared.Listing{}, invalid("price", "a paid listing requires amount_cents, currency and interval")
+		return PriceChangeResult{}, invalid("price", "a paid listing requires amount_cents, currency and interval")
 	}
 	err := m.commit(func(st *State) error {
 		var l *ListingRecord
@@ -113,17 +122,11 @@ func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice)
 		l.Price = price
 		l.PriceNote = price.Display()
 		out = *l
-		pending := &PendingPriceChange{
-			Price:       price,
-			NoticedAt:   now.Format(time.RFC3339Nano),
-			EffectiveAt: effective.Format(time.RFC3339Nano),
-		}
 		for i := range st.Subscriptions {
 			s := &st.Subscriptions[i]
 			if s.ListingID != listingID || s.Status != subActive {
 				continue
 			}
-			s.PendingPrice = pending
 			mailID, err := domain.NewID()
 			if err != nil {
 				return err
@@ -135,18 +138,32 @@ func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice)
 			rec := MailRecord{ID: string(mailID), To: s.AdminEmail, Subject: subject, Body: body, Status: mailPending}
 			st.Mails = append(st.Mails, rec)
 			pendingMail = append(pendingMail, rec)
+			s.PendingPrice = &PendingPriceChange{
+				Price:        price,
+				NoticedAt:    now.Format(time.RFC3339Nano),
+				EffectiveAt:  effective.Format(time.RFC3339Nano),
+				NoticeMailID: string(mailID),
+			}
 		}
 		return nil
 	})
 	if err != nil {
-		return shared.Listing{}, err
+		return PriceChangeResult{}, err
 	}
 	for _, msg := range pendingMail {
-		if err := m.deliverMail(msg.ID); err != nil {
-			return shared.Listing{}, err
-		}
+		_ = m.deliverMail(msg.ID)
 	}
-	return m.view(out), nil
+	notices := make([]MailRecord, 0, len(pendingMail))
+	m.read(func(st *State) {
+		for _, want := range pendingMail {
+			for _, x := range st.Mails {
+				if x.ID == want.ID {
+					notices = append(notices, x)
+				}
+			}
+		}
+	})
+	return PriceChangeResult{Listing: m.view(out), Notices: notices}, nil
 }
 
 func (m *Market) deliverMail(id string) error {
@@ -493,7 +510,8 @@ func (m *Market) RenewLicense(installID, moduleID, signature string) (string, ti
 }
 
 // ApplyDuePriceChanges updates Stripe (and local subscription price) for pending price
-// changes whose notice period has ended, before the next renewal invoice is billed.
+// changes whose notice period has ended and whose notice mail was delivered, before the
+// next renewal invoice is billed.
 func (m *Market) ApplyDuePriceChanges() ([]SubscriptionRecord, error) {
 	now := m.now()
 	type due struct {
@@ -503,10 +521,19 @@ func (m *Market) ApplyDuePriceChanges() ([]SubscriptionRecord, error) {
 	}
 	var todos []due
 	err := m.commit(func(st *State) error {
+		mailStatus := map[string]string{}
+		for _, x := range st.Mails {
+			mailStatus[x.ID] = x.Status
+		}
 		for i := range st.Subscriptions {
 			s := &st.Subscriptions[i]
 			if s.Status != subActive || s.PendingPrice == nil || s.PendingPrice.StripeSynced {
 				continue
+			}
+			if mid := strings.TrimSpace(s.PendingPrice.NoticeMailID); mid != "" {
+				if mailStatus[mid] != mailSent {
+					continue
+				}
 			}
 			eff, err := time.Parse(time.RFC3339Nano, s.PendingPrice.EffectiveAt)
 			if err != nil || now.Before(eff) {
@@ -760,6 +787,24 @@ func (m *Market) SetStripe(s *Stripe) { m.mu.Lock(); m.stripe = s; m.mu.Unlock()
 
 // SetMailer attaches the outbound mail sender (SMTP in production, RecordingMailer in tests).
 func (m *Market) SetMailer(mailer MailSender) { m.mu.Lock(); m.mailer = mailer; m.mu.Unlock() }
+
+// StartMailRetry runs RetryPendingMail on interval until ctx is cancelled. The marketplace
+// binary starts this so failed price-change notices are resent without an operator call.
+// Caller must pass a positive interval (see Config.MailRetryIntervalSeconds).
+func (m *Market) StartMailRetry(ctx context.Context, interval time.Duration) {
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				_ = m.RetryPendingMail()
+			}
+		}
+	}()
+}
 
 // SetWebhookSecret sets the Stripe webhook signing secret (memory only; never in state).
 func (m *Market) SetWebhookSecret(secret string) {

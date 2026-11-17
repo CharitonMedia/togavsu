@@ -23,6 +23,8 @@
   "stripe_webhook_tolerance_seconds": 300,
   "stripe_response_max_bytes": 1048576,
   "stripe_checkout_quantity": 1,
+  "stripe_api_version": "2024-06-20",
+  "mail_retry_interval_seconds": 300,
   "smtp_deadline_seconds": 5,
   "smtp_read_buffer_bytes": 4096,
   "smtp_tmp_buffer_bytes": 1024,

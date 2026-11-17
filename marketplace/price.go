@@ -25,6 +25,10 @@ type PendingPriceChange struct {
 	Price       ListingPrice `json:"price"`
 	NoticedAt   string       `json:"noticed_at"`
 	EffectiveAt string       `json:"effective_at"`
+	// NoticeMailID is the queued notice for this subscription. ApplyDuePriceChanges
+	// waits until that mail is sent so a price rise never applies to a firm whose
+	// admin was never emailed.
+	NoticeMailID string `json:"notice_mail_id,omitempty"`
 	// StripeSynced is set once the Stripe subscription was updated to the new price
 	// after EffectiveAt (before the next renewal invoice is billed).
 	StripeSynced bool `json:"stripe_synced,omitempty"`

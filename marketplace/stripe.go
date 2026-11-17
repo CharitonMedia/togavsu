@@ -51,6 +51,9 @@ func (s *Stripe) doForm(method, path string, form url.Values, dst any) error {
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
+	if ver := strings.TrimSpace(Defaults().StripeAPIVersion); ver != "" {
+		req.Header.Set("Stripe-Version", ver)
+	}
 	if s.secret != "" {
 		req.SetBasicAuth(s.secret, "")
 	}

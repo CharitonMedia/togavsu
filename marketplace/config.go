@@ -50,6 +50,10 @@ type Config struct {
 	StripeResponseMaxBytes int64 `json:"stripe_response_max_bytes"`
 	// StripeCheckoutQuantity is the Checkout line-item quantity (always 1).
 	StripeCheckoutQuantity int `json:"stripe_checkout_quantity"`
+	// StripeAPIVersion is sent as the Stripe-Version request header.
+	StripeAPIVersion string `json:"stripe_api_version"`
+	// MailRetryIntervalSeconds is how often the service retries undelivered notice mail.
+	MailRetryIntervalSeconds int `json:"mail_retry_interval_seconds"`
 	// SMTPDeadlineSeconds bounds one fake/local SMTP conversation.
 	SMTPDeadlineSeconds int `json:"smtp_deadline_seconds"`
 	// SMTPReadBufferBytes / SMTPTmpBufferBytes size the SMTP acceptor buffers.
@@ -144,6 +148,11 @@ func (c Config) StripeWebhookTolerance() time.Duration {
 
 // SMTPDeadline bounds one SMTP conversation.
 func (c Config) SMTPDeadline() time.Duration { return dur("s", c.SMTPDeadlineSeconds) }
+
+// MailRetryInterval is how often undelivered price-change notices are retried.
+func (c Config) MailRetryInterval() time.Duration {
+	return dur("s", c.MailRetryIntervalSeconds)
+}
 
 // StripeSecret reads the Stripe secret key from its file. Empty path means unset.
 func (c Config) StripeSecret() (string, error) {
