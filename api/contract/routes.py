@@ -1181,7 +1181,7 @@ def _practice(api: Contract) -> None:
         archive=True,
         include=True,
         csv=True,
-        filters=["q", "archived", "tag", "kind", "custom"],
+        filters=["q", "archived", "tag", "kind", "custom", "email", "phone"],
         events={"created": "contact.created", "updated": "contact.updated", "archived": "contact.archived"},
         extra_access={"attorney_only": ["identifier"]},
     )

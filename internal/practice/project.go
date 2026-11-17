@@ -11,11 +11,12 @@ import (
 )
 
 // Projection keeps the section 5 tables other domains point at by foreign key
-// (practice_areas, counties, contacts, referral_sources, matters) in step with
-// practice_records. Files, deadlines, Doc Tender jobs and calendar events reference
-// matters(id) and contacts(id); with the projection on, every practice write that
-// stores one of those rows upserts its relational copy in the same transaction, so a
-// committed matter is always a valid foreign key and a rolled-back one never is.
+// (practice_areas, counties, contacts, referral_sources, matters, notes) in step with
+// practice_records. Files, deadlines, Doc Tender jobs, calendar events and modules
+// reference matters(id), contacts(id) and notes(id); with the projection on, every
+// practice write that stores one of those rows upserts its relational copy in the same
+// transaction, so a committed matter is always a valid foreign key and a rolled-back
+// one never is.
 //
 // practice_records stays the practice source of truth. The relational rows are a
 // copy for referential integrity, written only here.
@@ -45,6 +46,11 @@ func (d *Durable) EnableProjection(ctx context.Context) error {
 	for _, r := range d.Memory.matters {
 		list = append(list, put("matter", r.ID, r))
 	}
+	// CORE-36: notes written before projection was enabled must land in core.notes so
+	// module foreign keys to existing notes resolve on upgraded installs.
+	for _, r := range d.Memory.notes {
+		list = append(list, put("note", r.ID, r))
+	}
 	d.Memory.mu.Unlock()
 	if len(list) == 0 {
 		return nil
@@ -57,7 +63,8 @@ func (d *Durable) EnableProjection(ctx context.Context) error {
 // projectOrder writes referenced rows before the rows that reference them.
 var projectOrder = func() map[string]int {
 	out := map[string]int{}
-	for i, kind := range []string{"area", "county", "contact", "referral", "matter", "event"} {
+	// note is CORE-36: POST /api/v1/notes must land in core.notes for module FKs.
+	for i, kind := range []string{"area", "county", "contact", "referral", "matter", "event", "note"} {
 		out[kind] = i + projectFirst
 	}
 	return out
@@ -148,6 +155,15 @@ formation_state = EXCLUDED.formation_state, formation_date = EXCLUDED.formation_
 VALUES ($1,$2,$3,$4,$5,$6,(SELECT id FROM contacts WHERE id = $7),$8) ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at,
 name = EXCLUDED.name, kind = EXCLUDED.kind, contact_id = EXCLUDED.contact_id, active = EXCLUDED.active`,
 			append(meta(r.Meta), r.Name, r.Kind, optional(r.ContactID), bit(r.Active))...)
+		return err
+	case domain.Note:
+		_, err := tx.ExecContext(ctx, `INSERT INTO notes (id, created_at, updated_at, created_by, matter_id, contact_id, author_id, title, body, pinned, status)
+VALUES ($1,$2,$3,$4,(SELECT id FROM matters WHERE id = $5),(SELECT id FROM contacts WHERE id = $6),
+COALESCE((SELECT id FROM users WHERE id = $7), $8),$9,$10,$11,$12)
+ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, matter_id = EXCLUDED.matter_id, contact_id = EXCLUDED.contact_id,
+author_id = EXCLUDED.author_id, title = EXCLUDED.title, body = EXCLUDED.body, pinned = EXCLUDED.pinned, status = EXCLUDED.status`,
+			append(meta(r.Meta), optional(r.MatterID), optional(r.ContactID), optional(r.AuthorID), string(domain.SystemUserID),
+				r.Title, r.Body, bit(r.Pinned), r.Status)...)
 		return err
 	case domain.Matter:
 		_, err := tx.ExecContext(ctx, `INSERT INTO matters (id, created_at, updated_at, created_by, number, name, practice_area_id, status, stage,

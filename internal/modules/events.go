@@ -19,8 +19,8 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
-// SignatureHeader carries the webhook signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of
-// "<t>.<body>" under the module's webhook secret>.
+// SignatureHeader carries the webhook signature: sha256= plus lowercase hex HMAC-SHA256 of
+// the raw body bytes, keyed with the module's webhook secret (CORE-36 / OpenAPI contract).
 const SignatureHeader = "X-Togavsu-Signature"
 
 // EventPayload is what a module receives for one event. It names the record; the module
@@ -324,36 +324,25 @@ func (s *Service) intSetting(ctx context.Context, key string) (int, error) {
 	return strconv.Atoi(v)
 }
 
-// Sign returns the signature header value for body.
+// SignWebhook returns the X-Togavsu-Signature value for body. at is unused; kept so
+// existing call sites compile (CORE-36 aligned the format with the OpenAPI contract).
 func SignWebhook(secret string, at time.Time, body []byte) string {
-	t := strconv.Itoa(int(at.Unix()))
+	_ = at
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(t + "."))
 	mac.Write(body)
-	return "t=" + t + ",v1=" + hex.EncodeToString(mac.Sum(nil))
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 // VerifyWebhook checks a signature header; modules use it (examples/matter-clock).
+// now and tolerance are unused under the sha256= contract format (no embedded timestamp).
 func VerifyWebhook(secret, header string, body []byte, now time.Time, tolerance time.Duration) error {
-	var t, v1 string
-	for _, part := range strings.Split(header, ",") {
-		k, v, _ := strings.Cut(strings.TrimSpace(part), "=")
-		switch k {
-		case "t":
-			t = v
-		case "v1":
-			v1 = v
-		}
-	}
-	sec, err := strconv.ParseInt(t, 10, 64)
-	if err != nil || v1 == "" {
+	_ = now
+	_ = tolerance
+	if !strings.HasPrefix(header, "sha256=") || len(header) != len("sha256=")+64 {
 		return errors.New("modules: malformed webhook signature")
 	}
-	if d := now.Sub(time.Unix(sec, 0)); d > tolerance || d < -tolerance {
-		return errors.New("modules: webhook signature is outside the allowed clock skew")
-	}
-	want := SignWebhook(secret, time.Unix(sec, 0), body)
-	if !hmac.Equal([]byte(want), []byte("t="+t+",v1="+v1)) {
+	want := SignWebhook(secret, time.Time{}, body)
+	if !hmac.Equal([]byte(want), []byte(header)) {
 		return errors.New("modules: webhook signature doesn't match")
 	}
 	return nil

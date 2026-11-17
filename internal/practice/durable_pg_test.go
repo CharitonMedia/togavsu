@@ -369,3 +369,60 @@ func TestConcurrentClosesSerialize(t *testing.T) {
 		t.Fatalf("%d close records stored, want 1", got)
 	}
 }
+
+// TestEnableProjectionBackfillsNotes: a note stored in practice_records before projection
+// appears in core.notes after EnableProjection (CORE-36 upgraded-install path).
+func TestEnableProjectionBackfillsNotes(t *testing.T) {
+	ctx := context.Background()
+	pool := requirePG(t)
+	store, err := OpenDurable(ctx, pool, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := NewWithSettings(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := person(tid(1), domain.RoleAdmin, domain.RoleAttorney)
+	staff := person(tid(2), domain.RoleStaff)
+	putUser(t, store.Memory, admin, "Avery Admin")
+	putUser(t, store.Memory, staff, "Sam Staff")
+	for _, u := range []domain.Principal{admin, staff} {
+		name := "Avery Admin"
+		if u.UserID == staff.UserID {
+			name = "Sam Staff"
+		}
+		if _, err := pool.ExecContext(ctx, `INSERT INTO users (id, created_at, updated_at, created_by, name, email, roles, active,
+default_hourly_rate_cents, contact_id, bar_number, bar_state)
+VALUES ($1,0,0,$2,$3,$4,'[]',1,0,NULL,'','') ON CONFLICT DO NOTHING`,
+			string(u.UserID), string(domain.SystemUserID), name, string(u.UserID)+"@example.test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.ExecContext(ctx, `INSERT INTO users (id, created_at, updated_at, created_by, name, email, roles, active,
+default_hourly_rate_cents, contact_id, bar_number, bar_state)
+VALUES ($1,0,0,$1,'System','system@local','[]',1,0,NULL,'','') ON CONFLICT DO NOTHING`,
+		string(domain.SystemUserID)); err != nil {
+		t.Fatal(err)
+	}
+
+	area := makeArea(t, svc, admin, "Notes Backfill")
+	matter := makeMatter(t, svc, admin, area, "Pre-projection notes", "")
+	note, err := svc.CreateNote(ctx, staff, NoteInput{MatterID: matter.ID, Title: "Legacy note", Body: "written before projection"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, pool, `SELECT count(*) FROM notes WHERE id = $1`, string(note.ID)); n != 0 {
+		t.Fatalf("core.notes already had the note before EnableProjection: %d", n)
+	}
+	if err := store.EnableProjection(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var title string
+	if err := pool.QueryRowContext(ctx, `SELECT title FROM notes WHERE id = $1`, string(note.ID)).Scan(&title); err != nil {
+		t.Fatalf("core.notes empty after EnableProjection: %v", err)
+	}
+	if title != "Legacy note" {
+		t.Fatalf("title %q", title)
+	}
+}

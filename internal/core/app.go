@@ -135,6 +135,10 @@ type App struct {
 	ready    atomic.Bool
 	mailMu   sync.Mutex
 	stopMail context.CancelFunc
+
+	// CORE-30: per-operation service-call rate counters (modules.service_call_limit.*).
+	svcHitMu sync.Mutex
+	svcHits  map[string][]time.Time
 	mailDone chan struct{}
 	docs     *documents
 	stopDocs context.CancelFunc

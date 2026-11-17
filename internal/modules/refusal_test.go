@@ -231,6 +231,35 @@ func TestAccepts(t *testing.T) {
 	if !strings.Contains(strings.Join(a.CoreRelations, " "), "core.matters") || !strings.Contains(strings.Join(a.CoreRecords, " "), "time_entry") {
 		t.Fatalf("records: %+v", a)
 	}
+	if len(a.CoreItems) == 0 || a.CoreItems[0] != "CORE-01" {
+		t.Fatalf("core_items: %v", a.CoreItems)
+	}
+}
+
+func TestCoreItemsAreHeadings(t *testing.T) {
+	changes1, err := os.ReadFile("docs/modules/CORE-CHANGES.md")
+	if err != nil {
+		changes1, err = os.ReadFile("../../docs/modules/CORE-CHANGES.md")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes2, err := os.ReadFile("docs/modules/CORE-CHANGES-2.md")
+	if err != nil {
+		changes2, err = os.ReadFile("../../docs/modules/CORE-CHANGES-2.md")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs := string(changes1) + "\n" + string(changes2)
+	for _, item := range modules.CoreItems() {
+		heading := "### " + item + " "
+		headingBare := "### " + item + "\n"
+		headingTable := "| " + item + " "
+		if !strings.Contains(docs, heading) && !strings.Contains(docs, headingBare) && !strings.Contains(docs, headingTable) {
+			t.Fatalf("%s is not a heading in CORE-CHANGES.md or CORE-CHANGES-2.md", item)
+		}
+	}
 }
 
 // The install check refuses a file the core doesn't read; reading a stored package

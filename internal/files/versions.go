@@ -321,6 +321,7 @@ func (s *Service) AddRendition(ctx context.Context, p domain.Principal, fileID, 
 }
 
 // Renditions lists a visible file's renditions, oldest first.
+// CORE-30: a module service principal sees only the markdown kind.
 func (s *Service) Renditions(ctx context.Context, p domain.Principal, fileID domain.ID) ([]RenditionView, error) {
 	f, err := s.loadFile(ctx, fileID)
 	if err != nil {
@@ -335,6 +336,9 @@ func (s *Service) Renditions(ctx context.Context, p domain.Principal, fileID dom
 	}
 	out := make([]RenditionView, 0, len(rs))
 	for _, r := range rs {
+		if moduleOnly(p) && r.Kind != "markdown" {
+			continue
+		}
 		out = append(out, renditionView(f, r))
 	}
 	return out, nil
@@ -342,6 +346,7 @@ func (s *Service) Renditions(ctx context.Context, p domain.Principal, fileID dom
 
 // OpenRendition opens a rendition under the same access as its file. The quarantine
 // rule comes from the version it was made from.
+// CORE-30: a module service principal may download the markdown kind only.
 func (s *Service) OpenRendition(ctx context.Context, p domain.Principal, fileID, renditionID domain.ID, confirm bool) (*Download, error) {
 	f, err := s.loadFile(ctx, fileID)
 	if err != nil {
@@ -363,6 +368,9 @@ func (s *Service) OpenRendition(ctx context.Context, p domain.Principal, fileID,
 	v, err := s.st.getVersion(ctx, r.FileVersionID)
 	if err != nil || v.FileID != f.ID {
 		return nil, domain.NotFound("rendition")
+	}
+	if moduleOnly(p) && r.Kind != "markdown" {
+		return nil, &domain.APIError{Code: "scope_denied", Message: "downloadFileRendition for a service call allows only the markdown kind"}
 	}
 	q, err := s.st.quarantined(ctx, v)
 	if err != nil {

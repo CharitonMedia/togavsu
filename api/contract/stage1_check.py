@@ -433,6 +433,11 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json"],
                 "change": "listAiCalls (GET /api/v1/ai/calls) gains the task, provider and module_id query filters the AI tab's call log uses, and its description says the log is newest first and omits calls on matters behind a wall the admin is not on. The MCP catalog still describes query as one object, and coverage does not list parameters, so their bytes stay the same.",
             },
+            {
+                "id": "core-update-2a-service-principal",
+                "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json", "docs/api/coverage.md"],
+                "change": "CORE-30 widens delegated_viewer_or_service_principal on list/get matter, conflict check, create note/event and related ops, and publishes modules.service_call_limit.* settings (default 120). CORE-36 documents getConflictCheck, scope_denied naming, and Accepts().core_items on the module API surface.",
+            },
         ],
         "intentional_corrections": [
             {

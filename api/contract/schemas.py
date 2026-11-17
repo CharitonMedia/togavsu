@@ -3910,6 +3910,9 @@ QUERY = {
     "archived": _query("archived", {"type": "boolean"}, "Filter by the archived flag. Default lists omit archived rows."),
     "kind": _query("kind", {"type": "string"}, "Kind filter. The resource description names the values."),
     "tag": _query("tag", {"type": "string"}, "Tag filter."),
+    "email": _query("email", {"type": "string"}, "Exact-match contact email filter (CORE-30 service-call lookup)."),
+    "phone": _query("phone", {"type": "string"}, "Exact-match contact phone E.164 filter (CORE-30 service-call lookup)."),
+
     "matter_id": _query("matter_id", _ref("Uuid"), "Matter filter."),
     "contact_id": _query("contact_id", _ref("Uuid"), "Contact filter."),
     "status": _query("status", {"type": "string"}, "Status filter."),

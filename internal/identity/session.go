@@ -126,7 +126,7 @@ func (c Caller) RequireScopes(need ...string) error {
 	}
 	for _, scope := range need {
 		if _, ok := have[scope]; !ok {
-			return apiCode("scope_denied", "token is missing a scope")
+			return apiCode("scope_denied", "token is missing scope "+scope)
 		}
 	}
 	return nil
