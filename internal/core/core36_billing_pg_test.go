@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 
@@ -195,6 +196,16 @@ func TestCORE36BillingRowsBackfill(t *testing.T) {
 	if err := store.Get(ctx, "invoice", invID, &invDoc); err != nil {
 		t.Fatal(err)
 	}
+	// Corrupted invoice_lines amount_cents must fail reconcile while header cents still match.
+	mustMismatch("invoice", invID, invDoc, func() error {
+		_, err := x.app.Pool.ExecContext(ctx,
+			`UPDATE core.invoice_lines SET amount_cents = amount_cents + 11 WHERE invoice_id = $1`, invID)
+		return err
+	})
+	if _, err := x.app.Pool.ExecContext(ctx,
+		`UPDATE core.invoice_lines SET amount_cents = amount_cents - 11 WHERE invoice_id = $1`, invID); err != nil {
+		t.Fatal(err)
+	}
 	mustMismatch("invoice", invID, invDoc, func() error {
 		_, err := x.app.Pool.ExecContext(ctx, `UPDATE core.invoices SET subtotal_cents = subtotal_cents + 1 WHERE id = $1`, invID)
 		return err
@@ -226,6 +237,56 @@ amount_paid_cents, balance_due_cents, write_off_cents FROM core.invoices WHERE i
 	for _, c := range checks {
 		if c.api != c.sql {
 			t.Fatalf("invoice %s %s api=%d sql=%d", id, c.name, c.api, c.sql)
+		}
+	}
+	apiLines, _ := api["lines"].([]any)
+	var lineCount int
+	var lineSum int64
+	if err := x.app.Pool.QueryRowContext(ctx,
+		`SELECT COUNT(*), COALESCE(SUM(amount_cents), 0) FROM core.invoice_lines WHERE invoice_id = $1`, id).
+		Scan(&lineCount, &lineSum); err != nil {
+		t.Fatalf("core.invoice_lines %s: %v", id, err)
+	}
+	if lineCount != len(apiLines) {
+		t.Fatalf("invoice %s invoice_lines count api=%d sql=%d", id, len(apiLines), lineCount)
+	}
+	var wantSum int64
+	for _, raw := range apiLines {
+		line, _ := raw.(map[string]any)
+		wantSum += num(t, line, "amount_cents")
+	}
+	if lineSum != wantSum {
+		t.Fatalf("invoice %s invoice_lines sum api=%d sql=%d", id, wantSum, lineSum)
+	}
+	rows, err := x.app.Pool.QueryContext(ctx,
+		`SELECT amount_cents FROM core.invoice_lines WHERE invoice_id = $1 ORDER BY amount_cents, id`, id)
+	if err != nil {
+		t.Fatalf("list invoice_lines: %v", err)
+	}
+	defer rows.Close()
+	var sqlAmts []int64
+	for rows.Next() {
+		var amt int64
+		if err := rows.Scan(&amt); err != nil {
+			t.Fatal(err)
+		}
+		sqlAmts = append(sqlAmts, amt)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	apiAmts := make([]int64, 0, len(apiLines))
+	for _, raw := range apiLines {
+		line, _ := raw.(map[string]any)
+		apiAmts = append(apiAmts, num(t, line, "amount_cents"))
+	}
+	sort.Slice(apiAmts, func(i, j int) bool { return apiAmts[i] < apiAmts[j] })
+	if len(apiAmts) != len(sqlAmts) {
+		t.Fatalf("invoice %s line amounts len api=%d sql=%d", id, len(apiAmts), len(sqlAmts))
+	}
+	for i := range apiAmts {
+		if apiAmts[i] != sqlAmts[i] {
+			t.Fatalf("invoice %s line amounts api=%v sql=%v", id, apiAmts, sqlAmts)
 		}
 	}
 }

@@ -71,17 +71,13 @@ client_message = EXCLUDED.client_message, internal_notes = EXCLUDED.internal_not
 	if _, err := conn.ExecContext(ctx, `DELETE FROM invoice_lines WHERE invoice_id = $1`, string(inv.ID)); err != nil {
 		return err
 	}
+	seenLineIDs := make(map[string]struct{}, len(inv.Lines))
 	for i, line := range inv.Lines {
-		lineID, err := domain.NewID()
-		if err != nil {
-			return err
+		lineID := coreInvoiceLineID(inv, i, line)
+		if _, dup := seenLineIDs[string(lineID)]; dup {
+			return fmt.Errorf("billing: invoice %s duplicate invoice_lines id %s", inv.ID, lineID)
 		}
-		// Stable line id when SourceID is set so re-puts replace the same row identity.
-		if !line.SourceID.IsZero() {
-			lineID = domain.ID(fmt.Sprintf("%s:%s:%s", inv.ID, line.Kind, line.SourceID))
-		} else {
-			lineID = domain.ID(fmt.Sprintf("%s:line:%d", inv.ID, i))
-		}
+		seenLineIDs[string(lineID)] = struct{}{}
 		var timeID, expID any
 		switch line.Kind {
 		case LineTime:
@@ -91,15 +87,22 @@ client_message = EXCLUDED.client_message, internal_notes = EXCLUDED.internal_not
 		}
 		if _, err := conn.ExecContext(ctx, `INSERT INTO invoice_lines (
 id, created_at, updated_at, created_by, invoice_id, kind, description, amount_cents, time_entry_id, expense_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, description = EXCLUDED.description,
-amount_cents = EXCLUDED.amount_cents, time_entry_id = EXCLUDED.time_entry_id, expense_id = EXCLUDED.expense_id`,
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 			string(lineID), inv.CreatedAt.UnixMicro(), inv.UpdatedAt.UnixMicro(), string(by),
 			string(inv.ID), line.Kind, line.Description, int64(line.AmountCents), timeID, expID); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// coreInvoiceLineID is the stable section-5 row id for one JSON invoice line.
+// Source-backed lines use invoice:kind:source; others use invoice:line:<index>.
+func coreInvoiceLineID(inv Invoice, i int, line Line) domain.ID {
+	if !line.SourceID.IsZero() {
+		return domain.ID(fmt.Sprintf("%s:%s:%s", inv.ID, line.Kind, line.SourceID))
+	}
+	return domain.ID(fmt.Sprintf("%s:line:%d", inv.ID, i))
 }
 
 func upsertCorePayment(ctx context.Context, conn audit.Querier, pay Payment) error {
@@ -258,6 +261,9 @@ amount_paid_cents, balance_due_cents, write_off_cents FROM invoices WHERE id = $
 				inv.AmountPaidCents, inv.BalanceDueCents, inv.WriteOffCents,
 				subtotal, adjustment, interest, total, paid, balance, writeOff)
 		}
+		if err := reconcileInvoiceLines(ctx, conn, inv); err != nil {
+			return err
+		}
 	case kindPayment:
 		pay := v.(Payment)
 		var amount, refunded int64
@@ -298,6 +304,49 @@ amount_paid_cents, balance_due_cents, write_off_cents FROM invoices WHERE id = $
 		// leave amount_cents alone but change what modules bill from the row.
 		if _, err := expenseAmount(exp.AmountCents, exp.MarkupPercent); err != nil {
 			return fmt.Errorf("billing: expense %s billed cents: %w", id, err)
+		}
+	}
+	return nil
+}
+
+// reconcileInvoiceLines checks core.invoice_lines against inv.Lines: row count, sum of
+// amount_cents, and each stable line id's amount. A silent ON CONFLICT overwrite that
+// drops a line's cents fails the count or per-line check.
+func reconcileInvoiceLines(ctx context.Context, conn audit.Querier, inv Invoice) error {
+	var count int
+	var sum int64
+	err := conn.QueryRowContext(ctx,
+		`SELECT COUNT(*), COALESCE(SUM(amount_cents), 0) FROM invoice_lines WHERE invoice_id = $1`,
+		string(inv.ID)).Scan(&count, &sum)
+	if err != nil {
+		return err
+	}
+	var wantSum int64
+	seen := make(map[string]struct{}, len(inv.Lines))
+	for i, line := range inv.Lines {
+		wantSum += int64(line.AmountCents)
+		lineID := string(coreInvoiceLineID(inv, i, line))
+		if _, dup := seen[lineID]; dup {
+			return fmt.Errorf("billing: invoice %s invoice_lines mismatch duplicate line id %s", inv.ID, lineID)
+		}
+		seen[lineID] = struct{}{}
+	}
+	if count != len(inv.Lines) || sum != wantSum {
+		return fmt.Errorf("billing: invoice %s invoice_lines mismatch json=(count=%d sum=%d) sql=(count=%d sum=%d)",
+			inv.ID, len(inv.Lines), wantSum, count, sum)
+	}
+	for i, line := range inv.Lines {
+		lineID := coreInvoiceLineID(inv, i, line)
+		var amt int64
+		err := conn.QueryRowContext(ctx,
+			`SELECT amount_cents FROM invoice_lines WHERE id = $1 AND invoice_id = $2`,
+			string(lineID), string(inv.ID)).Scan(&amt)
+		if err != nil {
+			return fmt.Errorf("billing: invoice %s invoice_lines mismatch line %s: %w", inv.ID, lineID, err)
+		}
+		if amt != int64(line.AmountCents) {
+			return fmt.Errorf("billing: invoice %s invoice_lines mismatch line %s json=%d sql=%d",
+				inv.ID, lineID, line.AmountCents, amt)
 		}
 	}
 	return nil
