@@ -1,7 +1,7 @@
 {
   "task_id": "marketplace-paid",
   "status": "pass",
-  "tested_revision": "a28e91997f7c7c99965b3bf2ce14ddb1d4e823c1",
+  "tested_revision": "74a2978244c55b3d40a7f4da0c0894af381b44b5",
   "tests": [
     {
       "name": "marketplace package",
@@ -99,8 +99,28 @@
       "exit_code": 0
     },
     {
+      "name": "invoice-line-period-not-top-level",
+      "command": "go test -count=1 -timeout 60s -run '^TestInvoicePaidUsesLinePeriodNotTopLevel$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "checkout-requires-urls",
+      "command": "go test -count=1 -timeout 60s -run '^TestCheckoutRequiresSuccessAndCancelURLs$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "failed-notice-blocks-price-apply",
+      "command": "go test -count=1 -timeout 60s -run '^TestFailedNoticeBlocksPriceApplyUntilRetry$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
       "name": "module-clean-settings",
       "command": "go test ./internal/settings/ -run TestModuleClean -count=1",
+      "exit_code": 0
+    },
+    {
+      "name": "settings-race",
+      "command": "go test -race -count=1 ./internal/settings/",
       "exit_code": 0
     },
     {
