@@ -156,7 +156,7 @@ func TestBaseURL(t *testing.T) {
 	if !TrustsMarketplaceKeys("https://marketplace.example.test") || !TrustsMarketplaceKeys("http://127.0.0.1:8090") || !TrustsMarketplaceKeys("http://localhost:8090") {
 		t.Fatal("https and loopback must trust marketplace keys")
 	}
-	if TrustsMarketplaceKeys("http://togavsu-marketplace:8090") || TrustsMarketplaceKeys("togavsu-marketplace") {
+	if TrustsMarketplaceKeys("http://togavsu-marketplace:8090") || TrustsMarketplaceKeys("http://togavsu-marketplace") || !TrustsMarketplaceKeys("togavsu-marketplace") || !TrustsMarketplaceKeys("") {
 		t.Fatal("plain http to togavsu-marketplace must not trust marketplace keys")
 	}
 	if !IsComposeMarketplaceHTTP("http://togavsu-marketplace:8090") || IsComposeMarketplaceHTTP("http://127.0.0.1:8090") {

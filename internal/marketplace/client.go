@@ -76,8 +76,10 @@ func httpHostAllowed(host string) bool {
 }
 
 // TrustsMarketplaceKeys reports whether marketplace-published signing keys may be
-// fetched and used to verify installs for addr. https and loopback http keep that
-// trust; plain http to togavsu-marketplace does not (only trusted local keys verify).
+// fetched and used to verify installs for addr. Only plain http to togavsu-marketplace
+// loses that trust (only trusted local keys verify there). Every other address keeps
+// today's behavior: https and loopback fetch and trust keys, and an empty, placeholder
+// or refused address keeps and trusts the last cached keys.
 //
 // ponytail: ceiling: over http://togavsu-marketplace listings, packages and alerts are
 // unauthenticated and marketplace-published keys are never fetched or trusted (only
@@ -85,19 +87,7 @@ func httpHostAllowed(host string) bool {
 // for every non-loopback marketplace. trigger: any marketplace reached across a
 // network the firm does not control.
 func TrustsMarketplaceKeys(addr string) bool {
-	u, err := BaseURL(addr)
-	if err != nil {
-		return false
-	}
-	if u.Scheme == "https" {
-		return true
-	}
-	host := u.Hostname()
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return !IsComposeMarketplaceHTTP(addr)
 }
 
 // IsComposeMarketplaceHTTP reports whether addr is plain http to togavsu-marketplace.

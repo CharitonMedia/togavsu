@@ -737,6 +737,13 @@ func TestComposeMarketplaceHTTPTrust(t *testing.T) {
 			return d.DialContext(ctx, network, addr)
 		},
 	}
+	// Cache the marketplace keys over loopback first, so the switch below must clear them.
+	if _, err := w.svc.FetchForInstall(w.ctx, w.admin, "matter-clock", "0.1.0"); err != nil {
+		t.Fatalf("loopback install caches keys: %v", err)
+	}
+	if n := w.count(`SELECT count(*) FROM marketplace_signing_keys`); n == 0 {
+		t.Fatal("loopback stored no marketplace keys")
+	}
 	const composeAddr = "http://togavsu-marketplace:8090"
 	w.set.set("modules.marketplace_address", composeAddr)
 	au, err := audit.New(audit.NewPostgres(w.db), w.clock)
@@ -776,6 +783,27 @@ func TestComposeMarketplaceHTTPTrust(t *testing.T) {
 		t.Fatalf("local-key install over compose http %+v %v", v, err)
 	}
 	_ = pkg
+}
+
+// TestCachedMarketplaceKeysSurviveUnsetAddress: an empty or placeholder Marketplace
+// Address keeps the cached marketplace keys, so Install from a file still verifies a
+// package signed by a marketplace-published key.
+func TestCachedMarketplaceKeysSurviveUnsetAddress(t *testing.T) {
+	w := newWorld(t)
+	pkg := w.publish("matter-clock", "0.1.0")
+	if _, err := w.svc.FetchForInstall(w.ctx, w.admin, "matter-clock", "0.1.0"); err != nil {
+		t.Fatal(err)
+	}
+	for _, addr := range []string{"", "togavsu-marketplace"} {
+		w.set.set("modules.marketplace_address", addr)
+		v, err := w.svc.VerifyLocal(w.ctx, w.admin, pkg, marketplace.Sign(w.priv, pkg), w.keyID)
+		if err != nil || v.Signer.Source != "marketplace" {
+			t.Fatalf("address %q: file install with cached marketplace key %+v %v", addr, v, err)
+		}
+		if n := w.count(`SELECT count(*) FROM marketplace_signing_keys`); n == 0 {
+			t.Fatalf("address %q cleared the cached marketplace keys", addr)
+		}
+	}
 }
 
 // TestPGCurrentVersionFlagStaysOnThatVersion: a flag on the current version warns at its
