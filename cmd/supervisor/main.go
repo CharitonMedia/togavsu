@@ -125,6 +125,11 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	if err := os.MkdirAll(cfg.MailOutboxDir, 0o777); err != nil {
 		return nil, err
 	}
+	// Notices queued under the old supervisor data path before the dedicated mail
+	// volume must move with the upgrade, or update-failure mail is silently orphaned.
+	if err := supervisor.MigrateLegacyMailOutbox(cfg.DataDir, cfg.MailOutboxDir); err != nil {
+		return nil, err
+	}
 	ledger := supervisor.OpenLedger(filepath.Join(cfg.DataDir, "ledger.jsonl"))
 	journal := supervisor.OpenJournal(filepath.Join(cfg.DataDir, "restore-journal.jsonl"))
 	updateJournal := supervisor.OpenUpdateJournal(filepath.Join(cfg.DataDir, "update-journal.jsonl"))

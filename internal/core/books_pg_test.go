@@ -200,3 +200,77 @@ func TestCORE02BooksReads(t *testing.T) {
 		t.Fatalf("viewer-context books matter: %d %s", r.code, r.body)
 	}
 }
+
+// TestCORE02BooksContactUpdatedPump: a books:read module subscribed to contact.updated
+// must not stall the pump when the contact is not an unwalled client. Editing a
+// non-client contact and a payment-only contact both leave the cursor advancing
+// (Codex finding: empty ModuleID made payment/trust lookups unauthenticated).
+func TestCORE02BooksContactUpdatedPump(t *testing.T) {
+	x := newExt(t)
+	ctx := context.Background()
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	pkg := x.build(func(f map[string][]byte) {
+		m := string(f[modules.ManifestFile])
+		m = strings.Replace(m, "id: matter-clock", "id: books-sync", 1)
+		m = strings.Replace(m, "name: Matter Clock", "name: Books Sync", 1)
+		m = strings.Replace(m, "permissions:\n",
+			"permissions:\n  - scope: books:read\n    reason: Filter books contact events.\n"+
+				"  - scope: payments:read\n    reason: See payer contacts.\n", 1)
+		m = strings.Replace(m, "events:\n  - time_entry.*\n  - matter.created\n",
+			"events:\n  - contact.updated\n  - matter.created\n", 1)
+		f[modules.ManifestFile] = []byte(m)
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("books-sync")
+
+	if _, err := x.app.Modules.Pump(ctx); err != nil {
+		t.Fatalf("drain setup events: %v", err)
+	}
+
+	matter, clientID := x.matter("Books Event Estate", "books.event.client@example.com", nil)
+	orphan := str(t, x.admin.must(http.StatusCreated, "POST", "/api/v1/contacts", map[string]any{
+		"kind": "person", "given_name": "Orphan", "family_name": "Witness",
+	}).json, "id")
+	payer := str(t, x.admin.must(http.StatusCreated, "POST", "/api/v1/contacts", map[string]any{
+		"kind": "person", "given_name": "Payer", "family_name": "Only",
+	}).json, "id")
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/matter-parties", map[string]any{
+		"matter_id": matter, "contact_id": payer, "role": "opposing party",
+	})
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/payments", map[string]any{
+		"contact_id": payer, "matter_id": matter, "amount_cents": 25_00,
+		"destination": "operating", "method": "check",
+	})
+
+	x.admin.must(http.StatusOK, "PATCH", "/api/v1/contacts/"+orphan, map[string]any{"preferred_name": "Orphaned"})
+	orphanEv := x.count(`SELECT COUNT(*) FROM core.events WHERE action = 'contact.updated' AND record_id = $1`, orphan)
+	if orphanEv == 0 {
+		t.Fatal("expected contact.updated for the non-client orphan")
+	}
+	if _, err := x.app.Modules.Pump(ctx); err != nil {
+		t.Fatalf("pump after non-client contact.updated: %v", err)
+	}
+	if n := x.count(`SELECT COUNT(*) FROM core.module_deliveries WHERE module_id = 'books-sync' AND action = 'contact.updated' AND payload::text LIKE $1`, "%"+orphan+"%"); n != 0 {
+		t.Fatalf("books module should drop orphan contact.updated, got %d deliveries", n)
+	}
+
+	x.admin.must(http.StatusOK, "PATCH", "/api/v1/contacts/"+payer, map[string]any{"preferred_name": "Paid"})
+	if _, err := x.app.Modules.Pump(ctx); err != nil {
+		t.Fatalf("pump after payment-only contact.updated: %v", err)
+	}
+	if n := x.count(`SELECT COUNT(*) FROM core.module_deliveries WHERE module_id = 'books-sync' AND action = 'contact.updated' AND payload::text LIKE $1`, "%"+payer+"%"); n != 1 {
+		t.Fatalf("payment-only contact.updated deliveries=%d want 1", n)
+	}
+
+	// Cursor kept advancing: a later matter.created still queues after the contact rows.
+	later, _ := x.matter("Books Event Later", "books.event.later@example.com", nil)
+	if n, err := x.app.Modules.Pump(ctx); err != nil || n == 0 {
+		t.Fatalf("pump after later matter: queued=%d err=%v (proves cursor advanced past contact.updated)", n, err)
+	}
+	if n := x.count(`SELECT COUNT(*) FROM core.module_deliveries WHERE module_id = 'books-sync' AND action = 'matter.created' AND payload::text LIKE $1`, "%"+later+"%"); n != 1 {
+		t.Fatalf("later matter.created deliveries=%d want 1", n)
+	}
+	_ = clientID
+}

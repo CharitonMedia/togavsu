@@ -12,6 +12,8 @@ import (
 // (CORE-05). Update-related subjects use kind update_failure so aboutRoutingModule
 // forces SMTP when the notice is about the email routing module itself.
 // Each notice keeps a stable ID used as Idempotency-Key across 5xx/timeout retries.
+// Take leaves a .draining file until finishDrain Acks it so a crash mid-send cannot
+// orphan the batch.
 func (a *App) drainSupervisorMail(ctx context.Context) (int, error) {
 	if a == nil || a.sysMail == nil || a.supervisorMailOutbox == "" {
 		return 0, nil
@@ -23,8 +25,7 @@ func (a *App) drainSupervisorMail(ctx context.Context) (int, error) {
 	}
 	admins, err := usersWithRole(ctx, a.Pool, domain.RoleAdmin)
 	if err != nil {
-		_ = box.PutAll(notices)
-		return 0, err
+		return 0, finishDrain(box, notices, err)
 	}
 	var to []string
 	for _, u := range admins {
@@ -33,8 +34,7 @@ func (a *App) drainSupervisorMail(ctx context.Context) (int, error) {
 		}
 	}
 	if len(to) == 0 {
-		_ = box.PutAll(notices)
-		return 0, nil
+		return 0, finishDrain(box, notices, nil)
 	}
 	var failed []supervisor.Notice
 	var sent int
@@ -62,11 +62,26 @@ func (a *App) drainSupervisorMail(ctx context.Context) (int, error) {
 		}
 		sent++
 	}
-	if err := box.PutAll(failed); err != nil && len(failed) > 0 {
+	if err := finishDrain(box, failed, nil); err != nil {
 		return sent, err
 	}
-	if len(failed) > 0 {
-		return sent, nil
-	}
 	return sent, nil
+}
+
+// finishDrain restores remaining notices then Acks the .draining file. When PutAll
+// fails, .draining is left so the next Take recovers the original batch.
+func finishDrain(box *supervisor.Outbox, remaining []supervisor.Notice, prior error) error {
+	if err := box.PutAll(remaining); err != nil && len(remaining) > 0 {
+		if prior != nil {
+			return prior
+		}
+		return err
+	}
+	if err := box.Ack(); err != nil {
+		if prior != nil {
+			return prior
+		}
+		return err
+	}
+	return prior
 }

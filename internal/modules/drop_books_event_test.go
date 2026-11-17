@@ -23,7 +23,10 @@ func TestDropBooksEvent(t *testing.T) {
 	open := domain.ID("open-matter")
 	s := &Service{d: Deps{
 		Walls: dropWalls{walled: map[domain.ID]bool{walled: true}},
-		BooksContactOK: func(_ context.Context, id domain.ID) (bool, error) {
+		BooksContactOK: func(_ context.Context, moduleID string, id domain.ID) (bool, error) {
+			if moduleID == "" {
+				t.Fatal("BooksContactOK needs the module id for an authenticated books reader")
+			}
 			return id != "hidden-contact", nil
 		},
 	}}
@@ -41,7 +44,7 @@ func TestDropBooksEvent(t *testing.T) {
 		{domain.Event{Action: "matter.updated", MatterID: walled}, false},
 	}
 	for _, c := range cases {
-		got, err := s.dropBooksEvent(context.Background(), c.ev)
+		got, err := s.dropBooksEvent(context.Background(), "quickbooks", c.ev)
 		if err != nil || got != c.drop {
 			t.Fatalf("%s matter=%s record=%s: drop=%v err=%v want %v", c.ev.Action, c.ev.MatterID, c.ev.RecordID, got, err, c.drop)
 		}

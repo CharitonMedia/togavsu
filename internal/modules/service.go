@@ -63,8 +63,9 @@ type Deps struct {
 	// closed.
 	Contacts ContactReader
 	// BooksContactOK reports whether a books:read module may receive contact.updated for
-	// the contact (CORE-02). Nil drops every contact.updated for books:read modules.
-	BooksContactOK func(ctx context.Context, contactID domain.ID) (bool, error)
+	// the contact (CORE-02). moduleID is the installed module so the books-reader principal
+	// is authenticated. Nil drops every contact.updated for books:read modules.
+	BooksContactOK func(ctx context.Context, moduleID string, contactID domain.ID) (bool, error)
 	HTTP           *http.Client
 	Now            func() time.Time
 }

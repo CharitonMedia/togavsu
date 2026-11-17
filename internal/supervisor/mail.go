@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -75,19 +76,34 @@ func (o *Outbox) List() ([]Notice, error) {
 	return parseNotices(raw)
 }
 
+func (o *Outbox) drainingPath() string {
+	return o.path + ".draining"
+}
+
 // Take renames the outbox aside and returns its notices so the core can send them.
-// A concurrent Notify that creates a new outbox after the rename is left for the next Take.
+// The .draining file stays until Ack so a crash between Take and send does not lose
+// notices. A leftover .draining from a prior crash is returned first; concurrent
+// Notify writes to path wait for the next Take.
 func (o *Outbox) Take() ([]Notice, error) {
 	if o == nil || o.path == "" {
 		return nil, nil
 	}
-	pending := o.path + ".draining"
+	pending := o.drainingPath()
+	if _, err := os.Stat(pending); err == nil {
+		return o.readDraining(pending)
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
 	if err := os.Rename(o.path, pending); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	return o.readDraining(pending)
+}
+
+func (o *Outbox) readDraining(pending string) ([]Notice, error) {
 	raw, err := os.ReadFile(pending)
 	if err != nil {
 		_ = os.Rename(pending, o.path)
@@ -98,10 +114,20 @@ func (o *Outbox) Take() ([]Notice, error) {
 		_ = os.Rename(pending, o.path)
 		return nil, err
 	}
-	if err := os.Remove(pending); err != nil && !os.IsNotExist(err) {
-		return out, err
-	}
 	return out, nil
+}
+
+// Ack removes the .draining file after sends complete (and PutAll has restored any
+// failures). Call only after PutAll of the remaining notices; a failed PutAll should
+// leave .draining so the next Take recovers the batch.
+func (o *Outbox) Ack() error {
+	if o == nil || o.path == "" {
+		return nil
+	}
+	if err := os.Remove(o.drainingPath()); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // PutAll appends notices back (failed sends stay queued for the next drain).
@@ -124,6 +150,45 @@ func (o *Outbox) PutAll(notices []Notice) error {
 		}
 	}
 	return nil
+}
+
+// MigrateLegacyMailOutbox moves notices left in the pre-mail-volume path
+// (SupervisorDataDir/mail-outbox.jsonl) into the dedicated mail outbox directory so an
+// existing install does not orphan admin notices on upgrade.
+func MigrateLegacyMailOutbox(dataDir, mailOutboxDir string) error {
+	if dataDir == "" || mailOutboxDir == "" {
+		return nil
+	}
+	legacy := filepath.Join(dataDir, MailOutboxFile)
+	dest := filepath.Join(mailOutboxDir, MailOutboxFile)
+	if filepath.Clean(legacy) == filepath.Clean(dest) {
+		return nil
+	}
+	raw, err := os.ReadFile(legacy)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if len(raw) == 0 {
+		return os.Remove(legacy)
+	}
+	if err := os.MkdirAll(mailOutboxDir, 0o777); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(dest, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o666)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(raw); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Remove(legacy)
 }
 
 func (o *Outbox) read() ([]byte, error) {

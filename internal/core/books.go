@@ -154,7 +154,12 @@ func (a *App) booksContactReadable(ctx context.Context, p domain.Principal, id d
 }
 
 // booksContactReadableForModule is the enqueue hook: a books:read module only receives
-// contact.updated when getBooksContact would return the contact.
-func (a *App) booksContactReadableForModule(ctx context.Context, contactID domain.ID) (bool, error) {
-	return a.booksContactReadable(ctx, booksReaderPrincipal(""), contactID)
+// contact.updated when getBooksContact would return the contact. moduleID must be the
+// installed module so Decide accepts the service principal (empty ModuleID is
+// unauthenticated and would stall the event pump on payment/trust lookups).
+func (a *App) booksContactReadableForModule(ctx context.Context, moduleID string, contactID domain.ID) (bool, error) {
+	if moduleID == "" {
+		return false, domain.Unauthenticated("books event filter needs a module id")
+	}
+	return a.booksContactReadable(ctx, booksReaderPrincipal(moduleID), contactID)
 }

@@ -216,7 +216,7 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 			continue
 		}
 		if m.Approved["books:read"] {
-			drop, err := s.dropBooksEvent(ctx, ev)
+			drop, err := s.dropBooksEvent(ctx, m.ID, ev)
 			if err != nil {
 				return queued, err
 			}
@@ -247,13 +247,16 @@ VALUES ($1,$2,$2,'',$3,$4,$5,$6,'pending',0,$2,'',0) ON CONFLICT (module_id, eve
 
 // dropBooksEvent reports whether a books:read module must not receive ev (CORE-02):
 // money events on a walled matter, and contact.updated for a contact getBooksContact
-// would not return.
-func (s *Service) dropBooksEvent(ctx context.Context, ev domain.Event) (bool, error) {
+// would not return. moduleID authenticates the books-reader principal used for contact
+// payment/trust lookups so an Unauthenticated error cannot stall the pump cursor.
+func (s *Service) dropBooksEvent(ctx context.Context, moduleID string, ev domain.Event) (bool, error) {
 	if booksMoneyEvent(ev.Action) && !ev.MatterID.IsZero() {
 		if s.d.Walls == nil {
 			return true, nil
 		}
-		view, err := s.d.Walls.View(ctx, domain.Principal{Source: domain.SourceService, Roles: []domain.Role{domain.RoleAccountant}}, ev.MatterID)
+		view, err := s.d.Walls.View(ctx, domain.Principal{
+			Source: domain.SourceService, ModuleID: moduleID, Roles: []domain.Role{domain.RoleAccountant},
+		}, ev.MatterID)
 		if err != nil {
 			return false, err
 		}
@@ -263,7 +266,7 @@ func (s *Service) dropBooksEvent(ctx context.Context, ev domain.Event) (bool, er
 		if s.d.BooksContactOK == nil {
 			return true, nil
 		}
-		ok, err := s.d.BooksContactOK(ctx, ev.RecordID)
+		ok, err := s.d.BooksContactOK(ctx, moduleID, ev.RecordID)
 		if err != nil {
 			return false, err
 		}
