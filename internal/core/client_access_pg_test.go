@@ -26,11 +26,42 @@ func TestCORE14ClientAccess(t *testing.T) {
 		t.Fatalf("grant: %s", grant.body)
 	}
 	mailStatus := str(t, grant.json, "mail_status")
-	if mailStatus != "sent" && mailStatus != "failed" && mailStatus != "skipped" {
-		t.Fatalf("mail_status: %s", grant.body)
+	if mailStatus != "sent" {
+		t.Fatalf("mail_status: want sent got %s body=%s", mailStatus, grant.body)
 	}
 	if strings.Contains(grant.body, "temporary_password") {
 		t.Fatalf("grant leaked password: %s", grant.body)
+	}
+	const signInURL = "https://firm.example/login"
+	msgs := f.smtp.to("portal.client@example.com")
+	if len(msgs) == 0 {
+		t.Fatal("no client-access mail delivered")
+	}
+	mailBody := msgs[len(msgs)-1].Data
+	if !strings.Contains(mailBody, signInURL) {
+		t.Fatalf("client-access mail missing sign-in URL %q: %s", signInURL, mailBody)
+	}
+	if !strings.Contains(mailBody, "Temporary password:") {
+		t.Fatalf("client-access mail missing temporary password line: %s", mailBody)
+	}
+	tempFromMail := ""
+	for _, line := range strings.Split(mailBody, "\n") {
+		if strings.HasPrefix(line, "Temporary password: ") {
+			tempFromMail = strings.TrimPrefix(line, "Temporary password: ")
+			tempFromMail = strings.TrimSpace(tempFromMail)
+			break
+		}
+	}
+	if len([]rune(tempFromMail)) < 12 {
+		t.Fatalf("could not parse temporary password from mail: %q", tempFromMail)
+	}
+	audit := f.admin.must(http.StatusOK, "GET", "/api/v1/audit-log?limit=200", nil)
+	if strings.Contains(audit.body, tempFromMail) {
+		t.Fatal("temporary password reached the audit log")
+	}
+	events := f.admin.must(http.StatusOK, "GET", "/api/v1/events?limit=200", nil)
+	if strings.Contains(events.body, tempFromMail) {
+		t.Fatal("temporary password reached core.events")
 	}
 
 	got := f.staff.must(http.StatusOK, "GET", "/api/v1/client-access?contact_id="+contact, nil)

@@ -328,7 +328,7 @@ func (s *Service) CreateAccount(ctx context.Context, who domain.Principal, in Ac
 	if err != nil {
 		return Account{}, err
 	}
-	s.publish(ctx, joined || replay, []Event{{Name: "trust_account.created", RecordID: out.ID}})
+	s.publish(ctx, joined || replay, stampActors(who, []Event{{Name: "trust_account.created", RecordID: out.ID}}))
 	return out, nil
 }
 
@@ -390,7 +390,7 @@ func (s *Service) UpdateAccount(ctx context.Context, who domain.Principal, id do
 	if err != nil {
 		return Account{}, err
 	}
-	s.publish(ctx, joined, []Event{{Name: "trust_account.updated", RecordID: id}})
+	s.publish(ctx, joined, stampActors(who, []Event{{Name: "trust_account.updated", RecordID: id}}))
 	return out, nil
 }
 
@@ -561,6 +561,6 @@ func (s *Service) ResolveFlag(ctx context.Context, who domain.Principal, id doma
 	if err != nil {
 		return Flag{}, err
 	}
-	s.publish(ctx, joined, []Event{{Name: "trust.flag_resolved", RecordID: id, MatterID: f.entryMatter}})
+	s.publish(ctx, joined, stampActors(who, []Event{{Name: "trust.flag_resolved", RecordID: id, MatterID: f.entryMatter}}))
 	return f, nil
 }

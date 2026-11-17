@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -131,6 +132,8 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 
 // trustCoreEvents writes committed trust events into core.events so modules and the
 // timeline see trust.replenishment_satisfied and the other trust.Event names (CORE-23).
+// Actor kind/id and Summary come from trust.Event (the posting principal and a
+// human-readable line) so the Activities feed does not show "System — trust.entry_posted".
 type trustCoreEvents struct {
 	pool *sql.DB
 	now  func() time.Time
@@ -156,10 +159,23 @@ func (p trustCoreEvents) Publish(ctx context.Context, events []trust.Event) erro
 		case "trust.entry_posted", "trust.entry_reversed":
 			recType = "trust_entry"
 		}
+		kind := strings.TrimSpace(e.ActorKind)
+		actor := e.ActorID
+		summary := strings.TrimSpace(e.Summary)
+		if kind == "" {
+			kind = "system"
+			actor = domain.SystemUserID
+		}
+		if actor.IsZero() {
+			actor = domain.SystemUserID
+		}
+		if summary == "" {
+			summary = e.Name
+		}
 		if err := db.PublishEvent(ctx, audit.Conn(ctx, p.pool), domain.Event{
-			Meta:      domain.Meta{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: domain.SystemUserID},
-			ActorKind: "system", ActorID: domain.SystemUserID, Action: e.Name,
-			RecordType: recType, RecordID: e.RecordID, MatterID: e.MatterID, Summary: e.Name,
+			Meta:      domain.Meta{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: actor},
+			ActorKind: kind, ActorID: actor, Action: e.Name,
+			RecordType: recType, RecordID: e.RecordID, MatterID: e.MatterID, Summary: summary,
 		}); err != nil {
 			return err
 		}

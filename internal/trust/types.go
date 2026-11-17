@@ -243,11 +243,16 @@ type Notification struct {
 }
 
 // Event is a commit event such as trust.entry_posted or trust.flag_raised.
+// ActorKind, ActorID and Summary are carried into core.events so the Activities
+// feed names the posting principal and a readable action (PRD 8.x).
 type Event struct {
-	Name     string            `json:"name"`
-	RecordID domain.ID         `json:"record_id"`
-	MatterID domain.ID         `json:"matter_id,omitempty"`
-	Data     map[string]string `json:"data,omitempty"`
+	Name      string            `json:"name"`
+	RecordID  domain.ID         `json:"record_id"`
+	MatterID  domain.ID         `json:"matter_id,omitempty"`
+	ActorKind string            `json:"actor_kind,omitempty"`
+	ActorID   domain.ID         `json:"actor_id,omitempty"`
+	Summary   string            `json:"summary,omitempty"`
+	Data      map[string]string `json:"data,omitempty"`
 }
 
 // FlatFee is one flat-fee worklist row.

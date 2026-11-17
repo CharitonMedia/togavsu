@@ -313,22 +313,27 @@ func (s *Service) commitEntry(ctx context.Context, who domain.Principal, e Entry
 		return PostResult{}, err
 	}
 	res := PostResult{Entry: e, Balances: shown, Flags: []Flag{}, cached: []domain.TrustBalance{cached}}
-	res.Events = append(res.Events, Event{Name: "trust.entry_posted", RecordID: e.ID, MatterID: e.MatterID, Data: map[string]string{
-		"trust_account_id": string(e.TrustAccountID), "client_id": string(e.ClientID), "entry_type": e.EntryType, "amount_cents": e.Signed.String(),
-	}})
+	res.Events = append(res.Events, stampActor(who, Event{
+		Name: "trust.entry_posted", RecordID: e.ID, MatterID: e.MatterID,
+		Summary: entryPostedSummary(e, matter),
+		Data: map[string]string{
+			"trust_account_id": string(e.TrustAccountID), "client_id": string(e.ClientID),
+			"entry_type": e.EntryType, "amount_cents": e.Signed.String(),
+		},
+	}))
 	if isDebit(e.Signed) {
 		flags, events, err := s.raise(ctx, who, e, bal, matter, rd.ok)
 		if err != nil {
 			return PostResult{}, err
 		}
 		res.Flags = flags
-		res.Events = append(res.Events, events...)
+		res.Events = append(res.Events, stampActors(who, events)...)
 	}
 	events, err := s.evergreenCheck(ctx, who, e, matter)
 	if err != nil {
 		return PostResult{}, err
 	}
-	res.Events = append(res.Events, events...)
+	res.Events = append(res.Events, stampActors(who, events)...)
 	return res, nil
 }
 

@@ -227,7 +227,7 @@ func (s *Service) CreateReplenishments(ctx context.Context, who domain.Principal
 	if err != nil {
 		return nil, err
 	}
-	s.publish(ctx, joined, events)
+	s.publish(ctx, joined, stampActors(who, events))
 	return out, nil
 }
 
@@ -270,7 +270,7 @@ func (s *Service) closeRepl(ctx context.Context, who domain.Principal, id domain
 	if err != nil {
 		return Replenishment{}, err
 	}
-	s.publish(ctx, joined, []Event{{Name: event, RecordID: r.ID, MatterID: r.MatterID}})
+	s.publish(ctx, joined, stampActors(who, []Event{{Name: event, RecordID: r.ID, MatterID: r.MatterID}}))
 	return r, nil
 }
 

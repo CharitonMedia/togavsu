@@ -324,8 +324,11 @@ func (a *App) mailClientAccess(ctx context.Context, to, temporaryPassword string
 	}
 	text := "You have access to the client portal.\n\n" +
 		"Sign-in email: " + to + "\n" +
-		"Temporary password: " + temporaryPassword + "\n\n" +
-		"Sign in and change your password before using the portal."
+		"Temporary password: " + temporaryPassword + "\n"
+	if url := a.clientAccessSignInURL(); url != "" {
+		text += "Sign-in address: " + url + "\n"
+	}
+	text += "\nSign in and change your password before using the portal."
 	err := a.sysMail.deliver(ctx, systemMail{
 		Kind: "client_access", To: []string{to},
 		Subject: "Your client portal access", Text: text,
@@ -337,4 +340,16 @@ func (a *App) mailClientAccess(ctx context.Context, to, temporaryPassword string
 		return "skipped"
 	}
 	return "failed"
+}
+
+// clientAccessSignInURL is the absolute portal sign-in link (CORE-14 / CORE-04 style).
+func (a *App) clientAccessSignInURL() string {
+	host := ""
+	if a != nil && a.Trust != nil {
+		host = strings.TrimSpace(a.Trust.FirmDomain)
+	}
+	if host == "" {
+		return ""
+	}
+	return "https://" + host + "/login"
 }
