@@ -1,8 +1,8 @@
 {
   "task_id": "desk-fix-settings-plain-values",
   "status": "pass",
-  "scope": "Desk fix: plain setting values on the admin Settings page (case number examples with derivation, Advanced switch, plain editors for durations/bytes/lists/retries/notifications/colors/naming/model prices), plus Codex checkpoint resolutions for phone CSS, non-aligned byte editors, custom-pattern display, overflow refusal, OpenAPI catalog, and gofmt. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
-  "tested_revision": "c3629fd476cc7f8b90de80eca28c70bda07fd7d7",
+  "scope": "Desk fix: plain setting values on the admin Settings page (case number examples with derivation, Advanced switch, plain editors for durations/bytes/lists/retries/notifications/colors/naming/model prices), plus Codex checkpoint resolutions for phone CSS/topbar, non-aligned byte editors, custom-pattern display, overflow refusal, OpenAPI catalog, and gofmt. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
+  "tested_revision": "7d5dc9bbffea680c71d5b876ba8bbe53de137775",
   "prd_sections": [
     "8.7"
   ],
@@ -16,18 +16,24 @@
     {
       "command": "go test -count=1 -timeout 45m ./internal/...",
       "exit_code": 0,
-      "seconds": 163
+      "seconds": 214
     },
     {
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 34
+      "seconds": 36
+    },
+    {
+      "command": "go test -count=1 -timeout 20m -v -run '^TestUIVisualQC$' ./internal/dashboard/compose/",
+      "exit_code": 0,
+      "seconds": 127,
+      "note": "Includes Width 390 Firm/Practice/Files/AI settings pages with Advanced closed and open"
     }
   ],
   "codex_resolutions": [
     {
-      "finding": "P1 phone-width CSS nth-child widths beat stacked media rules",
-      "resolution": "Added .settings-table th/td:nth-child(n){width:100%} inside @media (max-width:700px)"
+      "finding": "P1 phone-width CSS nth-child widths beat stacked media rules; page not usable at 390",
+      "resolution": "Stacked settings cells use width:auto/max-width:100% with table-layout:auto; topbar search min-width and closed menu panels constrained so document scrollWidth stays at 390"
     },
     {
       "finding": "P1 BytesParts mislabels non-MB-aligned values as MB",
@@ -51,17 +57,16 @@
     "Advanced details per tab, closed by default, open with ?advanced=1 (no JavaScript)",
     "Plain editors and Default column for durations, byte sizes (including non-MB-aligned via bytes unit), string lists, retry schedule, notifications grid, custom colors, naming sample, model prices/task overrides summaries",
     "Stored formats, keys, API and audit log unchanged; plain form saves convert to the same stored strings the old text form would store",
-    "Phone-width stacked cells forced to width 100%; QC entries (Width 390) for Firm, Practice, Files and AI with Advanced closed and open; ui-qc.mjs fails on horizontal overflow or unreachable controls",
+    "Phone-width layout usable at 390; QC entries for Firm, Practice, Files and AI with Advanced closed and open; TestUIVisualQC PASS locally",
     "practice.case_number_examples listed in SettingKey and x-togavsu-settings"
   ],
   "pending": [
     "GitHub CI and Codex checkpoint on the controller-published head of claude/togavsu-desk-fix-settings-plain-values-e5791ad6 (this lane cannot push)",
-    "Visual QC screenshots require TOGAVSU_UI_QC_OUT and a browser; layout checks are wired in ui-qc.mjs for Width 390",
     "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
   ],
   "simplification": {
-    "net_lines_codex_fix": 152,
+    "net_lines_codex_fix": 165,
     "ponytail_debt_sections": 13,
-    "note": "No new PONYTAIL-DEBT entries. fixedSite exemptions extended for scaleDuration/scaleBytes. Companion docs/api/stage1-inventory.json and api/tests/test_stage1.py updated so the owned OpenAPI catalog change passes api/check.sh. gofmt applied to pages.go and plain converters (Core tests gate)."
+    "note": "No new PONYTAIL-DEBT entries. fixedSite exemptions extended for scaleDuration/scaleBytes. Companion docs/api/stage1-inventory.json and api/tests/test_stage1.py updated so the owned OpenAPI catalog change passes api/check.sh."
   }
 }
