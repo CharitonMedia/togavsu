@@ -402,7 +402,8 @@ publishes with no local key, and approves its permissions as for a file install.
 admin page, the module runtime, the trust root) on a fresh database reached through a
 non-superuser core role, as Compose sets it up. Stand-ins: the supervisor (deploy starts
 the registered handler in process), SMTP mail (`c.Mail`, CORE-29), and Doc Tender markdown
-renditions (`c.SeedMarkdownRendition` / `c.OpenMarkdownRendition`, CORE-36) without
+renditions (`c.SeedMarkdownRendition` / `c.OpenMarkdownRendition`, CORE-36; public
+`coretest.Rendition` / `coretest.Download` return types, no `internal/files` import) without
 converters. The database comes from `TOGAVSU_TEST_DATABASE_URL`, a Postgres superuser URL;
 `New` skips without it and fails in CI. The database, the core role, the module logins
 and the servers are removed at cleanup.

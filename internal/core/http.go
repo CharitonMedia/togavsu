@@ -429,25 +429,35 @@ func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
 	if !serviceDelegation[t.Delegation] {
 		return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
 	}
-	return a.limitServiceCall(r.Context(), p, t.Name)
+	return a.enforceServiceCallLimit(r.Context(), p, t.Name)
 }
 
-// limitServiceCall applies modules.service_call_limit.<operation> when that setting
-// exists (CORE-30). Operations without a dedicated setting are unlimited here; the
-// firm-wide security.api_rate_per_minute still applies.
-func (a *App) limitServiceCall(ctx context.Context, p domain.Principal, op string) error {
+// enforceServiceCallLimit applies modules.service_call_limit.<operation> when that
+// setting exists (CORE-30). Operations without a dedicated setting are unlimited
+// here; the firm-wide security.api_rate_per_minute still applies. A defined limit
+// that cannot be read or parsed refuses the call (fail closed).
+//
+// ponytail: ceiling: counters live in this process and stale module/op keys are not
+// pruned from the map after the window. Upgrade path: store hits in Postgres (or
+// prune empty keys after each check) so a second core process shares the budget.
+// trigger: more than one core process serves module API traffic, or the map grows
+// past a few thousand keys under churn.
+func (a *App) enforceServiceCallLimit(ctx context.Context, p domain.Principal, op string) error {
 	if a.Settings == nil {
 		return nil
 	}
 	key := "modules.service_call_limit." + op
 	raw, err := a.Settings.Get(ctx, key)
 	if err != nil {
-		// Unknown setting: not a CORE-30 limited operation.
-		return nil
+		if errors.Is(err, settings.ErrUnknown) {
+			// Not a CORE-30 limited operation.
+			return nil
+		}
+		return &domain.APIError{Code: "scope_denied", Message: "service call limit unavailable for " + op}
 	}
 	limit, err := strconv.Atoi(raw)
 	if err != nil || !serviceCallLimitOK(limit) {
-		return nil
+		return &domain.APIError{Code: "scope_denied", Message: "service call limit unavailable for " + op}
 	}
 	id := p.ModuleID + "\x00" + op
 	now := time.Now().UTC()

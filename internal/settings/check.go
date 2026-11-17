@@ -701,8 +701,8 @@ func fixedSite(path, fn string) bool {
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/billing/core_rows.go"):
-		// Boolean expense column stored as 0/1 (CORE-36).
-		return fn == "expenseBillableFlag"
+		// Boolean expense column stored as 0/1, and the one-time backfill marker count (CORE-36).
+		return fn == "expenseBillableFlag" || fn == "RebuildCoreRows"
 	case strings.HasSuffix(slash, "internal/core/http.go"):
 		// Per-operation service-principal window named by modules.service_call_limit.* (CORE-30).
 		switch fn {

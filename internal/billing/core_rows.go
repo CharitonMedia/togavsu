@@ -156,10 +156,27 @@ func expenseBillableFlag(v bool) int {
 }
 
 // RebuildCoreRows backfills core.invoices, core.payments and core.expenses from
-// billing_records and fails when any cent field disagrees with the JSON document.
+// billing_records once (billing_core_rows_backfill marker, migration 1401) and fails
+// when any cent field disagrees with the JSON document after the rewrite.
+// Ongoing writes stay in step through syncCoreBillingRows in Put.
+//
+// ponytail: ceiling: the one-time rewrite reconciles cents it has just written, so it
+// catches write-path bugs in syncCoreBillingRows rather than pre-existing drift that
+// Put already healed; a constraint error on that first pass still stops core start.
+// Upgrade path: a SQL migration that copies billing_records into the section-5 tables
+// with independent checksum verification against the JSON, then drop the Go rewrite.
+// trigger: a firm reports a core that will not start on RebuildCoreRows, or a second
+// core process needs the backfill without serializing on this process's first start.
 func (p *Postgres) RebuildCoreRows(ctx context.Context) error {
 	return p.Atomic(ctx, func(ctx context.Context) error {
 		conn := audit.Conn(ctx, p.pool)
+		var done int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM billing_core_rows_backfill`).Scan(&done); err != nil {
+			return err
+		}
+		if done > 0 {
+			return nil
+		}
 		for _, kind := range []string{kindInvoice, kindPayment, kindExpense} {
 			rows, err := conn.QueryContext(ctx, `SELECT id, body FROM billing_records WHERE kind = $1 ORDER BY id`, kind)
 			if err != nil {
@@ -213,7 +230,8 @@ func (p *Postgres) RebuildCoreRows(ctx context.Context) error {
 				}
 			}
 		}
-		return nil
+		_, err := conn.ExecContext(ctx, `INSERT INTO billing_core_rows_backfill (done_at) VALUES (now())`)
+		return err
 	})
 }
 
