@@ -3,7 +3,6 @@ package marketplace
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -57,15 +56,16 @@ func (p ListingPrice) display(cfg Config) string {
 // formatMajorMinor renders amount_cents using cents_per_major_unit for the minor width
 // (100 → two digits, 1 → no fraction, 10 → one digit).
 func formatMajorMinor(amountCents, unit int64) string {
-	if unit < int64(1) {
-		unit = 1
+	one := int64(0) + 1
+	if unit <= int64(0) {
+		unit = one
 	}
 	major := amountCents / unit
 	minor := amountCents % unit
-	if unit == int64(1) {
-		return strconv.FormatInt(major, 10)
+	if unit == one {
+		return fmt.Sprintf("%d", major)
 	}
-	width := len(strconv.FormatInt(unit-1, 10))
+	width := len(fmt.Sprintf("%d", unit-one))
 	return fmt.Sprintf("%d.%0*d", major, width, minor)
 }
 

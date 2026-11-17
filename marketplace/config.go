@@ -70,13 +70,13 @@ func validateConfig(c Config) error {
 	if c.DataDir == "" || c.Listen == "" || c.AuthorSessionHours <= int(0) || c.OperatorSessionMinutes <= int(0) {
 		return errors.New("marketplace: listen, data_dir and positive session lengths are required")
 	}
-	if c.CentsPerMajorUnit < int64(1) {
+	if c.CentsPerMajorUnit <= int64(0) {
 		return errors.New("marketplace: cents_per_major_unit must be at least 1")
 	}
-	if c.CurrencyCodeLength < 1 {
+	if c.CurrencyCodeLength <= int(0) {
 		return errors.New("marketplace: currency_code_length must be at least 1")
 	}
-	if c.MaxSalesURLRunes < 1 {
+	if c.MaxSalesURLRunes <= int(0) {
 		return errors.New("marketplace: max_sales_url_runes must be at least 1")
 	}
 	return nil
