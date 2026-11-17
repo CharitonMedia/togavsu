@@ -54,6 +54,7 @@ type Market struct {
 	now   func() time.Time
 	// tokenLife is how long an author session lasts.
 	tokenLife time.Duration
+	cfg       Config
 }
 
 // Open loads the state in dir.
@@ -66,7 +67,14 @@ func Open(dir string, tokenLife time.Duration, now func() time.Time) (*Market, e
 	if err != nil {
 		return nil, err
 	}
-	return &Market{st: st, store: fsStore, now: func() time.Time { return now().UTC() }, tokenLife: tokenLife}, nil
+	return &Market{st: st, store: fsStore, now: func() time.Time { return now().UTC() }, tokenLife: tokenLife, cfg: Defaults()}, nil
+}
+
+// config returns a copy of the loaded service config.
+func (m *Market) config() Config {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cfg
 }
 
 // commit saves the state after fn changes it; a failed save restores the old state.
@@ -356,19 +364,27 @@ type Upload struct {
 	Package   []byte
 	Signature string
 	KeyID     string
-	// PriceNote, when set, replaces the listing's price ("" is free).
+	// Digest, when set (kit signed package file), must match the package bytes.
+	Digest string
+	// PriceNote, when set and the manifest has no price, sets the listing's string price.
+	// Prefer the manifest's price (CORE-35); author price changes use SetListingPrice.
 	PriceNote *string
 }
 
 // Publish checks an upload's signer and signature, reads its manifest and adds it as a new
 // immutable version of the listing named by the manifest's module id. Nothing in the
-// package is run or reviewed.
+// package is run or reviewed. On first listing, the price comes from the manifest
+// (structured or string); price_note is only a fallback when the manifest has none.
 func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 	if len(up.Package) == 0 || int64(len(up.Package)) > shared.MaxPackageBytes() {
 		return shared.Listing{}, invalid("package", "the package is empty or too large")
 	}
 	if up.PriceNote != nil && utf8.RuneCountInString(*up.PriceNote) > shared.MaxNoteRunes() {
 		return shared.Listing{}, invalid("price_note", "the price note is too long")
+	}
+	digest := shared.Digest(up.Package)
+	if up.Digest != "" && up.Digest != digest {
+		return shared.Listing{}, invalid("digest", "the digest does not match the package bytes")
 	}
 	var key Key
 	m.read(func(st *State) {
@@ -385,7 +401,7 @@ func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 	if err != nil {
 		return shared.Listing{}, invalid("key_id", "the stored key is unreadable")
 	}
-	if _, err := shared.Verify(up.Package, "", up.Signature, key.KeyID, []shared.TrustedKey{{KeyID: key.KeyID, Public: pub}}); err != nil {
+	if _, err := shared.Verify(up.Package, up.Digest, up.Signature, key.KeyID, []shared.TrustedKey{{KeyID: key.KeyID, Public: pub}}); err != nil {
 		return shared.Listing{}, invalid("signature", "the signature does not match the package and key")
 	}
 	man, err := shared.ReadManifest(up.Package)
@@ -396,7 +412,11 @@ func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 	if err := json.Unmarshal(man.Raw, &manifest); err != nil {
 		return shared.Listing{}, invalid("package", "the manifest is unreadable")
 	}
-	digest := shared.Digest(up.Package)
+	cfg := m.config()
+	fromManifest, err := parseManifestPriceWith(manifest, cfg)
+	if err != nil {
+		return shared.Listing{}, err
+	}
 	if err := m.store.putPackage(digest, up.Package); err != nil {
 		return shared.Listing{}, err
 	}
@@ -420,16 +440,14 @@ func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 				}
 			}
 			l.Versions = append(l.Versions, v)
-			if up.PriceNote != nil {
-				l.PriceNote = strings.TrimSpace(*up.PriceNote)
-			}
 			out = *l
 			return nil
 		}
-		l := ListingRecord{ID: man.ID, AuthorID: a.ID, Versions: []Version{v}, CreatedAt: now}
-		if up.PriceNote != nil {
-			l.PriceNote = strings.TrimSpace(*up.PriceNote)
+		price := fromManifest
+		if price.empty() && up.PriceNote != nil {
+			price = ListingPrice{Note: strings.TrimSpace(*up.PriceNote)}
 		}
+		l := ListingRecord{ID: man.ID, AuthorID: a.ID, Versions: []Version{v}, CreatedAt: now, Price: price, PriceNote: price.display(cfg)}
 		st.Listings = append(st.Listings, l)
 		out = l
 		return nil

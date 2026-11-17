@@ -29,6 +29,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if err := m.ApplyConfig(cfg); err != nil {
+		log.Fatal(err)
+	}
 	srv, err := marketplace.NewServer(m, cfg, token, nil)
 	if err != nil {
 		log.Fatal(err)

@@ -4,5 +4,8 @@
   "operator_token_file": "/run/secrets/marketplace_operator_token",
   "secure_cookies": true,
   "author_session_hours": 12,
-  "operator_session_minutes": 60
+  "operator_session_minutes": 60,
+  "currency_code_length": 3,
+  "cents_per_major_unit": 100,
+  "max_sales_url_runes": 2048
 }

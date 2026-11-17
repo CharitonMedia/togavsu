@@ -1,0 +1,133 @@
+{
+  "task_id": "marketplace-paid",
+  "status": "pass",
+  "tested_revision": "edf87f61a03c69af0cb7ba20c97ad93fbd4a0499",
+  "tests": [
+    {
+      "name": "marketplace package",
+      "command": "go test -count=1 -timeout 300s ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "MKT-01..07 suite",
+      "command": "go test -count=1 -timeout 180s -v -run 'TestMKT0' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "structured-price",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT01StructuredPrice$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "signed-upload",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT02SignedUpload$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "price-edit",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT03PriceEdit$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "price-edit-access",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT03PriceEditAccessAndValidation$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "keyless-install",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT04KeylessInstall$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "no-billing",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT05NoBilling$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "no-payment-or-key-data",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT06NoPaymentOrKeyData$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "no-outside-host",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT07NoOutsideHost$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "settings module clean",
+      "command": "go test ./internal/settings/ -run TestModuleClean -count=1",
+      "exit_code": 0
+    },
+    {
+      "name": "gofmt marketplace",
+      "command": "gofmt -l marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "go vet marketplace",
+      "command": "go vet ./marketplace/...",
+      "exit_code": 0
+    }
+  ],
+  "passed_acceptance_ids": [
+    "MKT-01",
+    "MKT-02",
+    "MKT-03",
+    "MKT-04",
+    "MKT-05",
+    "MKT-06",
+    "MKT-07"
+  ],
+  "pending_acceptance_ids": [],
+  "phase_cases": [
+    {
+      "id": "structured-price",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT01StructuredPrice$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-01"]
+    },
+    {
+      "id": "signed-upload",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT02SignedUpload$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-02"]
+    },
+    {
+      "id": "price-edit",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT03PriceEdit$|^TestMKT03PriceEditAccessAndValidation$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-03"]
+    },
+    {
+      "id": "keyless-install",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT04KeylessInstall$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-04"]
+    },
+    {
+      "id": "no-billing",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT05NoBilling$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-05"]
+    },
+    {
+      "id": "no-payment-or-key-data",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT06NoPaymentOrKeyData$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-06"]
+    },
+    {
+      "id": "no-outside-host",
+      "status": "pass",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT07NoOutsideHost$' ./marketplace/",
+      "exit_code": 0,
+      "acceptance_ids": ["MKT-07"]
+    }
+  ]
+}
