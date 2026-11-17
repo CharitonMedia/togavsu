@@ -128,6 +128,22 @@ for (const pg of plan.pages) {
         }
         void vh;
       }
+      // Multiline Default/value cells must keep one item per line (desk-fix plain values).
+      for (const el of document.querySelectorAll(".setting-default, .setting-value")) {
+        const text = el.textContent || "";
+        if (!text.includes("\n")) continue;
+        const style = window.getComputedStyle(el);
+        const ws = style.whiteSpace;
+        if (ws !== "pre-line" && ws !== "pre-wrap" && ws !== "pre") {
+          out.push(`setting plain text collapses newlines: ${el.className} white-space=${ws}`);
+          break;
+        }
+        const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
+        if (el.getBoundingClientRect().height + 0.5 < line * 1.5) {
+          out.push(`setting plain text height does not show multiple lines: ${el.className}`);
+          break;
+        }
+      }
       return out;
     }).catch((e) => ["layout check: " + e.message]);
     problems.push(...layoutProblems);

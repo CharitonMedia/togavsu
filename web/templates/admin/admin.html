@@ -242,6 +242,8 @@
     {{else if eq .Plain "duration"}}
       <input id="v-{{$id}}" name="amount" inputmode="numeric" value="{{.Amount}}" class="setting-amount">
       <select name="unit" aria-label="Unit for {{.Label}}">
+        <option value="nanoseconds"{{if eq .Unit "nanoseconds"}} selected{{end}}>nanoseconds</option>
+        <option value="microseconds"{{if eq .Unit "microseconds"}} selected{{end}}>microseconds</option>
         <option value="milliseconds"{{if eq .Unit "milliseconds"}} selected{{end}}>milliseconds</option>
         <option value="seconds"{{if eq .Unit "seconds"}} selected{{end}}>seconds</option>
         <option value="minutes"{{if eq .Unit "minutes"}} selected{{end}}>minutes</option>

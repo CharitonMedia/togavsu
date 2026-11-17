@@ -154,6 +154,8 @@ func DisplayPlain(def Definition, value string) string {
 
 // FormatDurationPlain shows a stored Go duration as "12 hours", "15 minutes",
 // or "180 milliseconds" in the largest unit that holds the value exactly.
+// Sub-millisecond lengths use microseconds or nanoseconds so values the old
+// text form accepted (for example 500µs or 1.5ms) are shown without truncation.
 func FormatDurationPlain(stored string) (string, error) {
 	d, err := time.ParseDuration(stored)
 	if err != nil {
@@ -178,14 +180,21 @@ func FormatDurationPlain(stored string) (string, error) {
 	case ns%int64(time.Second) == 0:
 		n := ns / int64(time.Second)
 		return plural(n, "second"), nil
-	default:
+	case ns%int64(time.Millisecond) == 0:
 		n := ns / int64(time.Millisecond)
 		return plural(n, "millisecond"), nil
+	case ns%int64(time.Microsecond) == 0:
+		n := ns / int64(time.Microsecond)
+		return plural(n, "microsecond"), nil
+	default:
+		return plural(ns, "nanosecond"), nil
 	}
 }
 
 // DurationParts splits a stored duration into a whole amount and unit for the
-// plain editor (milliseconds, seconds, minutes, hours, days).
+// plain editor. Whole day/hour/minute/second/millisecond values use those
+// units; any finer length uses microseconds or nanoseconds so a Save without
+// edits stores the same value (never truncates to whole milliseconds).
 func DurationParts(stored string) (amount int64, unit string, err error) {
 	d, err := time.ParseDuration(stored)
 	if err != nil {
@@ -203,8 +212,12 @@ func DurationParts(stored string) (amount int64, unit string, err error) {
 		return ns / int64(time.Minute), "minutes", nil
 	case ns%int64(time.Second) == 0:
 		return ns / int64(time.Second), "seconds", nil
-	default:
+	case ns%int64(time.Millisecond) == 0:
 		return ns / int64(time.Millisecond), "milliseconds", nil
+	case ns%int64(time.Microsecond) == 0:
+		return ns / int64(time.Microsecond), "microseconds", nil
+	default:
+		return ns, "nanoseconds", nil
 	}
 }
 
@@ -222,6 +235,10 @@ func ParseDurationPlain(amountStr, unit string) (string, error) {
 	}
 	var unitDur time.Duration
 	switch strings.ToLower(strings.TrimSpace(unit)) {
+	case "nanosecond", "nanoseconds", "ns":
+		unitDur = time.Nanosecond
+	case "microsecond", "microseconds", "us", "µs", "μs":
+		unitDur = time.Microsecond
 	case "millisecond", "milliseconds", "ms":
 		unitDur = time.Millisecond
 	case "second", "seconds", "s":
@@ -566,7 +583,9 @@ func FormatModelPricesPlain(stored string) string {
 			b.WriteString("; ")
 		}
 		p := prices[name]
-		fmt.Fprintf(&b, "%s: %.0f in / %.0f out ¢ per million tokens", name, p.Input, p.Output)
+		fmt.Fprintf(&b, "%s: %s in / %s out ¢ per million tokens", name,
+			strconv.FormatFloat(p.Input, 'f', -1, 64),
+			strconv.FormatFloat(p.Output, 'f', -1, 64))
 	}
 	return b.String()
 }

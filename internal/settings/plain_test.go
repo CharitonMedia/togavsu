@@ -127,6 +127,46 @@ func TestParseDurationPlainOverflow(t *testing.T) {
 	}
 }
 
+func TestDurationPlainSubMillisecondRoundTrip(t *testing.T) {
+	// Values the old text form and API accept that are not whole milliseconds
+	// must keep an exact unit so an unchanged Save does not truncate.
+	cases := []struct {
+		stored string
+		plain  string
+		amount int64
+		unit   string
+	}{
+		{"500µs", "500 microseconds", 500, "microseconds"},
+		{"1.5ms", "1500 microseconds", 1500, "microseconds"},
+		{"1500ns", "1500 nanoseconds", 1500, "nanoseconds"},
+	}
+	for _, tc := range cases {
+		got, err := settings.FormatDurationPlain(tc.stored)
+		if err != nil || got != tc.plain {
+			t.Fatalf("format %s: got %q (%v), want %q", tc.stored, got, err, tc.plain)
+		}
+		amount, unit, err := settings.DurationParts(tc.stored)
+		if err != nil {
+			t.Fatalf("parts %s: %v", tc.stored, err)
+		}
+		if amount != tc.amount || unit != tc.unit {
+			t.Fatalf("parts %s: got %d %s want %d %s", tc.stored, amount, unit, tc.amount, tc.unit)
+		}
+		back, err := settings.ParseDurationPlain(fmt.Sprint(amount), unit)
+		if err != nil {
+			t.Fatalf("parse %s: %v", tc.stored, err)
+		}
+		want, err := time.ParseDuration(tc.stored)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotDur, err := time.ParseDuration(back)
+		if err != nil || gotDur != want || back != want.String() {
+			t.Fatalf("unchanged save %s → %s (%v)", tc.stored, back, err)
+		}
+	}
+}
+
 func TestLinesPlainRoundTrip(t *testing.T) {
 	stored := `["Correspondence","Pleadings","Discovery"]`
 	plain, err := settings.FormatLinesPlain(stored)
@@ -227,6 +267,14 @@ func TestModelPricesAndOverridesPlain(t *testing.T) {
 	prices := `{"gpt-test":{"input":100,"output":200}}`
 	if s := settings.FormatModelPricesPlain(prices); s == "None set" || s == "" {
 		t.Fatalf("prices: %q", s)
+	}
+	fractional := `{"gpt-frac":{"input":0.4,"output":15.5}}`
+	s := settings.FormatModelPricesPlain(fractional)
+	if !strings.Contains(s, "0.4 in") || !strings.Contains(s, "15.5 out") {
+		t.Fatalf("fractional prices must show exactly: %q", s)
+	}
+	if strings.Contains(s, ": 0 in") || strings.Contains(s, "16 out") {
+		t.Fatalf("fractional prices must not round: %q", s)
 	}
 	ov := `{"labeling":{"provider":"openai","model":"gpt-fast"}}`
 	if s := settings.FormatTaskOverridesPlain(ov); s == "None set" {

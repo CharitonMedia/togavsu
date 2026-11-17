@@ -825,6 +825,70 @@ func TestUIAdminSettingsPlainValues(t *testing.T) {
 	if strings.Contains(between(ai, `<tr id="s-ai.model_prices"`, "</tr>"), `name="value"`) {
 		t.Fatal("Model Prices main row should be read-only")
 	}
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/ai.model_prices", map[string]any{
+		"value": map[string]any{"gpt-frac": map[string]any{"input": 0.4, "output": 15.5}},
+	})
+	ai = e.admin.must(http.StatusOK, "GET", "/admin?tab=ai", nil).body
+	priceRow := between(ai, `<tr id="s-ai.model_prices"`, "</tr>")
+	if !strings.Contains(priceRow, "0.4 in") || !strings.Contains(priceRow, "15.5 out") {
+		t.Fatalf("model prices must show fractional cents exactly: %s", priceRow)
+	}
+	// Word-list, retry, notifications and colors saves through the admin form.
+	e.admin.form("/admin/settings/practice.party_roles", url.Values{
+		"tab": {"practice"}, "kind": {"json"}, "plain": {"lines"},
+		"value": {"client\nopposing party\ncustom role"},
+	})
+	roles := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/practice.party_roles", nil)
+	if !sameJSON(fmt.Sprint(roles.json["value"]), `["client","opposing party","custom role"]`) {
+		t.Fatalf("party roles form save: %v", roles.json["value"])
+	}
+	practice = e.admin.must(http.StatusOK, "GET", "/admin?tab=practice", nil).body
+	rolesDefault := between(between(practice, `<tr id="s-practice.party_roles"`, "</tr>"), `setting-default">`, "<")
+	if !strings.Contains(rolesDefault, "\n") {
+		t.Fatalf("party roles Default must keep one role per line in HTML: %q", rolesDefault)
+	}
+	e.admin.form("/admin/settings/doctender.retry_schedule", url.Values{
+		"tab": {"doc_tender"}, "kind": {"json"}, "plain": {"retry"},
+		"value": {"Right away\n15 minutes\n2 hours"},
+	})
+	retry := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/doctender.retry_schedule", nil)
+	if !sameJSON(fmt.Sprint(retry.json["value"]), `["0s","15m0s","2h0m0s"]`) {
+		t.Fatalf("retry form save: %v", retry.json["value"])
+	}
+	e.admin.form("/admin/settings/notifications.defaults", url.Values{
+		"tab": {"notifications_mail"}, "kind": {"json"}, "plain": {"notifications"},
+		"trust_flag.email": {"on"}, "trust_flag.in_app": {"on"},
+		"deadline_reminder.in_app": {"on"},
+	})
+	notify := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/notifications.defaults", nil)
+	notifyVal := fmt.Sprint(notify.json["value"])
+	if !strings.Contains(notifyVal, "trust_flag") || !strings.Contains(notifyVal, "deadline_reminder") {
+		t.Fatalf("notifications form save: %v", notify.json["value"])
+	}
+	e.admin.form("/admin/settings/appearance.colors", url.Values{
+		"tab": {"appearance"}, "kind": {"json"}, "plain": {"colors"},
+		"color_staff_sidebar_mode": {"custom"}, "color_staff_sidebar": {"#112233"},
+		"color_staff_header_mode": {"preset"}, "color_staff_header": {"#abcdef"},
+	})
+	colors := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/appearance.colors", nil)
+	if !sameJSON(fmt.Sprint(colors.json["value"]), `{"staff_sidebar":"#112233"}`) {
+		t.Fatalf("colors form save: %v", colors.json["value"])
+	}
+	// Sub-millisecond search.delay round-trips through the plain editor.
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/search.delay", map[string]any{"value": "500µs"})
+	lists := e.admin.must(http.StatusOK, "GET", "/admin?tab=lists_search", nil).body
+	delayRow := between(lists, `<tr id="s-search.delay"`, "</tr>")
+	if !strings.Contains(delayRow, `value="500"`) || !strings.Contains(delayRow, `value="microseconds" selected`) {
+		t.Fatalf("500µs should pre-fill 500 microseconds: %s", delayRow)
+	}
+	e.admin.form("/admin/settings/search.delay", url.Values{
+		"tab": {"lists_search"}, "kind": {"duration"}, "plain": {"duration"},
+		"amount": {"500"}, "unit": {"microseconds"},
+	})
+	delay := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/search.delay", nil)
+	if fmt.Sprint(delay.json["value"]) != (500 * time.Microsecond).String() {
+		t.Fatalf("unchanged sub-ms save: %v", delay.json["value"])
+	}
 }
 
 // TestUIProblemReportAndSettings covers Report a problem, My settings and the role

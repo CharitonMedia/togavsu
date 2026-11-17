@@ -81,7 +81,7 @@ th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertic
 .settings-table th:nth-child(2),.settings-table td:nth-child(2){width:42%}
 .settings-table th:nth-child(3),.settings-table td:nth-child(3){width:18%}
 .settings-table th:nth-child(4),.settings-table td:nth-child(4){width:12%}
-.settings-table code,.setting-default,.setting-value{font-size:.82rem;overflow-wrap:anywhere;word-break:break-word}
+.settings-table code,.setting-default,.setting-value{font-size:.82rem;overflow-wrap:anywhere;word-break:break-word;white-space:pre-line}
 .help-text{margin:2px 0 0;color:var(--muted);font-size:.85rem}
 .setting-key{margin:2px 0 0;color:var(--muted);font-size:.75rem}
 .setting-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap;max-width:100%}
