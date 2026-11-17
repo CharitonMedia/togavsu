@@ -56,6 +56,7 @@ var notScreens = map[string]string{
 	"/modules/{module_id}/widgets/{widget}/context-token":    "JSON for a module frame bridge; not a screen",
 	"/modules/{module_id}/matter-items/{item}/context-token": "JSON for a module frame bridge; not a screen",
 	"/modules/{module_id}/device-connect":                    "device grant QR/connect page is module-owned; core TestCORE27 covers it",
+	"/modules/{module_id}/banner":                            "staff banner iframe content (CORE-34); shell slot checked in core TestCORE34StaffBanner",
 }
 
 // routePattern finds a GET route's pattern in Go source: "GET /path".

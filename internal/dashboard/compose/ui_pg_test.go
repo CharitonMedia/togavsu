@@ -780,6 +780,9 @@ func altValue(d settings.Definition) (string, bool) {
 	if d.Key == "notifications.defaults" {
 		return `{"email":["trust_flag","update_failure"],"email_locked":["trust_flag"],"in_app":["trust_flag","deadline_reminder","replenishment","matter_assignment","update_failure","module_alert"]}`, true
 	}
+	if d.Key == "modules.staff_banner_order" {
+		return `["example-banner-mod"]`, true
+	}
 	switch d.Kind {
 	case settings.KindBool:
 		if d.Default == "true" {
