@@ -48,9 +48,12 @@ func ValidModuleID(id string) bool { return moduleID.MatchString(id) }
 // ValidVersion reports whether v is a version string the marketplace accepts.
 func ValidVersion(v string) bool { return versionForm.MatchString(v) }
 
-// NewerVersion reports whether listed is a newer release than installed by dotted
-// numeric compare (pre-release and build suffixes ignored for the numeric parts).
-// Equal versions are not newer. Unparseable versions fall back to string inequality.
+// NewerVersion reports whether listed is a newer release than installed by semantic
+// version precedence: dotted numeric parts first, then a release ranks above its own
+// pre-release (1.0.0 > 1.0.0-rc1), and pre-release identifiers compare as semver says
+// (numeric ones numerically and below alphanumeric ones, a longer set above its prefix).
+// Build metadata (+...) is ignored. Equal versions are not newer. Unparseable versions
+// fall back to string inequality.
 func NewerVersion(listed, installed string) bool {
 	if listed == "" || listed == installed {
 		return false
@@ -68,7 +71,62 @@ func NewerVersion(listed, installed string) bool {
 			return lp[i] > ip[i]
 		}
 	}
-	return false
+	return comparePrerelease(prerelease(listed), prerelease(installed)) > 0
+}
+
+// prerelease returns the pre-release identifiers of v (between the first "-" and any
+// "+"), or nil for a release.
+func prerelease(v string) []string {
+	if i := strings.IndexByte(v, '+'); i >= 0 {
+		v = v[:i]
+	}
+	i := strings.IndexByte(v, '-')
+	if i < 0 {
+		return nil
+	}
+	return strings.Split(v[i+1:], ".")
+}
+
+// comparePrerelease orders two pre-release identifier lists by semver precedence and
+// returns -1, 0 or 1. No identifiers (a release) ranks above any pre-release.
+func comparePrerelease(a, b []string) int {
+	switch {
+	case len(a) == 0 && len(b) == 0:
+		return 0
+	case len(a) == 0:
+		return 1
+	case len(b) == 0:
+		return -1
+	}
+	for i := 0; i < len(a) && i < len(b); i++ {
+		an, aErr := strconv.Atoi(a[i])
+		bn, bErr := strconv.Atoi(b[i])
+		aNum, bNum := aErr == nil, bErr == nil
+		switch {
+		case aNum && bNum:
+			if an != bn {
+				if an > bn {
+					return 1
+				}
+				return -1
+			}
+		case aNum:
+			return -1
+		case bNum:
+			return 1
+		default:
+			if c := strings.Compare(a[i], b[i]); c != 0 {
+				return c
+			}
+		}
+	}
+	switch {
+	case len(a) > len(b):
+		return 1
+	case len(a) < len(b):
+		return -1
+	}
+	return 0
 }
 
 func versionParts(v string) ([4]int, bool) {

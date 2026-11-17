@@ -171,6 +171,24 @@ func TestNewerVersion(t *testing.T) {
 	if NewerVersion("", "1.0.0") || !NewerVersion("1.0.0", "") {
 		t.Fatal("empty installed")
 	}
+	for _, c := range []struct {
+		listed, installed string
+		newer             bool
+	}{
+		{"1.0.0", "1.0.0-rc1", true},
+		{"1.0.0-rc1", "1.0.0", false},
+		{"1.0.0-beta", "1.0.0-alpha", true},
+		{"1.0.0-alpha.1", "1.0.0-alpha", true},
+		{"1.0.0-alpha", "1.0.0-alpha.1", false},
+		{"1.0.0-alpha.beta", "1.0.0-alpha.1", true},
+		{"1.0.0-rc.11", "1.0.0-rc.2", true},
+		{"1.0.0+build.2", "1.0.0+build.1", false},
+		{"1.0.1-rc1", "1.0.0", true},
+	} {
+		if got := NewerVersion(c.listed, c.installed); got != c.newer {
+			t.Errorf("NewerVersion(%q, %q) = %v, want %v", c.listed, c.installed, got, c.newer)
+		}
+	}
 }
 
 func TestClientStatuses(t *testing.T) {

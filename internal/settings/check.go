@@ -553,7 +553,7 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "internal/marketplace/manifest.go"):
 		// Dotted version compare walks at most four numeric parts; those widths are the
 		// version form, not firm settings.
-		return fn == "NewerVersion" || fn == "versionParts"
+		return fn == "NewerVersion" || fn == "versionParts" || fn == "prerelease" || fn == "comparePrerelease"
 	case strings.HasSuffix(slash, "internal/dashboard/settings_view.go"):
 		// templateDict walks key/value pairs for nested HTML templates. The step of two
 		// is a map literal shape, not a firm limit.
