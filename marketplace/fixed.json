@@ -8,5 +8,8 @@
   "operator_session_minutes": 60,
   "read_header_timeout_seconds": 10,
   "max_json_bytes": 65536,
-  "min_operator_token_bytes": 32
+  "min_operator_token_bytes": 32,
+  "currency_code_length": 3,
+  "cents_per_major_unit": 100,
+  "max_sales_url_runes": 2048
 }

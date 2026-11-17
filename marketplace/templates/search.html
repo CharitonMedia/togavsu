@@ -6,7 +6,7 @@
 {{range .Listings}}
 <li class="listing{{if .Flagged}} flagged{{end}}">
 <h2><a href="/listings/{{.ID}}">{{.Name}}</a> <span class="version">{{.Version}}</span></h2>
-<p class="meta">by {{.Author}} · key <code>{{.SigningKey}}</code>{{if .PriceNote}} · {{.PriceNote}}{{else}} · Free{{end}}</p>
+<p class="meta">by {{.Author}} · key <code>{{.SigningKey}}</code>{{if .PriceNote}} · {{.PriceNote}} <span class="provider-disclaimer">{{.Disclaimer}}</span>{{else}} · Free <span class="provider-disclaimer">{{.Disclaimer}}</span>{{end}}</p>
 {{if .Flagged}}<p class="warning" role="alert">{{$.FlagWarning}}{{if .FlagNote}} {{.FlagNote}}{{end}}</p>{{end}}
 </li>
 {{end}}

@@ -76,6 +76,7 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("POST /v1/authors/me/keys", s.apiAddKey)
 	m.HandleFunc("POST /v1/authors/me/keys/{key_id}/verify", s.apiVerifyKey)
 	m.HandleFunc("POST /v1/authors/me/packages", s.apiUpload)
+	m.HandleFunc("PATCH /v1/authors/me/listings/{listing_id}/price", s.apiSetPrice)
 	// Operator.
 	m.HandleFunc("POST /v1/operator/listings/{listing_id}/flag", s.apiFlag)
 	m.HandleFunc("POST /v1/operator/listings/{listing_id}/pull", s.apiPull)
@@ -161,7 +162,12 @@ func bearer(r *http.Request) string {
 // --- Read API ---
 
 func (s *Server) apiSearch(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.M.Search(r.URL.Query().Get("q"))})
+	list := s.M.Search(r.URL.Query().Get("q"))
+	out := make([]shared.Listing, 0, len(list))
+	for _, l := range list {
+		out = append(out, s.listingBody(l))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (s *Server) apiListing(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +176,16 @@ func (s *Server) apiListing(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, l)
+	writeJSON(w, http.StatusOK, s.listingBody(l))
+}
+
+// listingBody returns the published shared.Listing wire shape. Structured price and
+// sales_url stay in the marketplace store and on the HTML listing page; they are not
+// added to the JSON contract (core-update-2c owns that). The rendered price plus the
+// provider disclaimer travel through price_note so additionalProperties:false stays green.
+func (s *Server) listingBody(l shared.Listing) shared.Listing {
+	l.PriceNote = WirePriceNote(l.PriceNote, l.Author)
+	return l
 }
 
 func (s *Server) apiPackage(w http.ResponseWriter, r *http.Request) {
@@ -307,11 +322,19 @@ func (s *Server) apiUpload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Accept the kit's signed package file unchanged (listing_id, version, immutable,
+	// manifest, digest, signature, key_id, package_base64). The older three-field body
+	// and optional price_note still work for existing callers.
 	var b struct {
-		PackageBase64 string  `json:"package_base64"`
-		Signature     string  `json:"signature"`
-		KeyID         string  `json:"key_id"`
-		PriceNote     *string `json:"price_note"`
+		PackageBase64 string         `json:"package_base64"`
+		Signature     string         `json:"signature"`
+		KeyID         string         `json:"key_id"`
+		Digest        string         `json:"digest"`
+		ListingID     string         `json:"listing_id"`
+		Version       string         `json:"version"`
+		Immutable     *bool          `json:"immutable"`
+		Manifest      map[string]any `json:"manifest"`
+		PriceNote     *string        `json:"price_note"`
 	}
 	if err := decode(r, shared.MaxPackageBytes()/3*4+s.maxJSON, &b); err != nil {
 		writeErr(w, err)
@@ -322,17 +345,99 @@ func (s *Server) apiUpload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, invalid("package_base64", "the package must be standard base64"))
 		return
 	}
-	l, err := s.M.Publish(a, Upload{Package: pkg, Signature: b.Signature, KeyID: b.KeyID, PriceNote: b.PriceNote})
+	if err := checkUploadPackageMeta(b.ListingID, b.Version, b.Immutable, b.Manifest, pkg); err != nil {
+		writeErr(w, err)
+		return
+	}
+	l, err := s.M.Publish(a, Upload{Package: pkg, Signature: b.Signature, KeyID: b.KeyID, Digest: b.Digest, PriceNote: b.PriceNote})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, l)
+	writeJSON(w, http.StatusCreated, s.listingBody(l))
 }
 
-// --- Operator API ---
+// checkUploadPackageMeta refuses a signed-file body whose listing_id, version, immutable
+// or manifest disagree with the package bytes (kit SignFile or a marketplace download).
+func checkUploadPackageMeta(listingID, version string, immutable *bool, manifest map[string]any, pkg []byte) error {
+	if listingID == "" && version == "" && immutable == nil && manifest == nil {
+		return nil
+	}
+	man, err := shared.ReadManifest(pkg)
+	if err != nil {
+		return invalid("package", "the package needs a "+shared.ManifestName+" with id, name, version and permissions")
+	}
+	if listingID != "" && listingID != man.ID {
+		return invalid("listing_id", "listing_id does not match the package")
+	}
+	if version != "" && version != man.Version {
+		return invalid("version", "version does not match the package")
+	}
+	var pkgMan map[string]any
+	if err := json.Unmarshal(man.Raw, &pkgMan); err != nil {
+		return invalid("package", "the manifest is unreadable")
+	}
+	if manifest != nil {
+		want, _ := json.Marshal(pkgMan)
+		got, _ := json.Marshal(manifest)
+		if !bytes.Equal(want, got) {
+			return invalid("manifest", "manifest does not match the package")
+		}
+	}
+	if immutable != nil && *immutable && manifest == nil {
+		// Marketplace download shape is immutable:true with a matching manifest. The kit
+		// SignFile shape is immutable:false and manifest:null. immutable:true without a
+		// matching manifest is a mismatch.
+		return invalid("immutable", "immutable does not match the signed package")
+	}
+	return nil
+}
 
-// operator checks the operator's bearer token in constant time.
+func (s *Server) apiSetPrice(w http.ResponseWriter, r *http.Request) {
+	a, ok := s.author(w, r)
+	if !ok {
+		return
+	}
+	var b struct {
+		AmountCents *int64        `json:"amount_cents"`
+		Currency    *string       `json:"currency"`
+		Interval    *string       `json:"interval"`
+		Note        *string       `json:"note"`
+		SalesURL    *string       `json:"sales_url"`
+		Price       *ListingPrice `json:"price"`
+	}
+	if err := decode(r, s.maxJSON, &b); err != nil {
+		writeErr(w, err)
+		return
+	}
+	edit := ListingEdit{SalesURL: b.SalesURL}
+	switch {
+	case b.Price != nil:
+		edit.Price = b.Price
+	case b.AmountCents != nil || b.Currency != nil || b.Interval != nil || b.Note != nil:
+		p := ListingPrice{}
+		if b.AmountCents != nil {
+			p.AmountCents = *b.AmountCents
+		}
+		if b.Currency != nil {
+			p.Currency = *b.Currency
+		}
+		if b.Interval != nil {
+			p.Interval = *b.Interval
+		}
+		if b.Note != nil {
+			p.Note = *b.Note
+		}
+		edit.Price = &p
+	}
+	res, err := s.M.SetListingPrice(a, r.PathValue("listing_id"), edit)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.listingBody(res.Listing))
+}
+
 func (s *Server) operator(r *http.Request) bool {
 	t := bearer(r)
 	if t == "" {
@@ -409,14 +514,27 @@ func (s *Server) css(w http.ResponseWriter, _ *http.Request) {
 }
 
 type listingPage struct {
-	L       shared.Listing
-	Warning string
-	Notice  string
+	L          shared.Listing
+	Warning    string
+	Notice     string
+	Disclaimer string
+	SalesURL   string
+	PriceNote  string
+}
+
+type searchListing struct {
+	shared.Listing
+	Disclaimer string
 }
 
 func (s *Server) pageSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
-	s.render(w, http.StatusOK, "search.html", map[string]any{"Q": q, "Listings": s.M.Search(q), "Notice": shared.Notice, "FlagWarning": shared.FlagWarning})
+	raw := s.M.Search(q)
+	listings := make([]searchListing, 0, len(raw))
+	for _, l := range raw {
+		listings = append(listings, searchListing{Listing: l, Disclaimer: ProviderDisclaimer(l.Author)})
+	}
+	s.render(w, http.StatusOK, "search.html", map[string]any{"Q": q, "Listings": listings, "Notice": shared.Notice, "FlagWarning": shared.FlagWarning})
 }
 
 func (s *Server) pageListing(w http.ResponseWriter, r *http.Request) {
@@ -425,7 +543,15 @@ func (s *Server) pageListing(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusNotFound, "notfound.html", nil)
 		return
 	}
-	s.render(w, http.StatusOK, "listing.html", listingPage{L: l, Warning: l.FlagText(), Notice: shared.Notice})
+	sales, _ := s.M.ListingSalesURL(l.ID)
+	price := l.PriceNote
+	if price == "" {
+		price = "Free"
+	}
+	s.render(w, http.StatusOK, "listing.html", listingPage{
+		L: l, Warning: l.FlagText(), Notice: shared.Notice,
+		Disclaimer: ProviderDisclaimer(l.Author), SalesURL: sales, PriceNote: price,
+	})
 }
 
 const opCookie = "togavsu_marketplace_operator"

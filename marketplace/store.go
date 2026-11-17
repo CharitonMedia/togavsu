@@ -63,10 +63,14 @@ type Version struct {
 }
 
 // ListingRecord is one module's listing. Its id is the module id in the signed manifest.
+// Price and SalesURL are the author's information; Togavsu never sells or bills the module.
 type ListingRecord struct {
-	ID        string    `json:"id"`
-	AuthorID  string    `json:"author_id"`
-	PriceNote string    `json:"price_note"`
+	ID        string       `json:"id"`
+	AuthorID  string       `json:"author_id"`
+	PriceNote string       `json:"price_note"`
+	Price     ListingPrice `json:"price"`
+	// SalesURL is an optional link to the author's own sales page (not a Togavsu checkout).
+	SalesURL  string    `json:"sales_url,omitempty"`
 	Versions  []Version `json:"versions"`
 	Flagged   bool      `json:"flagged"`
 	FlagNote  string    `json:"flag_note"`
@@ -86,6 +90,8 @@ type AlertRecord struct {
 }
 
 // State is everything the service stores apart from package bytes.
+// It holds listings, authors, keys and alerts only — never subscriptions, licenses,
+// payments, cards, Stripe ids, platform fees or mail queues (Patrick 2026-11-17).
 type State struct {
 	Authors  []Author        `json:"authors"`
 	Tokens   []Token         `json:"tokens"`

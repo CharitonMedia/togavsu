@@ -14,6 +14,8 @@ import (
 // Config is the service's own configuration, read from a JSON file named on the command
 // line (config.example.json). Fields left out keep the defaults in fixed.json. The
 // operator token is read from a file, a Docker secret, never from the config itself.
+// There is no Stripe, license, SMTP, platform-fee or payment setting: selling and
+// licensing belong to each module's provider (Patrick 2026-11-17).
 type Config struct {
 	Listen                   string `json:"listen"`
 	DataDir                  string `json:"data_dir"`
@@ -24,6 +26,12 @@ type Config struct {
 	ReadHeaderTimeoutSeconds int    `json:"read_header_timeout_seconds"`
 	MaxJSONBytes             int64  `json:"max_json_bytes"`
 	MinOperatorTokenBytes    int    `json:"min_operator_token_bytes"`
+	// CurrencyCodeLength is the required ISO-4217 alphabetic currency width.
+	CurrencyCodeLength int `json:"currency_code_length"`
+	// CentsPerMajorUnit converts amount_cents to major currency units for display.
+	CentsPerMajorUnit int64 `json:"cents_per_major_unit"`
+	// MaxSalesURLRunes caps an author's sales page link on a listing.
+	MaxSalesURLRunes int `json:"max_sales_url_runes"`
 }
 
 //go:embed fixed.json
@@ -51,10 +59,27 @@ func LoadConfig(path string) (Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return c, fmt.Errorf("marketplace: %s: %w", path, err)
 	}
-	if c.DataDir == "" || c.Listen == "" || c.AuthorSessionHours <= int(0) || c.OperatorSessionMinutes <= int(0) {
-		return c, errors.New("marketplace: listen, data_dir and positive session lengths are required")
+	if err := validateConfig(c); err != nil {
+		return c, err
 	}
 	return c, nil
+}
+
+// validateConfig refuses incomplete session settings and non-positive price/sales tunables.
+func validateConfig(c Config) error {
+	if c.DataDir == "" || c.Listen == "" || c.AuthorSessionHours <= int(0) || c.OperatorSessionMinutes <= int(0) {
+		return errors.New("marketplace: listen, data_dir and positive session lengths are required")
+	}
+	if c.CentsPerMajorUnit <= int64(0) {
+		return errors.New("marketplace: cents_per_major_unit must be at least 1")
+	}
+	if c.CurrencyCodeLength <= int(0) {
+		return errors.New("marketplace: currency_code_length must be at least 1")
+	}
+	if c.MaxSalesURLRunes <= int(0) {
+		return errors.New("marketplace: max_sales_url_runes must be at least 1")
+	}
+	return nil
 }
 
 // OperatorToken reads the operator's bearer token from its file. A short token is
