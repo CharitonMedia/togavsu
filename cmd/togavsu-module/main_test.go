@@ -5,12 +5,15 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	matterclock "github.com/CharitonMedia/togavsu/examples/matter-clock"
+	"github.com/CharitonMedia/togavsu/marketplace"
 	"github.com/CharitonMedia/togavsu/pkg/modulekit"
 )
 
@@ -516,6 +519,49 @@ func TestPendingAddsAnEntry(t *testing.T) {
 	}
 	if code, _, errs := cli("pending", "-dir", dir, "-field", "notifications", "-core", "CORE-03", "-reason", "Again."); code != exitRefused || !strings.Contains(errs, "pending_invalid") {
 		t.Fatalf("duplicate: %d %s", code, errs)
+	}
+}
+
+func TestPublishSubmitsSignedFiles(t *testing.T) {
+	dir := copyPackage(t, nil)
+	_, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := write(t, "signing.key", base64.StdEncoding.EncodeToString(priv.Seed())+"\n")
+	out := filepath.Join(t.TempDir(), "matter-clock.signed.json")
+	if code, _, errs := cli("package", "-dir", dir, "-key", seed, "-out", out); code != exitOK {
+		t.Fatalf("package: %d %s", code, errs)
+	}
+	// In-process marketplace the CLI reaches over loopback.
+	mktDir := t.TempDir()
+	m, err := marketplace.Open(mktDir, time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := marketplace.Defaults()
+	cfg.DataDir = mktDir
+	cfg.SecureCookies = false
+	tok := strings.Repeat("y", 32)
+	srv, err := marketplace.NewServer(m, cfg, tok, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hs := httptest.NewServer(srv.Handler())
+	t.Cleanup(hs.Close)
+	pass := write(t, "password.txt", "a long enough password\n")
+	if code, _, _ := cli("publish"); code != exitUsage {
+		t.Fatalf("usage: %d", code)
+	}
+	code, stdout, errs := cli("publish", "-market", hs.URL, "-key", seed, "-name", "CLI Author",
+		"-email", "cli@example.test", "-password-file", pass, out)
+	if code != exitOK || !strings.Contains(stdout, "matter-clock 1.0.0 listed") {
+		t.Fatalf("publish: %d %s %s", code, stdout, errs)
+	}
+	code, stdout, errs = cli("publish", "-market", hs.URL, "-key", seed, "-name", "CLI Author",
+		"-email", "cli@example.test", "-password-file", pass, out)
+	if code != exitOK || !strings.Contains(stdout, "matter-clock 1.0.0 already listed") {
+		t.Fatalf("already: %d %s %s", code, stdout, errs)
 	}
 }
 

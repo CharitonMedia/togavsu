@@ -6,6 +6,7 @@
 //	togavsu-module verify -file <signed file> -pub <public key PEM file>
 //	togavsu-module pending -dir <package dir> (-field <path> | -scope <scope> | -migration <file>) -core <CORE-NN[,CORE-NN]> -reason <text>
 //	togavsu-module key -key <seed file> [-prove <proof_message>]
+//	togavsu-module publish -market URL -key <seed file> -name NAME -email EMAIL -password-file FILE FILE.signed.json...
 //	togavsu-module accepts
 //
 // check runs the manifest, scope and migration checks the core runs at install and
@@ -26,7 +27,9 @@
 // adds one entry to the directory's pending.yaml in place (AddPending), creating the
 // file if it is missing. key prints the seed file's PEM public key, the key a firm
 // trusts and the marketplace registers; with -prove it prints instead the signature of
-// the marketplace's key proof_message (ProveKey), and signs nothing else. accepts
+// the marketplace's key proof_message (ProveKey), and signs nothing else. publish
+// creates or signs in the author, registers and proves the key when needed, and uploads
+// each signed package file to the marketplace (modulekit.Publish). accepts
 // prints, as JSON, what this core accepts: its manifest fields and their digest, its
 // scopes, and the core records a module may use. The command never makes or stores a
 // key.
@@ -63,6 +66,7 @@ const usage = `usage:
   togavsu-module verify -file <signed file> -pub <public key PEM file>
   togavsu-module pending -dir <package dir> (-field <path> | -scope <scope> | -migration <file>) -core <CORE-NN[,CORE-NN]> -reason <text>
   togavsu-module key -key <seed file> [-prove <proof_message>]
+  togavsu-module publish -market URL -key <seed file> -name NAME -email EMAIL -password-file FILE FILE.signed.json...
   togavsu-module accepts
 `
 
@@ -92,6 +96,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = addPending(args[one:], stdout, &code)
 	case "key":
 		err = keyCmd(args[one:], stdout, &code)
+	case "publish":
+		err = publishCmd(args[one:], stdout, &code)
 	case "accepts":
 		err = accepts(args[one:], stdout, &code)
 	case "help", "-h", "-help", "--help":
@@ -364,6 +370,54 @@ func readSeed(file string) (ed25519.PrivateKey, error) {
 		return nil, err
 	}
 	return modulekit.ParseSeed(string(seed))
+}
+
+// publishCmd submits signed package files to a marketplace (modulekit.Publish).
+func publishCmd(args []string, stdout io.Writer, code *int) error {
+	fs := flags("publish", code)
+	market := fs.String("market", "", "marketplace base URL")
+	keyFile := fs.String("key", "", "file holding a base64 ed25519 seed")
+	name := fs.String("name", "", "author display name")
+	email := fs.String("email", "", "author email (login)")
+	passFile := fs.String("password-file", "", "file holding the author password")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *market == "" || *keyFile == "" || *name == "" || *email == "" || *passFile == "" || fs.NArg() < one {
+		return fmt.Errorf("-market, -key, -name, -email, -password-file and at least one signed package file are required")
+	}
+	*code = exitRefused
+	priv, err := readSeed(*keyFile)
+	if err != nil {
+		return err
+	}
+	pass, err := os.ReadFile(*passFile)
+	if err != nil {
+		return err
+	}
+	files := make([][]byte, 0, fs.NArg())
+	for _, path := range fs.Args() {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		files = append(files, b)
+	}
+	got, err := modulekit.Publish(modulekit.PublishRequest{
+		Market: *market, Priv: priv, Name: *name, Email: *email,
+		Password: strings.TrimSpace(string(pass)), Files: files,
+	})
+	if err != nil {
+		return err
+	}
+	for _, p := range got {
+		status := "listed"
+		if p.Already {
+			status = "already listed"
+		}
+		fmt.Fprintf(stdout, "%s %s %s\n", p.ModuleID, p.Version, status)
+	}
+	return nil
 }
 
 func accepts(args []string, stdout io.Writer, code *int) error {
