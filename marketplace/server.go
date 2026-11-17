@@ -522,9 +522,19 @@ type listingPage struct {
 	PriceNote  string
 }
 
+type searchListing struct {
+	shared.Listing
+	Disclaimer string
+}
+
 func (s *Server) pageSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
-	s.render(w, http.StatusOK, "search.html", map[string]any{"Q": q, "Listings": s.M.Search(q), "Notice": shared.Notice, "FlagWarning": shared.FlagWarning})
+	raw := s.M.Search(q)
+	listings := make([]searchListing, 0, len(raw))
+	for _, l := range raw {
+		listings = append(listings, searchListing{Listing: l, Disclaimer: ProviderDisclaimer(l.Author)})
+	}
+	s.render(w, http.StatusOK, "search.html", map[string]any{"Q": q, "Listings": listings, "Notice": shared.Notice, "FlagWarning": shared.FlagWarning})
 }
 
 func (s *Server) pageListing(w http.ResponseWriter, r *http.Request) {

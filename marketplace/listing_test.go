@@ -80,6 +80,18 @@ func TestMKT01StructuredPrice(t *testing.T) {
 	if !strings.Contains(string(page.body), "49.00") {
 		t.Fatalf("listing page missing rendered price: %s", page.body)
 	}
+	// Search results must show the same rendered price + provider line as listing.html (MKT-01 / §17.1).
+	search := e.do("GET", "/?q=mo-estate", "", nil)
+	if search.code != http.StatusOK {
+		t.Fatalf("search page: %d %s", search.code, search.body)
+	}
+	searchBody := string(search.body)
+	if !strings.Contains(searchBody, "49.00") {
+		t.Fatalf("search page missing rendered price: %s", searchBody)
+	}
+	if !strings.Contains(searchBody, wantDisc) && !strings.Contains(searchBody, htmlEscape(wantDisc)) {
+		t.Fatalf("search page missing provider disclaimer: %s", searchBody)
+	}
 	b := e.author("Free Author", "free@example.test")
 	e.publishPriced(b, "documents", "1.0.0", "Free")
 	e.do("GET", "/v1/listings/documents", "", nil).json(t, &body)
@@ -254,6 +266,104 @@ func TestMKT03PriceEdit(t *testing.T) {
 	}
 	if !strings.Contains(body["price_note"].(string), "USD") || strings.Contains(body["price_note"].(string), "USD  ") {
 		t.Fatalf("display after normalise: %+v", body["price_note"])
+	}
+}
+
+// TestMKT03PriceEditAccessAndValidation covers failure paths for PATCH
+// /v1/authors/me/listings/{id}/price: authz, not-found, empty body, bad sales_url /
+// currency / interval, and pulled-listing rules matching Publish (owner edits still allowed).
+func TestMKT03PriceEditAccessAndValidation(t *testing.T) {
+	e := newEnv(t)
+	owner := e.author("Owner Author", "owner@example.test")
+	other := e.author("Other Author", "other@example.test")
+	e.publishPriced(owner, "price-guard", "1.0.0", map[string]any{
+		"amount_cents": 2500, "currency": "USD", "interval": "month",
+	})
+	origPrice, err := e.m.ListingPriceOf("price-guard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origSales, err := e.m.ListingSalesURL("price-guard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnchanged := func(t *testing.T) {
+		t.Helper()
+		p, err := e.m.ListingPriceOf("price-guard")
+		if err != nil || p != origPrice {
+			t.Fatalf("listing price changed: got %+v want %+v err=%v", p, origPrice, err)
+		}
+		u, err := e.m.ListingSalesURL("price-guard")
+		if err != nil || u != origSales {
+			t.Fatalf("sales_url changed: got %q want %q err=%v", u, origSales, err)
+		}
+	}
+	editBody := map[string]any{
+		"amount_cents": 9900, "currency": "USD", "interval": "year",
+		"sales_url": "https://attacker.example.test/buy",
+	}
+
+	if r := e.do("PATCH", "/v1/authors/me/listings/price-guard/price", other.token, editBody); r.code != http.StatusForbidden {
+		t.Fatalf("other author: want 403, got %d %s", r.code, r.body)
+	}
+	assertUnchanged(t)
+
+	if r := e.do("PATCH", "/v1/authors/me/listings/price-guard/price", "", editBody); r.code != http.StatusUnauthorized {
+		t.Fatalf("no token: want 401, got %d %s", r.code, r.body)
+	}
+	assertUnchanged(t)
+
+	if r := e.do("PATCH", "/v1/authors/me/listings/price-guard/price", "not-a-real-token", editBody); r.code != http.StatusUnauthorized {
+		t.Fatalf("bad token: want 401, got %d %s", r.code, r.body)
+	}
+	assertUnchanged(t)
+
+	if r := e.do("PATCH", "/v1/authors/me/listings/no-such-listing/price", owner.token, editBody); r.code != http.StatusNotFound {
+		t.Fatalf("unknown listing: want 404, got %d %s", r.code, r.body)
+	}
+	assertUnchanged(t)
+
+	if r := e.do("PATCH", "/v1/authors/me/listings/price-guard/price", owner.token, map[string]any{}); r.code != http.StatusBadRequest {
+		t.Fatalf("empty body: want 400, got %d %s", r.code, r.body)
+	}
+	assertUnchanged(t)
+
+	if r := e.do("PATCH", "/v1/authors/me/listings/price-guard/price", owner.token, map[string]any{
+		"sales_url": "javascript:alert(1)",
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("javascript sales_url: want 400, got %d %s", r.code, r.body)
+	}
+	assertUnchanged(t)
+
+	if r := e.do("PATCH", "/v1/authors/me/listings/price-guard/price", owner.token, map[string]any{
+		"amount_cents": 100, "currency": "US", "interval": "month",
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("bad currency: want 400, got %d %s", r.code, r.body)
+	}
+	assertUnchanged(t)
+
+	if r := e.do("PATCH", "/v1/authors/me/listings/price-guard/price", owner.token, map[string]any{
+		"amount_cents": 100, "currency": "USD", "interval": "week",
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("bad interval: want 400, got %d %s", r.code, r.body)
+	}
+	assertUnchanged(t)
+
+	// Publish still lets the owning author add versions on a pulled listing; price edit
+	// matches that rule (no pulled refusal today).
+	if r := e.do("POST", "/v1/operator/listings/price-guard/pull", opToken, map[string]any{"note": "synthetic pull"}); r.code != http.StatusOK {
+		t.Fatalf("pull: %d %s", r.code, r.body)
+	}
+	pulledEdit := e.do("PATCH", "/v1/authors/me/listings/price-guard/price", owner.token, map[string]any{
+		"amount_cents": 3000, "currency": "USD", "interval": "month",
+		"sales_url": "https://owner.example.test/buy",
+	})
+	if pulledEdit.code != http.StatusOK {
+		t.Fatalf("pulled listing owner price edit (match Publish): want 200, got %d %s", pulledEdit.code, pulledEdit.body)
+	}
+	stored, err := e.m.ListingPriceOf("price-guard")
+	if err != nil || stored.AmountCents != 3000 {
+		t.Fatalf("pulled price edit store: %+v %v", stored, err)
 	}
 }
 
