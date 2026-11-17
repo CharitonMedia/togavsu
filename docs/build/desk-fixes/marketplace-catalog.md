@@ -19,9 +19,11 @@ paths do not overlap.
    `install-listing` action (`svc.InstallFromMarketplace`) and their tests.
    - Show every listing when the search box is empty (browse), and the matches when `q` is
      set. Pulled listings never show.
-   - Each listing: name, version, author, price, the operator's warning when flagged, and
-     the permission scopes it asks for inside a closed `<details>` labelled
-     "Permissions (N)". Listings carry scopes only; do not change the listing contract or
+   - Each listing: name, version, author, the author's verified signing key ("signed by
+     ..."), price, the PRD 10.2 notice ("Modules are published by their authors... Install
+     at your own risk."), the operator's warning when flagged, and the permission scopes it
+     asks for inside a closed `<details>` labelled "Permissions (N)". The notice and the
+     signing key stay on every listing exactly as the card shows them today. Listings carry scopes only; do not change the listing contract or
      fetch packages to show reasons here (the reasons show at approval after install).
    - Price: the listing's price text (`PriceNote`), or "Free" when it is empty. The
      marketplace owns the price rule (Lane B item 2 fills it from the manifest); the core
@@ -41,16 +43,34 @@ paths do not overlap.
      `internal/dashboard/compose/qc_pg_test.go` for the Modules tab with three listings; no
      horizontal overflow.
 2. **Reaching a marketplace on the firm's own Docker network.** `marketplace.BaseURL`
-   allows plain http on a loopback host and on exactly one other host name,
-   `togavsu-marketplace`, the compose service Lane B adds on the install's own network.
-   Every other host, single-label names included, still needs https, so a LAN name picked
-   up through DNS search domains cannot carry listings or alerts unauthenticated. Tests both
-   ways (loopback, `togavsu-marketplace`, another single-label name refused), and update the
-   comment and the setting's help text ("Marketplace the firm checks: an https address, or
-   http://togavsu-marketplace:8090 for the marketplace that runs beside Togavsu.").
+   allows plain http on a loopback host and on the compose service name
+   `togavsu-marketplace`; every other host needs https. A plain-http name can still be
+   answered by something else on the firm's network (search domains, a hijacking
+   resolver, or the profile not running), so plain http never confers trust:
+   - When `BaseURL` is plain http, `refreshMarketplaceKeys` does not fetch or store
+     marketplace keys and clears any cached ones, and `trusted` returns only the firm's
+     trusted local keys. An install from such a marketplace verifies against those local
+     keys alone, so a spoofed responder cannot get its own key trusted or its package
+     installed. Packages, listings and alerts still come from it.
+   - The Marketplace card then says, under the address line: "This marketplace is reached
+     without https, so only your trusted local keys can approve an install." with a link to
+     the Trusted local signing keys card. The hint there that marketplace keys are trusted
+     without being listed changes to say that holds only over https.
+   - Listings and flag/pull alerts over plain http are unauthenticated. Record that in
+     `PONYTAIL-DEBT.md`: the ceiling (plain http only for loopback and
+     `togavsu-marketplace`, no key trust over it) and the upgrade trigger (any marketplace
+     reached across a network the firm does not control, which needs https).
+   - Tests: loopback and `togavsu-marketplace` allowed, another single-label name refused;
+     over plain http no marketplace key is stored or trusted and a package signed only by a
+     marketplace key is refused; the same package installs once its key is a trusted local
+     key; over https the current behavior is unchanged.
+   - Update the comment and the setting's help text ("Marketplace the firm checks: an
+     https address, or http://togavsu-marketplace:8090 for the marketplace that runs beside
+     Togavsu, which installs only modules signed by your trusted local keys.").
 3. Change nothing else on the page. `GET /api/v1/marketplace/listings` keeps its shape.
 4. Tests: extend the existing Modules tab and install-listing tests: browse with an empty
-   search, price text and "Free", flagged warning, installed, update and newer-installed
+   search, the notice and signing key on every listing, price text and "Free", flagged
+   warning, installed, update and newer-installed
    states, the unreachable
    message, a failed install showing the plain sentence, a successful install landing in
    Installed modules with permissions pending, and `BaseURL`.
@@ -92,7 +112,9 @@ paths do not overlap.
      `data_dir` /var/lib/togavsu-marketplace, `operator_token_file` /marketsecrets/operator_token,
      `secure_cookies` false) bind-mounted read-only at
      `/etc/togavsu-marketplace/config.json`, which `marketplace/cmd/marketplace` reads.
-   - Document in `deploy/` and `marketplace/README.md`: start it, publish with
+   - Document in `deploy/` and `marketplace/README.md`: start it; add the publishing
+     author's public key in Trusted local signing keys (plain http confers no key trust);
+     publish with
      `togavsu-module publish -market http://togavsu-marketplace:8090` (run on the same
      network), and set Marketplace Address to `http://togavsu-marketplace:8090`.
 5. Update `marketplace/README.md`, `docs/modules/MODULE-KIT.md` (Submitting to the
