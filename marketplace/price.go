@@ -12,6 +12,7 @@ import (
 // ListingPrice is the marketplace listing price (CORE-CHANGES-2 §17.1 / CORE-35).
 // A structured price has amount_cents, currency and interval (month or year). The old
 // string form is stored as Note alone with AmountCents zero and Interval empty.
+// The marketplace shows this as the provider's information; it never charges it.
 type ListingPrice struct {
 	AmountCents int64  `json:"amount_cents"`
 	Currency    string `json:"currency,omitempty"`
@@ -19,26 +20,11 @@ type ListingPrice struct {
 	Note        string `json:"note,omitempty"`
 }
 
-// PendingPriceChange is an author price change waiting out the notice period for
-// existing subscriptions.
-type PendingPriceChange struct {
-	Price       ListingPrice `json:"price"`
-	NoticedAt   string       `json:"noticed_at"`
-	EffectiveAt string       `json:"effective_at"`
-	// NoticeMailID is the queued notice for this subscription. ApplyDuePriceChanges
-	// waits until that mail is sent so a price rise never applies to a firm whose
-	// admin was never emailed.
-	NoticeMailID string `json:"notice_mail_id,omitempty"`
-	// StripeSynced is set once the Stripe subscription was updated to the new price
-	// after EffectiveAt (before the next renewal invoice is billed).
-	StripeSynced bool `json:"stripe_synced,omitempty"`
-}
-
 func (p ListingPrice) empty() bool {
 	return p.AmountCents == int64(0) && p.Currency == "" && p.Interval == "" && strings.TrimSpace(p.Note) == ""
 }
 
-// paidStructured reports a complete paid subscription price (amount, currency, interval).
+// paidStructured reports a complete structured price (amount, currency, interval).
 func (p ListingPrice) paidStructured() bool {
 	return p.AmountCents > int64(0) && p.Currency != "" && (p.Interval == "month" || p.Interval == "year")
 }
@@ -127,4 +113,14 @@ func parseManifestPrice(manifest map[string]any) (ListingPrice, error) {
 func asString(v any) string {
 	s, _ := v.(string)
 	return s
+}
+
+// ProviderDisclaimer is shown beside every listing price: selling and licensing belong
+// to the author, never to Togavsu.
+func ProviderDisclaimer(authorName string) string {
+	authorName = strings.TrimSpace(authorName)
+	if authorName == "" {
+		authorName = "the author"
+	}
+	return "Sold and licensed by " + authorName + ". Togavsu doesn't sell or bill this module."
 }

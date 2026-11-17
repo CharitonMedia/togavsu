@@ -39,9 +39,6 @@ func main() {
 	hs := &http.Server{Addr: cfg.Listen, Handler: srv.Handler(), ReadHeaderTimeout: cfg.ReadHeaderTimeout()}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	if cfg.MailRetryIntervalSeconds > int(0) {
-		m.StartMailRetry(ctx, cfg.MailRetryInterval())
-	}
 	go func() {
 		<-ctx.Done()
 		_ = hs.Shutdown(context.WithoutCancel(ctx))

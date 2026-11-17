@@ -26,8 +26,6 @@ type Author struct {
 	Email        string    `json:"email"`
 	PasswordHash string    `json:"password_hash"`
 	CreatedAt    time.Time `json:"created_at"`
-	// StripeAccountID is the author's Stripe Connect account id (acct_…), never a secret.
-	StripeAccountID string `json:"stripe_account_id,omitempty"`
 }
 
 // Token is an author's API session, stored as a SHA-256 of the bearer value.
@@ -65,17 +63,20 @@ type Version struct {
 }
 
 // ListingRecord is one module's listing. Its id is the module id in the signed manifest.
+// Price and SalesURL are the author's information; Togavsu never sells or bills the module.
 type ListingRecord struct {
 	ID        string       `json:"id"`
 	AuthorID  string       `json:"author_id"`
 	PriceNote string       `json:"price_note"`
 	Price     ListingPrice `json:"price"`
-	Versions  []Version    `json:"versions"`
-	Flagged   bool         `json:"flagged"`
-	FlagNote  string       `json:"flag_note"`
-	Pulled    bool         `json:"pulled"`
-	PullNote  string       `json:"pull_note"`
-	CreatedAt time.Time    `json:"created_at"`
+	// SalesURL is an optional link to the author's own sales page (not a Togavsu checkout).
+	SalesURL  string    `json:"sales_url,omitempty"`
+	Versions  []Version `json:"versions"`
+	Flagged   bool      `json:"flagged"`
+	FlagNote  string    `json:"flag_note"`
+	Pulled    bool      `json:"pulled"`
+	PullNote  string    `json:"pull_note"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // AlertRecord is one operator flag or pull.
@@ -88,58 +89,15 @@ type AlertRecord struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// SubscriptionRecord is one firm's paid subscription to a listing. No card numbers or
-// Stripe secrets are stored; Stripe holds payment details.
-type SubscriptionRecord struct {
-	ID                 string              `json:"id"`
-	ListingID          string              `json:"listing_id"`
-	InstallID          string              `json:"install_id"`
-	AdminEmail         string              `json:"admin_email"`
-	InstallPublicKey   string              `json:"install_public_key_pem"`
-	StripeSessionID    string              `json:"stripe_session_id,omitempty"`
-	StripeSubscription string              `json:"stripe_subscription_id,omitempty"`
-	Status             string              `json:"status"` // pending, active, canceled
-	Price              ListingPrice        `json:"price"`
-	PendingPrice       *PendingPriceChange `json:"pending_price,omitempty"`
-	PaidThrough        time.Time           `json:"paid_through"`
-	CancelAtPeriodEnd  bool                `json:"cancel_at_period_end"`
-	CreatedAt          time.Time           `json:"created_at"`
-	// LicenseShown marks that the one-time plaintext key was returned to the firm.
-	LicenseShown bool `json:"license_shown"`
-}
-
-// OperatorSettings are marketplace operator knobs persisted in state (not firm settings).
-type OperatorSettings struct {
-	// PlatformFeePercent is the Connect application fee, default 0.
-	PlatformFeePercent int `json:"platform_fee_percent"`
-}
-
-// MailRecord is one outbound email the marketplace queued (price-change notices).
-// Status is pending until delivery succeeds; SentAt is set only on success.
-type MailRecord struct {
-	ID      string    `json:"id"`
-	To      string    `json:"to"`
-	Subject string    `json:"subject"`
-	Body    string    `json:"body"`
-	Status  string    `json:"status"`
-	SentAt  time.Time `json:"sent_at,omitempty"`
-	LastErr string    `json:"last_error,omitempty"`
-}
-
 // State is everything the service stores apart from package bytes.
+// It holds listings, authors, keys and alerts only — never subscriptions, licenses,
+// payments, cards, Stripe ids, platform fees or mail queues (Patrick 2026-11-17).
 type State struct {
-	Authors       []Author             `json:"authors"`
-	Tokens        []Token              `json:"tokens"`
-	Keys          []Key                `json:"keys"`
-	Listings      []ListingRecord      `json:"listings"`
-	Alerts        []AlertRecord        `json:"alerts"`
-	Subscriptions []SubscriptionRecord `json:"subscriptions"`
-	Mails         []MailRecord         `json:"mails"`
-	Settings      OperatorSettings     `json:"settings"`
-	// ProcessedStripeEvents records Stripe event ids already applied (webhook dedup).
-	ProcessedStripeEvents []string `json:"processed_stripe_events,omitempty"`
-	// ProcessedStripeInvoices records Stripe invoice ids already applied.
-	ProcessedStripeInvoices []string `json:"processed_stripe_invoices,omitempty"`
+	Authors  []Author        `json:"authors"`
+	Tokens   []Token         `json:"tokens"`
+	Keys     []Key           `json:"keys"`
+	Listings []ListingRecord `json:"listings"`
+	Alerts   []AlertRecord   `json:"alerts"`
 }
 
 // fileStore persists State and package bytes under dir.

@@ -8,7 +8,6 @@
 package marketplace
 
 import (
-	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -55,14 +54,6 @@ type Market struct {
 	now   func() time.Time
 	// tokenLife is how long an author session lasts.
 	tokenLife time.Duration
-	// Paid listings (CORE-CHANGES-2 §17).
-	stripe        *Stripe
-	licensePriv   ed25519.PrivateKey
-	licensePub    ed25519.PublicKey
-	noticeDays    int
-	mailer        MailSender
-	webhookSecret string
-	allowTestKeys bool // tests may call EnsureLicenseKey; the service binary must not
 }
 
 // Open loads the state in dir.
@@ -75,11 +66,7 @@ func Open(dir string, tokenLife time.Duration, now func() time.Time) (*Market, e
 	if err != nil {
 		return nil, err
 	}
-	m := &Market{st: st, store: fsStore, now: func() time.Time { return now().UTC() }, tokenLife: tokenLife, noticeDays: Defaults().PriceChangeNoticeDays}
-	// License signing keys are never random here: production loads a seed via
-	// ApplyConfig; tests call EnsureLicenseKey. Paid/license endpoints fail closed
-	// until a key is configured (§15.5 modules embed the public key).
-	return m, nil
+	return &Market{st: st, store: fsStore, now: func() time.Time { return now().UTC() }, tokenLife: tokenLife}, nil
 }
 
 // commit saves the state after fn changes it; a failed save restores the old state.

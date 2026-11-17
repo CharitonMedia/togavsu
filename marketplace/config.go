@@ -14,6 +14,8 @@ import (
 // Config is the service's own configuration, read from a JSON file named on the command
 // line (config.example.json). Fields left out keep the defaults in fixed.json. The
 // operator token is read from a file, a Docker secret, never from the config itself.
+// There is no Stripe, license, SMTP, platform-fee or payment setting: selling and
+// licensing belong to each module's provider (Patrick 2026-11-17).
 type Config struct {
 	Listen                   string `json:"listen"`
 	DataDir                  string `json:"data_dir"`
@@ -24,57 +26,12 @@ type Config struct {
 	ReadHeaderTimeoutSeconds int    `json:"read_header_timeout_seconds"`
 	MaxJSONBytes             int64  `json:"max_json_bytes"`
 	MinOperatorTokenBytes    int    `json:"min_operator_token_bytes"`
-	// PriceChangeNoticeDays is how long before a price change hits existing subscriptions (default 30).
-	PriceChangeNoticeDays int `json:"price_change_notice_days"`
-	// PlatformFeePercent is the default Connect application fee when state has none (default 0).
-	PlatformFeePercent int `json:"platform_fee_percent"`
-	// MaxPlatformFeePercent is the inclusive upper bound for the operator fee setting.
-	MaxPlatformFeePercent int `json:"max_platform_fee_percent"`
 	// CurrencyCodeLength is the required ISO-4217 alphabetic currency width.
 	CurrencyCodeLength int `json:"currency_code_length"`
 	// CentsPerMajorUnit converts amount_cents to major currency units for display.
 	CentsPerMajorUnit int64 `json:"cents_per_major_unit"`
-	// IntervalYearStep / IntervalMonthStep are AddDate steps for paid-through intervals.
-	IntervalYearStep  int `json:"interval_year_step"`
-	IntervalMonthStep int `json:"interval_month_step"`
-	// HoursPerDay converts notice days into a duration.
-	HoursPerDay int `json:"hours_per_day"`
-	// StripeErrorLogRunes caps redacted Stripe error bodies in returned errors.
-	StripeErrorLogRunes int `json:"stripe_error_log_runes"`
-	// CardDigitMin / CardDigitMax bound digit runs redacted as card numbers in logs.
-	CardDigitMin int `json:"card_digit_min"`
-	CardDigitMax int `json:"card_digit_max"`
-	// StripeWebhookToleranceSeconds is the allowed clock skew for Stripe-Signature.
-	StripeWebhookToleranceSeconds int `json:"stripe_webhook_tolerance_seconds"`
-	// StripeResponseMaxBytes caps a single Stripe API response body.
-	StripeResponseMaxBytes int64 `json:"stripe_response_max_bytes"`
-	// StripeCheckoutQuantity is the Checkout line-item quantity (always 1).
-	StripeCheckoutQuantity int `json:"stripe_checkout_quantity"`
-	// StripeAPIVersion is sent as the Stripe-Version request header.
-	StripeAPIVersion string `json:"stripe_api_version"`
-	// MailRetryIntervalSeconds is how often the service retries undelivered notice mail.
-	MailRetryIntervalSeconds int `json:"mail_retry_interval_seconds"`
-	// SMTPDeadlineSeconds bounds one fake/local SMTP conversation.
-	SMTPDeadlineSeconds int `json:"smtp_deadline_seconds"`
-	// SMTPReadBufferBytes / SMTPTmpBufferBytes size the SMTP acceptor buffers.
-	SMTPReadBufferBytes int `json:"smtp_read_buffer_bytes"`
-	SMTPTmpBufferBytes  int `json:"smtp_tmp_buffer_bytes"`
-	// DefaultSMTPFrom is used when smtp_from is empty.
-	DefaultSMTPFrom string `json:"default_smtp_from"`
-	// StripeAPIBase is the Stripe API origin. Tests use a local fake; production uses https://api.stripe.com.
-	StripeAPIBase string `json:"stripe_api_base"`
-	// StripeSecretFile holds the Stripe secret key at runtime (Docker secret). Never logged or stored in state.
-	StripeSecretFile string `json:"stripe_secret_file"`
-	// StripeWebhookSecretFile holds the Stripe webhook signing secret (Docker secret). Never stored in state.
-	StripeWebhookSecretFile string `json:"stripe_webhook_secret_file"`
-	// LicenseSeedFile holds 32 raw or base64 bytes for the marketplace license Ed25519 seed.
-	// Required whenever stripe_api_base is set so paid modules keep a stable public key across restarts.
-	LicenseSeedFile string `json:"license_seed_file"`
-	// SMTPAddr is host:port for price-change notice delivery. Empty refuses price changes that
-	// need notice mail unless a MailSender is attached in-process (tests use RecordingMailer).
-	SMTPAddr string `json:"smtp_addr"`
-	// SMTPFrom is the From address for notice mail.
-	SMTPFrom string `json:"smtp_from"`
+	// MaxSalesURLRunes caps an author's sales page link on a listing.
+	MaxSalesURLRunes int `json:"max_sales_url_runes"`
 }
 
 //go:embed fixed.json
@@ -135,45 +92,3 @@ func (c Config) OperatorSession() time.Duration { return dur("m", c.OperatorSess
 
 // ReadHeaderTimeout bounds a slow client.
 func (c Config) ReadHeaderTimeout() time.Duration { return dur("s", c.ReadHeaderTimeoutSeconds) }
-
-// NoticePeriod is the price-change notice window for existing subscriptions.
-func (c Config) NoticePeriod() time.Duration {
-	return dur("h", c.PriceChangeNoticeDays*c.HoursPerDay)
-}
-
-// StripeWebhookTolerance is the allowed Stripe-Signature clock skew.
-func (c Config) StripeWebhookTolerance() time.Duration {
-	return dur("s", c.StripeWebhookToleranceSeconds)
-}
-
-// SMTPDeadline bounds one SMTP conversation.
-func (c Config) SMTPDeadline() time.Duration { return dur("s", c.SMTPDeadlineSeconds) }
-
-// MailRetryInterval is how often undelivered price-change notices are retried.
-func (c Config) MailRetryInterval() time.Duration {
-	return dur("s", c.MailRetryIntervalSeconds)
-}
-
-// StripeSecret reads the Stripe secret key from its file. Empty path means unset.
-func (c Config) StripeSecret() (string, error) {
-	if strings.TrimSpace(c.StripeSecretFile) == "" {
-		return "", nil
-	}
-	b, err := os.ReadFile(c.StripeSecretFile)
-	if err != nil {
-		return "", fmt.Errorf("marketplace: stripe secret: %w", err)
-	}
-	return strings.TrimSpace(string(b)), nil
-}
-
-// StripeWebhookSecret reads the Stripe webhook signing secret from its file.
-func (c Config) StripeWebhookSecret() (string, error) {
-	if strings.TrimSpace(c.StripeWebhookSecretFile) == "" {
-		return "", nil
-	}
-	b, err := os.ReadFile(c.StripeWebhookSecretFile)
-	if err != nil {
-		return "", fmt.Errorf("marketplace: stripe webhook secret: %w", err)
-	}
-	return strings.TrimSpace(string(b)), nil
-}

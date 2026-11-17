@@ -76,21 +76,10 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("POST /v1/authors/me/keys", s.apiAddKey)
 	m.HandleFunc("POST /v1/authors/me/keys/{key_id}/verify", s.apiVerifyKey)
 	m.HandleFunc("POST /v1/authors/me/packages", s.apiUpload)
-	m.HandleFunc("POST /v1/authors/me/stripe/connect", s.apiStripeConnect)
 	m.HandleFunc("PATCH /v1/authors/me/listings/{listing_id}/price", s.apiSetPrice)
-	// Paid subscriptions and licenses (CORE-CHANGES-2 §17).
-	m.HandleFunc("POST /v1/listings/{listing_id}/checkout", s.apiCheckout)
-	m.HandleFunc("POST /v1/stripe/checkout/complete", s.apiCompleteCheckout)
-	m.HandleFunc("POST /v1/stripe/webhook", s.apiStripeWebhook)
-	m.HandleFunc("POST /v1/subscriptions/cancel", s.apiCancelSub)
-	m.HandleFunc("POST /v1/licenses/renew", s.apiRenewLicense)
-	m.HandleFunc("GET /v1/license-public-key", s.apiLicensePublicKey)
 	// Operator.
 	m.HandleFunc("POST /v1/operator/listings/{listing_id}/flag", s.apiFlag)
 	m.HandleFunc("POST /v1/operator/listings/{listing_id}/pull", s.apiPull)
-	m.HandleFunc("GET /v1/operator/settings", s.apiOperatorSettings)
-	m.HandleFunc("PATCH /v1/operator/settings", s.apiOperatorSettingsPatch)
-	m.HandleFunc("POST /v1/operator/mail/retry", s.apiOperatorMailRetry)
 	// Pages.
 	m.HandleFunc("GET /{$}", s.pageSearch)
 	m.HandleFunc("GET /listings/{listing_id}", s.pageListing)
@@ -144,8 +133,6 @@ func writeErr(w http.ResponseWriter, err error) {
 		problem(w, http.StatusForbidden, "forbidden", "another author publishes this module id")
 	case errors.Is(err, ErrConflict):
 		problem(w, http.StatusConflict, "conflict", "already exists; listed versions never change")
-	case errors.Is(err, ErrLicenseInvalid):
-		problem(w, http.StatusForbidden, "license_invalid", "the license is invalid or expired for this install")
 	default:
 		problem(w, http.StatusInternalServerError, "internal", "internal error")
 	}
@@ -198,6 +185,7 @@ func (s *Server) listingBody(l shared.Listing) map[string]any {
 		"signing_key": l.SigningKey, "signing_key_pem": l.SigningKeyPEM, "version": l.Version,
 		"permissions": l.Permissions, "version_history": l.VersionHistory, "price_note": l.PriceNote,
 		"flagged": l.Flagged, "pulled": l.Pulled, "notice": l.Notice,
+		"provider_disclaimer": ProviderDisclaimer(l.Author),
 	}
 	if l.FlagNote != "" {
 		body["flag_note"] = l.FlagNote
@@ -207,6 +195,9 @@ func (s *Server) listingBody(l shared.Listing) map[string]any {
 	}
 	if p, err := s.M.ListingPriceOf(l.ID); err == nil && !p.empty() {
 		body["price"] = p
+	}
+	if u, err := s.M.ListingSalesURL(l.ID); err == nil && u != "" {
+		body["sales_url"] = u
 	}
 	return body
 }
@@ -376,253 +367,51 @@ func (s *Server) apiUpload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, s.listingBody(l))
 }
 
-func (s *Server) apiStripeConnect(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.author(w, r)
-	if !ok {
-		return
-	}
-	id, err := s.M.ConnectStripe(a)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"stripe_account_id": id})
-}
-
 func (s *Server) apiSetPrice(w http.ResponseWriter, r *http.Request) {
 	a, ok := s.author(w, r)
 	if !ok {
 		return
 	}
-	var b ListingPrice
-	if err := decode(r, s.maxJSON, &b); err != nil {
-		writeErr(w, err)
-		return
-	}
-	res, err := s.M.SetListingPrice(a, r.PathValue("listing_id"), b)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	body := s.listingBody(res.Listing)
-	notices := make([]map[string]any, 0, len(res.Notices))
-	for _, n := range res.Notices {
-		notices = append(notices, map[string]any{
-			"id": n.ID, "to": n.To, "status": n.Status, "last_error": n.LastErr,
-		})
-	}
-	body["notices"] = notices
-	writeJSON(w, http.StatusOK, body)
-}
-
-func (s *Server) apiCheckout(w http.ResponseWriter, r *http.Request) {
 	var b struct {
-		InstallID           string `json:"install_id"`
-		AdminEmail          string `json:"admin_email"`
-		InstallPublicKeyPEM string `json:"install_public_key_pem"`
-		SuccessURL          string `json:"success_url"`
-		CancelURL           string `json:"cancel_url"`
+		AmountCents *int64        `json:"amount_cents"`
+		Currency    *string       `json:"currency"`
+		Interval    *string       `json:"interval"`
+		Note        *string       `json:"note"`
+		SalesURL    *string       `json:"sales_url"`
+		Price       *ListingPrice `json:"price"`
 	}
 	if err := decode(r, s.maxJSON, &b); err != nil {
 		writeErr(w, err)
 		return
 	}
-	b.SuccessURL = strings.TrimSpace(b.SuccessURL)
-	b.CancelURL = strings.TrimSpace(b.CancelURL)
-	if b.SuccessURL == "" || !strings.Contains(b.SuccessURL, "{CHECKOUT_SESSION_ID}") {
-		writeErr(w, invalid("success_url", "success_url is required and must include {CHECKOUT_SESSION_ID}"))
-		return
-	}
-	if b.CancelURL == "" {
-		writeErr(w, invalid("cancel_url", "cancel_url is required"))
-		return
-	}
-	sess, subID, err := s.M.StartCheckout(r.PathValue("listing_id"), b.InstallID, b.AdminEmail, b.InstallPublicKeyPEM, b.SuccessURL, b.CancelURL)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"checkout_url": sess.URL, "session_id": sess.ID, "subscription_id": subID,
-	})
-}
-
-func (s *Server) apiCompleteCheckout(w http.ResponseWriter, r *http.Request) {
-	var b struct {
-		SessionID string `json:"session_id"`
-	}
-	if err := decode(r, s.maxJSON, &b); err != nil {
-		writeErr(w, err)
-		return
-	}
-	key, sub, err := s.M.CompleteCheckout(b.SessionID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"license_key":     key,
-		"install_id":      sub.InstallID,
-		"module_id":       sub.ListingID,
-		"paid_through":    sub.PaidThrough.UTC().Format("2006-01-02"),
-		"subscription_id": sub.ID,
-	})
-}
-
-func (s *Server) apiStripeWebhook(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(http.MaxBytesReader(nil, r.Body, s.maxJSON))
-	if err != nil {
-		writeErr(w, invalid("body", "the request body is too large or unreadable"))
-		return
-	}
-	secret := s.M.WebhookSecret()
-	if err := VerifyWebhookSignature(body, r.Header.Get("Stripe-Signature"), secret, s.now(), Defaults().StripeWebhookTolerance()); err != nil {
-		writeErr(w, err)
-		return
-	}
-	var evt struct {
-		ID   string `json:"id"`
-		Type string `json:"type"`
-		Data struct {
-			Object stripeInvoiceObject `json:"object"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &evt); err != nil {
-		writeErr(w, invalid("body", "the body must be a Stripe event JSON object"))
-		return
-	}
-	if evt.Type != "invoice.paid" {
-		writeJSON(w, http.StatusOK, map[string]any{"received": true, "ignored": evt.Type})
-		return
-	}
-	subID := evt.Data.Object.stripeSubscriptionID()
-	if subID == "" {
-		writeErr(w, invalid("subscription", "invoice.paid event is missing subscription"))
-		return
-	}
-	periodEndUnix := evt.Data.Object.paidTermEndUnix()
-	var periodEnd time.Time
-	if periodEndUnix > int64(0) {
-		periodEnd = time.Unix(periodEndUnix, int64(0)).UTC()
-	}
-	sub, err := s.M.ApplyInvoicePaid(InvoicePaidInfo{
-		EventID: evt.ID, InvoiceID: evt.Data.Object.ID, StripeSubscription: subID,
-		BillingReason: evt.Data.Object.BillingReason, PeriodEnd: periodEnd,
-	})
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"received": true, "install_id": sub.InstallID, "module_id": sub.ListingID,
-		"paid_through": sub.PaidThrough.UTC().Format("2006-01-02"),
-	})
-}
-
-// stripeInvoiceObject is the invoice payload on invoice.paid. Newer Stripe API versions
-// nest the subscription under parent.subscription_details; older ones use subscription.
-type stripeInvoiceObject struct {
-	ID            string `json:"id"`
-	Object        string `json:"object"`
-	Subscription  string `json:"subscription"`
-	Paid          bool   `json:"paid"`
-	Status        string `json:"status"`
-	BillingReason string `json:"billing_reason"`
-	PeriodEnd     int64  `json:"period_end"`
-	Lines         struct {
-		Data []struct {
-			Type   string `json:"type"`
-			Period struct {
-				End int64 `json:"end"`
-			} `json:"period"`
-		} `json:"data"`
-	} `json:"lines"`
-	Parent struct {
-		Type                string `json:"type"`
-		SubscriptionDetails struct {
-			Subscription string `json:"subscription"`
-		} `json:"subscription_details"`
-	} `json:"parent"`
-}
-
-func (o stripeInvoiceObject) stripeSubscriptionID() string {
-	if id := strings.TrimSpace(o.Subscription); id != "" {
-		return id
-	}
-	return strings.TrimSpace(o.Parent.SubscriptionDetails.Subscription)
-}
-
-// paidTermEndUnix is the end of the newly paid term. On real Stripe invoices the
-// top-level period_end is the previous usage period; the new term is only in
-// lines.data[].period.end.
-func (o stripeInvoiceObject) paidTermEndUnix() int64 {
-	for _, line := range o.Lines.Data {
-		if line.Period.End > int64(0) {
-			return line.Period.End
+	edit := ListingEdit{SalesURL: b.SalesURL}
+	switch {
+	case b.Price != nil:
+		edit.Price = b.Price
+	case b.AmountCents != nil || b.Currency != nil || b.Interval != nil || b.Note != nil:
+		p := ListingPrice{}
+		if b.AmountCents != nil {
+			p.AmountCents = *b.AmountCents
 		}
+		if b.Currency != nil {
+			p.Currency = *b.Currency
+		}
+		if b.Interval != nil {
+			p.Interval = *b.Interval
+		}
+		if b.Note != nil {
+			p.Note = *b.Note
+		}
+		edit.Price = &p
 	}
-	return int64(0)
-}
-
-func (s *Server) apiCancelSub(w http.ResponseWriter, r *http.Request) {
-	var b struct {
-		InstallID string `json:"install_id"`
-		ModuleID  string `json:"module_id"`
-		Signature string `json:"signature"`
-	}
-	if err := decode(r, s.maxJSON, &b); err != nil {
-		writeErr(w, err)
-		return
-	}
-	sub, err := s.M.CancelSubscription(b.InstallID, b.ModuleID, b.Signature)
+	res, err := s.M.SetListingPrice(a, r.PathValue("listing_id"), edit)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": sub.Status, "cancel_at_period_end": sub.CancelAtPeriodEnd,
-		"paid_through": sub.PaidThrough.UTC().Format("2006-01-02"),
-		"install_id":   sub.InstallID, "module_id": sub.ListingID,
-	})
+	writeJSON(w, http.StatusOK, s.listingBody(res.Listing))
 }
 
-func (s *Server) apiRenewLicense(w http.ResponseWriter, r *http.Request) {
-	var b struct {
-		InstallID string `json:"install_id"`
-		ModuleID  string `json:"module_id"`
-		Signature string `json:"signature"`
-		Extend    *bool  `json:"extend"`
-	}
-	if err := decode(r, s.maxJSON, &b); err != nil {
-		writeErr(w, err)
-		return
-	}
-	if b.Extend != nil && *b.Extend {
-		writeErr(w, invalid("extend", "paid_through extends only after Stripe confirms invoice.paid; daily renew re-serves the current key"))
-		return
-	}
-	key, through, err := s.M.RenewLicense(b.InstallID, b.ModuleID, b.Signature)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"license_key": key, "paid_through": through.UTC().Format("2006-01-02"),
-	})
-}
-
-func (s *Server) apiLicensePublicKey(w http.ResponseWriter, _ *http.Request) {
-	pem := s.M.LicensePublicKeyPEM()
-	if pem == "" {
-		writeErr(w, errorsLicenseKey())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"public_key_pem": pem})
-}
-
-// --- Operator API ---
-
-// operator checks the operator's bearer token in constant time.
 func (s *Server) operator(r *http.Request) bool {
 	t := bearer(r)
 	if t == "" {
@@ -675,61 +464,6 @@ func (s *Server) apiPull(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, l)
 }
 
-func (s *Server) apiOperatorSettings(w http.ResponseWriter, r *http.Request) {
-	if !s.operator(r) {
-		writeErr(w, ErrUnauthorized)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"platform_fee_percent": s.M.PlatformFeePercent()})
-}
-
-func (s *Server) apiOperatorMailRetry(w http.ResponseWriter, r *http.Request) {
-	if !s.operator(r) {
-		writeErr(w, ErrUnauthorized)
-		return
-	}
-	err := s.M.RetryPendingMail()
-	pending, failed, sent := int(0), int(0), int(0)
-	for _, m := range s.M.Mails() {
-		switch m.Status {
-		case mailPending:
-			pending++
-		case mailFailed:
-			failed++
-		case mailSent:
-			sent++
-		}
-	}
-	body := map[string]any{
-		"pending": pending, "failed": failed, "sent": sent,
-	}
-	if err != nil {
-		body["error"] = err.Error()
-	}
-	writeJSON(w, http.StatusOK, body)
-}
-
-func (s *Server) apiOperatorSettingsPatch(w http.ResponseWriter, r *http.Request) {
-	if !s.operator(r) {
-		writeErr(w, ErrUnauthorized)
-		return
-	}
-	var b struct {
-		PlatformFeePercent *int `json:"platform_fee_percent"`
-	}
-	if err := decode(r, s.maxJSON, &b); err != nil {
-		writeErr(w, err)
-		return
-	}
-	if b.PlatformFeePercent != nil {
-		if err := s.M.SetPlatformFeePercent(*b.PlatformFeePercent); err != nil {
-			writeErr(w, err)
-			return
-		}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"platform_fee_percent": s.M.PlatformFeePercent()})
-}
-
 // --- Pages ---
 
 func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
@@ -754,9 +488,12 @@ func (s *Server) css(w http.ResponseWriter, _ *http.Request) {
 }
 
 type listingPage struct {
-	L       shared.Listing
-	Warning string
-	Notice  string
+	L          shared.Listing
+	Warning    string
+	Notice     string
+	Disclaimer string
+	SalesURL   string
+	PriceNote  string
 }
 
 func (s *Server) pageSearch(w http.ResponseWriter, r *http.Request) {
@@ -770,7 +507,15 @@ func (s *Server) pageListing(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusNotFound, "notfound.html", nil)
 		return
 	}
-	s.render(w, http.StatusOK, "listing.html", listingPage{L: l, Warning: l.FlagText(), Notice: shared.Notice})
+	sales, _ := s.M.ListingSalesURL(l.ID)
+	price := l.PriceNote
+	if price == "" {
+		price = "Free"
+	}
+	s.render(w, http.StatusOK, "listing.html", listingPage{
+		L: l, Warning: l.FlagText(), Notice: shared.Notice,
+		Disclaimer: ProviderDisclaimer(l.Author), SalesURL: sales, PriceNote: price,
+	})
 }
 
 const opCookie = "togavsu_marketplace_operator"
