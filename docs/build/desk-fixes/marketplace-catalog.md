@@ -74,15 +74,18 @@ paths do not overlap.
 4. **A marketplace beside Togavsu in Docker.** Add a `togavsu-marketplace` service to
    `compose.yaml` under the compose profile `marketplace`, so a normal install does not run
    it and `docker compose --profile marketplace up -d` does. Image built from
-   `marketplace/Dockerfile`; state in a named volume `marketdata`; listens on 8090 on the
-   internal network only, no published port.
+   `marketplace/Dockerfile`; state in a named volume `marketdata` mounted at the image's own
+   `/var/lib/togavsu-marketplace` (created there owned by 65532, the user the image runs
+   as); listens on 8090 on the internal network only, no published port.
    - The operator token: the existing bootstrap secrets step writes it once (at least 32
-     random bytes, never overwritten) to a new volume `marketsecrets`, which only the
-     bootstrap service and `togavsu-marketplace` mount. Never into `appsecrets` or any volume
+     random bytes, never overwritten) to `/marketsecrets/operator_token` on a new volume
+     `marketsecrets`, which only the bootstrap service and `togavsu-marketplace` mount. The
+     file is `root:65532` mode 0640 and the directory 0750, so the marketplace (uid 65532)
+     can read it and nothing else can, the same way bootstrap already handles appsecrets. Never into `appsecrets` or any volume
      the core, supervisor or caddy mount. Keep `scripts/ci/check-compose.py` passing, and
      add a check there that no service but those two mounts `marketsecrets`.
    - The config: a committed `deploy/marketplace/config.json` (`listen` 0.0.0.0:8090,
-     `data_dir` /data, `operator_token_file` /marketsecrets/operator_token,
+     `data_dir` /var/lib/togavsu-marketplace, `operator_token_file` /marketsecrets/operator_token,
      `secure_cookies` false) bind-mounted read-only at
      `/etc/togavsu-marketplace/config.json`, which `marketplace/cmd/marketplace` reads.
    - Document in `deploy/` and `marketplace/README.md`: start it, publish with
@@ -93,9 +96,15 @@ paths do not overlap.
    upload-body and price rows of `docs/modules/CONTRIBUTOR-GAPS.md` fixed.
 6. Tests: the upload with the kit's full file, with a wrong digest, with an unknown field;
    price fallback and override; `publish` end to end (new author, existing author, key
-   already verified, already listed, conflicting bytes); compose config validates with and
-   without the profile (`docker compose config` in the existing setup checks if they run
-   compose checks).
+   already verified, already listed, conflicting bytes). In `scripts/ci/test-bootstrap.sh`,
+   map `/marketsecrets` to a temp directory like the other secret paths, and check the token
+   is at least 32 bytes, is not overwritten on a second run, and has owner group 65532 and
+   modes 0640/0750. In `scripts/ci/check-compose.py`, check the marketplace service is only
+   under the `marketplace` profile, mounts `marketsecrets` read-only and `marketdata` at
+   `/var/lib/togavsu-marketplace`, and publishes no port, and that no other service mounts
+   `marketsecrets`. In `scripts/ci/test-compose-first-run.sh`, also start the stack with
+   `--profile marketplace` and require `GET /v1/listings` on the marketplace to answer 200
+   from inside the network (a startup check, so a permissions mistake fails CI).
 
 ## Done
 
