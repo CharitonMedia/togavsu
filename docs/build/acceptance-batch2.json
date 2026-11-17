@@ -65,7 +65,7 @@
   },
   {
     "id": "MKT-01",
-    "requirement": "A package with a structured price lists at that price; a package with the old string still lists."
+    "requirement": "A package with a structured price lists that price as the provider's information, with the \"Sold and licensed by\" line; a package with the old string still lists."
   },
   {
     "id": "MKT-02",
@@ -73,22 +73,22 @@
   },
   {
     "id": "MKT-03",
-    "requirement": "A firm subscribes through fake Stripe, gets a license key bound to its install id, and the module accepts it; a key for another install id is refused."
+    "requirement": "The author changes the listed price and sales link without a new package; the listing shows both at once, and nothing is charged, sent or changed on any install."
   },
   {
     "id": "MKT-04",
-    "requirement": "A price change emails subscribers and takes effect at the next renewal after the notice period."
+    "requirement": "A priced module installs from the local marketplace with no key and no payment step."
   },
   {
     "id": "MKT-05",
-    "requirement": "Cancel stops renewal and the key runs out on its date."
+    "requirement": "The marketplace has no checkout, subscription, renewal, refund, payment-service connection, platform fee or price-change notice: no route, setting, state record, email or dependency for any of them."
   },
   {
     "id": "MKT-06",
-    "requirement": "No card number or Stripe secret ever appears in marketplace state, logs or responses."
+    "requirement": "No payment detail, license key or provider secret appears in marketplace state, logs or responses."
   },
   {
     "id": "MKT-07",
-    "requirement": "No test reaches Stripe."
+    "requirement": "No marketplace test or code path reaches a payment service or any outside host; test helpers refuse any other host."
   }
 ]
