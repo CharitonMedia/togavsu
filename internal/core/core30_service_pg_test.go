@@ -105,3 +105,27 @@ func TestCORE30ServiceCallRefusedWithoutScope(t *testing.T) {
 		t.Fatalf("missing scope: %d %v", r.code, r.json)
 	}
 }
+
+// TestCORE30ServiceCallPerOpLimit: each CORE-30 op has its own modules.service_call_limit.*
+// setting (default 120); exceeding it answers rate_limited (CU2-01).
+func TestCORE30ServiceCallPerOpLimit(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	pkg := x.build(nil)
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("matter-clock")
+	x.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/modules.service_call_limit.listMatter", map[string]any{"value": 2})
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = x.rt.Last("matter-clock").Secrets["togavsu_api_token"]
+	bot.must(http.StatusOK, "GET", "/api/v1/matters", nil)
+	bot.must(http.StatusOK, "GET", "/api/v1/matters", nil)
+	r := bot.do("GET", "/api/v1/matters", nil)
+	if r.code != http.StatusTooManyRequests || r.json["code"] != "rate_limited" {
+		t.Fatalf("per-op limit: %d %v", r.code, r.json)
+	}
+	// A different operation still has its own budget.
+	mid, _ := x.matter("CORE30 Limit", "core30.limit@client.example", nil)
+	bot.must(http.StatusOK, "GET", "/api/v1/matters/"+mid, nil)
+}
