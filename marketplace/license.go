@@ -157,3 +157,8 @@ func CheckLicense(key string, pub ed25519.PublicKey, wantInstallID, wantModuleID
 func RenewProofMessage(installID, moduleID string) []byte {
 	return []byte(fmt.Sprintf("togavsu-license-renew-v1\ninstall_id=%s\nmodule=%s\n", installID, moduleID))
 }
+
+// CancelProofMessage is what an install signs to cancel its own subscription.
+func CancelProofMessage(installID, moduleID string) []byte {
+	return []byte(fmt.Sprintf("togavsu-license-cancel-v1\ninstall_id=%s\nmodule=%s\n", installID, moduleID))
+}

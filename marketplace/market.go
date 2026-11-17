@@ -56,10 +56,13 @@ type Market struct {
 	// tokenLife is how long an author session lasts.
 	tokenLife time.Duration
 	// Paid listings (CORE-CHANGES-2 §17).
-	stripe      *Stripe
-	licensePriv ed25519.PrivateKey
-	licensePub  ed25519.PublicKey
-	noticeDays  int
+	stripe        *Stripe
+	licensePriv   ed25519.PrivateKey
+	licensePub    ed25519.PublicKey
+	noticeDays    int
+	mailer        MailSender
+	webhookSecret string
+	allowTestKeys bool // tests may call EnsureLicenseKey; the service binary must not
 }
 
 // Open loads the state in dir.
@@ -73,9 +76,9 @@ func Open(dir string, tokenLife time.Duration, now func() time.Time) (*Market, e
 		return nil, err
 	}
 	m := &Market{st: st, store: fsStore, now: func() time.Time { return now().UTC() }, tokenLife: tokenLife, noticeDays: 30}
-	if err := m.EnsureLicenseKey(); err != nil {
-		return nil, err
-	}
+	// License signing keys are never random here: production loads a seed via
+	// ApplyConfig; tests call EnsureLicenseKey. Paid/license endpoints fail closed
+	// until a key is configured (§15.5 modules embed the public key).
 	return m, nil
 }
 

@@ -49,12 +49,17 @@ func signedFile(a author, p []byte) map[string]any {
 
 type paidEnv struct {
 	*env
-	fake *FakeStripe
+	fake   *FakeStripe
+	mailer *RecordingMailer
 }
 
 func newPaidEnv(t *testing.T) *paidEnv {
 	t.Helper()
 	e := newEnv(t)
+	e.m.AllowTestLicenseKeys()
+	if err := e.m.EnsureLicenseKey(); err != nil {
+		t.Fatal(err)
+	}
 	fake := StartFakeStripe()
 	t.Cleanup(fake.Close)
 	if err := RequireLocalStripeBase(fake.BaseURL); err != nil {
@@ -66,7 +71,10 @@ func newPaidEnv(t *testing.T) *paidEnv {
 	}
 	e.m.SetStripe(stripe)
 	e.m.SetNoticeDays(30)
-	return &paidEnv{env: e, fake: fake}
+	e.m.SetWebhookSecret("whsec_test_synthetic_webhook")
+	mailer := NewRecordingMailer(e.clock)
+	e.m.SetMailer(mailer)
+	return &paidEnv{env: e, fake: fake, mailer: mailer}
 }
 
 func (e *paidEnv) publishPaid(a author, id, version string, price any) {
@@ -102,11 +110,11 @@ func (e *paidEnv) subscribe(listingID, installID, adminEmail string, installPriv
 	}
 	r.json(e.t, &ck)
 	subID, _, _, stripeSub, err := e.fake.CompleteCheckout(ck.SessionID)
-	if err != nil || subID == "" {
-		e.t.Fatalf("complete fake: %v %q", err, subID)
+	if err != nil || subID == "" || stripeSub == "" {
+		e.t.Fatalf("complete fake: %v %q %q", err, subID, stripeSub)
 	}
 	r = e.do("POST", "/v1/stripe/checkout/complete", "", map[string]any{
-		"session_id": ck.SessionID, "stripe_subscription_id": stripeSub,
+		"session_id": ck.SessionID,
 	})
 	if r.code != http.StatusOK {
 		e.t.Fatalf("complete %d %s", r.code, r.body)
@@ -199,7 +207,7 @@ func TestMKT03SubscribeLicense(t *testing.T) {
 	}
 }
 
-// MKT-04: price change emails subscribers; takes effect after notice at next renewal.
+// MKT-04: price change emails subscribers; takes effect after notice at next Stripe-paid renewal.
 func TestMKT04PriceChangeNotice(t *testing.T) {
 	e := newPaidEnv(t)
 	a := e.author("Price Author", "price@example.test")
@@ -218,32 +226,64 @@ func TestMKT04PriceChangeNotice(t *testing.T) {
 	if len(mails) != 1 || mails[0].To != "admin@firm.test" || !strings.Contains(mails[0].Body, "75.00") {
 		t.Fatalf("notice mail: %+v", mails)
 	}
+	delivered := e.mailer.Delivered()
+	if len(delivered) != 1 || delivered[0].To != "admin@firm.test" || !strings.Contains(delivered[0].Body, "75.00") {
+		t.Fatalf("notice not delivered: %+v", delivered)
+	}
 	sub, _ := e.m.Subscription("install-1", "mo-estate-planning")
 	if sub.Price.AmountCents != 5000 || sub.PendingPrice == nil || sub.PendingPrice.Price.AmountCents != 7500 {
 		t.Fatalf("pending not set: %+v", sub)
 	}
-	// Before notice period ends, renewal extend keeps old price.
+	throughBefore := sub.PaidThrough
+	// Daily renew only re-serves the key; it must not extend paid_through or apply price.
 	sig := shared.Sign(installPriv, RenewProofMessage("install-1", "mo-estate-planning"))
-	key, through, err := e.m.RenewLicense("install-1", "mo-estate-planning", sig, true)
+	key, through, err := e.m.RenewLicense("install-1", "mo-estate-planning", sig)
 	if err != nil || key == "" {
 		t.Fatalf("renew before notice: %v", err)
+	}
+	if !through.Equal(throughBefore) {
+		t.Fatalf("daily renew extended paid_through: %v -> %v", throughBefore, through)
 	}
 	sub, _ = e.m.Subscription("install-1", "mo-estate-planning")
 	if sub.Price.AmountCents != 5000 {
 		t.Fatalf("price applied early: %+v", sub)
 	}
-	_ = through
-	// After notice period, next renewal applies the new price.
+	// Before notice ends, invoice.paid extends term but keeps the old price.
+	if _, err := e.m.ApplyInvoicePaid(sub.StripeSubscription); err != nil {
+		t.Fatalf("invoice before notice: %v", err)
+	}
+	sub, _ = e.m.Subscription("install-1", "mo-estate-planning")
+	if sub.Price.AmountCents != 5000 || sub.PendingPrice == nil {
+		t.Fatalf("price applied before notice via invoice: %+v", sub)
+	}
+	if !sub.PaidThrough.After(throughBefore) {
+		t.Fatalf("invoice did not extend paid_through: %v", sub.PaidThrough)
+	}
+	if e.fake.SubscriptionAmount(sub.StripeSubscription) != 5000 {
+		t.Fatalf("stripe amount changed early: %d", e.fake.SubscriptionAmount(sub.StripeSubscription))
+	}
+	// After notice period, next invoice.paid applies the new price and updates Stripe.
 	e.now = e.now.Add(31 * 24 * time.Hour)
-	key, _, err = e.m.RenewLicense("install-1", "mo-estate-planning", sig, true)
-	if err != nil || key == "" {
-		t.Fatalf("renew after notice: %v", err)
+	payload := InvoicePaidEvent(sub.StripeSubscription)
+	sigHeader := SignWebhook(payload, e.m.WebhookSecret(), e.m.now())
+	req, _ := http.NewRequest("POST", e.srv.URL+"/v1/stripe/webhook", bytes.NewReader(payload))
+	req.Header.Set("Stripe-Signature", sigHeader)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("webhook %d", res.StatusCode)
 	}
 	sub, _ = e.m.Subscription("install-1", "mo-estate-planning")
 	if sub.Price.AmountCents != 7500 || sub.PendingPrice != nil {
 		t.Fatalf("price not applied: %+v", sub)
 	}
-	// New checkout uses the listing's new price immediately (already on listing).
+	if e.fake.SubscriptionAmount(sub.StripeSubscription) != 7500 {
+		t.Fatalf("stripe amount not updated: %d", e.fake.SubscriptionAmount(sub.StripeSubscription))
+	}
 	p, _ := e.m.ListingPriceOf("mo-estate-planning")
 	if p.AmountCents != 7500 {
 		t.Fatalf("listing price %+v", p)
@@ -264,8 +304,9 @@ func TestMKT05Cancel(t *testing.T) {
 	if err := CheckLicense(key, pub, "install-c", "mo-estate-planning", e.m.now()); err != nil {
 		t.Fatal(err)
 	}
+	cancelSig := shared.Sign(installPriv, CancelProofMessage("install-c", "mo-estate-planning"))
 	r := e.do("POST", "/v1/subscriptions/cancel", "", map[string]any{
-		"install_id": "install-c", "module_id": "mo-estate-planning",
+		"install_id": "install-c", "module_id": "mo-estate-planning", "signature": cancelSig,
 	})
 	if r.code != http.StatusOK {
 		t.Fatalf("cancel %d %s", r.code, r.body)
@@ -278,13 +319,16 @@ func TestMKT05Cancel(t *testing.T) {
 		t.Fatal("stripe sub not cancel_at_period_end")
 	}
 	sig := shared.Sign(installPriv, RenewProofMessage("install-c", "mo-estate-planning"))
-	// Daily renew still works until paid-through; extend is refused by canceled status.
-	renewed, _, err := e.m.RenewLicense("install-c", "mo-estate-planning", sig, true)
+	// Daily renew still works until paid-through; invoice.paid after cancel does not extend.
+	renewed, _, err := e.m.RenewLicense("install-c", "mo-estate-planning", sig)
 	if err != nil {
 		t.Fatalf("renew while paid-through: %v", err)
 	}
 	if err := CheckLicense(renewed, pub, "install-c", "mo-estate-planning", e.m.now()); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := e.m.ApplyInvoicePaid(sub.StripeSubscription); err != nil {
+		t.Fatalf("invoice after cancel: %v", err)
 	}
 	sub2, _ := e.m.Subscription("install-c", "mo-estate-planning")
 	if !sub2.PaidThrough.Equal(sub.PaidThrough) {
@@ -292,7 +336,7 @@ func TestMKT05Cancel(t *testing.T) {
 	}
 	// After paid-through, renew and check fail.
 	e.now = sub.PaidThrough.Add(48 * time.Hour)
-	if _, _, err := e.m.RenewLicense("install-c", "mo-estate-planning", sig, false); err == nil {
+	if _, _, err := e.m.RenewLicense("install-c", "mo-estate-planning", sig); err == nil {
 		t.Fatal("renew after paid-through")
 	}
 	if err := CheckLicense(renewed, pub, "install-c", "mo-estate-planning", e.m.now()); err == nil {
@@ -304,19 +348,38 @@ func TestMKT05Cancel(t *testing.T) {
 func TestMKT06NoCardOrSecret(t *testing.T) {
 	e := newPaidEnv(t)
 	a := e.author("Secret Author", "secret@example.test")
-	e.connect(a)
+	connect := e.do("POST", "/v1/authors/me/stripe/connect", a.token, map[string]any{})
 	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
 		"amount_cents": 2000, "currency": "USD", "interval": "month",
 	})
 	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
-	key, _ := e.subscribe("mo-estate-planning", "install-s", "admin@s.test", installPriv)
+	pub := installPriv.Public().(ed25519.PublicKey)
+	checkout := e.do("POST", "/v1/listings/mo-estate-planning/checkout", "", map[string]any{
+		"install_id": "install-s", "admin_email": "admin@s.test",
+		"install_public_key_pem": shared.PublicKeyPEM(pub),
+	})
+	var ck struct {
+		SessionID string `json:"session_id"`
+	}
+	checkout.json(t, &ck)
+	_, _, _, _, _ = e.fake.CompleteCheckout(ck.SessionID)
+	complete := e.do("POST", "/v1/stripe/checkout/complete", "", map[string]any{"session_id": ck.SessionID})
+	var out struct {
+		LicenseKey string `json:"license_key"`
+	}
+	complete.json(t, &out)
+	key := out.LicenseKey
 	r := e.do("GET", "/v1/listings/mo-estate-planning", "", nil)
 	statePath := filepath.Join(e.dir, stateName)
 	stateBytes, err := os.ReadFile(statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	haystacks := []string{string(stateBytes), string(r.body), key, e.m.LicensePublicKeyPEM()}
+	logSample := truncateForLog(`error sk_test_abc123xyz card 4242424242424242`)
+	haystacks := []string{
+		string(stateBytes), string(r.body), key, e.m.LicensePublicKeyPEM(),
+		string(connect.body), string(checkout.body), string(complete.body), logSample,
+	}
 	for _, h := range haystacks {
 		for _, bad := range []string{"sk_test_", "sk_live_", "whsec_", "rk_test_", "4242424242424242", "4111111111111111"} {
 			if strings.Contains(h, bad) {
@@ -324,7 +387,6 @@ func TestMKT06NoCardOrSecret(t *testing.T) {
 			}
 		}
 	}
-	// Redaction helper strips card-shaped and secret-shaped text.
 	sample := redactSecrets(`card 4242-4242-4242-4242 and sk_test_abc123xyz and ok`)
 	if strings.Contains(sample, "4242-4242") || strings.Contains(sample, "sk_test_abc") {
 		t.Fatalf("redact failed: %q", sample)
@@ -402,5 +464,223 @@ func TestPlatformFeeDefaultZero(t *testing.T) {
 	r.json(t, &body)
 	if int(body["platform_fee_percent"].(float64)) != 0 {
 		t.Fatalf("%+v", body)
+	}
+}
+
+func TestUnpaidCheckoutRefused(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Unpaid Author", "unpaid@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	pub := installPriv.Public().(ed25519.PublicKey)
+	r := e.do("POST", "/v1/listings/mo-estate-planning/checkout", "", map[string]any{
+		"install_id": "install-u", "admin_email": "admin@u.test",
+		"install_public_key_pem": shared.PublicKeyPEM(pub),
+	})
+	if r.code != http.StatusCreated {
+		t.Fatalf("checkout %d %s", r.code, r.body)
+	}
+	var ck struct {
+		SessionID string `json:"session_id"`
+	}
+	r.json(t, &ck)
+	// Caller-supplied stripe_subscription_id is refused (unknown field) and unpaid session fails.
+	if r := e.do("POST", "/v1/stripe/checkout/complete", "", map[string]any{
+		"session_id": ck.SessionID, "stripe_subscription_id": "sub_forged",
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("forged stripe sub id: %d %s", r.code, r.body)
+	}
+	if r := e.do("POST", "/v1/stripe/checkout/complete", "", map[string]any{
+		"session_id": ck.SessionID,
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("unpaid complete: %d %s", r.code, r.body)
+	}
+}
+
+func TestClientExtendRefused(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Extend Author", "extend@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.subscribe("mo-estate-planning", "install-e", "admin@e.test", installPriv)
+	sub, _ := e.m.Subscription("install-e", "mo-estate-planning")
+	through := sub.PaidThrough
+	sig := shared.Sign(installPriv, RenewProofMessage("install-e", "mo-estate-planning"))
+	r := e.do("POST", "/v1/licenses/renew", "", map[string]any{
+		"install_id": "install-e", "module_id": "mo-estate-planning",
+		"signature": sig, "extend": true,
+	})
+	if r.code != http.StatusBadRequest {
+		t.Fatalf("extend true: %d %s", r.code, r.body)
+	}
+	r = e.do("POST", "/v1/licenses/renew", "", map[string]any{
+		"install_id": "install-e", "module_id": "mo-estate-planning", "signature": sig,
+	})
+	if r.code != http.StatusOK {
+		t.Fatalf("renew: %d %s", r.code, r.body)
+	}
+	sub, _ = e.m.Subscription("install-e", "mo-estate-planning")
+	if !sub.PaidThrough.Equal(through) {
+		t.Fatalf("paid_through moved without invoice: %v -> %v", through, sub.PaidThrough)
+	}
+}
+
+func TestForgedCancelRefused(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Forged Cancel", "fcancel@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.subscribe("mo-estate-planning", "install-f", "admin@f.test", installPriv)
+	_, otherPriv, _ := ed25519.GenerateKey(rand.Reader)
+	bad := shared.Sign(otherPriv, CancelProofMessage("install-f", "mo-estate-planning"))
+	if r := e.do("POST", "/v1/subscriptions/cancel", "", map[string]any{
+		"install_id": "install-f", "module_id": "mo-estate-planning", "signature": bad,
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("forged cancel: %d %s", r.code, r.body)
+	}
+	if r := e.do("POST", "/v1/subscriptions/cancel", "", map[string]any{
+		"install_id": "install-f", "module_id": "mo-estate-planning",
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("missing cancel signature: %d %s", r.code, r.body)
+	}
+	sub, _ := e.m.Subscription("install-f", "mo-estate-planning")
+	if sub.Status != subActive {
+		t.Fatalf("canceled without proof: %+v", sub)
+	}
+}
+
+func TestForgedRenewSignatureRefused(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Forged Renew", "frenew@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	e.subscribe("mo-estate-planning", "install-r", "admin@r.test", installPriv)
+	_, otherPriv, _ := ed25519.GenerateKey(rand.Reader)
+	bad := shared.Sign(otherPriv, RenewProofMessage("install-r", "mo-estate-planning"))
+	if r := e.do("POST", "/v1/licenses/renew", "", map[string]any{
+		"install_id": "install-r", "module_id": "mo-estate-planning", "signature": bad,
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("forged renew: %d %s", r.code, r.body)
+	}
+}
+
+func TestPulledAndFreeCheckoutRefused(t *testing.T) {
+	e := newPaidEnv(t)
+	a := e.author("Pull Author", "pullpaid@example.test")
+	e.connect(a)
+	e.publishPaid(a, "mo-estate-planning", "1.0.0", map[string]any{
+		"amount_cents": 1000, "currency": "USD", "interval": "month",
+	})
+	if _, err := e.m.Pull("mo-estate-planning", "security review"); err != nil {
+		t.Fatal(err)
+	}
+	_, installPriv, _ := ed25519.GenerateKey(rand.Reader)
+	pub := installPriv.Public().(ed25519.PublicKey)
+	if r := e.do("POST", "/v1/listings/mo-estate-planning/checkout", "", map[string]any{
+		"install_id": "install-p", "admin_email": "admin@p.test",
+		"install_public_key_pem": shared.PublicKeyPEM(pub),
+	}); r.code != http.StatusGone {
+		t.Fatalf("pulled checkout: %d %s", r.code, r.body)
+	}
+	b := e.author("Free Lister", "freelist@example.test")
+	e.publishPaid(b, "documents", "1.0.0", "Free")
+	if r := e.do("POST", "/v1/listings/documents/checkout", "", map[string]any{
+		"install_id": "install-free", "admin_email": "admin@free.test",
+		"install_public_key_pem": shared.PublicKeyPEM(pub),
+	}); r.code != http.StatusBadRequest {
+		t.Fatalf("free checkout: %d %s", r.code, r.body)
+	}
+}
+
+func TestMissingLicenseSeedFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	m, err := Open(dir, time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.HasLicenseKey() {
+		t.Fatal("Open must not mint a random license key")
+	}
+	if err := m.EnsureLicenseKey(); err == nil {
+		t.Fatal("EnsureLicenseKey without AllowTestLicenseKeys must fail")
+	}
+	fake := StartFakeStripe()
+	t.Cleanup(fake.Close)
+	stripe, err := NewStripe(fake.BaseURL, "sk_test_synthetic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Defaults()
+	cfg.StripeAPIBase = fake.BaseURL
+	cfg.LicenseSeedFile = ""
+	// SetStripe via ApplyConfig refuses stripe without a seed.
+	seedPath := filepath.Join(dir, "missing-seed-should-not-exist")
+	cfg.LicenseSeedFile = seedPath
+	if err := m.ApplyConfig(cfg); err == nil {
+		t.Fatal("ApplyConfig with missing seed file must fail")
+	}
+	cfg.LicenseSeedFile = ""
+	m.SetStripe(stripe) // direct attach still leaves license unset
+	if _, _, err := m.CompleteCheckout("cs_missing"); err == nil {
+		t.Fatal("CompleteCheckout without license key")
+	}
+	if pem := m.LicensePublicKeyPEM(); pem != "" {
+		t.Fatalf("public key without seed: %q", pem)
+	}
+	// Seed file restores a stable key.
+	seed := make([]byte, ed25519.SeedSize)
+	for i := range seed {
+		seed[i] = byte(i + 1)
+	}
+	seedFile := filepath.Join(dir, "license.seed")
+	if err := os.WriteFile(seedFile, seed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.LicenseSeedFile = seedFile
+	cfg.StripeAPIBase = ""
+	if err := m.ApplyConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !m.HasLicenseKey() {
+		t.Fatal("seed did not install license key")
+	}
+}
+
+func TestSMTPMailDelivery(t *testing.T) {
+	fake, err := StartFakeSMTP()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = fake.Close() })
+	mailer := SMTPMailer{Addr: fake.Addr, From: "marketplace@example.test"}
+	if err := mailer.Send("admin@firm.test", "Price change notice", "new price 75.00"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		fake.mu.Lock()
+		n := len(fake.Messages)
+		fake.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.Messages) == 0 || !strings.Contains(fake.Messages[0], "75.00") {
+		t.Fatalf("smtp messages: %+v", fake.Messages)
 	}
 }

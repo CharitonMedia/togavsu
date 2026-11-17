@@ -67,6 +67,7 @@ func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice)
 	now := m.now()
 	effective := now.Add(time.Duration(m.noticeDays) * 24 * time.Hour)
 	var out ListingRecord
+	var pendingMail []MailRecord
 	err := m.commit(func(st *State) error {
 		var l *ListingRecord
 		for i := range st.Listings {
@@ -98,21 +99,32 @@ func (m *Market) SetListingPrice(a Author, listingID string, price ListingPrice)
 			if err != nil {
 				return err
 			}
-			st.Mails = append(st.Mails, MailRecord{
-				ID: string(mailID), To: s.AdminEmail,
-				Subject: "Price change notice: " + listingID,
-				Body: "The price of " + listingID + " will change to " + price.Display() +
-					" for renewals on or after " + effective.UTC().Format("2006-01-02") +
-					". New subscriptions use the new price immediately.",
-				SentAt: now,
-			})
+			subject := "Price change notice: " + listingID
+			body := "The price of " + listingID + " will change to " + price.Display() +
+				" for renewals on or after " + effective.UTC().Format("2006-01-02") +
+				". New subscriptions use the new price immediately."
+			rec := MailRecord{ID: string(mailID), To: s.AdminEmail, Subject: subject, Body: body, SentAt: now}
+			st.Mails = append(st.Mails, rec)
+			pendingMail = append(pendingMail, rec)
 		}
 		return nil
 	})
 	if err != nil {
 		return shared.Listing{}, err
 	}
+	for _, msg := range pendingMail {
+		if err := m.sendMail(msg.To, msg.Subject, msg.Body); err != nil {
+			return shared.Listing{}, err
+		}
+	}
 	return m.view(out), nil
+}
+
+func (m *Market) sendMail(to, subject, body string) error {
+	if m.mailer == nil {
+		return nil
+	}
+	return m.mailer.Send(to, subject, body)
 }
 
 // StartCheckout begins Stripe Checkout for a firm subscription. The install id is named
@@ -200,11 +212,30 @@ func (m *Market) StartCheckout(listingID, installID, adminEmail, installPubPEM, 
 	return sess, string(subID), err
 }
 
-// CompleteCheckout activates the subscription after fake or real Stripe reports payment
-// and returns the license key once.
-func (m *Market) CompleteCheckout(sessionID, stripeSubID string) (licenseKey string, sub SubscriptionRecord, err error) {
+// CompleteCheckout activates the subscription only after Stripe reports the Checkout
+// Session as complete with payment_status paid. The Stripe subscription id is taken
+// from Stripe, never from the caller (§17.3).
+func (m *Market) CompleteCheckout(sessionID string) (licenseKey string, sub SubscriptionRecord, err error) {
+	if m.stripe == nil {
+		return "", SubscriptionRecord{}, invalid("stripe", "stripe is not configured")
+	}
 	if len(m.licensePriv) != ed25519.PrivateKeySize {
 		return "", SubscriptionRecord{}, errorsLicenseKey()
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "", SubscriptionRecord{}, invalid("session_id", "session_id is required")
+	}
+	detail, err := m.stripe.GetCheckoutSession(sessionID)
+	if err != nil {
+		return "", SubscriptionRecord{}, err
+	}
+	if detail.Status != "complete" || detail.PaymentStatus != "paid" {
+		return "", SubscriptionRecord{}, invalid("session", "checkout is not paid")
+	}
+	stripeSubID := strings.TrimSpace(detail.Subscription)
+	if stripeSubID == "" {
+		return "", SubscriptionRecord{}, invalid("session", "stripe subscription id missing from checkout session")
 	}
 	now := m.now()
 	err = m.commit(func(st *State) error {
@@ -216,6 +247,17 @@ func (m *Market) CompleteCheckout(sessionID, stripeSubID string) (licenseKey str
 		}
 		if s == nil {
 			return ErrNotFound
+		}
+		if meta := detail.Metadata; meta != nil {
+			if id := meta["install_id"]; id != "" && id != s.InstallID {
+				return invalid("session", "checkout install_id does not match the pending subscription")
+			}
+			if id := meta["module_id"]; id != "" && id != s.ListingID {
+				return invalid("session", "checkout module_id does not match the pending subscription")
+			}
+			if id := meta["subscription_id"]; id != "" && id != s.ID {
+				return invalid("session", "checkout subscription_id does not match the pending subscription")
+			}
 		}
 		if s.Status == subActive && s.LicenseShown {
 			sub = *s
@@ -250,8 +292,9 @@ func addInterval(from time.Time, interval string) time.Time {
 	}
 }
 
-// CancelSubscription stops renewal; the key runs to its paid-through date.
-func (m *Market) CancelSubscription(installID, moduleID string) (SubscriptionRecord, error) {
+// CancelSubscription stops renewal after the install proves possession of its key; the
+// license runs to its paid-through date. A forged or missing signature is refused.
+func (m *Market) CancelSubscription(installID, moduleID, signature string) (SubscriptionRecord, error) {
 	installID = strings.TrimSpace(installID)
 	moduleID = strings.TrimSpace(moduleID)
 	var out SubscriptionRecord
@@ -260,6 +303,13 @@ func (m *Market) CancelSubscription(installID, moduleID string) (SubscriptionRec
 		for i := range st.Subscriptions {
 			s := &st.Subscriptions[i]
 			if s.InstallID == installID && s.ListingID == moduleID && s.Status == subActive {
+				pub, err := shared.ParsePublicKeyPEM(s.InstallPublicKey)
+				if err != nil {
+					return invalid("install_public_key_pem", "the stored install key is unreadable")
+				}
+				if shared.VerifySignature(pub, CancelProofMessage(installID, moduleID), signature) != nil {
+					return invalid("signature", "the signature does not prove this install")
+				}
 				s.CancelAtPeriodEnd = true
 				s.Status = subCanceled
 				stripeSub = s.StripeSubscription
@@ -278,11 +328,10 @@ func (m *Market) CancelSubscription(installID, moduleID string) (SubscriptionRec
 	return out, nil
 }
 
-// RenewLicense returns the current key when the install proves possession of its key.
-// Canceled subscriptions still renew the key until paid_through. After that date the
-// call is refused. When a pending price change's notice has elapsed, the new price is
-// applied and paid_through is extended (simulating the next successful renewal charge).
-func (m *Market) RenewLicense(installID, moduleID, signature string, extend bool) (string, time.Time, error) {
+// RenewLicense re-serves the current key when the install proves possession of its key.
+// It never extends paid_through: that happens only on a Stripe-verified invoice.paid
+// event (ApplyInvoicePaid). Canceled subscriptions still fetch the key until paid_through.
+func (m *Market) RenewLicense(installID, moduleID, signature string) (string, time.Time, error) {
 	if len(m.licensePriv) != ed25519.PrivateKeySize {
 		return "", time.Time{}, errorsLicenseKey()
 	}
@@ -314,17 +363,6 @@ func (m *Market) RenewLicense(installID, moduleID, signature string, extend bool
 		if day.After(throughDay) {
 			return ErrLicenseInvalid
 		}
-		// Apply a pending price after the notice period when this renewal extends the term.
-		if extend && s.Status == subActive && !s.CancelAtPeriodEnd && s.PendingPrice != nil {
-			eff, err := time.Parse(time.RFC3339Nano, s.PendingPrice.EffectiveAt)
-			if err == nil && !now.Before(eff) {
-				s.Price = s.PendingPrice.Price
-				s.PendingPrice = nil
-			}
-		}
-		if extend && s.Status == subActive && !s.CancelAtPeriodEnd {
-			s.PaidThrough = addInterval(s.PaidThrough, s.Price.Interval)
-		}
 		k, err := IssueLicense(m.licensePriv, s.InstallID, s.ListingID, s.PaidThrough)
 		if err != nil {
 			return err
@@ -333,6 +371,57 @@ func (m *Market) RenewLicense(installID, moduleID, signature string, extend bool
 		return nil
 	})
 	return key, paidThrough, err
+}
+
+// ApplyInvoicePaid extends paid_through after Stripe reports a paid invoice for the
+// subscription. Pending price changes whose notice period has elapsed are applied and
+// the Stripe subscription amount is updated to match.
+func (m *Market) ApplyInvoicePaid(stripeSubID string) (SubscriptionRecord, error) {
+	stripeSubID = strings.TrimSpace(stripeSubID)
+	if stripeSubID == "" {
+		return SubscriptionRecord{}, invalid("subscription", "stripe subscription id is required")
+	}
+	now := m.now()
+	var out SubscriptionRecord
+	var priceUpdate *ListingPrice
+	err := m.commit(func(st *State) error {
+		var s *SubscriptionRecord
+		for i := range st.Subscriptions {
+			x := &st.Subscriptions[i]
+			if x.StripeSubscription == stripeSubID {
+				s = x
+			}
+		}
+		if s == nil {
+			return ErrNotFound
+		}
+		if s.Status != subActive || s.CancelAtPeriodEnd {
+			// Canceled / cancel-at-period-end: do not extend; key still runs to paid_through.
+			out = *s
+			return nil
+		}
+		if s.PendingPrice != nil {
+			eff, err := time.Parse(time.RFC3339Nano, s.PendingPrice.EffectiveAt)
+			if err == nil && !now.Before(eff) {
+				s.Price = s.PendingPrice.Price
+				s.PendingPrice = nil
+				p := s.Price
+				priceUpdate = &p
+			}
+		}
+		s.PaidThrough = addInterval(s.PaidThrough, s.Price.Interval)
+		out = *s
+		return nil
+	})
+	if err != nil {
+		return SubscriptionRecord{}, err
+	}
+	if priceUpdate != nil && m.stripe != nil {
+		if err := m.stripe.UpdateSubscriptionPrice(stripeSubID, priceUpdate.AmountCents, priceUpdate.Currency, priceUpdate.Interval); err != nil {
+			return out, err
+		}
+	}
+	return out, nil
 }
 
 // PlatformFeePercent returns the operator platform fee setting (default 0).
@@ -402,13 +491,16 @@ func (m *Market) LicensePublicKeyPEM() string {
 	return shared.PublicKeyPEM(m.licensePub)
 }
 
-// EnsureLicenseKey installs a random license keypair when none is configured (tests and
-// local runs). Production should load one from a seed file via SetLicenseSeed.
+// EnsureLicenseKey installs a random license keypair for tests only. The service binary
+// must load a stable seed via ApplyConfig / SetLicenseSeed; Open never generates keys.
 func (m *Market) EnsureLicenseKey() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.licensePriv) == ed25519.PrivateKeySize {
 		return nil
+	}
+	if !m.allowTestKeys {
+		return invalid("license_seed_file", "license signing key is not configured; set license_seed_file")
 	}
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -417,6 +509,20 @@ func (m *Market) EnsureLicenseKey() error {
 	m.licensePriv = priv
 	m.licensePub = priv.Public().(ed25519.PublicKey)
 	return nil
+}
+
+// AllowTestLicenseKeys permits EnsureLicenseKey to mint a random key (tests only).
+func (m *Market) AllowTestLicenseKeys() {
+	m.mu.Lock()
+	m.allowTestKeys = true
+	m.mu.Unlock()
+}
+
+// HasLicenseKey reports whether a license signing key is configured.
+func (m *Market) HasLicenseKey() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.licensePriv) == ed25519.PrivateKeySize
 }
 
 // SetLicenseSeed sets the license key from a 32-byte Ed25519 seed (raw or standard base64).
@@ -444,6 +550,23 @@ func bytesTrim(b []byte) []byte {
 // SetStripe attaches a Stripe client (fake in tests).
 func (m *Market) SetStripe(s *Stripe) { m.mu.Lock(); m.stripe = s; m.mu.Unlock() }
 
+// SetMailer attaches the outbound mail sender (SMTP in production, RecordingMailer in tests).
+func (m *Market) SetMailer(mailer MailSender) { m.mu.Lock(); m.mailer = mailer; m.mu.Unlock() }
+
+// SetWebhookSecret sets the Stripe webhook signing secret (memory only; never in state).
+func (m *Market) SetWebhookSecret(secret string) {
+	m.mu.Lock()
+	m.webhookSecret = strings.TrimSpace(secret)
+	m.mu.Unlock()
+}
+
+// WebhookSecret returns the in-memory Stripe webhook signing secret.
+func (m *Market) WebhookSecret() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.webhookSecret
+}
+
 // SetNoticeDays sets the price-change notice period in days (default 30).
 func (m *Market) SetNoticeDays(days int) {
 	if days <= 0 {
@@ -454,7 +577,8 @@ func (m *Market) SetNoticeDays(days int) {
 	m.mu.Unlock()
 }
 
-// ApplyConfig attaches paid-listing options from the service config.
+// ApplyConfig attaches paid-listing options from the service config. When Stripe is
+// configured, a license seed file is required so restarts keep the same public key.
 func (m *Market) ApplyConfig(cfg Config) error {
 	m.SetNoticeDays(cfg.PriceChangeNoticeDays)
 	if cfg.PlatformFeePercent != 0 {
@@ -462,8 +586,9 @@ func (m *Market) ApplyConfig(cfg Config) error {
 			return err
 		}
 	}
-	if path := strings.TrimSpace(cfg.LicenseSeedFile); path != "" {
-		b, err := os.ReadFile(path)
+	seedPath := strings.TrimSpace(cfg.LicenseSeedFile)
+	if seedPath != "" {
+		b, err := os.ReadFile(seedPath)
 		if err != nil {
 			return fmt.Errorf("marketplace: license seed: %w", err)
 		}
@@ -475,12 +600,28 @@ func (m *Market) ApplyConfig(cfg Config) error {
 	if err != nil {
 		return err
 	}
-	if base := strings.TrimSpace(cfg.StripeAPIBase); base != "" {
+	base := strings.TrimSpace(cfg.StripeAPIBase)
+	if base != "" {
+		if seedPath == "" && !m.HasLicenseKey() {
+			return fmt.Errorf("marketplace: license_seed_file is required when stripe_api_base is set")
+		}
 		s, err := NewStripe(base, secret)
 		if err != nil {
 			return err
 		}
 		m.SetStripe(s)
+	}
+	if wh, err := cfg.StripeWebhookSecret(); err != nil {
+		return err
+	} else if wh != "" {
+		m.SetWebhookSecret(wh)
+	}
+	if addr := strings.TrimSpace(cfg.SMTPAddr); addr != "" {
+		from := strings.TrimSpace(cfg.SMTPFrom)
+		if from == "" {
+			from = "marketplace@localhost"
+		}
+		m.SetMailer(SMTPMailer{Addr: addr, From: from})
 	}
 	return nil
 }

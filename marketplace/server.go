@@ -81,6 +81,7 @@ func (s *Server) Handler() http.Handler {
 	// Paid subscriptions and licenses (CORE-CHANGES-2 §17).
 	m.HandleFunc("POST /v1/listings/{listing_id}/checkout", s.apiCheckout)
 	m.HandleFunc("POST /v1/stripe/checkout/complete", s.apiCompleteCheckout)
+	m.HandleFunc("POST /v1/stripe/webhook", s.apiStripeWebhook)
 	m.HandleFunc("POST /v1/subscriptions/cancel", s.apiCancelSub)
 	m.HandleFunc("POST /v1/licenses/renew", s.apiRenewLicense)
 	m.HandleFunc("GET /v1/license-public-key", s.apiLicensePublicKey)
@@ -435,14 +436,13 @@ func (s *Server) apiCheckout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiCompleteCheckout(w http.ResponseWriter, r *http.Request) {
 	var b struct {
-		SessionID            string `json:"session_id"`
-		StripeSubscriptionID string `json:"stripe_subscription_id"`
+		SessionID string `json:"session_id"`
 	}
 	if err := decode(r, s.maxJSON, &b); err != nil {
 		writeErr(w, err)
 		return
 	}
-	key, sub, err := s.M.CompleteCheckout(b.SessionID, b.StripeSubscriptionID)
+	key, sub, err := s.M.CompleteCheckout(b.SessionID)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -456,16 +456,63 @@ func (s *Server) apiCompleteCheckout(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) apiStripeWebhook(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(nil, r.Body, s.maxJSON))
+	if err != nil {
+		writeErr(w, invalid("body", "the request body is too large or unreadable"))
+		return
+	}
+	secret := s.M.WebhookSecret()
+	if err := VerifyWebhookSignature(body, r.Header.Get("Stripe-Signature"), secret, s.now(), 5*time.Minute); err != nil {
+		writeErr(w, err)
+		return
+	}
+	var evt struct {
+		Type string `json:"type"`
+		Data struct {
+			Object struct {
+				Object       string `json:"object"`
+				Subscription string `json:"subscription"`
+				Paid         bool   `json:"paid"`
+				Status       string `json:"status"`
+			} `json:"object"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &evt); err != nil {
+		writeErr(w, invalid("body", "the body must be a Stripe event JSON object"))
+		return
+	}
+	if evt.Type != "invoice.paid" {
+		writeJSON(w, http.StatusOK, map[string]any{"received": true, "ignored": evt.Type})
+		return
+	}
+	subID := strings.TrimSpace(evt.Data.Object.Subscription)
+	if subID == "" {
+		writeErr(w, invalid("subscription", "invoice.paid event is missing subscription"))
+		return
+	}
+	sub, err := s.M.ApplyInvoicePaid(subID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"received": true, "install_id": sub.InstallID, "module_id": sub.ListingID,
+		"paid_through": sub.PaidThrough.UTC().Format("2006-01-02"),
+	})
+}
+
 func (s *Server) apiCancelSub(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		InstallID string `json:"install_id"`
 		ModuleID  string `json:"module_id"`
+		Signature string `json:"signature"`
 	}
 	if err := decode(r, s.maxJSON, &b); err != nil {
 		writeErr(w, err)
 		return
 	}
-	sub, err := s.M.CancelSubscription(b.InstallID, b.ModuleID)
+	sub, err := s.M.CancelSubscription(b.InstallID, b.ModuleID, b.Signature)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -482,13 +529,17 @@ func (s *Server) apiRenewLicense(w http.ResponseWriter, r *http.Request) {
 		InstallID string `json:"install_id"`
 		ModuleID  string `json:"module_id"`
 		Signature string `json:"signature"`
-		Extend    bool   `json:"extend"`
+		Extend    *bool  `json:"extend"`
 	}
 	if err := decode(r, s.maxJSON, &b); err != nil {
 		writeErr(w, err)
 		return
 	}
-	key, through, err := s.M.RenewLicense(b.InstallID, b.ModuleID, b.Signature, b.Extend)
+	if b.Extend != nil && *b.Extend {
+		writeErr(w, invalid("extend", "paid_through extends only after Stripe confirms invoice.paid; daily renew re-serves the current key"))
+		return
+	}
+	key, through, err := s.M.RenewLicense(b.InstallID, b.ModuleID, b.Signature)
 	if err != nil {
 		writeErr(w, err)
 		return

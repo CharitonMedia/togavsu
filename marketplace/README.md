@@ -48,6 +48,22 @@ install_id=<install id>
 module=<module id>
 ```
 
+That endpoint only re-serves the current key. `paid_through` moves forward only when Stripe sends a signed `invoice.paid` webhook (`POST /v1/stripe/webhook`). A client `extend` flag is refused.
+
+Cancel: `POST /v1/subscriptions/cancel` with the same fields plus `signature` of:
+
+```text
+togavsu-license-cancel-v1
+install_id=<install id>
+module=<module id>
+```
+
+Checkout completion (`POST /v1/stripe/checkout/complete`) confirms payment by fetching the Checkout Session from Stripe and requiring `status=complete` and `payment_status=paid`. The Stripe subscription id is taken from that session, never from the caller.
+
+The license signing seed (`license_seed_file`) is required whenever Stripe is configured. `Open` never mints a random key; without a seed, paid and license endpoints fail closed so modules that embed the marketplace public key keep verifying across restarts.
+
+Price-change notices are queued in state and delivered through `smtp_addr` (or a test `RecordingMailer`).
+
 ## API
 
 Read API (the core; no credentials):
@@ -77,10 +93,11 @@ Paid subscriptions (fake Stripe in every test; helpers refuse non-local Stripe h
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| POST | `/v1/listings/{id}/checkout` | `{install_id, admin_email, install_public_key_pem}` → Checkout session naming the install id. |
-| POST | `/v1/stripe/checkout/complete` | After payment: issues the license key once, bound to the install id and module. |
-| POST | `/v1/licenses/renew` | Daily key fetch; optional `extend` applies a due price change and extends paid-through when the sub is still renewing. |
-| POST | `/v1/subscriptions/cancel` | Stops renewal; the key runs to its paid-through date. |
+| POST | `/v1/listings/{id}/checkout` | `{install_id, admin_email, install_public_key_pem}` → Checkout session naming the install id. Paid listings only; pulled and free listings are refused. |
+| POST | `/v1/stripe/checkout/complete` | `{session_id}` only. Confirms with Stripe (`complete` + `paid`), then issues the license key once. |
+| POST | `/v1/stripe/webhook` | Signed Stripe events. `invoice.paid` extends `paid_through` and applies due price changes (updates Stripe amount). |
+| POST | `/v1/licenses/renew` | Daily key fetch with install signature. Never extends `paid_through`; `extend: true` is refused. |
+| POST | `/v1/subscriptions/cancel` | `{install_id, module_id, signature}` — install-signed cancel proof. Stops renewal; key runs to paid-through. |
 
 Operator (bearer operator token):
 

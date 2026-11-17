@@ -13,5 +13,8 @@
   "platform_fee_percent": 0,
   "stripe_api_base": "",
   "stripe_secret_file": "",
-  "license_seed_file": ""
+  "stripe_webhook_secret_file": "",
+  "license_seed_file": "",
+  "smtp_addr": "",
+  "smtp_from": "marketplace@localhost"
 }

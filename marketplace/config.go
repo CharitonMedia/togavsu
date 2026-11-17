@@ -32,8 +32,16 @@ type Config struct {
 	StripeAPIBase string `json:"stripe_api_base"`
 	// StripeSecretFile holds the Stripe secret key at runtime (Docker secret). Never logged or stored in state.
 	StripeSecretFile string `json:"stripe_secret_file"`
+	// StripeWebhookSecretFile holds the Stripe webhook signing secret (Docker secret). Never stored in state.
+	StripeWebhookSecretFile string `json:"stripe_webhook_secret_file"`
 	// LicenseSeedFile holds 32 raw or base64 bytes for the marketplace license Ed25519 seed.
+	// Required whenever stripe_api_base is set so paid modules keep a stable public key across restarts.
 	LicenseSeedFile string `json:"license_seed_file"`
+	// SMTPAddr is host:port for price-change notice delivery. Empty keeps notices queued in state only
+	// until a mailer is attached (tests use RecordingMailer).
+	SMTPAddr string `json:"smtp_addr"`
+	// SMTPFrom is the From address for notice mail.
+	SMTPFrom string `json:"smtp_from"`
 }
 
 //go:embed fixed.json
@@ -103,6 +111,18 @@ func (c Config) StripeSecret() (string, error) {
 	b, err := os.ReadFile(c.StripeSecretFile)
 	if err != nil {
 		return "", fmt.Errorf("marketplace: stripe secret: %w", err)
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+// StripeWebhookSecret reads the Stripe webhook signing secret from its file.
+func (c Config) StripeWebhookSecret() (string, error) {
+	if strings.TrimSpace(c.StripeWebhookSecretFile) == "" {
+		return "", nil
+	}
+	b, err := os.ReadFile(c.StripeWebhookSecretFile)
+	if err != nil {
+		return "", fmt.Errorf("marketplace: stripe webhook secret: %w", err)
 	}
 	return strings.TrimSpace(string(b)), nil
 }
