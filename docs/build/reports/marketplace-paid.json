@@ -1,7 +1,7 @@
 {
   "task_id": "marketplace-paid",
   "status": "pass",
-  "tested_revision": "308745d158fca5f86ee68b3aab98470982a93f17",
+  "tested_revision": "8e2a9c93b31d0ce3fed0927dd306a0fc9b0d2f9f",
   "tests": [
     {
       "name": "marketplace package",
