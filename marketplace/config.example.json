@@ -4,5 +4,10 @@
   "operator_token_file": "/run/secrets/marketplace_operator_token",
   "secure_cookies": true,
   "author_session_hours": 12,
-  "operator_session_minutes": 60
+  "operator_session_minutes": 60,
+  "price_change_notice_days": 30,
+  "platform_fee_percent": 0,
+  "stripe_api_base": "https://api.stripe.com",
+  "stripe_secret_file": "/run/secrets/marketplace_stripe_secret",
+  "license_seed_file": "/run/secrets/marketplace_license_seed"
 }

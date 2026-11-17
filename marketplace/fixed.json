@@ -8,5 +8,10 @@
   "operator_session_minutes": 60,
   "read_header_timeout_seconds": 10,
   "max_json_bytes": 65536,
-  "min_operator_token_bytes": 32
+  "min_operator_token_bytes": 32,
+  "price_change_notice_days": 30,
+  "platform_fee_percent": 0,
+  "stripe_api_base": "",
+  "stripe_secret_file": "",
+  "license_seed_file": ""
 }

@@ -76,9 +76,19 @@ func (s *Server) Handler() http.Handler {
 	m.HandleFunc("POST /v1/authors/me/keys", s.apiAddKey)
 	m.HandleFunc("POST /v1/authors/me/keys/{key_id}/verify", s.apiVerifyKey)
 	m.HandleFunc("POST /v1/authors/me/packages", s.apiUpload)
+	m.HandleFunc("POST /v1/authors/me/stripe/connect", s.apiStripeConnect)
+	m.HandleFunc("PATCH /v1/authors/me/listings/{listing_id}/price", s.apiSetPrice)
+	// Paid subscriptions and licenses (CORE-CHANGES-2 §17).
+	m.HandleFunc("POST /v1/listings/{listing_id}/checkout", s.apiCheckout)
+	m.HandleFunc("POST /v1/stripe/checkout/complete", s.apiCompleteCheckout)
+	m.HandleFunc("POST /v1/subscriptions/cancel", s.apiCancelSub)
+	m.HandleFunc("POST /v1/licenses/renew", s.apiRenewLicense)
+	m.HandleFunc("GET /v1/license-public-key", s.apiLicensePublicKey)
 	// Operator.
 	m.HandleFunc("POST /v1/operator/listings/{listing_id}/flag", s.apiFlag)
 	m.HandleFunc("POST /v1/operator/listings/{listing_id}/pull", s.apiPull)
+	m.HandleFunc("GET /v1/operator/settings", s.apiOperatorSettings)
+	m.HandleFunc("PATCH /v1/operator/settings", s.apiOperatorSettingsPatch)
 	// Pages.
 	m.HandleFunc("GET /{$}", s.pageSearch)
 	m.HandleFunc("GET /listings/{listing_id}", s.pageListing)
@@ -132,6 +142,8 @@ func writeErr(w http.ResponseWriter, err error) {
 		problem(w, http.StatusForbidden, "forbidden", "another author publishes this module id")
 	case errors.Is(err, ErrConflict):
 		problem(w, http.StatusConflict, "conflict", "already exists; listed versions never change")
+	case errors.Is(err, ErrLicenseInvalid):
+		problem(w, http.StatusForbidden, "license_invalid", "the license is invalid or expired for this install")
 	default:
 		problem(w, http.StatusInternalServerError, "internal", "internal error")
 	}
@@ -161,7 +173,12 @@ func bearer(r *http.Request) string {
 // --- Read API ---
 
 func (s *Server) apiSearch(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"data": s.M.Search(r.URL.Query().Get("q"))})
+	list := s.M.Search(r.URL.Query().Get("q"))
+	out := make([]map[string]any, 0, len(list))
+	for _, l := range list {
+		out = append(out, s.listingBody(l))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": out})
 }
 
 func (s *Server) apiListing(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +187,26 @@ func (s *Server) apiListing(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, l)
+	writeJSON(w, http.StatusOK, s.listingBody(l))
+}
+
+func (s *Server) listingBody(l shared.Listing) map[string]any {
+	body := map[string]any{
+		"id": l.ID, "module_id": l.ModuleID, "name": l.Name, "author": l.Author,
+		"signing_key": l.SigningKey, "signing_key_pem": l.SigningKeyPEM, "version": l.Version,
+		"permissions": l.Permissions, "version_history": l.VersionHistory, "price_note": l.PriceNote,
+		"flagged": l.Flagged, "pulled": l.Pulled, "notice": l.Notice,
+	}
+	if l.FlagNote != "" {
+		body["flag_note"] = l.FlagNote
+	}
+	if l.ListingFlagged {
+		body["listing_flagged"] = true
+	}
+	if p, err := s.M.ListingPriceOf(l.ID); err == nil && !p.empty() {
+		body["price"] = p
+	}
+	return body
 }
 
 func (s *Server) apiPackage(w http.ResponseWriter, r *http.Request) {
@@ -307,11 +343,19 @@ func (s *Server) apiUpload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Accept the kit's signed package file unchanged (listing_id, version, immutable,
+	// manifest, digest, signature, key_id, package_base64). The older three-field body
+	// and optional price_note still work for existing callers.
 	var b struct {
-		PackageBase64 string  `json:"package_base64"`
-		Signature     string  `json:"signature"`
-		KeyID         string  `json:"key_id"`
-		PriceNote     *string `json:"price_note"`
+		PackageBase64 string         `json:"package_base64"`
+		Signature     string         `json:"signature"`
+		KeyID         string         `json:"key_id"`
+		Digest        string         `json:"digest"`
+		ListingID     string         `json:"listing_id"`
+		Version       string         `json:"version"`
+		Immutable     *bool          `json:"immutable"`
+		Manifest      map[string]any `json:"manifest"`
+		PriceNote     *string        `json:"price_note"`
 	}
 	if err := decode(r, shared.MaxPackageBytes()/3*4+s.maxJSON, &b); err != nil {
 		writeErr(w, err)
@@ -322,12 +366,145 @@ func (s *Server) apiUpload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, invalid("package_base64", "the package must be standard base64"))
 		return
 	}
-	l, err := s.M.Publish(a, Upload{Package: pkg, Signature: b.Signature, KeyID: b.KeyID, PriceNote: b.PriceNote})
+	l, err := s.M.Publish(a, Upload{Package: pkg, Signature: b.Signature, KeyID: b.KeyID, Digest: b.Digest, PriceNote: b.PriceNote})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, l)
+	writeJSON(w, http.StatusCreated, s.listingBody(l))
+}
+
+func (s *Server) apiStripeConnect(w http.ResponseWriter, r *http.Request) {
+	a, ok := s.author(w, r)
+	if !ok {
+		return
+	}
+	id, err := s.M.ConnectStripe(a)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"stripe_account_id": id})
+}
+
+func (s *Server) apiSetPrice(w http.ResponseWriter, r *http.Request) {
+	a, ok := s.author(w, r)
+	if !ok {
+		return
+	}
+	var b ListingPrice
+	if err := decode(r, s.maxJSON, &b); err != nil {
+		writeErr(w, err)
+		return
+	}
+	l, err := s.M.SetListingPrice(a, r.PathValue("listing_id"), b)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.listingBody(l))
+}
+
+func (s *Server) apiCheckout(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		InstallID           string `json:"install_id"`
+		AdminEmail          string `json:"admin_email"`
+		InstallPublicKeyPEM string `json:"install_public_key_pem"`
+		SuccessURL          string `json:"success_url"`
+		CancelURL           string `json:"cancel_url"`
+	}
+	if err := decode(r, s.maxJSON, &b); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if b.SuccessURL == "" {
+		b.SuccessURL = "https://example.test/success"
+	}
+	if b.CancelURL == "" {
+		b.CancelURL = "https://example.test/cancel"
+	}
+	sess, subID, err := s.M.StartCheckout(r.PathValue("listing_id"), b.InstallID, b.AdminEmail, b.InstallPublicKeyPEM, b.SuccessURL, b.CancelURL)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"checkout_url": sess.URL, "session_id": sess.ID, "subscription_id": subID,
+	})
+}
+
+func (s *Server) apiCompleteCheckout(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		SessionID            string `json:"session_id"`
+		StripeSubscriptionID string `json:"stripe_subscription_id"`
+	}
+	if err := decode(r, s.maxJSON, &b); err != nil {
+		writeErr(w, err)
+		return
+	}
+	key, sub, err := s.M.CompleteCheckout(b.SessionID, b.StripeSubscriptionID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"license_key":     key,
+		"install_id":      sub.InstallID,
+		"module_id":       sub.ListingID,
+		"paid_through":    sub.PaidThrough.UTC().Format("2006-01-02"),
+		"subscription_id": sub.ID,
+	})
+}
+
+func (s *Server) apiCancelSub(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		InstallID string `json:"install_id"`
+		ModuleID  string `json:"module_id"`
+	}
+	if err := decode(r, s.maxJSON, &b); err != nil {
+		writeErr(w, err)
+		return
+	}
+	sub, err := s.M.CancelSubscription(b.InstallID, b.ModuleID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": sub.Status, "cancel_at_period_end": sub.CancelAtPeriodEnd,
+		"paid_through": sub.PaidThrough.UTC().Format("2006-01-02"),
+		"install_id":   sub.InstallID, "module_id": sub.ListingID,
+	})
+}
+
+func (s *Server) apiRenewLicense(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		InstallID string `json:"install_id"`
+		ModuleID  string `json:"module_id"`
+		Signature string `json:"signature"`
+		Extend    bool   `json:"extend"`
+	}
+	if err := decode(r, s.maxJSON, &b); err != nil {
+		writeErr(w, err)
+		return
+	}
+	key, through, err := s.M.RenewLicense(b.InstallID, b.ModuleID, b.Signature, b.Extend)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"license_key": key, "paid_through": through.UTC().Format("2006-01-02"),
+	})
+}
+
+func (s *Server) apiLicensePublicKey(w http.ResponseWriter, _ *http.Request) {
+	pem := s.M.LicensePublicKeyPEM()
+	if pem == "" {
+		writeErr(w, errorsLicenseKey())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"public_key_pem": pem})
 }
 
 // --- Operator API ---
@@ -383,6 +560,35 @@ func (s *Server) apiPull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, l)
+}
+
+func (s *Server) apiOperatorSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.operator(r) {
+		writeErr(w, ErrUnauthorized)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"platform_fee_percent": s.M.PlatformFeePercent()})
+}
+
+func (s *Server) apiOperatorSettingsPatch(w http.ResponseWriter, r *http.Request) {
+	if !s.operator(r) {
+		writeErr(w, ErrUnauthorized)
+		return
+	}
+	var b struct {
+		PlatformFeePercent *int `json:"platform_fee_percent"`
+	}
+	if err := decode(r, s.maxJSON, &b); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if b.PlatformFeePercent != nil {
+		if err := s.M.SetPlatformFeePercent(*b.PlatformFeePercent); err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"platform_fee_percent": s.M.PlatformFeePercent()})
 }
 
 // --- Pages ---

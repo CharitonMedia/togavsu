@@ -24,6 +24,16 @@ type Config struct {
 	ReadHeaderTimeoutSeconds int    `json:"read_header_timeout_seconds"`
 	MaxJSONBytes             int64  `json:"max_json_bytes"`
 	MinOperatorTokenBytes    int    `json:"min_operator_token_bytes"`
+	// PriceChangeNoticeDays is how long before a price change hits existing subscriptions (default 30).
+	PriceChangeNoticeDays int `json:"price_change_notice_days"`
+	// PlatformFeePercent is the default Connect application fee when state has none (default 0).
+	PlatformFeePercent int `json:"platform_fee_percent"`
+	// StripeAPIBase is the Stripe API origin. Tests use a local fake; production uses https://api.stripe.com.
+	StripeAPIBase string `json:"stripe_api_base"`
+	// StripeSecretFile holds the Stripe secret key at runtime (Docker secret). Never logged or stored in state.
+	StripeSecretFile string `json:"stripe_secret_file"`
+	// LicenseSeedFile holds 32 raw or base64 bytes for the marketplace license Ed25519 seed.
+	LicenseSeedFile string `json:"license_seed_file"`
 }
 
 //go:embed fixed.json
@@ -84,3 +94,15 @@ func (c Config) OperatorSession() time.Duration { return dur("m", c.OperatorSess
 
 // ReadHeaderTimeout bounds a slow client.
 func (c Config) ReadHeaderTimeout() time.Duration { return dur("s", c.ReadHeaderTimeoutSeconds) }
+
+// StripeSecret reads the Stripe secret key from its file. Empty path means unset.
+func (c Config) StripeSecret() (string, error) {
+	if strings.TrimSpace(c.StripeSecretFile) == "" {
+		return "", nil
+	}
+	b, err := os.ReadFile(c.StripeSecretFile)
+	if err != nil {
+		return "", fmt.Errorf("marketplace: stripe secret: %w", err)
+	}
+	return strings.TrimSpace(string(b)), nil
+}
