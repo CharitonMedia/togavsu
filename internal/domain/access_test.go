@@ -55,6 +55,8 @@ func TestDecide(t *testing.T) {
 		{"client other matter", principal(RoleClient), AccessInput{Resource: ResMatter, Action: ActionRead, MatterID: matter, SharedWithClient: true}, Decision{Reason: ReasonClientScope}},
 		{"client write", principal(RoleClient), AccessInput{Resource: ResNote, Action: ActionWrite, MatterID: matter, ClientMatter: true, SharedWithClient: true}, Decision{Reason: ReasonRole}},
 		{"client trust", principal(RoleClient), AccessInput{Resource: ResTrust, Action: ActionRead, MatterID: matter, ClientMatter: true}, Decision{Allow: true}},
+		{"client trust deposit", principal(RoleClient), AccessInput{Resource: ResTrust, Action: ActionTrustDeposit, MatterID: matter, ClientMatter: true}, Decision{Reason: ReasonRole}},
+		{"client trust write", principal(RoleClient), AccessInput{Resource: ResTrust, Action: ActionWrite, MatterID: matter, ClientMatter: true}, Decision{Reason: ReasonRole}},
 		{"client trust other matter", principal(RoleClient), AccessInput{Resource: ResTrust, Action: ActionRead, MatterID: matter}, Decision{Reason: ReasonClientScope}},
 		{"attorney settings write", principal(RoleAttorney), AccessInput{Resource: ResSettings, Action: ActionWrite}, Decision{Reason: ReasonRole}},
 		{"staff approve", principal(RoleStaff), AccessInput{Resource: ResInvoice, Action: ActionApproveInvoice}, Decision{Reason: ReasonRole}},

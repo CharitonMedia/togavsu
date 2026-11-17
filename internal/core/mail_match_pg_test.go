@@ -85,6 +85,23 @@ func TestPGMailMatchAndFilingGrant(t *testing.T) {
 	if nobody == nil || len(nobody) != 0 {
 		t.Fatalf("empty address must return []: %s", match.body)
 	}
+	// Secondary (non-primary) current email also indexes under contacts_by_address.
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/contact-emails", map[string]any{
+		"contact_id": openClient, "label": "work", "email": "party.open.work@client.example", "primary": false,
+	})
+	sec := bot.do("POST", "/api/v1/mail/matches", map[string]any{
+		"addresses": []string{"party.open.work@client.example", "PARTY.OPEN.WORK@CLIENT.EXAMPLE"},
+	})
+	if sec.code != http.StatusOK {
+		t.Fatalf("secondary match: %d %s", sec.code, sec.body)
+	}
+	secCBA, _ := sec.json["contacts_by_address"].(map[string]any)
+	for _, addr := range []string{"party.open.work@client.example", "PARTY.OPEN.WORK@CLIENT.EXAMPLE"} {
+		hits, _ := secCBA[addr].([]any)
+		if len(hits) != 1 || hits[0].(map[string]any)["id"] != openClient {
+			t.Fatalf("secondary contacts_by_address %s: %s", addr, sec.body)
+		}
+	}
 	matters, _ := match.json["matters"].([]any)
 	ids := map[string]string{}
 	for _, row := range matters {

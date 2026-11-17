@@ -87,6 +87,31 @@ var (
 	badgeCache = map[badgeCacheKey]badgeCacheEntry{}
 )
 
+// pruneBadgeCache drops expired badge entries under badgeMu (CORE-08).
+func pruneBadgeCache(now time.Time) {
+	for k, e := range badgeCache {
+		if !now.Before(e.until) {
+			delete(badgeCache, k)
+		}
+	}
+}
+
+// ClearBadgeCacheForTest empties the package badge cache (tests only).
+func ClearBadgeCacheForTest() {
+	badgeMu.Lock()
+	badgeCache = map[badgeCacheKey]badgeCacheEntry{}
+	badgeMu.Unlock()
+}
+
+// BadgeCountForTest runs the CORE-08 badge counter for module entryID as p (tests only).
+func (s *Service) BadgeCountForTest(ctx context.Context, p domain.Principal, module, entryID string, m Manifest) (int, bool, error) {
+	fn := s.badgeCounter(module, m)
+	if fn == nil {
+		return 0, false, nil
+	}
+	return fn(ctx, p, entryID)
+}
+
 // badgeCounter returns the AddModuleNav count hook for module: each entry with a badge
 // path is fetched as the viewer with a 500 ms limit and cached 30 seconds (CORE-08).
 func (s *Service) badgeCounter(module string, m Manifest) func(ctx context.Context, p domain.Principal, entryID string) (int, bool, error) {
@@ -107,6 +132,7 @@ func (s *Service) badgeCounter(module string, m Manifest) func(ctx context.Conte
 		key := badgeCacheKey{module: module, entry: entryID, user: string(p.UserID)}
 		now := s.now()
 		badgeMu.Lock()
+		pruneBadgeCache(now)
 		if e, ok := badgeCache[key]; ok && now.Before(e.until) {
 			badgeMu.Unlock()
 			return e.count, e.ok, nil
@@ -114,6 +140,7 @@ func (s *Service) badgeCounter(module string, m Manifest) func(ctx context.Conte
 		badgeMu.Unlock()
 		n, ok := s.fetchBadge(ctx, p, module, path)
 		badgeMu.Lock()
+		pruneBadgeCache(now)
 		badgeCache[key] = badgeCacheEntry{count: n, ok: ok, until: now.Add(30 * time.Second)}
 		badgeMu.Unlock()
 		return n, ok, nil

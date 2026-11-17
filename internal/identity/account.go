@@ -518,6 +518,21 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, next string) 
 	})
 }
 
+// TOTPConfirmed reports whether the user has a confirmed authenticator secret.
+func (s *Service) TOTPConfirmed(ctx context.Context, userID domain.ID) (bool, error) {
+	if userID.IsZero() {
+		return false, nil
+	}
+	row, err := s.totp.GetByUser(ctx, userID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return row.Confirmed, nil
+}
+
 // ResetTOTP starts a replacement secret. The current secret stays active.
 func (s *Service) ResetTOTP(ctx context.Context, caller Caller, factor Factor) (Enrollment, error) {
 	if err := caller.RequireScopes("profile:write"); err != nil {

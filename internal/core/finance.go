@@ -68,7 +68,7 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 	if err := trust.InstallPrivileges(ctx, pool); err != nil {
 		return nil, fmt.Errorf("core: trust privileges: %w", err)
 	}
-	events := &billing.TrustEvents{}
+	events := &billing.TrustEvents{Next: trustCoreEvents{pool: pool, now: now}}
 	tr, err := trust.New(trust.Deps{
 		DB: pool, Audit: aud, Settings: reg, Practice: store, Users: users, Walls: walls,
 		Events: events, BalanceSink: store.PutTrust, Now: now,
@@ -127,6 +127,44 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 	bh.Scopes = scopes
 	f.billH = bh.Routes()
 	return f, nil
+}
+
+// trustCoreEvents writes committed trust events into core.events so modules and the
+// timeline see trust.replenishment_satisfied and the other trust.Event names (CORE-23).
+type trustCoreEvents struct {
+	pool *sql.DB
+	now  func() time.Time
+}
+
+func (p trustCoreEvents) Publish(ctx context.Context, events []trust.Event) error {
+	if p.pool == nil || len(events) == 0 {
+		return nil
+	}
+	now := time.Now().UTC()
+	if p.now != nil {
+		now = p.now().UTC()
+	}
+	for _, e := range events {
+		id, err := domain.NewID()
+		if err != nil {
+			return err
+		}
+		recType := "trust"
+		switch e.Name {
+		case "trust.replenishment_satisfied", "trust.replenishment_requested", "trust.replenishment_cancelled":
+			recType = "trust_replenishment"
+		case "trust.entry_posted", "trust.entry_reversed":
+			recType = "trust_entry"
+		}
+		if err := db.PublishEvent(ctx, audit.Conn(ctx, p.pool), domain.Event{
+			Meta:      domain.Meta{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: domain.SystemUserID},
+			ActorKind: "system", ActorID: domain.SystemUserID, Action: e.Name,
+			RecordType: recType, RecordID: e.RecordID, MatterID: e.MatterID, Summary: e.Name,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // deliverTrustMail sends the trust outbox (below-zero flag mail and replenishment

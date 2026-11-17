@@ -134,16 +134,21 @@ func (s *Service) MatchMail(ctx context.Context, p domain.Principal, in MailMatc
 		if c.Archived {
 			continue
 		}
-		email := ""
-		if e := currentPrimaryEmailRow(s.db.Emails(c.ID), today); e != nil {
-			email = strings.ToLower(strings.TrimSpace(e.Email))
-		}
-		if email == "" {
-			continue
-		}
-		addrIndex[email] = append(addrIndex[email], MailMatchContact{
+		hit := MailMatchContact{
 			ID: c.ID, GivenName: c.GivenName, FamilyName: c.FamilyName, FullName: c.FullName, Kind: c.Kind,
-		})
+		}
+		seenAddr := map[string]bool{}
+		for _, e := range s.db.Emails(c.ID) {
+			if e.Email == "" || !effectiveOn(e.EffectiveFrom, e.EffectiveTo, today) {
+				continue
+			}
+			email := strings.ToLower(strings.TrimSpace(e.Email))
+			if email == "" || seenAddr[email] {
+				continue
+			}
+			seenAddr[email] = true
+			addrIndex[email] = append(addrIndex[email], hit)
+		}
 	}
 	for _, addr := range addresses {
 		rows := addrIndex[strings.ToLower(addr)]

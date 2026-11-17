@@ -243,11 +243,6 @@ func roleAllowsOne(role Role, in AccessInput) bool {
 			return false
 		}
 	case RoleClient:
-		// CORE-23: a client-authorized processor grant posts the trust deposit and may
-		// satisfy a replenishment under ActionTrustDeposit on the client's own matter.
-		if in.Action == ActionTrustDeposit && in.Resource == ResTrust && in.ClientMatter {
-			return true
-		}
 		if in.Action != ActionRead || !in.ClientMatter {
 			return false
 		}

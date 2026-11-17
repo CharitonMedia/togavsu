@@ -121,10 +121,14 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, err
 	}
+	// Shared with the core (mode 0777) so a non-root core can Take/PutAll the outbox.
+	if err := os.MkdirAll(cfg.MailOutboxDir, 0o777); err != nil {
+		return nil, err
+	}
 	ledger := supervisor.OpenLedger(filepath.Join(cfg.DataDir, "ledger.jsonl"))
 	journal := supervisor.OpenJournal(filepath.Join(cfg.DataDir, "restore-journal.jsonl"))
 	updateJournal := supervisor.OpenUpdateJournal(filepath.Join(cfg.DataDir, "update-journal.jsonl"))
-	outbox := supervisor.OpenOutbox(filepath.Join(cfg.DataDir, "mail-outbox.jsonl"))
+	outbox := supervisor.OpenOutbox(filepath.Join(cfg.MailOutboxDir, supervisor.MailOutboxFile))
 	coreFiles := supervisor.CoreFiles{Upstream: supervisor.UpstreamFrom(cfg.UpstreamFile), Token: cfg.Token}
 	store := &supervisor.Store{
 		Dir:            cfg.BackupDir,
@@ -142,7 +146,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Network: cfg.DockerNetwork,
 		Env:     supervisor.CoreEnv(),
 		Volumes: supervisor.CoreVolumes{AppSecrets: cfg.AppSecretsVolume, AdminSecrets: cfg.AdminSecretsVolume,
-			BackupKey: cfg.BackupKeyVolume, Data: cfg.CoreDataVolume},
+			BackupKey: cfg.BackupKeyVolume, Data: cfg.CoreDataVolume, MailOutbox: cfg.MailOutboxVolume},
 	}
 	sched, err := cfg.Schedule()
 	if err != nil {

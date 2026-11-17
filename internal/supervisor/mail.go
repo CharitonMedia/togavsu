@@ -57,7 +57,8 @@ func (o *Outbox) Notify(_ context.Context, subject, body string) error {
 		return err
 	}
 	line = append(line, '\n')
-	f, err := os.OpenFile(o.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	// 0666 so the core user on the shared mail-outbox volume can Take/rename the file.
+	f, err := os.OpenFile(o.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o666)
 	if err != nil {
 		return err
 	}
@@ -108,7 +109,7 @@ func (o *Outbox) PutAll(notices []Notice) error {
 	if o == nil || o.path == "" || len(notices) == 0 {
 		return nil
 	}
-	f, err := os.OpenFile(o.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(o.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o666)
 	if err != nil {
 		return err
 	}

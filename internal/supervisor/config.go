@@ -23,6 +23,7 @@ type Config struct {
 	FieldKey           []byte
 	Listen             string
 	DataDir            string
+	MailOutboxDir      string
 	BackupDir          string
 	Passphrase         string
 	PassphraseFile     string
@@ -37,6 +38,7 @@ type Config struct {
 	AdminSecretsVolume string
 	BackupKeyVolume    string
 	CoreDataVolume     string
+	MailOutboxVolume   string
 	FirmTimezone       string
 	ReleaseIndexURL    string
 	CosignBin          string
@@ -63,6 +65,7 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 	cfg := Config{
 		Listen:             envDefault(getenv, "SUPERVISOR_LISTEN", ":8081"),
 		DataDir:            envDefault(getenv, "SUPERVISOR_DATA", "/var/lib/togavsu"),
+		MailOutboxDir:      envDefault(getenv, "SUPERVISOR_MAIL_OUTBOX", MailOutboxDir),
 		CaddyAdminSocket:   envDefault(getenv, "CADDY_ADMIN_SOCKET", "/run/caddy-admin/admin.sock"),
 		DockerSocket:       envDefault(getenv, "DOCKER_SOCKET", "/var/run/docker.sock"),
 		DockerNetwork:      envDefault(getenv, "TOGAVSU_DOCKER_NETWORK", "togavsu_default"),
@@ -70,6 +73,7 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 		AdminSecretsVolume: envDefault(getenv, "TOGAVSU_ADMINSECRETS_VOLUME", "togavsu_adminsecrets"),
 		BackupKeyVolume:    envDefault(getenv, "TOGAVSU_BACKUPKEY_VOLUME", "togavsu_backupkey"),
 		CoreDataVolume:     envDefault(getenv, "TOGAVSU_CORE_DATA_VOLUME", "togavsu_core_data"),
+		MailOutboxVolume:   envDefault(getenv, "TOGAVSU_MAIL_OUTBOX_VOLUME", "togavsu_mail_outbox"),
 		FirmTimezone:       envDefault(getenv, "FIRM_TIMEZONE", "UTC"),
 		ReleaseIndexURL:    getenv("TOGAVSU_RELEASE_INDEX"),
 		CosignBin:          envDefault(getenv, "COSIGN_BIN", "cosign"),

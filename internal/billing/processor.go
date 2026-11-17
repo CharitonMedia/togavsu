@@ -321,7 +321,15 @@ func (s *Service) processorGrant(ctx context.Context, p domain.Principal, creden
 	if err != nil {
 		return ProcessorInit{}, domain.Principal{}, denied
 	}
-	return row, domain.Principal{UserID: user.ID, Roles: roles, Source: domain.SourceModule, ModuleID: row.ProcessorModuleID, TokenID: p.TokenID}, nil
+	dp := domain.Principal{UserID: user.ID, Roles: roles, Source: domain.SourceModule, ModuleID: row.ProcessorModuleID, TokenID: p.TokenID}
+	// A client may authorize a processor for their own matter (CORE-23) but stays
+	// read-only in domain.Decide. The bound createPayment / updatePaymentStatus runs
+	// as a grant-scoped system principal acting for that client, so payment and trust
+	// writes succeed without widening the client role.
+	if ClientOnly(dp) {
+		dp = domain.Principal{Source: domain.SourceSystem, UserID: user.ID, ModuleID: row.ProcessorModuleID, TokenID: p.TokenID}
+	}
+	return row, dp, nil
 }
 
 // ProcessorGrantDestination returns the destination a presented grant binds, for the

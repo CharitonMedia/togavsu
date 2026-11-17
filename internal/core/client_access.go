@@ -28,7 +28,8 @@ func (a *App) passwordChangeGate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if path == "/api/v1/me/password" || path == "/api/v1/auth/logout" ||
-			path == "/portal/security" || path == "/portal/sign-out" || passwordChangeStatic(path) {
+			path == "/portal/security" || path == "/portal/security/totp" || path == "/portal/security/totp/confirm" ||
+			path == "/portal/sign-out" || passwordChangeStatic(path) {
 			next.ServeHTTP(w, r)
 			return
 		}
