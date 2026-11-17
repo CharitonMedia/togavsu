@@ -2,11 +2,11 @@ package supervisor
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"time"
-
-	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
 // Notice is one admin message waiting for core system mail. The core's DeliverMail
@@ -35,15 +35,23 @@ func (o *Outbox) Path() string {
 	return o.path
 }
 
+func noticeID() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
+}
+
 func (o *Outbox) Notify(_ context.Context, subject, body string) error {
 	if o == nil || o.path == "" {
 		return nil
 	}
-	id, err := domain.NewID()
+	id, err := noticeID()
 	if err != nil {
 		return err
 	}
-	n := Notice{ID: string(id), Time: o.now().UTC(), Subject: subject, Body: body}
+	n := Notice{ID: id, Time: o.now().UTC(), Subject: subject, Body: body}
 	line, err := json.Marshal(n)
 	if err != nil {
 		return err
