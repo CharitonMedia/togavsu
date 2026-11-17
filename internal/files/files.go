@@ -710,6 +710,21 @@ func (s *Service) signatureMarkExecuted(ctx context.Context, p domain.Principal,
 		if f.PurgedAt != zero {
 			return domain.NotFound("file")
 		}
+		// Service principals sit outside every wall (PRD 4.1), same as signatureUpdate:
+		// refuse before any status write or FileView return. Attorney-only matches
+		// moduleDecision for service tokens.
+		if f.MatterID != "" {
+			wall, err := s.policy.Walls.View(ctx, p, f.MatterID)
+			if err != nil {
+				return err
+			}
+			if wall.Walled {
+				return domain.NotFound("matter")
+			}
+		}
+		if f.AttorneyOnly {
+			return domain.NotFound("file")
+		}
 		old := f.Status
 		if old == status {
 			out = f

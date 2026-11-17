@@ -143,3 +143,53 @@ func TestCORE25FeeAgreementSignatureCallback(t *testing.T) {
 		t.Fatalf("sign behind wall: %d %s", r.code, r.body)
 	}
 }
+
+// TestCORE25MarkStatusBehindWall: sign on an unwalled matter, then wall it; the
+// signature module's markFileStatus must answer not_found and leave status unchanged
+// (CORE-25 / PRD 4.1, same wall rule as signatureUpdate).
+func TestCORE25MarkStatusBehindWall(t *testing.T) {
+	x := newExt(t)
+	ctx := context.Background()
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = bytes.Replace(f[modules.ManifestFile], []byte("  - scope: events:read\n"),
+			[]byte("  - scope: matters:write\n    reason: Send and sign fee agreements.\n  - scope: files:write\n    reason: Mark the signed copy executed.\n  - scope: events:read\n"), 1)
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("matter-clock")
+
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = x.rt.Last("matter-clock").Secrets["togavsu_api_token"]
+
+	matter, _ := x.matter("Estate of Mark Wall", "mark-wall@client.example", nil)
+	created := x.staff.must(http.StatusCreated, "POST", "/api/v1/fee-agreements", map[string]any{
+		"matter_id": matter, "fee_type": "hourly", "services_description": "Mark wall probate",
+	})
+	id := str(t, created.json, "id")
+	ct := x.staff.must(http.StatusCreated, "POST", "/api/v1/modules/matter-clock/context-tokens", map[string]any{})
+	tok := str(t, ct.json, "token")
+	if r := bot.do("PATCH", "/api/v1/fee-agreements/"+id, map[string]any{"status": "sent"}, modules.ContextHeader, tok); r.code != http.StatusOK {
+		t.Fatalf("send: %d %s", r.code, r.body)
+	}
+	fileID := str(t, x.upload(x.staff, matter, "signed-mark.pdf", "application/pdf", []byte("%PDF-1.4 mark"), nil), "id")
+	before := x.staff.must(http.StatusOK, "GET", "/api/v1/files/"+fileID, nil)
+	if before.json["status"] == "executed" {
+		t.Fatalf("signed copy already executed before mark: %v", before.json["status"])
+	}
+	bot.must(http.StatusOK, "PATCH", "/api/v1/fee-agreements/"+id, map[string]any{
+		"status": "signed", "signed_on": "2026-11-16", "signed_file_id": fileID,
+	})
+
+	if err := x.app.Practice.SetWall(ctx, x.adminP(), domain.ID(matter), []domain.ID{domain.ID(x.attyID)}); err != nil {
+		t.Fatal(err)
+	}
+	if r := bot.do("POST", "/api/v1/files/"+fileID+"/status", map[string]any{"status": "executed"}); r.code != http.StatusNotFound || r.json["code"] != "not_found" {
+		t.Fatalf("mark behind wall: %d %s", r.code, r.body)
+	}
+	after := x.atty.must(http.StatusOK, "GET", "/api/v1/files/"+fileID, nil)
+	if after.json["status"] == "executed" || after.json["status"] != before.json["status"] {
+		t.Fatalf("status changed behind wall: got %v want %v", after.json["status"], before.json["status"])
+	}
+}
