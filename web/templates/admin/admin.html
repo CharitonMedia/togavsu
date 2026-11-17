@@ -175,6 +175,19 @@
 </tbody></table>
 </section>
 
+<section class="card" id="contract-links"><h2>Module service contracts</h2>
+<p class="muted">Approve a link between a consumer and a provider. Modules never learn each other's address; the core proxies every call.</p>
+{{if .Contracts}}<table><thead><tr><th>Contract</th><th>Consumer</th><th>Provider</th><th></th></tr></thead><tbody>
+{{range .Contracts}}<tr id="contract-{{.ID}}"><td><code>{{.Contract}}</code></td><td>{{.ConsumerID}}</td><td>{{.ProviderID}}</td>
+<td><form method="post" action="/admin/modules/contract-unlink" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="link_id" value="{{.ID}}"><button type="submit" class="danger">Unlink</button></form></td></tr>{{end}}
+</tbody></table>{{else}}<p class="hint">No contract links yet.</p>{{end}}
+<form method="post" action="/admin/modules/contract-link" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label for="cl-contract">Contract</label><input id="cl-contract" name="contract" required placeholder="phone.provider.v1">
+<label for="cl-consumer">Consumer module id</label><input id="cl-consumer" name="consumer_id" required>
+<label for="cl-provider">Provider module id</label><input id="cl-provider" name="provider_id" required>
+<div><button type="submit">Link</button></div></form>
+</section>
+
 <section class="card" id="trusted-keys"><h2>Trusted local signing keys</h2>
 {{if .Keys}}<table><thead><tr><th>Name</th><th>Key id</th><th></th></tr></thead><tbody>{{range .Keys}}<tr id="key-{{.ID}}"><td>{{.Name}}</td><td><code>{{.KeyID}}</code></td>
 <td><form method="post" action="/admin/modules/key-delete" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="key_id" value="{{.ID}}"><button type="submit" class="danger">Remove</button></form></td></tr>{{end}}</tbody></table>

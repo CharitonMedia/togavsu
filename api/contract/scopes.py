@@ -77,6 +77,19 @@ SCOPES = {
         "and the billing details of billed contacts, firm-wide except walled matters and without a viewer, "
         "for a module's background money work."
     ),
+    "contracts:call": (
+        "Call a core-brokered module service contract as a consumer "
+        "(POST /api/v1/modules/contracts/{contract}/{operation}). Module tokens only."
+    ),
+    "contracts:provide": (
+        "Provide a module service contract and push contract events to linked consumers. Module tokens only."
+    ),
+    "public_pages:serve": (
+        "Serve unsigned-in public module pages at /p/{module_id}/.... Module tokens only."
+    ),
+    "banner:show": (
+        "Show a staff banner slot above firm pages. Module tokens only."
+    ),
 }
 
 SCOPE_PATTERNS = [

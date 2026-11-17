@@ -35,6 +35,8 @@ type modulesPanel struct {
 	Query       string
 	Listings    []marketplace.Listing
 	BrowseError string
+	// Contracts is CORE-31 admin-approved consumer↔provider links.
+	Contracts []modules.ContractLink
 }
 
 // Panel opens the tab. Opening it runs the marketplace flag and pull check (PRD 10.5);
@@ -85,6 +87,9 @@ func (m modulesAdmin) Panel(r *http.Request, p domain.Principal) (any, error) {
 		return nil, err
 	}
 	if v.Keys, err = m.x.Market.Keys(ctx, p); err != nil {
+		return nil, err
+	}
+	if v.Contracts, err = m.x.Modules.ListContractLinks(ctx, p); err != nil {
 		return nil, err
 	}
 	if v.Query = strings.TrimSpace(r.URL.Query().Get("q")); v.Query != "" {
@@ -207,6 +212,25 @@ func (m modulesAdmin) Act(r *http.Request, p domain.Principal, action string) (s
 			return "", err
 		}
 		return "Trusted key removed.", nil
+	case "contract-link":
+		link, err := svc.LinkContract(ctx, p, modules.ContractLinkWrite{
+			Contract: r.FormValue("contract"), ConsumerID: r.FormValue("consumer_id"), ProviderID: r.FormValue("provider_id"),
+		})
+		if err != nil {
+			return "", err
+		}
+		return "Linked " + link.Contract + ".", nil
+	case "contract-unlink":
+		if err := svc.UnlinkContract(ctx, p, r.FormValue("link_id")); err != nil {
+			return "", err
+		}
+		return "Contract unlinked.", nil
+	case "banner-order":
+		order := strings.FieldsFunc(r.FormValue("order"), func(r rune) bool { return r == ',' || r == ' ' })
+		if err := svc.SetStaffBannerOrder(ctx, p, order); err != nil {
+			return "", err
+		}
+		return "Banner order saved.", nil
 	}
 	return "", domain.NotFound("action")
 }

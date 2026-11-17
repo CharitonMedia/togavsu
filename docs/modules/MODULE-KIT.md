@@ -4,8 +4,12 @@ Marketplace modules build in their own repositories (`github.com/CharitonMedia/t
 and cannot import the core's `internal/` packages. The kit gives them the core's own code
 through three public surfaces:
 
-- `pkg/modulekit`: manifest and migration checks, package build, signing and verification.
+- `pkg/modulekit`: manifest and migration checks, package build, signing and verification,
+  plus CORE-31/32 helpers (`IssueStepToken` / `VerifyStepToken`, public CSRF,
+  `SignWebhook` / `VerifyWebhook` — contract calls use the same HMAC as events).
 - `cmd/togavsu-module`: the same checks, packaging and verification as a command.
+- `pkg/modulekit/forms`: CORE-33 form definitions, validation, HTMX rendering and autosave
+  helpers modules import; answers stay in the module's own schema.
 - `pkg/modulekit/coretest`: an acceptance harness that runs the real composed core in the
   test process.
 
@@ -395,6 +399,38 @@ publishes with no local key, and approves its permissions as for a file install.
 `coretest` suite can do the same against the local marketplace: set
 `modules.marketplace_address` with `PATCH /api/v1/settings/modules.marketplace_address`
 `{"value": "http://127.0.0.1:8090"}` as `c.Admin`, then post the install.
+
+## pkg/modulekit/forms
+
+CORE-33. Import `github.com/CharitonMedia/togavsu/pkg/modulekit/forms`. The package is
+types and helpers only: no core tables, no module schema. Intake and mo-estate-planning
+store answers in their own schemas and call the kit to define, validate, render and
+autosave forms.
+
+| Need | Call |
+| --- | --- |
+| Definition model (tracks, screens, fields) | `Form`, `Track`, `Screen`, `Field`, `FieldType` (`AllFieldTypes`: the 16 types) |
+| Audiences | `AudienceStaff`, `AudienceClient`, `AudiencePublic`; `Field.VisibleTo`, `VisibleFields` |
+| Answers and "I don't know" | `Answers`, `Answer` (`Unknown`), `Address`, `Merge`, `ParseFormAnswers` |
+| Conditions (`eq`, `neq`, `in`, `exists`, `notExists`, `gt`/`lt`/`gte`/`lte`, count ops on repeating groups) | `Condition`, `Op*`, `Eval` |
+| Validation | `Validate`, `ValidateScreen`, `Issues` |
+| HTMX renderer | `RenderScreen(w, screen, answers, audience, RenderOptions)` |
+| Autosave + offline queue | `AutosaveHandler`, `AutosavePatch`, `DecodeAutosave`, `OfflineQueueJS` |
+| Masked fields | `SecretStore` (`PutSecret`/`GetSecret`), `EncryptMasked`, `DecryptMasked`, `SealAnswers`, `EnsureKey` / `LoadKey`; ciphertext in answers (`CipherPrefix`), AES-256 key name in the module secret store |
+
+```go
+import "github.com/CharitonMedia/togavsu/pkg/modulekit/forms"
+
+issues := forms.Validate(def, answers, forms.AudienceClient)
+_ = forms.RenderScreen(w, screen, answers, forms.AudiencePublic, forms.RenderOptions{
+    AutosaveURL: "/m/intake/api/autosave",
+})
+mux.Handle("/m/intake/api/autosave", forms.AutosaveHandler(func(r *http.Request, p forms.AutosavePatch) (forms.Answers, error) {
+    cur := load(r) // module-owned storage
+    p.Apply(&cur)
+    return cur, save(r, cur)
+}))
+```
 
 ## Acceptance suites with coretest
 

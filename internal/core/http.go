@@ -429,7 +429,19 @@ func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
 	if !serviceDelegation[t.Delegation] {
 		return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
 	}
+	if err := a.enforcePublicStep(r, p, t.Name); err != nil {
+		return err
+	}
 	return a.enforceServiceCallLimit(r.Context(), p, t.Name)
+}
+
+// enforcePublicStep restricts a public-page step token to manifest public_operations (CORE-32).
+func (a *App) enforcePublicStep(r *http.Request, p domain.Principal, op string) error {
+	step := r.Header.Get(modules.PublicStepHeader)
+	if step == "" || a.ext == nil || a.ext.Modules == nil {
+		return nil
+	}
+	return a.ext.Modules.CheckPublicStep(r.Context(), p.ModuleID, step, op)
 }
 
 // enforceServiceCallLimit applies modules.service_call_limit.<operation> when that

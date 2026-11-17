@@ -192,6 +192,11 @@ var definitions = []Definition{
 	{Key: "modules.service_call_limit.listMatterTimeline", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal listMatterTimeline calls per minute per module. Default 120.", PRD: true},
 	{Key: "modules.service_call_limit.listFileRenditions", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal listFileRenditions calls per minute per module. Default 120.", PRD: true},
 	{Key: "modules.service_call_limit.downloadFileRendition", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal downloadFileRendition calls per minute per module. Default 120.", PRD: true},
+	// CORE-31 / CORE-32 / CORE-34.
+	{Key: "modules.public_page_rate_per_minute", Kind: KindInt, Default: "60", Min: 1, HasMin: true, Tab: TabModules, Help: "Public module page requests allowed per minute per IP. Over is 429 with Retry-After. Default 60.", PRD: true},
+	{Key: "modules.public_page_max_bytes", Kind: KindInt, Default: "10485760", Min: 1, HasMin: true, Tab: TabModules, Help: "Largest public module page request body in bytes. Over is 413. Default 10485760 (10 MiB).", PRD: true},
+	{Key: "modules.contract_call_max_bytes", Kind: KindInt, Default: "26214400", Min: 1, HasMin: true, Tab: TabModules, Help: "Largest module contract call body in bytes. Over is 413. Default 26214400 (25 MiB).", PRD: true},
+	{Key: "modules.staff_banner_order", Kind: KindJSON, Default: "[]", Tab: TabModules, Help: "Ordered list of module ids whose staff banners appear above staff pages. Empty keeps install order.", PRD: true},
 
 	{Key: "updates.window_start", Kind: KindString, Default: "02:00", Tab: TabUpdates, Help: "Start of the update window, firm time. Default 2:00 a.m.", PRD: true, Special: "time_of_day"},
 	{Key: "updates.window_end", Kind: KindString, Default: "04:00", Tab: TabUpdates, Help: "End of the update window, firm time. Default 4:00 a.m.", PRD: true, Special: "time_of_day"},

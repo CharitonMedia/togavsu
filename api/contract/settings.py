@@ -395,6 +395,37 @@ SETTINGS: list[dict] = [
             "downloadFileRendition",
         )
     ],
+    _s(
+        "modules.public_page_rate_per_minute",
+        "integer",
+        "modules_and_marketplace",
+        60,
+        "Public module page requests allowed per minute per IP. Over is 429 with Retry-After. Default 60 (CORE-32).",
+        minimum=1,
+    ),
+    _s(
+        "modules.public_page_max_bytes",
+        "integer",
+        "modules_and_marketplace",
+        10485760,
+        "Largest public module page request body in bytes. Over is 413. Default 10485760 (10 MiB) (CORE-32).",
+        minimum=1,
+    ),
+    _s(
+        "modules.contract_call_max_bytes",
+        "integer",
+        "modules_and_marketplace",
+        26214400,
+        "Largest module contract call body in bytes. Over is 413. Default 26214400 (25 MiB) (CORE-31).",
+        minimum=1,
+    ),
+    _s(
+        "modules.staff_banner_order",
+        "json",
+        "modules_and_marketplace",
+        [],
+        "Ordered list of module ids whose staff banners appear above staff pages. Empty keeps install order (CORE-34).",
+    ),
 ]
 
 

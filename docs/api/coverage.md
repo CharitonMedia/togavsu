@@ -458,6 +458,13 @@ It does not claim the handlers or the MCP server are implemented.
 | modules | `GET` | `/api/v1/modules/{module_id}/secrets/{name}` | `getModuleSecret` | required:getModuleSecret | public | module_secrets:write |
 | modules | `DELETE` | `/api/v1/modules/{module_id}/secrets/{name}` | `deleteModuleSecret` | required:deleteModuleSecret | public | module_secrets:write |
 | modules | `POST` | `/api/v1/modules/{module_id}/context-tokens` | `createModuleContextToken` | required:createModuleContextToken | admin, attorney, staff, accountant, client | modules:read |
+| modules | `GET` | `/api/v1/modules/contract-links` | `listModuleContractLinks` | required:listModuleContractLinks | admin | modules:read |
+| modules | `POST` | `/api/v1/modules/contract-links` | `createModuleContractLink` | required:createModuleContractLink | admin | modules:write |
+| modules | `DELETE` | `/api/v1/modules/contract-links/{link_id}` | `deleteModuleContractLink` | required:deleteModuleContractLink | admin | modules:write |
+| modules | `POST` | `/api/v1/modules/contracts/{contract}/{operation}` | `callModuleContract` | required:callModuleContract | public | contracts:call |
+| modules | `POST` | `/api/v1/modules/contracts/{contract}/events` | `pushModuleContractEvent` | required:pushModuleContractEvent | public | contracts:provide |
+| modules | `GET` | `/api/v1/modules/banners` | `listModuleBanners` | required:listModuleBanners | admin | modules:read |
+| modules | `PUT` | `/api/v1/modules/banner-order` | `putModuleBannerOrder` | required:putModuleBannerOrder | admin | modules:write |
 | marketplace | `GET` | `/api/v1/marketplace/listings` | `listMarketplaceListings` | required:listMarketplaceListings | admin | modules:read |
 | marketplace | `GET` | `/api/v1/marketplace/listings/{listing_id}` | `getMarketplaceListing` | required:getMarketplaceListing | admin | modules:read |
 | marketplace | `GET` | `/api/v1/module-alerts` | `listModuleAlert` | required:listModuleAlert | admin | modules:read |
@@ -471,4 +478,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 | modules, inbound-webhooks | `POST` | `/hooks/{module_id}/{hook_id}` | `postInboundWebhook` | required:postInboundWebhook | public | none |
 
-Operations: 465.
+Operations: 472.

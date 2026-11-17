@@ -85,6 +85,9 @@ type Service struct {
 	inboundOnce sync.Once
 	inbound     *inboundRate
 
+	publicOnce sync.Once
+	public     *publicRate
+
 	// mailMatchingCheck verifies a match_token on createAiCall (CORE-27).
 	mailMatchingCheck func(ctx context.Context, p domain.Principal, credential string) error
 }
@@ -900,6 +903,9 @@ func (s *Service) activate(ctx context.Context, p domain.Principal, r modRow) er
 func (s *Service) bringUp(ctx context.Context, p domain.Principal, r modRow, m Manifest) error {
 	s.forget(r.ID)
 	var errs []string
+	if err := s.SyncPublicPages(ctx, r.ID, m.PublicPages); err != nil {
+		errs = append(errs, "public_pages: "+err.Error())
+	}
 	if s.d.Help != nil {
 		pages := make([]help.PageInput, 0, len(m.Help.Pages))
 		for _, pg := range m.Help.Pages {
@@ -965,6 +971,12 @@ func (s *Service) deployment(ctx context.Context, r modRow, m Manifest) (Deploym
 func (s *Service) bringDown(ctx context.Context, module string, remove bool) []string {
 	s.forget(module)
 	var errs []string
+	if _, err := s.q(ctx).ExecContext(ctx, `DELETE FROM core.module_public_pages WHERE module_id = $1`, module); err != nil {
+		errs = append(errs, "public_pages: "+err.Error())
+	}
+	if _, err := s.q(ctx).ExecContext(ctx, `DELETE FROM core.module_contract_links WHERE consumer_id = $1 OR provider_id = $1`, module); err != nil {
+		errs = append(errs, "contracts: "+err.Error())
+	}
 	if s.d.Widgets != nil {
 		s.d.Widgets.RemoveModule(module)
 	}

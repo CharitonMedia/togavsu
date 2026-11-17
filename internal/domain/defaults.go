@@ -46,6 +46,10 @@ const (
 	SidebarDefaultOrder        = 1000
 	InboundWebhookMaxBytes     = 1048576
 	InboundWebhookRatePerMin   = 120
+	PublicPageMaxBytes         = 10 << 20
+	PublicPageRatePerMin       = 60
+	ContractCallMaxBytes       = 25 << 20
+	StaffBannerDefaultHeight   = 48
 	ClientAccessDaysAfterClose = 14
 	MailMatchListMax           = 50
 	ArchiveZipPathMaxBytes     = 255

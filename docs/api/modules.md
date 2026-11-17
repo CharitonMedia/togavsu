@@ -47,3 +47,19 @@ Modules may link to `fee_agreement`, `payment_refund` and `trust_account`. Payme
 CORE-36 closes the public-kit gaps this batch hits: `/m/` forwards `X-Togavsu-Context-Token`; `GET /api/v1/me` accepts a context token as the viewer; a missing scope answers `scope_denied` naming the scope; webhook signatures are `sha256=` HMAC of the raw body; notes land in `core.notes`; invoices, payments and expenses dual-write into `core.invoices` / `core.payments` / `core.expenses`; conflict decisions emit `conflict_check.decided`; `getConflictCheck` accepts a service principal; `Accepts().core_items` lists built CORE items; coretest seeds markdown renditions without converters.
 
 CORE-30 marks the wider service-call set `delegated_viewer_or_service_principal` (contacts, matters, conflicts, calendar, deadlines, notes, timeline, markdown renditions). Each has `modules.service_call_limit.<operationId>` (default 120/minute). `listContact` supports exact `email` and `phone` filters. Service-principal writes record the module as author with audit source `service`. Walls still omit walled matters from lists and answer `not_found` on gets.
+
+## Module service contracts (CORE-31)
+
+Manifest `provides` and `consumes` name versioned contracts such as `phone.provider.v1`. The admin approves each consumer↔provider link (`POST /api/v1/modules/contract-links`, `DELETE …/contract-links/{link_id}`, `GET …/contract-links`). The consumer calls `POST /api/v1/modules/contracts/{contract}/{operation}` with scope `contracts:call`; the core proxies to the linked provider's declared path, HMAC-signed like events (`X-Togavsu-Signature`), carrying `X-Togavsu-Context-Token` when present. Providers push events with `POST /api/v1/modules/contracts/{contract}/events` (`contracts:provide`). One provider per contract per firm unless the provider sets `many: true`. Modules never learn each other's address. Unlinked calls answer `contract_unlinked`. Body size is limited by `modules.contract_call_max_bytes` (25 MiB).
+
+## Public module pages (CORE-32)
+
+Manifest `public_pages` are served at `/p/{id}/…` with no sign-in under `modules.public_page_rate_per_minute` (60) and `modules.public_page_max_bytes` (10 MiB), with CSRF cookie/`X-CSRF-Token` and HMAC step tokens (`X-Togavsu-Public-Step`). Scope `public_pages:serve` is required at install. Server calls that carry a valid step token run as the module service principal and only on `public_operations`. Helpers: `modules.IssueStepToken` / `VerifyStepToken` (also via `pkg/modulekit`).
+
+## Forms kit (CORE-33)
+
+`pkg/modulekit/forms` is the public form definition, validation, HTMX renderer, autosave/offline queue, "I don't know" answers, and masked-field encryption through the module secret store. Answers stay in the calling module's schema.
+
+## Staff banner slot (CORE-34)
+
+Manifest `staff_banner` reserves a fixed-height sandboxed frame above every staff page. Scope `banner:show`. Admin order is `modules.staff_banner_order` (`PUT /api/v1/modules/banner-order`, `GET /api/v1/modules/banners`). The frame bridge posts `togavsu:banner.show` / `togavsu:banner.hide`.

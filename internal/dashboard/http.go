@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"html/template"
 	"io/fs"
 	"net/http"
@@ -29,6 +30,8 @@ type Handler struct {
 	Audit func(r *http.Request, p domain.Principal, limit int) ([]AuditRow, error)
 	// Modules backs the Modules and marketplace tab; nil shows its settings only.
 	Modules ModulesAdmin
+	// Banners returns CORE-34 staff banner HTML for the shell; nil skips the slot.
+	Banners func(ctx context.Context) (template.HTML, error)
 	// AICalls returns the AI call log panel on the AI and inference tab for p (rendered
 	// by admin.html under .AICalls); the core's module runtime checks the admin role and
 	// matter walls, as GET /api/v1/ai/calls does. Nil shows the tab's settings only.

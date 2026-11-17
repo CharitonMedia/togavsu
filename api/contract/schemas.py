@@ -3019,6 +3019,27 @@ SCHEMAS = _register(
             ["id", "name", "version", "enabled", "permissions", "status"],
             "An installed module.",
         ),
+        "ModuleContractLink": _obj(
+            {
+                "id": {"type": "string"},
+                "contract": {"type": "string"},
+                "consumer_id": {"type": "string"},
+                "provider_id": {"type": "string"},
+                "created_at": {"type": "string", "format": "date-time"},
+            },
+            ["id", "contract", "consumer_id", "provider_id", "created_at"],
+            "An admin-approved consumer↔provider link for one named contract (CORE-31).",
+        ),
+        "ModuleStaffBanner": _obj(
+            {
+                "module_id": {"type": "string"},
+                "path": {"type": "string"},
+                "height": {"type": "integer"},
+                "src": {"type": "string"},
+            },
+            ["module_id", "path", "height", "src"],
+            "One staff banner slot for an enabled module (CORE-34).",
+        ),
         "ModuleInstall": _obj(
             {"source": _enum(["local", "marketplace"]), "listing_id": {"type": "string"}, "version": {"type": "string"}},
             ["source"],
@@ -3982,6 +4003,20 @@ QUERY = {
 PARAM_SCHEMA = {
     "setting_key": _ref("SettingKey"),
     "module_id": _module_id(),
+    "contract": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 128,
+        "pattern": r"^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$",
+        "description": "Named, versioned module service contract (CORE-31), such as phone.provider.v1.",
+    },
+    "operation": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 63,
+        "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+        "description": "Operation name on a provided module contract (CORE-31).",
+    },
     "hook_id": {
         "type": "string",
         "minLength": 1,

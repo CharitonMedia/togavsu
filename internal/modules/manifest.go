@@ -46,6 +46,45 @@ type Manifest struct {
 	Replaces         string            `json:"replaces"`
 	Settings         []SettingSpec     `json:"settings"`
 	AITasks          []AITask          `json:"ai_tasks"`
+	// Provides lists contracts this module offers (CORE-31).
+	Provides []ContractProvide `json:"provides"`
+	// Consumes lists contracts this module needs a provider for (CORE-31).
+	Consumes []ContractConsume `json:"consumes"`
+	// PublicPages are paths served at /p/{id}/... with no sign-in (CORE-32).
+	PublicPages []PublicPage `json:"public_pages"`
+	// PublicOperations limits service calls from a public-page step token (CORE-32).
+	PublicOperations []string `json:"public_operations"`
+	// StaffBanner reserves a slot above every staff page (CORE-34).
+	StaffBanner *StaffBanner `json:"staff_banner"`
+}
+
+// ContractProvide is one named, versioned contract this module provides (CORE-31).
+type ContractProvide struct {
+	Contract   string              `json:"contract"`
+	Many       bool                `json:"many"`
+	Operations []ContractOperation `json:"operations"`
+}
+
+// ContractOperation is one operation on a provided contract (CORE-31).
+type ContractOperation struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// ContractConsume is one contract this module consumes (CORE-31).
+type ContractConsume struct {
+	Contract string `json:"contract"`
+}
+
+// PublicPage is one path served under /p/{module_id}/ (CORE-32).
+type PublicPage struct {
+	Path string `json:"path"`
+}
+
+// StaffBanner is the module's staff banner page (CORE-34).
+type StaffBanner struct {
+	Path   string `json:"path"`
+	Height int    `json:"height"`
 }
 
 // PaymentProcessor is manifest payment_processor: destinations the module may charge (CORE-23).
@@ -443,6 +482,217 @@ func (m Manifest) validate(report func(error) bool) {
 	if !m.validatePaymentProcessor(ok) {
 		return
 	}
+	if !m.validateContracts(ok) {
+		return
+	}
+	if !m.validatePublicPages(ok) {
+		return
+	}
+	if !m.validateStaffBanner(ok) {
+		return
+	}
+}
+
+// contractName is a named, versioned contract id such as phone.provider.v1.
+var contractName = regexp.MustCompile(`^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$`)
+
+func (m Manifest) validateContracts(ok func(error) bool) bool {
+	seenProvide := map[string]bool{}
+	hasCall, hasProvide := false, false
+	for _, p := range m.Permissions {
+		if p.Scope == "contracts:call" {
+			hasCall = true
+		}
+		if p.Scope == "contracts:provide" {
+			hasProvide = true
+		}
+	}
+	for i, c := range m.Provides {
+		f := fmt.Sprintf("provides[%d]", i)
+		if !contractName.MatchString(c.Contract) || seenProvide[c.Contract] {
+			if !ok(invalid(f+".contract", "provides contracts are unique names like phone.provider.v1")) {
+				return false
+			}
+			continue
+		}
+		seenProvide[c.Contract] = true
+		if len(c.Operations) == 0 {
+			if !ok(invalid(f+".operations", "a provided contract needs at least one operation")) {
+				return false
+			}
+			continue
+		}
+		ops := map[string]bool{}
+		for j, op := range c.Operations {
+			of := fmt.Sprintf("%s.operations[%d]", f, j)
+			if !slug.MatchString(op.Name) || ops[op.Name] {
+				if !ok(invalid(of+".name", "operation names are unique slugs")) {
+					return false
+				}
+				continue
+			}
+			ops[op.Name] = true
+			if !ok(modulePath(of+".path", op.Path)) {
+				return false
+			}
+		}
+	}
+	if len(m.Provides) > 0 && !hasProvide {
+		if !ok(invalid("provides", "providing a contract needs the contracts:provide permission")) {
+			return false
+		}
+	}
+	seenConsume := map[string]bool{}
+	for i, c := range m.Consumes {
+		f := fmt.Sprintf("consumes[%d]", i)
+		if !contractName.MatchString(c.Contract) || seenConsume[c.Contract] {
+			if !ok(invalid(f+".contract", "consumes contracts are unique names like phone.provider.v1")) {
+				return false
+			}
+			continue
+		}
+		seenConsume[c.Contract] = true
+	}
+	if len(m.Consumes) > 0 && !hasCall {
+		if !ok(invalid("consumes", "consuming a contract needs the contracts:call permission")) {
+			return false
+		}
+	}
+	return true
+}
+
+func (m Manifest) validatePublicPages(ok func(error) bool) bool {
+	hasServe := false
+	for _, p := range m.Permissions {
+		if p.Scope == "public_pages:serve" {
+			hasServe = true
+			break
+		}
+	}
+	seen := map[string]bool{}
+	for i, pg := range m.PublicPages {
+		f := fmt.Sprintf("public_pages[%d]", i)
+		if !ok(modulePath(f+".path", pg.Path)) {
+			return false
+		}
+		if seen[pg.Path] {
+			if !ok(invalid(f+".path", "public page paths are unique")) {
+				return false
+			}
+			continue
+		}
+		seen[pg.Path] = true
+	}
+	if len(m.PublicPages) > 0 && !hasServe {
+		if !ok(invalid("public_pages", "public pages need the public_pages:serve permission")) {
+			return false
+		}
+	}
+	opID := regexp.MustCompile(`^[a-z][A-Za-z0-9]*$`)
+	ops := map[string]bool{}
+	for i, op := range m.PublicOperations {
+		f := fmt.Sprintf("public_operations[%d]", i)
+		if !opID.MatchString(op) {
+			if !ok(invalid(f, "public_operations names an OpenAPI operationId")) {
+				return false
+			}
+			continue
+		}
+		if ops[op] {
+			if !ok(invalid(f, "duplicate public operation "+op)) {
+				return false
+			}
+			continue
+		}
+		ops[op] = true
+	}
+	if len(m.PublicOperations) > 0 && len(m.PublicPages) == 0 {
+		if !ok(invalid("public_operations", "public_operations requires public_pages")) {
+			return false
+		}
+	}
+	return true
+}
+
+func (m Manifest) validateStaffBanner(ok func(error) bool) bool {
+	if m.StaffBanner == nil {
+		return true
+	}
+	hasShow := false
+	for _, p := range m.Permissions {
+		if p.Scope == "banner:show" {
+			hasShow = true
+			break
+		}
+	}
+	if !ok(modulePath("staff_banner.path", m.StaffBanner.Path)) {
+		return false
+	}
+	if m.StaffBanner.Height <= 0 || m.StaffBanner.Height > 400 {
+		if !ok(invalid("staff_banner.height", "banner height is 1 to 400 pixels")) {
+			return false
+		}
+	}
+	if !hasShow {
+		return ok(invalid("staff_banner", "a staff banner needs the banner:show permission"))
+	}
+	return true
+}
+
+// Provide looks up a provided contract by name.
+func (m Manifest) Provide(contract string) (ContractProvide, bool) {
+	for _, c := range m.Provides {
+		if c.Contract == contract {
+			return c, true
+		}
+	}
+	return ContractProvide{}, false
+}
+
+// ProvideOperation looks up one operation on a provided contract.
+func (m Manifest) ProvideOperation(contract, operation string) (ContractOperation, bool) {
+	c, ok := m.Provide(contract)
+	if !ok {
+		return ContractOperation{}, false
+	}
+	for _, op := range c.Operations {
+		if op.Name == operation {
+			return op, true
+		}
+	}
+	return ContractOperation{}, false
+}
+
+// ConsumesContract reports whether the manifest consumes contract.
+func (m Manifest) ConsumesContract(contract string) bool {
+	for _, c := range m.Consumes {
+		if c.Contract == contract {
+			return true
+		}
+	}
+	return false
+}
+
+// PublicPagePath reports whether path is a declared public page (exact or under a declared prefix).
+func (m Manifest) PublicPagePath(path string) bool {
+	path = "/" + strings.TrimPrefix(path, "/")
+	for _, pg := range m.PublicPages {
+		base := "/" + strings.TrimPrefix(pg.Path, "/")
+		if path == base || strings.HasPrefix(path, strings.TrimSuffix(base, "/")+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// AllowsPublicOperation reports whether operationId is listed under public_operations.
+func (m Manifest) AllowsPublicOperation(operationID string) bool {
+	for _, op := range m.PublicOperations {
+		if op == operationID {
+			return true
+		}
+	}
+	return false
 }
 
 func (m Manifest) validatePaymentProcessor(ok func(error) bool) bool {

@@ -83,6 +83,12 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("POST /api/v1/modules/{module_id}/context-tokens/verify", h.scoped("", h.verifyContext))
 	m.HandleFunc("POST /api/v1/modules/{module_id}/device-context-tokens", h.write("modules:read", h.exchangeDevice))
 	m.HandleFunc("GET /api/v1/modules/{module_id}/views/{view}", h.scoped("", h.readView))
+	// CORE-31 link admin + CORE-34 banners (literal path segments; safe beside {module_id}).
+	m.HandleFunc("GET /api/v1/modules/contract-links", h.scoped("modules:read", h.listContractLinks))
+	m.HandleFunc("POST /api/v1/modules/contract-links", h.write("modules:write", h.linkContract))
+	m.HandleFunc("DELETE /api/v1/modules/contract-links/{link_id}", h.write("modules:write", h.unlinkContract))
+	m.HandleFunc("GET /api/v1/modules/banners", h.scoped("modules:read", h.listBannersJSON))
+	m.HandleFunc("PUT /api/v1/modules/banner-order", h.write("modules:write", h.putBannerOrder))
 	m.HandleFunc("POST /api/v1/me/module-devices", h.write("", h.createDevice))
 	m.HandleFunc("GET /api/v1/me/module-devices", h.scoped("profile:read", h.listDevices))
 	m.HandleFunc("DELETE /api/v1/me/module-devices/{device_id}", h.write("profile:write", h.revokeDevice))
@@ -97,16 +103,30 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}/context-token", h.scoped("", h.staffWidgetContextToken))
 	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}", h.scoped("", h.matterItemPage))
 	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}/context-token", h.scoped("", h.staffMatterItemContextToken))
+	m.HandleFunc("GET /modules/{module_id}/banner", h.scoped("", h.bannerPage))
 	m.HandleFunc("GET /modules/{module_id}/device-connect", h.scoped("", h.deviceConnectGet))
 	m.HandleFunc("POST /modules/{module_id}/device-connect", h.write("", h.deviceConnectPost))
 	m.HandleFunc("/m/{module_id}/", h.frame)
 	// CORE-07: public provider webhook intake. POST only; undeclared hooks 404.
 	m.HandleFunc("POST /hooks/{module_id}/{hook_id}", h.inboundWebhook)
+	// CORE-32: public module pages, no sign-in (trailing slash matches the subtree).
+	m.HandleFunc("/p/{module_id}/", h.publicPage)
+	m.HandleFunc("/p/{module_id}", h.publicPage)
 	// CORE-10
 	m.HandleFunc("GET /portal", h.scoped("", h.portalHome))
 	m.HandleFunc("GET /portal/{module_id}/{tab_id}", h.scoped("", h.portalTab))
 	m.HandleFunc("GET /portal/{module_id}/{tab_id}/context-token", h.scoped("", h.portalContextToken))
 	m.HandleFunc("GET /api/v1/nav/client-context", h.scoped("profile:read", h.clientContextJSON))
+	return m
+}
+
+// ContractRoutes is CORE-31's call and event-push mux. It is mounted ahead of Routes so
+// POST /api/v1/modules/contracts/{contract}/… does not conflict with
+// POST /api/v1/modules/{module_id}/context-tokens/verify on one ServeMux.
+func (h *Handler) ContractRoutes() http.Handler {
+	m := http.NewServeMux()
+	m.HandleFunc("POST /api/v1/modules/contracts/{contract}/events", h.write("contracts:provide", h.pushContractEvent))
+	m.HandleFunc("POST /api/v1/modules/contracts/{contract}/{operation}", h.write("contracts:call", h.callContract))
 	return m
 }
 
@@ -136,6 +156,12 @@ func statusOf(err error) int {
 		return http.StatusConflict
 	case "ai_unavailable":
 		return http.StatusBadGateway
+	case "contract_unlinked":
+		return http.StatusConflict
+	case "payload_too_large":
+		return http.StatusRequestEntityTooLarge
+	case "scope_denied":
+		return http.StatusForbidden
 	}
 	return api.HTTPStatus()
 }
