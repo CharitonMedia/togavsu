@@ -1146,7 +1146,7 @@ func adminBack(r *http.Request) string {
 	return "/admin"
 }
 
-func settingErr(err error) error {
+func settingErr(key string, err error) error {
 	var api *domain.APIError
 	if errors.As(err, &api) {
 		return err
@@ -1156,10 +1156,8 @@ func settingErr(err error) error {
 		return domain.Forbidden(domain.ReasonRole)
 	case errors.Is(err, settings.ErrUnknown):
 		return domain.NotFound("setting")
-	case errors.Is(err, settings.ErrReadOnly):
-		return domain.Invalid("value", "this setting is read only")
-	case errors.Is(err, settings.ErrInvalid):
-		return domain.Invalid("value", strings.TrimPrefix(err.Error(), "settings: "))
+	case errors.Is(err, settings.ErrReadOnly), errors.Is(err, settings.ErrInvalid):
+		return domain.Invalid("value", settings.UIError(key, err))
 	}
 	return err
 }
@@ -1176,9 +1174,9 @@ func (h *Handler) settingPost(r *http.Request, p domain.Principal) (string, stri
 	}
 	ch, err := h.Svc.d.Settings.Set(r.Context(), key, value, p)
 	if err != nil {
-		return back, "", settingErr(err)
+		return back, "", settingErr(key, err)
 	}
-	return back, fmt.Sprintf("Saved %s: %s → %s.", key, ch.Old, ch.New), nil
+	return back, fmt.Sprintf("Saved %s: %s → %s.", settings.LabelOf(key), ch.Old, ch.New), nil
 }
 
 func (h *Handler) settingResetPost(r *http.Request, p domain.Principal) (string, string, error) {
@@ -1188,9 +1186,9 @@ func (h *Handler) settingResetPost(r *http.Request, p domain.Principal) (string,
 	}
 	key := r.PathValue("setting_key")
 	if _, err := h.Svc.d.Settings.Reset(r.Context(), key, p); err != nil {
-		return back, "", settingErr(err)
+		return back, "", settingErr(key, err)
 	}
-	return back, "Reset " + key + " to its default.", nil
+	return back, "Reset " + settings.LabelOf(key) + " to its default.", nil
 }
 
 func (h *Handler) appearancePost(r *http.Request, p domain.Principal) (string, string, error) {

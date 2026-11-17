@@ -56155,7 +56155,7 @@
       "get": {
         "operationId": "listSettings",
         "summary": "List settings",
-        "description": "Every registry setting with its tab, value, default, and help. Secret values are not returned; configured is.",
+        "description": "Every registry setting with its key, label, type, tab, value, default, configured, locked, help, and optional allowed. Secret values are not returned; configured is.",
         "tags": [
           "Settings"
         ],
@@ -72105,6 +72105,10 @@
           "key": {
             "type": "string"
           },
+          "label": {
+            "type": "string",
+            "description": "Plain name shown on the admin Settings page."
+          },
           "type": {
             "type": "string",
             "enum": [
@@ -72140,13 +72144,14 @@
         },
         "required": [
           "key",
+          "label",
           "type",
           "tab",
           "configured",
           "locked",
           "help"
         ],
-        "description": "One settings-registry row."
+        "description": "One settings-registry row with key, label, type, tab, value, default, configured, locked, help, and optional allowed."
       },
       "SettingKey": {
         "type": "string",

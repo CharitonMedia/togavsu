@@ -79,13 +79,13 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 
 {{define "settings"}}{{template "top" .}}
 <nav class="tabs" aria-label="Settings tabs">{{range .Tabs}}<a href="/admin/settings?tab={{.}}" {{if eq . $.Tab}}aria-current="page"{{end}}>{{label .}}</a>{{end}}</nav>
-<table><thead><tr><th>Setting</th><th>Value</th><th>Default</th><th></th></tr></thead><tbody>
-{{range .Settings}}<tr><td><strong>{{.Key}}</strong><br><span class="muted">{{.Help}}</span></td>
+<table><thead><tr><th>Name</th><th>Value</th><th>Default</th><th></th></tr></thead><tbody>
+{{range .Settings}}<tr><td>{{.Label}}<br><span class="muted">{{.Help}}</span><br><small class="muted">{{.Key}}</small></td>
 <td>{{if .Secret}}<span class="muted">{{if .SecretSet}}configured{{else}}not set{{end}}</span>{{else}}{{.Value}}{{end}}{{if and (not .Secret) (ne .Value .Default)}} <span class="badge">changed</span>{{end}}</td>
 <td>{{if not .Secret}}{{.Default}}{{end}}</td>
 <td>{{if .Locked}}<span class="muted">locked</span>{{else}}
 <form method="post" action="/admin/settings/{{.Key}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}">
-<input name="value" aria-label="New value for {{.Key}}" {{if not .Secret}}value="{{.Value}}"{{end}} {{if .Secret}}type="password"{{end}}> <button type="submit">Save</button></form>
+<input name="value" aria-label="New value for {{.Label}}" {{if not .Secret}}value="{{.Value}}"{{end}} {{if .Secret}}type="password"{{end}}> <button type="submit">Save</button></form>
 {{if and (not .Secret) (ne .Value .Default)}}<form method="post" action="/admin/settings/{{.Key}}/reset"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit">Reset to default</button></form>{{end}}{{end}}</td></tr>
 {{end}}</tbody></table>
 {{template "bottom" .}}{{end}}
@@ -319,7 +319,8 @@ func (a *App) settingsChange(w http.ResponseWriter, r *http.Request, change func
 		return
 	}
 	if err := change(p); err != nil {
-		v, verr := a.settingsView(r, "That value is not allowed for "+r.PathValue("setting_key")+". "+strings.TrimPrefix(message(settingErr(err)), "settings: "))
+		key := r.PathValue("setting_key")
+		v, verr := a.settingsView(r, settings.UIError(key, err))
 		if verr != nil {
 			writeErr(w, verr)
 			return

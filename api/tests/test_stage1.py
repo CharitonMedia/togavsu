@@ -348,6 +348,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 "extension-section5-records",
                 "doc-tender-status-reprocess-model-choices",
                 "ai-call-log-filters",
+                "settings-plain-labels",
             },
         )
 

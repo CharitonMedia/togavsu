@@ -558,7 +558,7 @@ func (a *App) admin(r *http.Request) (domain.Principal, error) {
 
 func settingJSON(e settings.Entry) map[string]any {
 	out := map[string]any{
-		"key": e.Key, "type": e.Kind, "tab": e.Tab, "default": e.Default, "configured": e.Overridden,
+		"key": e.Key, "label": e.Label, "type": e.Kind, "tab": e.Tab, "default": e.Default, "configured": e.Overridden,
 		"locked": e.Locked, "help": e.Help,
 	}
 	if e.Secret {
