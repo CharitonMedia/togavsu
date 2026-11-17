@@ -301,17 +301,29 @@ func (r *Registry) setCaseExamples(ctx context.Context, def Definition, value st
 	if err := validate(patDef, patValue); err != nil {
 		return Change{}, err
 	}
+	// The two writes commit together. The external audit events are recorded only
+	// after that commit, so a failed pair never leaves an audit event for a value
+	// that was never stored.
 	var change Change
+	var audits []Change
 	err = r.store.Transact(ctx, func(tx Store) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		exChange, err := r.writeOne(ctx, tx, def, value, who)
+		audits = audits[:0]
+		exChange, exChanged, err := r.write(ctx, tx, def, value, who)
 		if err != nil {
 			return err
 		}
-		if _, err := r.writeOne(ctx, tx, patDef, patValue, who); err != nil {
+		patChange, patChanged, err := r.write(ctx, tx, patDef, patValue, who)
+		if err != nil {
 			return err
+		}
+		if exChanged {
+			audits = append(audits, exChange)
+		}
+		if patChanged {
+			audits = append(audits, patChange)
 		}
 		change = exChange
 		return ctx.Err()
@@ -319,14 +331,33 @@ func (r *Registry) setCaseExamples(ctx context.Context, def Definition, value st
 	if err != nil {
 		return Change{}, err
 	}
+	for _, c := range audits {
+		if err := r.audit.SettingChanged(ctx, c); err != nil {
+			return Change{}, err
+		}
+	}
 	return change, nil
 }
 
 // writeOne applies one setting mutation inside an open store transaction and audits it.
 func (r *Registry) writeOne(ctx context.Context, tx Store, def Definition, value string, who domain.Principal) (Change, error) {
+	change, changed, err := r.write(ctx, tx, def, value, who)
+	if err != nil || !changed {
+		return change, err
+	}
+	if err := r.audit.SettingChanged(ctx, change); err != nil {
+		return Change{}, err
+	}
+	return change, nil
+}
+
+// write applies one setting mutation inside an open store transaction and logs it
+// to the transaction. It reports whether the value changed; it does not record the
+// external audit event.
+func (r *Registry) write(ctx context.Context, tx Store, def Definition, value string, who domain.Principal) (Change, bool, error) {
 	prev, ok, err := tx.Get(ctx, def.Key)
 	if err != nil {
-		return Change{}, err
+		return Change{}, false, err
 	}
 	current := def.Default
 	if ok {
@@ -340,24 +371,21 @@ func (r *Registry) writeOne(ctx context.Context, tx Store, def Definition, value
 	change.Old = display(def, current)
 	change.New = display(def, value)
 	if value == current {
-		return change, nil
+		return change, false, nil
 	}
 	if value == def.Default {
 		if err := tx.Delete(ctx, def.Key); err != nil {
-			return Change{}, err
+			return Change{}, false, err
 		}
 	} else if err := tx.Put(ctx, def.Key, value, at, who.UserID); err != nil {
-		return Change{}, err
+		return Change{}, false, err
 	}
 	if logger, ok := tx.(ChangeLogger); ok {
 		if err := logger.LogChange(ctx, change); err != nil {
-			return Change{}, err
+			return Change{}, false, err
 		}
 	}
-	if err := r.audit.SettingChanged(ctx, change); err != nil {
-		return Change{}, err
-	}
-	return change, nil
+	return change, true, nil
 }
 
 func (r *Registry) definition(key string) (Definition, error) {
