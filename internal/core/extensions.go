@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"errors"
-	"html/template"
 	"log"
 	"net/http"
 	"net/url"
@@ -264,25 +263,19 @@ func (a *App) matterPanels(r *http.Request, p domain.Principal, matter domain.ID
 			}
 		}
 		var items []practice.ModuleItem
-		var panelNonce string
 		for _, it := range in.Manifest.MatterItems {
 			corePath := modules.MatterItemPage(url.PathEscape(in.ID), url.PathEscape(it.ID)) + "?matter_id=" + url.QueryEscape(string(matter))
 			item := practice.ModuleItem{ID: it.ID, Kind: it.Kind, Title: it.Title, Path: corePath}
 			// Panels are framed on the matter page itself (CORE-09): module /m/ URL inside
-			// the staff sandbox, with the bridge on the matter page so refresh/navigate keep
-			// the session cookie and can assign top.location.
+			// the staff sandbox, with module-bridge.js on the matter page so refresh/navigate
+			// keep the session cookie and can assign top.location.
 			if it.Kind == "panel" {
 				tok, err := a.ext.Modules.IssueContext(r.Context(), p, in.ID, matter)
 				if err != nil {
 					return nil, err
 				}
-				if panelNonce == "" {
-					panelNonce = modules.FrameNonce()
-				}
-				refresh := modules.MatterItemPage(url.PathEscape(in.ID), url.PathEscape(it.ID)) + "/context-token?matter_id=" + url.QueryEscape(string(matter))
 				item.Path = modules.FramePath(in.ID, it.Path, tok.Token, url.Values{"matter_id": {string(matter)}})
-				item.Nonce = panelNonce
-				item.Bridge = template.JS(modules.FrameBridgeScript(in.ID, true, refresh))
+				item.ContextTokenURL = modules.MatterItemPage(url.PathEscape(in.ID), url.PathEscape(it.ID)) + "/context-token?matter_id=" + url.QueryEscape(string(matter))
 			}
 			items = append(items, item)
 		}

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
 
 // MailMsg is one message the SMTP stand-in accepted.
@@ -77,7 +76,6 @@ func (m *Mail) SetReject(v bool) {
 
 func (m *Mail) serve(c net.Conn) {
 	defer c.Close()
-	_ = c.SetDeadline(time.Now().Add(30 * time.Second))
 	rd := bufio.NewReader(c)
 	say := func(line string) { _, _ = c.Write([]byte(line + "\r\n")) }
 	say("220 coretest.smtp ESMTP")
@@ -93,11 +91,11 @@ func (m *Mail) serve(c net.Conn) {
 			say("250-coretest.smtp")
 			say("250 8BITMIME")
 		case strings.HasPrefix(cmd, "MAIL FROM:"):
-			from := strings.TrimSpace(line[10:])
-			if i := strings.Index(from, ">"); i >= 0 {
-				from = from[:i]
-			}
-			cur = MailMsg{From: strings.TrimPrefix(from, "<")}
+			from, _ := strings.CutPrefix(strings.TrimSpace(line), "MAIL FROM:")
+			from = strings.TrimSpace(from)
+			from = strings.TrimPrefix(from, "<")
+			from = strings.TrimSuffix(from, ">")
+			cur = MailMsg{From: from}
 			say("250 OK")
 		case strings.HasPrefix(cmd, "RCPT TO:"):
 			m.mu.Lock()
@@ -107,7 +105,8 @@ func (m *Mail) serve(c net.Conn) {
 				say("550 mailbox unavailable")
 				continue
 			}
-			cur.To = append(cur.To, strings.Trim(strings.TrimSpace(line[8:]), "<>\r\n"))
+			rcpt, _ := strings.CutPrefix(strings.TrimSpace(line), "RCPT TO:")
+			cur.To = append(cur.To, strings.Trim(strings.TrimSpace(rcpt), "<>"))
 			say("250 OK")
 		case cmd == "DATA":
 			say("354 go ahead")

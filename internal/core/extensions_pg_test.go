@@ -449,8 +449,8 @@ func TestExtensionsMatterItems(t *testing.T) {
 	// bridge on that page (not a nested opaque core frame).
 	for _, want := range []string{`id="module-matter-notes"`, `/m/matter-notes/notes?`, "context=",
 		`sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox"`,
-		"togavsu:context.refresh", "togavsu:navigate",
-		"/modules/matter-notes/matter-items/notes/context-token?matter_id=" + open,
+		`data-context-token-url="/modules/matter-notes/matter-items/notes/context-token?matter_id=` + open + `"`,
+		`data-staff="1"`, "/ui/static/module-bridge.js",
 		`<a class="button" href="` + action + `">Draft a letter</a>`, "Matter notes"} {
 		if !strings.Contains(screen.body, want) {
 			t.Fatalf("matter screen lacks %q:\n%s", want, screen.body)
@@ -459,8 +459,8 @@ func TestExtensionsMatterItems(t *testing.T) {
 	if strings.Contains(screen.body, "allow-same-origin") {
 		t.Fatalf("matter-screen frame must not get allow-same-origin:\n%s", screen.body)
 	}
-	if !strings.Contains(screen.body, "nonce=") {
-		t.Fatal("matter screen panel bridge missing script nonce")
+	if strings.Contains(screen.body, "<script>") || strings.Contains(screen.body, "<script nonce=") {
+		t.Fatal("matter screen must not embed an inline script (module-bridge.js is external)")
 	}
 	// Action still opens through the core framing page inside the shell.
 	r := x.staff.must(http.StatusOK, "GET", action, nil)

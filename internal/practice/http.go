@@ -45,16 +45,15 @@ type ModulePanel struct {
 // ModuleItem is a matter-screen panel or action a module declares (manifest
 // matter_items). Kind is "panel" (shown inline in a sandboxed frame) or "action" (a
 // button that opens the framed page). For panels, Path is the module /m/ frame URL and
-// Bridge/Nonce carry the CORE-09 postMessage listener on the matter page itself (so the
-// staff sandbox without allow-same-origin still reaches context.refresh and navigate).
-// For actions, Path is the core page that frames the module.
+// ContextTokenURL is the session refresh route the matter page's module-bridge.js uses
+// (CORE-09; staff sandbox without allow-same-origin). For actions, Path is the core
+// page that frames the module.
 type ModuleItem struct {
-	ID     string
-	Kind   string
-	Title  string
-	Path   string
-	Nonce  string
-	Bridge template.JS
+	ID              string
+	Kind            string
+	Title           string
+	Path            string
+	ContextTokenURL string
 }
 
 // ModuleTab is a matter tab a module serves; Path is the core page that frames it.
@@ -199,6 +198,19 @@ type page struct {
 
 // render draws the named practice screen inside the app shell.
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data page) {
+	h.renderWithScripts(w, r, name, data, nil)
+}
+
+// renderMatter draws the matter screen; withBridge loads module-bridge.js for CORE-09 panels.
+func (h *Handler) renderMatter(w http.ResponseWriter, r *http.Request, data page, withBridge bool) {
+	var scripts []string
+	if withBridge {
+		scripts = []string{"/ui/static/module-bridge.js"}
+	}
+	h.renderWithScripts(w, r, "matter.html", data, scripts)
+}
+
+func (h *Handler) renderWithScripts(w http.ResponseWriter, r *http.Request, name string, data page, scripts []string) {
 	if h.Templates == nil {
 		http.Error(w, "templates are not loaded", http.StatusInternalServerError)
 		return
@@ -208,7 +220,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	frame.Write(w, r, frame.Page{Title: data.Title, Area: "practice", Body: template.HTML(buf.String()), Notice: data.Notice})
+	frame.Write(w, r, frame.Page{Title: data.Title, Area: "practice", Body: template.HTML(buf.String()), Notice: data.Notice, Scripts: scripts, WorkInFrame: len(scripts) > 0})
 }
 
 func (h *Handler) mattersPage(w http.ResponseWriter, r *http.Request) {
@@ -322,23 +334,23 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	nonce := ""
+	needBridge := false
 	for _, panel := range panels {
 		for _, it := range panel.Items {
-			if it.Nonce != "" {
-				nonce = it.Nonce
+			if it.Kind == "panel" && it.ContextTokenURL != "" {
+				needBridge = true
 				break
 			}
 		}
-		if nonce != "" {
+		if needBridge {
 			break
 		}
 	}
-	if nonce != "" {
-		// Matter-screen panels host the CORE-09 bridge inline; match writeFrame's shell CSP.
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'none'")
+	if needBridge {
+		// External module-bridge.js (script-src 'self') plus connect-src for context.refresh.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'none'")
 	}
-	h.render(w, r, "matter.html", page{
+	h.renderMatter(w, r, page{
 		Title: view.Matter.Number + " " + view.Matter.Name, CSRF: h.csrf(w, r),
 		Matter: view, History: history, Timeline: timeline, MatterNotes: notes, Checks: checks,
 		CanReopen:     reopenErr == nil && view.Matter.Status == StatusClosed,
@@ -346,7 +358,7 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 		PartyRoles:    h.Svc.listSetting(r.Context(), "practice.party_roles", domain.DefaultPartyRoles()),
 		AttorneyName:  attorney,
 		Panels:        panels,
-	})
+	}, needBridge)
 }
 
 func (h *Handler) closePage(w http.ResponseWriter, r *http.Request) {
