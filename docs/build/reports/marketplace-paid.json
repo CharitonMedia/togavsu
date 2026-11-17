@@ -1,16 +1,71 @@
 {
   "task_id": "marketplace-paid",
   "status": "pass",
-  "tested_revision": "6fa475a6ea03fabd9827663eb041f968eec1c286",
+  "tested_revision": "d6f8d72f62e46368ee9d4b7cebfefa2c36cf5edf",
   "tests": [
     {
-      "name": "marketplace-package",
+      "name": "marketplace package",
       "command": "go test -count=1 -timeout 300s ./marketplace/",
       "exit_code": 0
     },
     {
-      "name": "mkt-acceptance",
+      "name": "MKT acceptance suite",
       "command": "go test -count=1 -timeout 180s -v -run 'TestMKT0' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "structured-price",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT01StructuredPrice$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "signed-upload",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT02SignedUpload$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "subscribe-license",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT03SubscribeLicense$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "renewal",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT04PriceChangeNotice$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "cancel",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT05Cancel$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "no-card-or-secret",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT06NoCardOrSecret$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "stripe-faked",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT07StripeFaked$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "unpaid-checkout-refused",
+      "command": "go test -count=1 -timeout 60s -run '^TestUnpaidCheckoutRefused$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "client-extend-refused",
+      "command": "go test -count=1 -timeout 60s -run '^TestClientExtendRefused$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "forged-cancel-refused",
+      "command": "go test -count=1 -timeout 60s -run '^TestForgedCancelRefused$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "missing-license-seed",
+      "command": "go test -count=1 -timeout 60s -run '^TestMissingLicenseSeedFailsClosed$' ./marketplace/",
       "exit_code": 0
     }
   ],
