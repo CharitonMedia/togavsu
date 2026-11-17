@@ -11,6 +11,7 @@ import (
 // drainSupervisorMail sends each notice in the supervisor outbox through systemMailer
 // (CORE-05). Update-related subjects use kind update_failure so aboutRoutingModule
 // forces SMTP when the notice is about the email routing module itself.
+// Each notice keeps a stable ID used as Idempotency-Key across 5xx/timeout retries.
 func (a *App) drainSupervisorMail(ctx context.Context) (int, error) {
 	if a == nil || a.sysMail == nil || a.supervisorMailOutbox == "" {
 		return 0, nil
@@ -42,13 +43,19 @@ func (a *App) drainSupervisorMail(ctx context.Context) (int, error) {
 		if strings.Contains(strings.ToLower(n.Subject), "update") {
 			kind = "update_failure"
 		}
-		id, err := domain.NewID()
-		if err != nil {
-			failed = append(failed, n)
-			continue
+		id := n.ID
+		if id == "" {
+			// Legacy lines without id: mint once and keep on the notice for PutAll retry.
+			newID, err := domain.NewID()
+			if err != nil {
+				failed = append(failed, n)
+				continue
+			}
+			id = string(newID)
+			n.ID = id
 		}
 		if err := a.sysMail.deliver(ctx, systemMail{
-			ID: string(id), Kind: kind, To: to, Subject: n.Subject, Text: n.Body,
+			ID: id, Kind: kind, To: to, Subject: n.Subject, Text: n.Body,
 		}); err != nil {
 			failed = append(failed, n)
 			continue

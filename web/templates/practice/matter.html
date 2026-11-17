@@ -140,13 +140,15 @@
 </section>
 
 {{range .Panels}}
+{{$mod := .Module}}
 <section class="card" id="module-{{.Module}}" data-module="{{.Module}}">
   <h2>{{.Name}}</h2>
   {{range .Tabs}}<p><a href="{{.Path}}">{{.Title}}</a></p>{{end}}
   {{range .Items}}{{if eq .Kind "panel"}}
-  <figure class="module-panel" data-item="{{.ID}}">
+  <figure class="module-panel" data-item="{{.ID}}" data-module="{{$mod}}">
     <figcaption>{{.Title}}</figcaption>
-    <iframe src="{{.Path}}" title="{{.Title}}" class="module-frame" sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" loading="lazy"></iframe>
+    {{if .Bridge}}<script nonce="{{.Nonce}}">{{.Bridge}}</script>{{end}}
+    <iframe src="{{.Path}}" title="{{.Title}}" class="module-frame" data-module="{{$mod}}" sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" loading="lazy"></iframe>
   </figure>
   {{else}}<p class="module-action" data-item="{{.ID}}"><a class="button" href="{{.Path}}">{{.Title}}</a></p>{{end}}{{end}}
   {{range .Rows}}

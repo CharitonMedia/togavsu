@@ -245,6 +245,78 @@ func TestCORE05SupervisorOutboxDrain(t *testing.T) {
 	}
 }
 
+// TestCORE05SupervisorOutboxRetrySameKey: a 5xx from the email module puts the notice
+// back and the next drain reuses the same Idempotency-Key (CORE-05).
+func TestCORE05SupervisorOutboxRetrySameKey(t *testing.T) {
+	outPath := filepath.Join(t.TempDir(), "mail-outbox.jsonl")
+	x := newExt(t, func(c *Config) { c.SupervisorMailOutbox = outPath })
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+
+	var mu sync.Mutex
+	var keys []string
+	var hits int
+	x.rt.Handle("mail-router", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/system-mail" {
+			http.NotFound(w, r)
+			return
+		}
+		mu.Lock()
+		hits++
+		n := hits
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		mu.Unlock()
+		if n == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	pkg := x.build(func(f map[string][]byte) {
+		m := string(f[modules.ManifestFile])
+		m = strings.Replace(m, "id: matter-clock", "id: mail-router", 1)
+		m = strings.Replace(m, "name: Matter Clock", "name: Mail Router", 1)
+		m = strings.Replace(m, "  events: /events\n", "  events: /events\n  system_mail: /system-mail\n", 1)
+		m = strings.Replace(m, "permissions:\n", "permissions:\n  - scope: mail:system\n    reason: Deliver system mail.\n    required: false\n", 1)
+		f[modules.ManifestFile] = []byte(m)
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("mail-router")
+	x.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/mail.route_through_email_module", map[string]any{"value": true})
+
+	box := supervisor.OpenOutbox(outPath)
+	if err := box.Notify(context.Background(), "Update failed", "retry with same key"); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := box.List()
+	if err != nil || len(listed) != 1 || listed[0].ID == "" {
+		t.Fatalf("notice before drain: %+v %v", listed, err)
+	}
+	wantKey := listed[0].ID
+
+	if _, err := x.app.DeliverMail(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	left, err := box.List()
+	if err != nil || len(left) != 1 || left[0].ID != wantKey {
+		t.Fatalf("after 5xx outbox=%+v err=%v want id %q", left, err, wantKey)
+	}
+
+	if _, err := x.app.DeliverMail(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	left, err = box.List()
+	if err != nil || len(left) != 0 {
+		t.Fatalf("after 202 outbox=%+v err=%v", left, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(keys) != 2 || keys[0] != wantKey || keys[1] != wantKey {
+		t.Fatalf("Idempotency-Key on attempts: %v want %q twice", keys, wantKey)
+	}
+}
+
 // TestCORE05SystemMailNeedsPermission: install refuses container.system_mail without mail:system.
 func TestCORE05SystemMailNeedsPermission(t *testing.T) {
 	raw := samplePackageForMail(t, false)

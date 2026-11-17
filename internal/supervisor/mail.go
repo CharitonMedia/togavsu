@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"os"
 	"time"
+
+	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
 // Notice is one admin message waiting for core system mail. The core's DeliverMail
-// drains this file through systemMailer (CORE-05).
+// drains this file through systemMailer (CORE-05). ID is stable across retries and is
+// the Idempotency-Key the email module sees.
 type Notice struct {
+	ID      string    `json:"id,omitempty"`
 	Time    time.Time `json:"time"`
 	Subject string    `json:"subject"`
 	Body    string    `json:"body"`
@@ -35,7 +39,11 @@ func (o *Outbox) Notify(_ context.Context, subject, body string) error {
 	if o == nil || o.path == "" {
 		return nil
 	}
-	n := Notice{Time: o.now().UTC(), Subject: subject, Body: body}
+	id, err := domain.NewID()
+	if err != nil {
+		return err
+	}
+	n := Notice{ID: string(id), Time: o.now().UTC(), Subject: subject, Body: body}
 	line, err := json.Marshal(n)
 	if err != nil {
 		return err

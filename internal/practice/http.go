@@ -44,12 +44,17 @@ type ModulePanel struct {
 
 // ModuleItem is a matter-screen panel or action a module declares (manifest
 // matter_items). Kind is "panel" (shown inline in a sandboxed frame) or "action" (a
-// button that opens the framed page); Path is the core page that frames it.
+// button that opens the framed page). For panels, Path is the module /m/ frame URL and
+// Bridge/Nonce carry the CORE-09 postMessage listener on the matter page itself (so the
+// staff sandbox without allow-same-origin still reaches context.refresh and navigate).
+// For actions, Path is the core page that frames the module.
 type ModuleItem struct {
-	ID    string
-	Kind  string
-	Title string
-	Path  string
+	ID     string
+	Kind   string
+	Title  string
+	Path   string
+	Nonce  string
+	Bridge template.JS
 }
 
 // ModuleTab is a matter tab a module serves; Path is the core page that frames it.
@@ -316,6 +321,22 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, err)
 			return
 		}
+	}
+	nonce := ""
+	for _, panel := range panels {
+		for _, it := range panel.Items {
+			if it.Nonce != "" {
+				nonce = it.Nonce
+				break
+			}
+		}
+		if nonce != "" {
+			break
+		}
+	}
+	if nonce != "" {
+		// Matter-screen panels host the CORE-09 bridge inline; match writeFrame's shell CSP.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'none'")
 	}
 	h.render(w, r, "matter.html", page{
 		Title: view.Matter.Number + " " + view.Matter.Name, CSRF: h.csrf(w, r),

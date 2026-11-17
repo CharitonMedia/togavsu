@@ -889,14 +889,15 @@ func writeFrameSandbox(w http.ResponseWriter, r *http.Request, screen bool, titl
 		}
 		// Shell would default to help.CSP (script-src 'self') and block the nonce bridge;
 		// set a policy that keeps the shell assets and allows this one inline script.
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'none'")
 		body := `<span hidden data-module="` + template.HTMLEscapeString(moduleID) + `"></span>` +
 			`<script nonce="` + nonce + `">` + script + `</script>` + buf.String()
 		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(body), WorkInFrame: true})
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-"+nonce+"'; frame-src 'self'; frame-ancestors 'self'")
+	// connect-src 'self' lets the bridge fetch .../context-token (CORE-09 widgets and bare panels).
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-"+nonce+"'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'")
 	if err := framePage.Execute(&buf, data); err != nil {
 		writeErr(w, err)
 		return
@@ -904,7 +905,8 @@ func writeFrameSandbox(w http.ResponseWriter, r *http.Request, screen bool, titl
 	_, _ = w.Write(buf.Bytes())
 }
 
-func frameNonce() string {
+// FrameNonce is a CSP nonce for an inline CORE-09 bridge script.
+func FrameNonce() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "togavsu"
@@ -912,12 +914,18 @@ func frameNonce() string {
 	return hex.EncodeToString(b[:])
 }
 
-// frameBridgeScript is the CORE-09 postMessage listener for one module's frame.
+func frameNonce() string { return FrameNonce() }
+
+// FrameBridgeScript is the CORE-09 postMessage listener for one module's frame.
 // staff enables togavsu:editor.open; client frames omit it. Navigate and editor.open
 // use the top-level window so an embedded panel/widget iframe does not trap the app.
-func frameBridgeScript(moduleID string, staff bool) string {
+// refreshPath, when set, is the absolute path the bridge fetches for context.refresh
+// (matter-screen panels host the bridge on /practice/matters/... rather than the frame URL).
+func FrameBridgeScript(moduleID string, staff bool, refreshPath string) string {
 	esc := strings.ReplaceAll(moduleID, `\`, `\\`)
 	esc = strings.ReplaceAll(esc, `"`, `\"`)
+	refreshEsc := strings.ReplaceAll(refreshPath, `\`, `\\`)
+	refreshEsc = strings.ReplaceAll(refreshEsc, `"`, `\"`)
 	editor := ""
 	if staff {
 		editor = `
@@ -926,14 +934,28 @@ func frameBridgeScript(moduleID string, staff bool) string {
       return;
     }`
 	}
+	refreshJS := `window.location.pathname.replace(/\/$/, "") + "/context-token" + window.location.search`
+	if refreshPath != "" {
+		refreshJS = `"` + refreshEsc + `"`
+	}
 	return `
 (function () {
   var moduleId = "` + esc + `";
   var frame = null;
-  function bind() { frame = document.querySelector("iframe.module-frame"); }
+  function bind() {
+    var nodes = document.querySelectorAll("iframe.module-frame");
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].getAttribute("data-module") === moduleId) { frame = nodes[i]; return; }
+    }
+    frame = nodes.length ? nodes[0] : null;
+  }
   function go(url) {
-    var w = (window.top && window.top !== window) ? window.top : window;
-    w.location.assign(url);
+    try {
+      var w = (window.top && window.top !== window) ? window.top : window;
+      w.location.assign(url);
+    } catch (e) {
+      window.location.assign(url);
+    }
   }
   function allowed(page) {
     if (typeof page !== "string" || page.charAt(0) !== "/" || page.indexOf("//") === 0 || page.indexOf("://") >= 0) return false;
@@ -962,7 +984,7 @@ func frameBridgeScript(moduleID string, staff bool) string {
       return;
     }
     if (t === "togavsu:context.refresh" && d.request_id) {
-      var refresh = window.location.pathname.replace(/\/$/, "") + "/context-token" + window.location.search;
+      var refresh = ` + refreshJS + `;
       fetch(refresh, {credentials: "same-origin", headers: {"Accept": "application/json"}})
         .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
         .then(function (body) {
@@ -975,6 +997,10 @@ func frameBridgeScript(moduleID string, staff bool) string {
   });
 })();
 `
+}
+
+func frameBridgeScript(moduleID string, staff bool) string {
+	return FrameBridgeScript(moduleID, staff, "")
 }
 
 func (h *Handler) tabPage(w http.ResponseWriter, r *http.Request, c Caller) {
