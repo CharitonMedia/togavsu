@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -84,22 +85,18 @@ func (s *Service) LinkContract(ctx context.Context, p domain.Principal, in Contr
 	if err != nil || !provider.Enabled {
 		return ContractLink{}, domain.NotFound("provider")
 	}
+	if !consumer.Approved["contracts:call"] {
+		return ContractLink{}, domain.Invalid("consumer_id", "consumer lacks approved contracts:call scope")
+	}
+	if !provider.Approved["contracts:provide"] {
+		return ContractLink{}, domain.Invalid("provider_id", "provider lacks approved contracts:provide scope")
+	}
 	if !consumer.Manifest.ConsumesContract(in.Contract) {
 		return ContractLink{}, domain.Invalid("consumer_id", "consumer does not declare consumes for "+in.Contract)
 	}
 	offer, ok := provider.Manifest.Provide(in.Contract)
 	if !ok {
 		return ContractLink{}, domain.Invalid("provider_id", "provider does not declare provides for "+in.Contract)
-	}
-	if !offer.Many {
-		var existing string
-		err := s.q(ctx).QueryRowContext(ctx, `SELECT provider_id FROM core.module_contract_links WHERE contract = $1 LIMIT 1`, in.Contract).Scan(&existing)
-		if err == nil && existing != in.ProviderID {
-			return ContractLink{}, domain.Conflict("contract " + in.Contract + " already has provider " + existing)
-		}
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return ContractLink{}, err
-		}
 	}
 	id, err := domain.NewID()
 	if err != nil {
@@ -109,6 +106,20 @@ func (s *Service) LinkContract(ctx context.Context, p domain.Principal, in Contr
 	actor := string(p.UserID)
 	var out ContractLink
 	err = s.commit(ctx, func(ctx context.Context) error {
+		// Serialize one-provider checks so concurrent links cannot create two providers.
+		if !offer.Many {
+			if _, err := s.q(ctx).ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "module_contract:"+in.Contract); err != nil {
+				return err
+			}
+			var existing string
+			err := s.q(ctx).QueryRowContext(ctx, `SELECT provider_id FROM core.module_contract_links WHERE contract = $1 LIMIT 1`, in.Contract).Scan(&existing)
+			if err == nil && existing != in.ProviderID {
+				return domain.Conflict("contract " + in.Contract + " already has provider " + existing)
+			}
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+		}
 		var existing string
 		err := s.q(ctx).QueryRowContext(ctx, `SELECT id FROM core.module_contract_links WHERE contract = $1 AND consumer_id = $2 AND provider_id = $3`,
 			in.Contract, in.ConsumerID, in.ProviderID).Scan(&existing)
@@ -180,9 +191,10 @@ func (s *Service) UnlinkContract(ctx context.Context, p domain.Principal, linkID
 }
 
 // linkedProvider returns the provider id for a consumer on a contract, or empty when none.
+// When a contract allows many providers, the earliest link (created_at, id) is used.
 func (s *Service) linkedProvider(ctx context.Context, contract, consumer string) (string, error) {
 	var provider string
-	err := s.q(ctx).QueryRowContext(ctx, `SELECT provider_id FROM core.module_contract_links WHERE contract = $1 AND consumer_id = $2 LIMIT 1`,
+	err := s.q(ctx).QueryRowContext(ctx, `SELECT provider_id FROM core.module_contract_links WHERE contract = $1 AND consumer_id = $2 ORDER BY created_at ASC, id ASC LIMIT 1`,
 		contract, consumer).Scan(&provider)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
@@ -260,6 +272,7 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 	}
 	resp, err := s.d.HTTP.Do(req)
 	if err != nil {
+		_ = s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, 0, "provider_unreachable")
 		return 0, nil, nil, domain.Conflict("provider did not answer")
 	}
 	defer resp.Body.Close()
@@ -268,6 +281,7 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 		return 0, nil, nil, err
 	}
 	if len(respBody) > maxBytes {
+		_ = s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, resp.StatusCode, "response_too_large")
 		return 0, nil, nil, &domain.APIError{Code: "payload_too_large", Message: "provider response exceeds modules.contract_call_max_bytes"}
 	}
 	// Strip any address-bearing headers so the consumer never learns the provider URL.
@@ -277,7 +291,21 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 			outHeader.Set(k, v)
 		}
 	}
+	_ = s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, resp.StatusCode, "ok")
 	return resp.StatusCode, outHeader, respBody, nil
+}
+
+func (s *Service) auditContractCall(ctx context.Context, p domain.Principal, contract, operation, consumer, provider string, status int, result string) error {
+	id, err := domain.NewID()
+	if err != nil {
+		return err
+	}
+	_, err = s.d.Audit.Record(ctx, p, audit.Change{
+		Entity: "module_contract_call", EntityID: id, Field: "call",
+		New:    contract + ":" + operation + " consumer=" + consumer + " provider=" + provider + " status=" + strconv.Itoa(status) + " result=" + result,
+		Reason: "module.contract_call",
+	})
+	return err
 }
 
 // PushContractEvent delivers a provider-pushed contract event to every linked consumer
@@ -294,11 +322,13 @@ func (s *Service) PushContractEvent(ctx context.Context, p domain.Principal, con
 	if contract == "" || in.Action == "" {
 		return domain.Invalid("action", "contract and action are required")
 	}
-	if !strings.HasPrefix(in.Action, contract+".") && in.Action != contract {
-		// Allow actions scoped under the contract name.
-		if !strings.Contains(in.Action, ".") {
-			in.Action = contract + "." + in.Action
+	// Always namespace under the contract; refuse actions that look like other namespaces
+	// (e.g. matter.created) so a provider cannot forge core event names.
+	if in.Action != contract && !strings.HasPrefix(in.Action, contract+".") {
+		if strings.Contains(in.Action, ".") {
+			return domain.Invalid("action", "contract event action must be scoped under "+contract)
 		}
+		in.Action = contract + "." + in.Action
 	}
 	provider, err := s.Installed(ctx, p.ModuleID)
 	if err != nil || !provider.Enabled {
@@ -365,7 +395,16 @@ VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'')`,
 				return err
 			}
 		}
-		return nil
+		auditID, err := domain.NewID()
+		if err != nil {
+			return err
+		}
+		_, err = s.d.Audit.Record(ctx, p, audit.Change{
+			Entity: "module_contract_event", EntityID: auditID, Field: "push",
+			New:    contract + ":" + in.Action + " provider=" + p.ModuleID + " consumers=" + strconv.Itoa(len(consumers)),
+			Reason: "module.contract_event",
+		})
+		return err
 	})
 }
 

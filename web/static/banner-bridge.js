@@ -15,13 +15,15 @@
     return "";
   }
   window.addEventListener("message", function (ev) {
+    if (ev.origin !== window.location.origin) return;
     var d = ev.data;
     if (!d || typeof d !== "object") return;
     var t = d.type;
     if (t !== "togavsu:banner.show" && t !== "togavsu:banner.hide") return;
-    var mod = d.module_id || d.module || fromBanner(ev);
-    if (!mod) return;
-    if (!fromBanner(ev) && !d.module_id && !d.module) return;
-    apply(mod, t === "togavsu:banner.show");
+    var from = fromBanner(ev);
+    if (!from) return;
+    var claimed = d.module_id || d.module || "";
+    if (claimed && claimed !== from) return;
+    apply(from, t === "togavsu:banner.show");
   });
 })();

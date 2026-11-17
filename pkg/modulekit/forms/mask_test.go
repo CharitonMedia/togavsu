@@ -1,7 +1,9 @@
 package forms
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -71,5 +73,62 @@ func TestEncryptRequiresSecretKey(t *testing.T) {
 	_, err := EncryptMasked(context.Background(), NewMemorySecretStore(), "", "x")
 	if err != ErrNoSecretKey {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+type flakySecretStore struct {
+	inner    *MemorySecretStore
+	getErr   error
+	gets     int
+	putCalls int
+}
+
+func (s *flakySecretStore) PutSecret(ctx context.Context, name, value string) error {
+	s.putCalls++
+	return s.inner.PutSecret(ctx, name, value)
+}
+func (s *flakySecretStore) GetSecret(ctx context.Context, name string) (string, error) {
+	s.gets++
+	if s.getErr != nil {
+		return "", s.getErr
+	}
+	return s.inner.GetSecret(ctx, name)
+}
+
+func TestEnsureKeyDoesNotReplaceOnTransientError(t *testing.T) {
+	ctx := context.Background()
+	inner := NewMemorySecretStore()
+	key, err := EnsureKey(ctx, inner, "forms/ssn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flaky := &flakySecretStore{inner: inner, getErr: errors.New("network blip")}
+	if _, err := EnsureKey(ctx, flaky, "forms/ssn"); err == nil || !strings.Contains(err.Error(), "network blip") {
+		t.Fatalf("want transient error, got %v", err)
+	}
+	if flaky.putCalls != 0 {
+		t.Fatalf("EnsureKey must not PutSecret on transient GetSecret failure")
+	}
+	again, err := LoadKey(ctx, inner, "forms/ssn")
+	if err != nil || !bytes.Equal(again, key) {
+		t.Fatalf("original key changed: %v", err)
+	}
+	// Malformed stored value must also refuse, not regenerate.
+	_ = inner.PutSecret(ctx, "forms/bad", "not-base64")
+	if _, err := EnsureKey(ctx, inner, "forms/bad"); err != ErrBadKey {
+		t.Fatalf("want ErrBadKey, got %v", err)
+	}
+}
+
+func TestEnsureKeyCreatesOnlyWhenMissing(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemorySecretStore()
+	k1, err := EnsureKey(ctx, store, "k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	k2, err := EnsureKey(ctx, store, "k")
+	if err != nil || !bytes.Equal(k1, k2) {
+		t.Fatalf("second EnsureKey regenerated key")
 	}
 }

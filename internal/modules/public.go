@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -53,7 +55,28 @@ func (r *publicRate) allow(key string, limit int, now time.Time, window time.Dur
 		return wait, false
 	}
 	r.hits[key] = append(kept, now)
+	r.evict(now, window)
 	return 0, true
+}
+
+// evict drops keys whose hits all fall outside window (caller holds mu).
+func (r *publicRate) evict(now time.Time, window time.Duration) {
+	if len(r.hits) < 64 {
+		return
+	}
+	for k, times := range r.hits {
+		var kept []time.Time
+		for _, at := range times {
+			if now.Sub(at) < window {
+				kept = append(kept, at)
+			}
+		}
+		if len(kept) == 0 {
+			delete(r.hits, k)
+		} else {
+			r.hits[k] = kept
+		}
+	}
 }
 
 // clientIP prefers X-Forwarded-For's first hop, then RemoteAddr.
@@ -69,6 +92,45 @@ func clientIP(r *http.Request) string {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+func publicCookieSecure(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+// submittedPublicCSRF reads the CSRF token from the header or from a buffered form body
+// (the body may already have been consumed for MaxBytesReader).
+func submittedPublicCSRF(r *http.Request, body []byte) string {
+	if v := r.Header.Get(PublicCSRFHeader); v != "" {
+		return v
+	}
+	ct := r.Header.Get("Content-Type")
+	media, params, _ := mime.ParseMediaType(ct)
+	switch media {
+	case "multipart/form-data":
+		mr := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+		for {
+			part, err := mr.NextPart()
+			if err != nil {
+				break
+			}
+			name := part.FormName()
+			raw, _ := io.ReadAll(io.LimitReader(part, 1<<20))
+			_ = part.Close()
+			if name == "csrf" {
+				return string(raw)
+			}
+		}
+	default:
+		// application/x-www-form-urlencoded and unknown text forms.
+		vals, err := url.ParseQuery(string(body))
+		if err == nil {
+			if v := vals.Get("csrf"); v != "" {
+				return v
+			}
+		}
+	}
+	return ""
 }
 
 // publicPage proxies /p/{module_id}/... with no sign-in (CORE-32).
@@ -135,29 +197,27 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 
 	// CSRF: set cookie on GET; require match on unsafe methods.
 	csrfCookie, _ := r.Cookie(PublicCSRFCookie)
+	csrfTok := ""
+	if csrfCookie != nil {
+		csrfTok = csrfCookie.Value
+	}
 	switch r.Method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		if csrfCookie == nil || csrfCookie.Value == "" {
+		if csrfTok == "" {
 			tok, err := IssuePublicCSRF()
 			if err != nil {
 				writeErr(w, err)
 				return
 			}
+			csrfTok = tok
 			http.SetCookie(w, &http.Cookie{
 				Name: PublicCSRFCookie, Value: tok, Path: "/p/" + moduleID,
-				HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil,
+				HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: publicCookieSecure(r),
 			})
 		}
 	default:
-		submitted := r.Header.Get(PublicCSRFHeader)
-		if submitted == "" {
-			submitted = r.FormValue("csrf")
-		}
-		cookieVal := ""
-		if csrfCookie != nil {
-			cookieVal = csrfCookie.Value
-		}
-		if err := CheckPublicCSRF(cookieVal, submitted); err != nil {
+		submitted := submittedPublicCSRF(r, body)
+		if err := CheckPublicCSRF(csrfTok, submitted); err != nil {
 			writeErr(w, err)
 			return
 		}
@@ -189,6 +249,7 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 	r.GetBody = func() (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(body)), nil
 	}
+	passCSRF := csrfTok
 	proxy := &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
 			req.URL.Scheme = target.Scheme
@@ -199,11 +260,15 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 			req.Header.Del("Authorization")
 			req.Header.Set("X-Togavsu-Module", moduleID)
 			req.Header.Set(PublicStepHeader, step)
+			if passCSRF != "" {
+				req.Header.Set(PublicCSRFPassHeader, passCSRF)
+			}
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			resp.Header.Del("Set-Cookie")
 			if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "text/html") {
-				resp.Header.Set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox")
+				// allow-same-origin so the double-submit CSRF cookie is sent on POSTs from the page.
+				resp.Header.Set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox")
 			}
 			return nil
 		},

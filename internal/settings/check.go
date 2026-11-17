@@ -661,7 +661,7 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "internal/modules/public.go"):
 		// Public page rate window and Retry-After floor; rate/bytes are settings (CORE-32).
 		switch fn {
-		case "allow", "publicPage", "clientIP":
+		case "allow", "evict", "publicPage", "clientIP", "submittedPublicCSRF", "publicCookieSecure":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/modules/steptoken.go"):
@@ -673,7 +673,7 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "internal/modules/contracts.go"):
 		// Contract proxy body floor uses modules.contract_call_max_bytes (CORE-31).
 		switch fn {
-		case "CallContract", "PushContractEvent", "LinkContract", "UnlinkContract", "linkedProvider", "ListContractLinks":
+		case "CallContract", "PushContractEvent", "LinkContract", "UnlinkContract", "linkedProvider", "ListContractLinks", "auditContractCall":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/modules/contracts_http.go"):
@@ -767,7 +767,8 @@ func fixedSite(path, fn string) bool {
 	case strings.Contains(slash, "/pkg/modulekit/forms/"):
 		// CORE-33 forms kit: comparison ranks, AES key width, parse indexes; answers stay in the module.
 		switch fn {
-		case "DecodeAutosave", "AutosaveHandler", "ParseFormAnswers", "inValue", "compareValue",
+		case "DecodeAutosave", "AutosaveHandler", "ParseFormAnswers", "decodeAutosaveRequest", "patchFromForm",
+			"splitRepeatingKey", "renderRepeatRow", "inValue", "compareValue",
 			"compareCount", "cmp", "cmpCount", "Eval", "validateField", "Validate", "ValidateScreen",
 			"KeyBytes", "EnsureKey", "LoadKey", "EncryptMasked", "DecryptMasked", "SealAnswers":
 			return true

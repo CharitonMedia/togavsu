@@ -94,4 +94,82 @@ func TestOfflineQueueJSPresent(t *testing.T) {
 	if !strings.Contains(OfflineQueueJS, "localStorage") || !strings.Contains(OfflineQueueJS, "TogavsuFormsOffline") {
 		t.Fatal("OfflineQueueJS missing expected pieces")
 	}
+	if !strings.Contains(OfflineQueueJS, "_togavsuBody") || !strings.Contains(OfflineQueueJS, "htmx:configRequest") {
+		t.Fatal("OfflineQueueJS must capture the HTMX body for replay")
+	}
+	if !strings.Contains(OfflineQueueJS, `"answers"`) && !strings.Contains(OfflineQueueJS, "answers:") {
+		t.Fatal("OfflineQueueJS must enqueue answers, not a nil raw value")
+	}
+}
+
+func TestAutosaveHandlerAcceptsFormURLEncoded(t *testing.T) {
+	var stored Answers
+	h := AutosaveHandler(func(r *http.Request, patch AutosavePatch) (Answers, error) {
+		patch.Apply(&stored)
+		return stored, nil
+	})
+	body := "name=Avery&email=a%40example.com"
+	req := httptest.NewRequest(http.MethodPost, "/autosave?echo=1", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if stored.Get("name").StringValue() != "Avery" || stored.Get("email").StringValue() != "a@example.com" {
+		t.Fatalf("stored = %#v", stored)
+	}
+}
+
+func TestAutosaveOfflineReplayDoesNotWipe(t *testing.T) {
+	dst := Answers{"name": {Value: "Avery"}}
+	AutosavePatch{Offline: true, Field: "name"}.Apply(&dst)
+	if dst.Get("name").StringValue() != "Avery" {
+		t.Fatalf("offline empty patch wiped value: %#v", dst["name"])
+	}
+	AutosavePatch{Offline: true, Answers: Answers{"name": {Value: "Blake"}}}.Apply(&dst)
+	if dst.Get("name").StringValue() != "Blake" {
+		t.Fatalf("offline answers not applied: %#v", dst["name"])
+	}
+}
+
+func TestParseFormAnswersRepeating(t *testing.T) {
+	got := ParseFormAnswers(map[string][]string{
+		"kids[0].name": {"Ada"},
+		"kids[1].name": {"Bea"},
+	})
+	rows := got.Get("kids").RowsValue()
+	if len(rows) != 2 || rows[0]["name"].StringValue() != "Ada" || rows[1]["name"].StringValue() != "Bea" {
+		t.Fatalf("repeating rows = %#v", got["kids"])
+	}
+}
+
+func TestRendererToAutosaveHandler(t *testing.T) {
+	screen := Screen{Fields: []Field{
+		{ID: "name", Type: TypeText, Label: "Name"},
+	}}
+	var buf strings.Builder
+	if err := RenderScreen(&buf, screen, Answers{}, AudiencePublic, RenderOptions{
+		AutosaveURL: "/autosave",
+		FormAction:  "/submit",
+		CSRFToken:   "tok",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, `hx-post="/autosave"`) || !strings.Contains(html, `name="name"`) {
+		t.Fatalf("render: %s", html)
+	}
+	var stored Answers
+	h := AutosaveHandler(func(r *http.Request, patch AutosavePatch) (Answers, error) {
+		patch.Apply(&stored)
+		return stored, nil
+	})
+	req := httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("name=FromRender"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent || stored.Get("name").StringValue() != "FromRender" {
+		t.Fatalf("renderer→handler: code=%d stored=%#v", rec.Code, stored)
+	}
 }

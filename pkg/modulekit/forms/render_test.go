@@ -56,11 +56,17 @@ func TestRenderScreenAudiencesAndHTMX(t *testing.T) {
 		`tv-readonly`,
 		`tv-repeat-row`,
 		`name="kids[0].name"`,
+		`tv-repeat-add`,
+		`tv-repeat-remove`,
+		`tv-repeat-template`,
 		`type="password"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("render missing %q in:\n%s", want, html)
 		}
+	}
+	if !strings.Contains(RepeatingJS, "tv-repeat-add") {
+		t.Fatal("RepeatingJS missing add handler")
 	}
 	if strings.Contains(html, "staff_note") {
 		t.Fatal("public render should omit staff-only field")

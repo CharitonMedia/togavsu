@@ -23,6 +23,10 @@ const PublicCSRFCookie = "togavsu_public_csrf"
 // PublicCSRFHeader is the CSRF header matching PublicCSRFCookie.
 const PublicCSRFHeader = "X-CSRF-Token"
 
+// PublicCSRFPassHeader is set by the core on every proxied public-page request so the
+// module can embed the double-submit token in forms/HTMX (the cookie is HttpOnly).
+const PublicCSRFPassHeader = "X-Togavsu-Public-CSRF"
+
 // StepToken is a short-lived HMAC token for one public-page session on one module.
 type StepToken struct {
 	ModuleID  string `json:"module_id"`

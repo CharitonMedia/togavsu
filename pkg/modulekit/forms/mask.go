@@ -20,9 +20,10 @@ const CipherPrefix = "enc:v1:"
 func KeyBytes() int { return 32 }
 
 var (
-	ErrNoSecretKey = errors.New("forms: masked field needs a secret_key")
-	ErrBadCipher   = errors.New("forms: masked ciphertext is not valid")
-	ErrBadKey      = errors.New("forms: secret store key must be 32 raw bytes (base64-encoded)")
+	ErrNoSecretKey    = errors.New("forms: masked field needs a secret_key")
+	ErrBadCipher      = errors.New("forms: masked ciphertext is not valid")
+	ErrBadKey         = errors.New("forms: secret store key must be 32 raw bytes (base64-encoded)")
+	ErrSecretNotFound = errors.New("forms: secret not found")
 )
 
 // SecretStore is the calling module's view of the core module secret store
@@ -46,15 +47,21 @@ func LoadKey(ctx context.Context, store SecretStore, name string) ([]byte, error
 }
 
 // EnsureKey returns the AES-256 key for name, creating and storing one when missing.
-// Stored value is standard-base64 of 32 random bytes.
+// Stored value is standard-base64 of 32 random bytes. Only ErrSecretNotFound (or a
+// wrapped equivalent) triggers key creation; transient store failures and malformed
+// values are returned so existing sealed answers stay decryptable.
 func EnsureKey(ctx context.Context, store SecretStore, name string) ([]byte, error) {
 	if name == "" {
 		return nil, ErrNoSecretKey
 	}
-	if key, err := LoadKey(ctx, store, name); err == nil {
+	key, err := LoadKey(ctx, store, name)
+	if err == nil {
 		return key, nil
 	}
-	key := make([]byte, KeyBytes())
+	if !errors.Is(err, ErrSecretNotFound) {
+		return nil, err
+	}
+	key = make([]byte, KeyBytes())
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, err
 	}
@@ -205,7 +212,7 @@ func (s *MemorySecretStore) PutSecret(_ context.Context, name, value string) err
 func (s *MemorySecretStore) GetSecret(_ context.Context, name string) (string, error) {
 	v, ok := s.m[name]
 	if !ok {
-		return "", errors.New("forms: secret not found")
+		return "", ErrSecretNotFound
 	}
 	return v, nil
 }

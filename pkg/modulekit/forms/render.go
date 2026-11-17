@@ -251,16 +251,19 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 			return err
 		}
 		for i, row := range rows {
-			if _, err := fmt.Fprintf(w, `<fieldset class="tv-repeat-row" data-index="%d">`+"\n", i); err != nil {
+			if err := renderRepeatRow(w, field, name, i, row, opts); err != nil {
 				return err
 			}
-			prefix := fmt.Sprintf("%s[%d].", name, i)
-			for _, nested := range field.Fields {
-				if err := renderField(w, nested, Answers(row).Get(nested.ID), opts, prefix); err != nil {
-					return err
-				}
-			}
-			_, _ = io.WriteString(w, "</fieldset>\n")
+		}
+		// Template row for Add (empty answers).
+		_, _ = io.WriteString(w, `<template class="tv-repeat-template">`+"\n")
+		if err := renderRepeatRow(w, field, name, len(rows), nil, opts); err != nil {
+			return err
+		}
+		_, _ = io.WriteString(w, `</template>`+"\n")
+		if _, err := fmt.Fprintf(w, `<button type="button" class="tv-repeat-add" data-field="%s">Add</button>`+"\n",
+			html.EscapeString(field.ID)); err != nil {
+			return err
 		}
 		_, _ = io.WriteString(w, `</div>`+"\n")
 	default:
@@ -285,6 +288,22 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 	}
 	_, err := io.WriteString(w, "</div>\n")
 	return err
+}
+
+func renderRepeatRow(w io.Writer, field Field, name string, i int, row map[string]Answer, opts RenderOptions) error {
+	if _, err := fmt.Fprintf(w, `<fieldset class="tv-repeat-row" data-index="%d">`+"\n", i); err != nil {
+		return err
+	}
+	prefix := fmt.Sprintf("%s[%d].", name, i)
+	ans := Answers(row)
+	for _, nested := range field.Fields {
+		if err := renderField(w, nested, ans.Get(nested.ID), opts, prefix); err != nil {
+			return err
+		}
+	}
+	_, _ = io.WriteString(w, `<button type="button" class="tv-repeat-remove">Remove</button>`+"\n")
+	_, _ = io.WriteString(w, "</fieldset>\n")
+	return nil
 }
 
 func autosaveAttrs(url, name string) string {

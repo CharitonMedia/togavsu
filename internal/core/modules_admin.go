@@ -21,6 +21,7 @@ type adminModule struct {
 	Replaces  string
 	Undecided bool
 	Settings  []modules.SettingValue
+	HasBanner bool
 }
 
 // modulesPanel is the tab's data.
@@ -37,6 +38,9 @@ type modulesPanel struct {
 	BrowseError string
 	// Contracts is CORE-31 admin-approved consumer↔provider links.
 	Contracts []modules.ContractLink
+	// BannerOrder is the current modules.staff_banner_order value for the Modules tab form.
+	BannerOrder []string
+	Banners     []modules.StaffBannerView
 }
 
 // Panel opens the tab. Opening it runs the marketplace flag and pull check (PRD 10.5);
@@ -76,6 +80,9 @@ func (m modulesAdmin) Panel(r *http.Request, p domain.Principal) (any, error) {
 				row.Undecided = true
 			}
 		}
+		if in, err := m.x.Modules.Installed(ctx, mv.ID); err == nil && in != nil {
+			row.HasBanner = in.Manifest.StaffBanner != nil
+		}
 		if mv.Status == modules.StatusInstalled || mv.Status == modules.StatusDisabled {
 			if row.Settings, err = m.x.Modules.ModuleSettings(ctx, p, nil, false, mv.ID); err != nil {
 				return nil, err
@@ -91,6 +98,12 @@ func (m modulesAdmin) Panel(r *http.Request, p domain.Principal) (any, error) {
 	}
 	if v.Contracts, err = m.x.Modules.ListContractLinks(ctx, p); err != nil {
 		return nil, err
+	}
+	if v.Banners, err = m.x.Modules.ListStaffBanners(ctx); err != nil {
+		return nil, err
+	}
+	for _, b := range v.Banners {
+		v.BannerOrder = append(v.BannerOrder, b.ModuleID)
 	}
 	if v.Query = strings.TrimSpace(r.URL.Query().Get("q")); v.Query != "" {
 		if v.Listings, err = m.x.Market.Listings(ctx, p, v.Query); err != nil {

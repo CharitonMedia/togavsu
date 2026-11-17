@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -103,6 +104,23 @@ func TestCORE31ContractCall(t *testing.T) {
 	}); r.code != http.StatusNoContent && r.code != http.StatusOK {
 		t.Fatalf("push contract event: %d %s", r.code, r.body)
 	}
+	if r := provTok.do("POST", "/api/v1/modules/contracts/"+contract+"/events", map[string]any{
+		"action": "matter.created", "payload": map[string]any{"id": "x"},
+	}); r.code < 400 || !strings.Contains(r.body, "scoped under") {
+		t.Fatalf("forged core event action: %d %s", r.code, r.body)
+	}
+
+	auditCall := x.admin.must(http.StatusOK, "GET", "/api/v1/audit-log?entity_type=module_contract_call&limit=50", nil)
+	if !strings.Contains(auditCall.body, contract) || !strings.Contains(auditCall.body, "echo") || !strings.Contains(auditCall.body, "phone-consumer") {
+		t.Fatalf("missing contract call audit: %s", auditCall.body)
+	}
+	auditEvent := x.admin.must(http.StatusOK, "GET", "/api/v1/audit-log?entity_type=module_contract_event&limit=50", nil)
+	if !strings.Contains(auditEvent.body, contract+".ring") && !strings.Contains(auditEvent.body, "ring") {
+		t.Fatalf("missing contract event audit: %s", auditEvent.body)
+	}
+	if strings.Contains(strings.ToLower(auditCall.body), "127.0.0.1") || strings.Contains(strings.ToLower(auditEvent.body), "http://") {
+		t.Fatalf("audit leaked address")
+	}
 
 	x.admin.must(http.StatusNoContent, "DELETE", "/api/v1/modules/contract-links/"+linkID, nil)
 	if r := bot.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{"n": 2}); r.code != http.StatusConflict || r.json["code"] != "contract_unlinked" {
@@ -110,20 +128,72 @@ func TestCORE31ContractCall(t *testing.T) {
 	}
 }
 
-// TestCORE32PublicPages covers CU2-04.
+// TestCORE31DisableKeepsLinks: disabling a module must not wipe admin-approved contract links.
+func TestCORE31DisableKeepsLinks(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	const contract = "phone.provider.v1"
+	x.rt.Serve("phone-provider", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		})
+	})
+	prov := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-provider", "Phone Provider",
+			"  - scope: contracts:provide\n    reason: Provide contract.\n",
+			"provides:\n  - contract: "+contract+"\n    operations:\n      - name: echo\n        path: /contracts/echo\n")
+	})
+	cons := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-consumer", "Phone Consumer",
+			"  - scope: contracts:call\n    reason: Call contract.\n",
+			"consumes:\n  - contract: "+contract+"\n")
+	})
+	for _, pkg := range [][]byte{prov, cons} {
+		if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+			t.Fatalf("install: %s", problem)
+		}
+	}
+	x.approveOnTab("phone-provider")
+	x.approveOnTab("phone-consumer")
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-consumer", "provider_id": "phone-provider",
+	})
+	if _, problem := x.tabForm(x.admin, "disable", url.Values{"module_id": {"phone-provider"}}, nil); problem != "" {
+		t.Fatalf("disable: %s", problem)
+	}
+	links := x.admin.must(http.StatusOK, "GET", "/api/v1/modules/contract-links", nil)
+	if !strings.Contains(links.body, "phone-provider") || !strings.Contains(links.body, "phone-consumer") {
+		t.Fatalf("links lost on disable: %s", links.body)
+	}
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = x.rt.Last("phone-consumer").Secrets["togavsu_api_token"]
+	if r := bot.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{}); r.json["code"] != "contract_unlinked" {
+		t.Fatalf("disabled provider should refuse call: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE32PublicPages covers CU2-04 and CSRF POST success/failure.
 func TestCORE32PublicPages(t *testing.T) {
 	x := newExt(t)
 	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
 
+	var lastCSRF, lastStep string
+	var lastMethod string
 	x.rt.Serve("intake-mod", func(m testkit.Module) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/intake" && !strings.HasPrefix(r.URL.Path, "/intake/") {
 				http.NotFound(w, r)
 				return
 			}
-			step := r.Header.Get(modules.PublicStepHeader)
+			lastMethod = r.Method
+			lastStep = r.Header.Get(modules.PublicStepHeader)
+			lastCSRF = r.Header.Get(modules.PublicCSRFPassHeader)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte("<html><body>public intake step=" + step + "</body></html>"))
+			if r.Method == http.MethodPost {
+				_, _ = w.Write([]byte("<html><body>posted ok</body></html>"))
+				return
+			}
+			_, _ = w.Write([]byte("<html><body>public intake step=" + lastStep + " csrf=" + lastCSRF + "</body></html>"))
 		})
 	})
 
@@ -135,6 +205,15 @@ func TestCORE32PublicPages(t *testing.T) {
 	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
 		t.Fatalf("install: %s", problem)
 	}
+	// Install/approval view must name public pages and operations (CORE-32).
+	tab := x.admin.do("GET", "/admin?tab=modules", nil)
+	if tab.code != http.StatusOK || !strings.Contains(tab.body, "/intake") || !strings.Contains(tab.body, "createContact") || !strings.Contains(tab.body, "id=\"public-intake-mod\"") {
+		snip := tab.body
+		if len(snip) > 800 {
+			snip = snip[:800]
+		}
+		t.Fatalf("admin install view missing public pages/ops: %d %s", tab.code, snip)
+	}
 	x.approveOnTab("intake-mod")
 
 	anon := newClient(t, x.srv.URL)
@@ -142,8 +221,35 @@ func TestCORE32PublicPages(t *testing.T) {
 	if r.code != http.StatusOK || !strings.Contains(r.body, "public intake") {
 		t.Fatalf("public page: %d %s", r.code, r.body)
 	}
+	if lastCSRF == "" || lastStep == "" {
+		t.Fatalf("module did not receive CSRF pass-through or step token: csrf=%q step=%q", lastCSRF, lastStep)
+	}
+	u, _ := url.Parse(x.srv.URL + "/p/intake-mod/intake")
+	var csrfCookie string
+	for _, c := range anon.http.Jar.Cookies(u) {
+		if c.Name == modules.PublicCSRFCookie {
+			csrfCookie = c.Value
+		}
+	}
+	if csrfCookie == "" || csrfCookie != lastCSRF {
+		t.Fatalf("csrf cookie=%q pass=%q", csrfCookie, lastCSRF)
+	}
 	if r := anon.do("GET", "/p/intake-mod/secret", nil); r.code != http.StatusNotFound {
 		t.Fatalf("undeclared public path: %d %s", r.code, r.body)
+	}
+
+	// POST without CSRF must fail.
+	if r := anon.do("POST", "/p/intake-mod/intake", url.Values{"name": {"Avery"}}); r.code != http.StatusForbidden || !strings.Contains(r.body, "csrf") {
+		t.Fatalf("POST without csrf: %d %s", r.code, r.body)
+	}
+	// POST with form csrf (buffered after body read) must reach the module.
+	postOK := anon.do("POST", "/p/intake-mod/intake", url.Values{"csrf": {csrfCookie}, "name": {"Avery"}})
+	if postOK.code != http.StatusOK || !strings.Contains(postOK.body, "posted ok") || lastMethod != http.MethodPost {
+		t.Fatalf("POST with csrf: %d %s method=%s", postOK.code, postOK.body, lastMethod)
+	}
+	// Wrong csrf fails.
+	if r := anon.do("POST", "/p/intake-mod/intake", url.Values{"csrf": {"not-the-token"}, "name": {"x"}}); r.code != http.StatusForbidden {
+		t.Fatalf("POST bad csrf: %d %s", r.code, r.body)
 	}
 
 	bot := newClient(t, x.srv.URL)
@@ -204,6 +310,14 @@ func TestCORE34StaffBanner(t *testing.T) {
 		"order": []string{"banner-mod"},
 	})
 
+	tab := x.admin.do("GET", "/admin?tab=modules", nil)
+	if tab.code != http.StatusOK || !strings.Contains(tab.body, `id="banner-order"`) || !strings.Contains(tab.body, "banner-mod") {
+		t.Fatalf("modules tab missing banner-order form: %d", tab.code)
+	}
+	if _, problem := x.tabForm(x.admin, "banner-order", url.Values{"order": {"banner-mod"}}, nil); problem != "" {
+		t.Fatalf("banner-order form: %s", problem)
+	}
+
 	home := x.admin.do("GET", "/", nil)
 	if home.code != http.StatusOK || !strings.Contains(home.body, "staff-banner") || !strings.Contains(home.body, "banner-mod") {
 		snip := home.body
@@ -211,6 +325,10 @@ func TestCORE34StaffBanner(t *testing.T) {
 			snip = snip[:500]
 		}
 		t.Fatalf("shell missing banner: %d %s", home.code, snip)
+	}
+	bridge := x.admin.do("GET", "/ui/static/banner-bridge.js", nil)
+	if bridge.code != http.StatusOK || !strings.Contains(bridge.body, "ev.origin") || !strings.Contains(bridge.body, "fromBanner") {
+		t.Fatalf("banner-bridge missing origin/source checks: %d", bridge.code)
 	}
 }
 
