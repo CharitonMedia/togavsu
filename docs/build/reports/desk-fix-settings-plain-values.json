@@ -1,0 +1,45 @@
+{
+  "task_id": "desk-fix-settings-plain-values",
+  "status": "pass",
+  "scope": "Desk fix: plain setting values on the admin Settings page (case number examples with derivation, Advanced switch, plain editors for durations/bytes/lists/retries/notifications/colors/naming/model prices). status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
+  "tested_revision": "f65cd3d1bbb5984694a768f3557a91f9bd796476",
+  "prd_sections": [
+    "8.7"
+  ],
+  "acceptance_ids": [],
+  "tests": [
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "seconds": 4
+    },
+    {
+      "command": "go test -count=1 -timeout 45m ./internal/...",
+      "exit_code": 0,
+      "seconds": 156
+    },
+    {
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "seconds": 27
+    }
+  ],
+  "implemented": [
+    "practice.case_number_examples (Case Number Formats) with derivation into practice.case_number_patterns in one transaction; 23AR-CV00825 derives the current default pattern exactly",
+    "Advanced details per tab, closed by default, open with ?advanced=1 (no JavaScript)",
+    "Plain editors and Default column for durations, byte sizes, string lists, retry schedule, notifications grid, custom colors, naming sample, model prices/task overrides summaries",
+    "Stored formats, keys, API and audit log unchanged; plain form saves convert to the same stored strings the old text form would store",
+    "Phone-width QC entries (Width 390) for Firm, Practice, Files and AI with Advanced closed and open; ui-qc.mjs fails on horizontal overflow or unreachable controls"
+  ],
+  "pending": [
+    "GitHub CI and Codex checkpoint on the controller-published head of claude/togavsu-desk-fix-settings-plain-values-e5791ad6 (this lane cannot push)",
+    "OpenAPI SettingKey / x-togavsu-settings catalog does not yet list practice.case_number_examples (docs/api/stage1-inventory.json is outside owned paths); runtime List/Get/PATCH serve it from the Go registry",
+    "Visual QC screenshots require TOGAVSU_UI_QC_OUT and a browser; layout checks are wired in ui-qc.mjs for Width 390",
+    "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
+  ],
+  "simplification": {
+    "net_lines": 1480,
+    "ponytail_debt_sections": 13,
+    "note": "No new PONYTAIL-DEBT entries. fixedSite exemptions for plain unit conversion and case-pattern format bounds only. Converters live in internal/settings so dashboard and core share DisplayPlain."
+  }
+}
