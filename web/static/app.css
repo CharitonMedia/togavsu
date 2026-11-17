@@ -128,24 +128,37 @@ tr.changed td:first-child{border-left:3px solid var(--accent)}
 .tabbar{display:none}
 :root[data-mode=dark] .search-results a.selected{background:#2a313b}
 @media (max-width:700px){
-  body.shell{grid-template-columns:1fr;grid-template-areas:"top" "main"}
+  body.shell{grid-template-columns:1fr;grid-template-areas:"top" "main";max-width:100%}
   .sidebar{display:none}
   .topbar .label,.topbar .timers,#search-scope{display:none}
-  .page{padding:14px 12px 80px}
+  /* Topbar flex items default to min-width:auto; the search input's intrinsic
+     size (~20ch) plus icon buttons overflow a 390px viewport. */
+  .topbar{min-width:0;max-width:100%;overflow:visible}
+  .search{min-width:0;flex:1 1 auto;max-width:none}
+  .search input{min-width:0;width:100%}
+  details.menu:not([open]) > .panel{display:none}
+  .menu .panel{max-width:calc(100vw - 16px);right:0;left:auto}
+  .page{padding:14px 12px 80px;min-width:0;max-width:100%}
   .tabbar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--header);color:var(--header-text);justify-content:space-around;padding:6px 0;z-index:6}
   .tabbar a{display:flex;flex-direction:column;align-items:center;font-size:.75rem;text-decoration:none}
   .form-grid{grid-template-columns:1fr}
   .topic-list{columns:1}
   .grid-stack:not(.gs-ready) .grid-stack-item{grid-column:1/-1}
-  .settings-table,.settings-table thead,.settings-table tbody,.settings-table tr,.settings-table th,.settings-table td{display:block;width:100%}
-  /* nth-child width rules above beat a bare td{width:100%}; force full-width cells when stacked. */
-  .settings-table th:nth-child(n),.settings-table td:nth-child(n){width:100%}
+  /* Stack settings rows. Drop table-layout:fixed and the desktop nth-child % widths so
+     four width:100% columns cannot inflate the table min-width past the viewport. */
+  .settings-table{table-layout:auto;width:100%;max-width:100%}
+  .settings-table,.settings-table thead,.settings-table tbody,.settings-table tr,.settings-table th,.settings-table td{display:block;width:auto;max-width:100%}
+  .settings-table th:nth-child(n),.settings-table td:nth-child(n){width:auto;max-width:100%}
   .settings-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-  .settings-table tr{border:1px solid var(--line);border-radius:8px;padding:10px;margin:0 0 10px;background:var(--surface)}
+  .settings-table tr{border:1px solid var(--line);border-radius:8px;padding:10px;margin:0 0 10px;background:var(--surface);max-width:100%}
   .settings-table td{border:0;padding:4px 0}
   .settings-table td:nth-child(3)::before{content:"Default: ";color:var(--muted);font-size:.85rem}
-  .setting-form{flex-direction:column;align-items:stretch}
+  .settings-table td:nth-child(4) form,.settings-table td:nth-child(4) button{max-width:100%}
+  .tabs{max-width:100%}
+  .tabs a{max-width:100%;box-sizing:border-box}
+  .setting-form{flex-direction:column;align-items:stretch;max-width:100%}
   .color-row{flex-direction:column;align-items:flex-start}
+  .card{max-width:100%;min-width:0}
 }
 @media (prefers-color-scheme:dark){:root[data-mode=device]{--surface:#1f242b;--text:#e8e6e1;--muted:#a9b0ba;--line:#343b45}}
 :root[data-mode=dark]{--surface:#1f242b;--text:#e8e6e1;--muted:#a9b0ba;--line:#343b45}
