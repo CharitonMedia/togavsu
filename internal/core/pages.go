@@ -80,7 +80,7 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 {{define "settings"}}{{template "top" .}}
 <nav class="tabs" aria-label="Settings tabs">{{range .Tabs}}<a href="/admin/settings?tab={{.}}" {{if eq . $.Tab}}aria-current="page"{{end}}>{{label .}}</a>{{end}}</nav>
 <table><thead><tr><th>Name</th><th>Value</th><th>Default</th><th></th></tr></thead><tbody>
-{{range .Settings}}<tr><td>{{.Label}}<br><span class="muted">{{.Help}}</span><br><span class="muted">{{.Key}}</span></td>
+{{range .Settings}}<tr><td>{{.Label}}<br><span class="muted">{{.Help}}</span><br><small class="muted">{{.Key}}</small></td>
 <td>{{if .Secret}}<span class="muted">{{if .SecretSet}}configured{{else}}not set{{end}}</span>{{else}}{{.Value}}{{end}}{{if and (not .Secret) (ne .Value .Default)}} <span class="badge">changed</span>{{end}}</td>
 <td>{{if not .Secret}}{{.Default}}{{end}}</td>
 <td>{{if .Locked}}<span class="muted">locked</span>{{else}}
