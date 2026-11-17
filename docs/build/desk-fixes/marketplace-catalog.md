@@ -23,12 +23,14 @@ paths do not overlap.
      the permission scopes it asks for inside a closed `<details>` labelled
      "Permissions (N)". Listings carry scopes only; do not change the listing contract or
      fetch packages to show reasons here (the reasons show at approval after install).
-   - Price: the listing's price text; when that is empty, the manifest's `price`; when both
-     are empty, "Free". Add the manifest price to what the core reads from a listing if it
-     is not already there.
+   - Price: the listing's price text (`PriceNote`), or "Free" when it is empty. The
+     marketplace owns the price rule (Lane B item 2 fills it from the manifest); the core
+     adds no price field and no fallback of its own.
    - One button per listing. Not installed: **Install** (the existing form). Installed at
-     the listed version: a muted "Installed" and no button. Installed at another version:
-     **Update to X.Y.Z**, posting to the existing module update action with that version.
+     the listed version: a muted "Installed" and no button. Listed version newer than the
+     installed one (semver compare): **Update to X.Y.Z**, posting to the existing module
+     update action with that version. Installed version newer than the listed one: a muted
+     "Installed X.Y.Z" and no button, never a downgrade.
    - Errors are one plain sentence in an alert at the top of the card, naming the module by
      its name, never raw error text. `BrowseError` stops showing `err.Error()`.
    - When the marketplace address is the placeholder, not set, refused or unreachable, the
@@ -39,15 +41,17 @@ paths do not overlap.
      `internal/dashboard/compose/qc_pg_test.go` for the Modules tab with three listings; no
      horizontal overflow.
 2. **Reaching a marketplace on the firm's own Docker network.** `marketplace.BaseURL`
-   allows plain http on a loopback host and also on a single-label host name (no dot, not
-   an IP address), which is a Docker service name on the install's own network such as
-   `togavsu-marketplace`. Everything else still needs https. Tests both ways, and update the
+   allows plain http on a loopback host and on exactly one other host name,
+   `togavsu-marketplace`, the compose service Lane B adds on the install's own network.
+   Every other host, single-label names included, still needs https, so a LAN name picked
+   up through DNS search domains cannot carry listings or alerts unauthenticated. Tests both
+   ways (loopback, `togavsu-marketplace`, another single-label name refused), and update the
    comment and the setting's help text ("Marketplace the firm checks: an https address, or
-   http://NAME:PORT for a marketplace running beside Togavsu.").
-3. Change nothing else on the page. `GET /api/v1/marketplace/listings` keeps its shape; if
-   it gains the manifest price field, update OpenAPI and the contract tests with it.
+   http://togavsu-marketplace:8090 for the marketplace that runs beside Togavsu.").
+3. Change nothing else on the page. `GET /api/v1/marketplace/listings` keeps its shape.
 4. Tests: extend the existing Modules tab and install-listing tests: browse with an empty
-   search, price fallback, flagged warning, installed and update states, the unreachable
+   search, price text and "Free", flagged warning, installed, update and newer-installed
+   states, the unreachable
    message, a failed install showing the plain sentence, a successful install landing in
    Installed modules with permissions pending, and `BaseURL`.
 
