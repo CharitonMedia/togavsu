@@ -62,7 +62,7 @@ Status is `fixed` (with where) or `open`. "Follow-up" names the CORE item in
 | A missing scope answers 403 `forbidden`, not `scope_denied` | documents, email | fixed in core-update-2a: JSON keeps `scope_denied` and names the missing scope | CORE-36 |
 | The core emits `conflict.decided`; the OpenAPI document says `conflict_check.decided` | lawpay-docuseal | fixed in core-update-2a: emits `conflict_check.decided` | CORE-36 |
 | Webhook signature format differs between what the core sends and what the contract documents | documents, email, lawpay-docuseal, quickbooks | fixed in core-update-2a: `sha256=` HMAC of raw body matches OpenAPI | CORE-36 |
-| `POST /api/v1/notes` answers 201 but `core.notes` stays empty | email | fixed in core-update-2a: notes project into `core.notes` | CORE-36 |
+| `POST /api/v1/notes` answers 201 but `core.notes` stays empty | email | fixed in core-update-2a: notes project into `core.notes` on write and on `EnableProjection` backfill for upgraded installs | CORE-36 |
 | Billing records are stored as JSON, so `core.invoices`, `core.payments` and `core.expenses` stay empty and module foreign keys to them can't be exercised | quickbooks, lawpay-docuseal | fixed in core-update-2a: dual-write + `RebuildCoreRows` with cent reconciliation | CORE-36 |
 | File purge is not a hard delete | documents | open | core follow-up: purge removes the file and its versions |
 | CORE-01 lacks `getConflictCheck` and `createEvent` for service calls | lawpay-docuseal, documents, client-portal | fixed in core-update-2a for `getConflictCheck` (createEvent already landed with CORE-01) | CORE-36 |

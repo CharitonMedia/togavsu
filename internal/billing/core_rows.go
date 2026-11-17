@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 
@@ -239,39 +240,70 @@ func reconcileCoreRow(ctx context.Context, conn audit.Querier, kind, id string, 
 	switch kind {
 	case kindInvoice:
 		inv := v.(Invoice)
-		var total, paid, balance, writeOff int64
+		var subtotal, adjustment, interest, total, paid, balance, writeOff int64
 		err := conn.QueryRowContext(ctx,
-			`SELECT total_cents, amount_paid_cents, balance_due_cents, write_off_cents FROM invoices WHERE id = $1`, id).
-			Scan(&total, &paid, &balance, &writeOff)
+			`SELECT subtotal_cents, adjustment_cents, interest_cents, total_cents,
+amount_paid_cents, balance_due_cents, write_off_cents FROM invoices WHERE id = $1`, id).
+			Scan(&subtotal, &adjustment, &interest, &total, &paid, &balance, &writeOff)
 		if err != nil {
 			return err
 		}
-		if total != int64(inv.TotalCents) || paid != int64(inv.AmountPaidCents) ||
-			balance != int64(inv.BalanceDueCents) || writeOff != int64(inv.WriteOffCents) {
-			return fmt.Errorf("billing: invoice %s cent mismatch json=(%d,%d,%d,%d) sql=(%d,%d,%d,%d)",
-				id, inv.TotalCents, inv.AmountPaidCents, inv.BalanceDueCents, inv.WriteOffCents,
-				total, paid, balance, writeOff)
+		if subtotal != int64(inv.SubtotalCents) || adjustment != int64(inv.AdjustmentCents) ||
+			interest != int64(inv.InterestCents) || total != int64(inv.TotalCents) ||
+			paid != int64(inv.AmountPaidCents) || balance != int64(inv.BalanceDueCents) ||
+			writeOff != int64(inv.WriteOffCents) {
+			return fmt.Errorf("billing: invoice %s cent mismatch json=(%d,%d,%d,%d,%d,%d,%d) sql=(%d,%d,%d,%d,%d,%d,%d)",
+				id,
+				inv.SubtotalCents, inv.AdjustmentCents, inv.InterestCents, inv.TotalCents,
+				inv.AmountPaidCents, inv.BalanceDueCents, inv.WriteOffCents,
+				subtotal, adjustment, interest, total, paid, balance, writeOff)
 		}
 	case kindPayment:
 		pay := v.(Payment)
-		var amount int64
-		err := conn.QueryRowContext(ctx, `SELECT amount_cents FROM payments WHERE id = $1`, id).Scan(&amount)
+		var amount, refunded int64
+		var status string
+		var invoiceID sql.NullString
+		err := conn.QueryRowContext(ctx,
+			`SELECT amount_cents, refunded_cents, status, invoice_id FROM payments WHERE id = $1`, id).
+			Scan(&amount, &refunded, &status, &invoiceID)
 		if err != nil {
 			return err
 		}
-		if amount != int64(pay.AmountCents) {
-			return fmt.Errorf("billing: payment %s amount mismatch json=%d sql=%d", id, pay.AmountCents, amount)
+		wantInvoice := string(pay.InvoiceID)
+		gotInvoice := ""
+		if invoiceID.Valid {
+			gotInvoice = invoiceID.String
+		}
+		if amount != int64(pay.AmountCents) || refunded != int64(pay.RefundedCents) ||
+			status != pay.Status || gotInvoice != wantInvoice {
+			return fmt.Errorf("billing: payment %s mismatch json=(amount=%d refunded=%d status=%s invoice=%s) sql=(amount=%d refunded=%d status=%s invoice=%s)",
+				id, pay.AmountCents, pay.RefundedCents, pay.Status, wantInvoice,
+				amount, refunded, status, gotInvoice)
 		}
 	case kindExpense:
 		exp := v.(Expense)
 		var amount int64
-		err := conn.QueryRowContext(ctx, `SELECT amount_cents FROM expenses WHERE id = $1`, id).Scan(&amount)
+		var markup int
+		err := conn.QueryRowContext(ctx,
+			`SELECT amount_cents, markup_percent FROM expenses WHERE id = $1`, id).
+			Scan(&amount, &markup)
 		if err != nil {
 			return err
 		}
-		if amount != int64(exp.AmountCents) {
-			return fmt.Errorf("billing: expense %s amount mismatch json=%d sql=%d", id, exp.AmountCents, amount)
+		if amount != int64(exp.AmountCents) || markup != exp.MarkupPercent {
+			return fmt.Errorf("billing: expense %s mismatch json=(amount=%d markup=%d) sql=(amount=%d markup=%d)",
+				id, exp.AmountCents, exp.MarkupPercent, amount, markup)
+		}
+		// Billed cents (amount plus markup) must also fit; a corrupt markup would still
+		// leave amount_cents alone but change what modules bill from the row.
+		if _, err := expenseAmount(exp.AmountCents, exp.MarkupPercent); err != nil {
+			return fmt.Errorf("billing: expense %s billed cents: %w", id, err)
 		}
 	}
 	return nil
+}
+
+// ReconcileCoreRowForTest exposes cent reconciliation for Postgres tests (CORE-36).
+func ReconcileCoreRowForTest(ctx context.Context, conn audit.Querier, kind, id string, v any) error {
+	return reconcileCoreRow(ctx, conn, kind, id, v)
 }

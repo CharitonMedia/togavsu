@@ -161,11 +161,14 @@ func TestCORE30ServiceCallsWalls(t *testing.T) {
 	}).json, "id")
 	bot.must(http.StatusOK, "GET", "/api/v1/contact-phones/"+openPhone, nil)
 	mustNotFound("GET", "/api/v1/contact-phones/"+walledPhone, nil)
-	openEmails := items(t, x.admin.must(http.StatusOK, "GET", "/api/v1/contact-emails?contact_id="+openClient, nil))
-	if len(openEmails) == 0 {
-		t.Fatal("expected open client email")
+
+	// listContactEmail / listContactPhone as the service principal (CU2-02).
+	openEmailList := bot.must(http.StatusOK, "GET", "/api/v1/contact-emails?contact_id="+openClient, nil)
+	if len(items(t, openEmailList)) == 0 {
+		t.Fatal("expected open client email via listContactEmail")
 	}
-	openEmail := str(t, openEmails[0], "id")
+	openEmail := str(t, items(t, openEmailList)[0], "id")
+	mustNotFound("GET", "/api/v1/contact-emails?contact_id="+walledClient, nil)
 	walledEmails := items(t, x.atty.must(http.StatusOK, "GET", "/api/v1/contact-emails?contact_id="+walledClient, nil))
 	if len(walledEmails) == 0 {
 		t.Fatal("expected walled client email")
@@ -173,6 +176,12 @@ func TestCORE30ServiceCallsWalls(t *testing.T) {
 	walledEmailID := str(t, walledEmails[0], "id")
 	bot.must(http.StatusOK, "GET", "/api/v1/contact-emails/"+openEmail, nil)
 	mustNotFound("GET", "/api/v1/contact-emails/"+walledEmailID, nil)
+
+	openPhoneList := bot.must(http.StatusOK, "GET", "/api/v1/contact-phones?contact_id="+openClient, nil)
+	if !strings.Contains(openPhoneList.body, openPhone) {
+		t.Fatalf("listContactPhone open: %s", openPhoneList.body)
+	}
+	mustNotFound("GET", "/api/v1/contact-phones?contact_id="+walledClient, nil)
 
 	createdContact := bot.must(http.StatusCreated, "POST", "/api/v1/contacts", map[string]any{
 		"kind": "person", "given_name": "Svc", "family_name": "Contact",
@@ -198,6 +207,8 @@ func TestCORE30ServiceCallsWalls(t *testing.T) {
 	mustNotFound("POST", "/api/v1/contact-phones", map[string]any{
 		"contact_id": walledClient, "label": "x", "e164": "+15555550999", "effective_from": "2026-01-01",
 	})
+	mustNotFound("PATCH", "/api/v1/contact-emails/"+walledEmailID, map[string]any{"label": "no"})
+	mustNotFound("PATCH", "/api/v1/contact-phones/"+walledPhone, map[string]any{"label": "no"})
 
 	// --- createMatter / createMatterParty ---
 	newMatter := bot.must(http.StatusCreated, "POST", "/api/v1/matters", map[string]any{
@@ -272,11 +283,38 @@ func TestCORE30ServiceCallsWalls(t *testing.T) {
 	mustNotFound("GET", "/api/v1/files/"+wFileID+"/renditions", nil)
 	mustNotFound("GET", "/api/v1/files/"+wFileID+"/renditions/"+string(wMD.ID), nil)
 
-	// Lift wall → walled reads return.
+	// Lift wall → walled records return on the next read (CU2-02).
 	x.admin.must(http.StatusOK, "PUT", "/api/v1/matters/"+walled+"/wall", map[string]any{"user_ids": []string{}})
 	bot.must(http.StatusOK, "GET", "/api/v1/matters/"+walled, nil)
+	liftedMatters := bot.must(http.StatusOK, "GET", "/api/v1/matters", nil)
+	if !strings.Contains(liftedMatters.body, walled) {
+		t.Fatalf("listMatter after lift missing walled: %s", liftedMatters.body)
+	}
 	bot.must(http.StatusOK, "GET", "/api/v1/contacts/"+walledClient, nil)
+	liftedByEmail := bot.must(http.StatusOK, "GET", "/api/v1/contacts?email=core30.walled@client.example", nil)
+	if !strings.Contains(liftedByEmail.body, walledClient) {
+		t.Fatalf("listContacts by email after lift: %s", liftedByEmail.body)
+	}
+	bot.must(http.StatusOK, "GET", "/api/v1/contact-emails/"+walledEmailID, nil)
+	bot.must(http.StatusOK, "GET", "/api/v1/contact-phones/"+walledPhone, nil)
+	liftedEmails := bot.must(http.StatusOK, "GET", "/api/v1/contact-emails?contact_id="+walledClient, nil)
+	if !strings.Contains(liftedEmails.body, walledEmailID) {
+		t.Fatalf("listContactEmail after lift: %s", liftedEmails.body)
+	}
+	liftedPhones := bot.must(http.StatusOK, "GET", "/api/v1/contact-phones?contact_id="+walledClient, nil)
+	if !strings.Contains(liftedPhones.body, walledPhone) {
+		t.Fatalf("listContactPhone after lift: %s", liftedPhones.body)
+	}
 	bot.must(http.StatusOK, "GET", "/api/v1/conflict-checks/"+wCheck, nil)
+	bot.must(http.StatusOK, "GET", "/api/v1/matters/"+walled+"/timeline", nil)
+	liftedEvents := bot.must(http.StatusOK, "GET", "/api/v1/calendar-events", nil)
+	if !strings.Contains(liftedEvents.body, wEv) {
+		t.Fatalf("listCalendarEvents after lift: %s", liftedEvents.body)
+	}
+	liftedRends := bot.must(http.StatusOK, "GET", "/api/v1/files/"+wFileID+"/renditions", nil)
+	if !strings.Contains(liftedRends.body, string(wMD.ID)) {
+		t.Fatalf("listFileRenditions after lift: %s", liftedRends.body)
+	}
 	bot.must(http.StatusOK, "GET", "/api/v1/files/"+wFileID+"/renditions/"+string(wMD.ID), nil)
 }
 

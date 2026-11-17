@@ -11,11 +11,12 @@ import (
 )
 
 // Projection keeps the section 5 tables other domains point at by foreign key
-// (practice_areas, counties, contacts, referral_sources, matters) in step with
-// practice_records. Files, deadlines, Doc Tender jobs and calendar events reference
-// matters(id) and contacts(id); with the projection on, every practice write that
-// stores one of those rows upserts its relational copy in the same transaction, so a
-// committed matter is always a valid foreign key and a rolled-back one never is.
+// (practice_areas, counties, contacts, referral_sources, matters, notes) in step with
+// practice_records. Files, deadlines, Doc Tender jobs, calendar events and modules
+// reference matters(id), contacts(id) and notes(id); with the projection on, every
+// practice write that stores one of those rows upserts its relational copy in the same
+// transaction, so a committed matter is always a valid foreign key and a rolled-back
+// one never is.
 //
 // practice_records stays the practice source of truth. The relational rows are a
 // copy for referential integrity, written only here.
@@ -44,6 +45,11 @@ func (d *Durable) EnableProjection(ctx context.Context) error {
 	}
 	for _, r := range d.Memory.matters {
 		list = append(list, put("matter", r.ID, r))
+	}
+	// CORE-36: notes written before projection was enabled must land in core.notes so
+	// module foreign keys to existing notes resolve on upgraded installs.
+	for _, r := range d.Memory.notes {
+		list = append(list, put("note", r.ID, r))
 	}
 	d.Memory.mu.Unlock()
 	if len(list) == 0 {
