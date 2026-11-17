@@ -46,24 +46,29 @@ paths do not overlap.
    allows plain http on a loopback host and on the compose service name
    `togavsu-marketplace`; every other host needs https. A plain-http name can still be
    answered by something else on the firm's network (search domains, a hijacking
-   resolver, or the profile not running), so plain http never confers trust:
-   - When `BaseURL` is plain http, `refreshMarketplaceKeys` does not fetch or store
+   resolver, or the profile not running), so that name never confers trust. A loopback
+   address is the firm's own machine and keeps today's behavior, so the existing tests that
+   run the marketplace on `httptest.NewServer` stay as they are.
+   - When `BaseURL` is `http://togavsu-marketplace...`, `refreshMarketplaceKeys` does not fetch or store
      marketplace keys and clears any cached ones, and `trusted` returns only the firm's
      trusted local keys. An install from such a marketplace verifies against those local
      keys alone, so a spoofed responder cannot get its own key trusted or its package
      installed. Packages, listings and alerts still come from it.
-   - The Marketplace card then says, under the address line: "This marketplace is reached
-     without https, so only your trusted local keys can approve an install." with a link to
+   - Test the `togavsu-marketplace` case with a client whose transport routes that host to
+     an in-process server, not by renaming the existing loopback tests.
+   - The Marketplace card then says, under the address line, when the address is
+     `http://togavsu-marketplace...`: "This marketplace is reached without https, so only your trusted local keys can approve an install." with a link to
      the Trusted local signing keys card. The hint there that marketplace keys are trusted
-     without being listed changes to say that holds only over https.
+     without being listed changes to say that holds only over https or loopback.
    - Listings and flag/pull alerts over plain http are unauthenticated. Record that in
      `PONYTAIL-DEBT.md`: the ceiling (plain http only for loopback and
-     `togavsu-marketplace`, no key trust over it) and the upgrade trigger (any marketplace
+     `togavsu-marketplace`, no key trust over the latter) and the upgrade trigger (any marketplace
      reached across a network the firm does not control, which needs https).
    - Tests: loopback and `togavsu-marketplace` allowed, another single-label name refused;
-     over plain http no marketplace key is stored or trusted and a package signed only by a
-     marketplace key is refused; the same package installs once its key is a trusted local
-     key; over https the current behavior is unchanged.
+     at `http://togavsu-marketplace` no marketplace key is stored or trusted and a package
+     signed only by a marketplace key is refused; the same package installs once its key is
+     a trusted local key; over https and loopback the current behavior and tests are
+     unchanged.
    - Update the comment and the setting's help text ("Marketplace the firm checks: an
      https address, or http://togavsu-marketplace:8090 for the marketplace that runs beside
      Togavsu, which installs only modules signed by your trusted local keys.").
