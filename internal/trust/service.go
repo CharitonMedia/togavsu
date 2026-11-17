@@ -41,6 +41,7 @@ type Practice interface {
 	Matter(ctx context.Context, id domain.ID) (domain.Matter, error)
 	Contact(ctx context.Context, id domain.ID) (domain.Contact, error)
 	Parties(matter, contact domain.ID) []domain.MatterParty
+	Emails(contact domain.ID) []domain.ContactEmail
 }
 
 // Users resolves admins and the responsible attorney for flags and notifications.
@@ -85,6 +86,16 @@ type Service struct {
 	sink     func(context.Context, domain.TrustBalance) error
 	now      func() time.Time
 	newID    func() (domain.ID, error)
+	// DeclaredKind and EmailWanted are CORE-03 hooks the core sets after modules and
+	// dashboard prefs are up. Nil skips the check (DeclaredKind) or email (EmailWanted).
+	DeclaredKind DeclaredModuleKind
+	EmailWanted  NotificationEmailWanted
+	// FirmDomain is the firm's public host for absolute links in module mail (CORE-04).
+	FirmDomain string
+	// MailSender delivers one outbox row immediately after queue for sendModuleMail
+	// (CORE-04). Nil leaves the row for DeliverMail. CORE-05 systemMailer implements
+	// Sender (and OutboxSender) when wired.
+	MailSender Sender
 }
 
 // New checks the required dependencies.
@@ -140,8 +151,12 @@ type readable struct {
 }
 
 func (s *Service) reader(ctx context.Context, who domain.Principal) (*readable, error) {
-	if err := s.allow(ctx, who, domain.ResTrust, domain.ActionRead, ""); err != nil {
-		return nil, err
+	// A client-only principal skips the firm-wide trust gate and is filtered per matter
+	// (and to the linked contact) by the list methods that use this reader (CORE-12).
+	if !clientOnly(who) {
+		if err := s.allow(ctx, who, domain.ResTrust, domain.ActionRead, ""); err != nil {
+			return nil, err
+		}
 	}
 	return &readable{s: s, who: who, seen: map[domain.ID]bool{}}, nil
 }

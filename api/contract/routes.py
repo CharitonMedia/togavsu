@@ -11,6 +11,10 @@ STAFF = ["admin", "attorney", "staff"]
 BILLING = ["admin", "attorney", "staff", "accountant"]
 FIRM = ["admin", "attorney", "staff", "accountant"]
 ANY = ["admin", "attorney", "staff", "accountant", "client"]
+DIRECTORY = ["admin", "attorney", "staff", "client"]
+CLIENT = ["client"]
+VIEWER = {"module_delegation": "delegated_viewer"}
+BOOKS_SERVICE = {"module_delegation": "service_principal"}
 
 WALL = {"matter_wall": True, "access_inherits": "matter"}
 FILE_ACCESS_CASES = [
@@ -81,6 +85,7 @@ MODULE_HELP = {
 }
 MODULE_MARKER = {
     "client": "deny",
+    "module_delegation": "service_principal",
     "module_principal": {
         "actor_kind": "module",
         "scope": "markers:write",
@@ -92,6 +97,48 @@ MODULE_MARKER = {
         "other_module": "forbidden",
         "caller_supplied_owner": "ignored",
     },
+}
+MODULE_SECRET = {
+    "client": "deny",
+    "module_principal": {
+        "actor_kind": "module",
+        "scope": "module_secrets:write",
+        "module_id_param": "module_id",
+        "own_secrets_only": True,
+        "grants_admin": False,
+        "other_module": "forbidden",
+        "human_session": "forbidden",
+    },
+    # Module bearer only; no viewer. A context token is ignored at the handler.
+    "module_delegation": "service_principal",
+}
+MODULE_DEVICE_EXCHANGE = {
+    "client": "deny",
+    "module_principal": {
+        "actor_kind": "module",
+        "scope": "modules:read",
+        "module_id_param": "module_id",
+        "own_namespace_only": True,
+        "grants_admin": False,
+        "other_module": "forbidden",
+        "human_session": "forbidden",
+    },
+    "module_delegation": "service_principal",
+    "matter_wall": True,
+}
+DEVICE_GRANT_OWNERSHIP = {
+    "client": "deny",
+    "owner": "self_or_admin",
+    "secret_on_read": False,
+    "access_cases": [
+        {"action": "list", "role": "staff", "owner": "self", "result": "allowed"},
+        {"action": "list", "role": "staff", "owner": "other_user", "result": "omitted"},
+        {"action": "revoke", "role": "staff", "owner": "self", "result": "allowed"},
+        {"action": "revoke", "role": "staff", "owner": "other_user", "result": "not_found"},
+        {"action": "revoke", "role": "admin", "owner": "other_user", "result": "allowed"},
+        {"action": "create", "role": "client", "result": "forbidden"},
+        {"action": "create", "credential": "bearer", "result": "forbidden"},
+    ],
 }
 OWN = {"client": "own"}
 NOTIFICATION_RECIPIENT = {
@@ -481,7 +528,10 @@ def _identity(api: Contract) -> None:
         "/api/v1/me",
         operation_id="getMe",
         summary="Current user",
-        description="The signed-in profile. Password and TOTP material are not included.",
+        description=(
+            "The signed-in profile. Password and TOTP material are not included. "
+            "A client also receives access_ended_matters, the count of closed matters whose access window has ended."
+        ),
         tag="Identity",
         features=["profile"],
         roles=ANY,
@@ -515,6 +565,110 @@ def _identity(api: Contract) -> None:
                 "bar_state",
             ],
         },
+    )
+    api.add(
+        "get",
+        "/api/v1/me/appointments",
+        operation_id="listMeAppointments",
+        summary="List upcoming client appointments",
+        description=(
+            "Returns upcoming client_meeting and court_date events on matters the client can read. "
+            "Each row carries title, kind, start, end, all_day, location and matter_id only. "
+            "The firm calendar-events collection stays staff-only."
+        ),
+        tag="Calendar",
+        features=["calendar"],
+        roles=CLIENT,
+        scopes=["calendar:read"],
+        response_schema=_page("ClientAppointment"),
+        paginate=True,
+        writes=False,
+        extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "get",
+        "/api/v1/me/trust",
+        operation_id="getMeTrust",
+        summary="List the client's trust balances and active replenishment requests",
+        description=(
+            "For each matter the client can read, returns the client's own trust balance in cents "
+            "and the active replenishment requests naming the client's linked contact. "
+            "No other client's figures and no account numbers."
+        ),
+        tag="Trust",
+        features=["trust-replenishment"],
+        roles=CLIENT,
+        scopes=["trust:read"],
+        response_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["data"],
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/MeTrustMatter"},
+                }
+            },
+        },
+        writes=False,
+        extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "get",
+        "/api/v1/me/trust-ledger",
+        operation_id="getMeTrustLedger",
+        summary="List the client's trust ledger entries for one matter",
+        description=(
+            "Returns ledger entries naming the client's linked contact on the given matter "
+            "(date, type, amount, description). No other client's figures and no account numbers. "
+            "matter_id is required."
+        ),
+        tag="Trust",
+        features=["trust-ledger"],
+        roles=CLIENT,
+        scopes=["trust:read"],
+        query=["matter_id"],
+        response_schema=_page("ClientTrustLedgerEntry"),
+        paginate=True,
+        writes=False,
+        extra_access={**VIEWER, "client": "own", "matter_wall": True},
+    )
+    api.add(
+        "get",
+        "/api/v1/me/contact",
+        operation_id="getMeContact",
+        summary="Get linked contact details",
+        description=(
+            "Returns the client caller's linked contact primary email, primary phone and mailing address. "
+            "Sign-in email stays on getMe and requestEmailChange."
+        ),
+        tag="Identity",
+        features=["profile"],
+        roles=CLIENT,
+        scopes=["profile:read"],
+        response="MeContact",
+        writes=False,
+        extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "patch",
+        "/api/v1/me/contact",
+        operation_id="updateMeContact",
+        summary="Update linked contact details",
+        description=(
+            "Changes the client caller's linked contact primary email, primary phone and/or mailing address. "
+            "A change sets effective_to on the old row and adds a new primary row. "
+            "Audited with the client as actor; emits contact.updated with a client-visible timeline row. "
+            "Sign-in email stays on requestEmailChange."
+        ),
+        tag="Identity",
+        features=["profile"],
+        roles=CLIENT,
+        scopes=["profile:write"],
+        body="MeContactWrite",
+        response="MeContact",
+        events=["contact.updated"],
+        extra_access={**VIEWER, "client": "own"},
     )
     api.add(
         "post",
@@ -772,6 +926,189 @@ def _identity(api: Contract) -> None:
         response="User",
         events=["user.updated"],
     )
+    api.add(
+        "get",
+        "/api/v1/firm-profile",
+        operation_id="getFirmProfile",
+        summary="Get the firm profile",
+        description=(
+            "Returns name, short_name, address, phone, email, website, logo_file_id and time_zone from the firm.* "
+            "settings, plus client_portal (client portal colors and label from Appearance). Read only; writes stay "
+            "on the admin settings. Every role, including client, may read."
+        ),
+        tag="Settings",
+        features=["firm-profile"],
+        roles=ANY,
+        scopes=["firm:read"],
+        response="FirmProfile",
+        writes=False,
+        extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "get",
+        "/api/v1/books/profile",
+        operation_id="getBooksProfile",
+        summary="Get the books profile",
+        description=(
+            "Firm name, time zone and currency for a module's books reader (CORE-02). "
+            "Currency is always USD. Module token with books:read; service call only."
+        ),
+        tag="Billing",
+        features=["books"],
+        roles=BILLING,
+        scopes=["books:read"],
+        response="BooksProfile",
+        writes=False,
+        extra_access=BOOKS_SERVICE,
+    )
+    api.add(
+        "get",
+        "/api/v1/books/matters/{matter_id}",
+        operation_id="getBooksMatter",
+        summary="Get a matter for books sync",
+        description=(
+            "Matter id, number, name, status, primary client_contact_id and responsible_attorney_user_id "
+            "for a module's books reader (CORE-02). A walled matter is not_found. "
+            "Module token with books:read; service call only."
+        ),
+        tag="Billing",
+        features=["books"],
+        roles=BILLING,
+        scopes=["books:read"],
+        response="BooksMatter",
+        writes=False,
+        extra_access={**BOOKS_SERVICE, **WALL},
+    )
+    api.add(
+        "get",
+        "/api/v1/books/contacts/{contact_id}",
+        operation_id="getBooksContact",
+        summary="Get a billed contact for books sync",
+        description=(
+            "Billing details of a contact the books reader may see (CORE-02): kind, display name, given and family "
+            "name, organization name, primary email, phone and billing address, and archived. "
+            "No date of birth, identifier, tags or custom fields. "
+            "Only a contact that is the client of an unwalled matter, or the contact on a payment or trust entry "
+            "the books reader can read, is returned; any other is not_found. "
+            "Module token with books:read; service call only."
+        ),
+        tag="Billing",
+        features=["books"],
+        roles=BILLING,
+        scopes=["books:read"],
+        response="BooksContact",
+        writes=False,
+        extra_access=BOOKS_SERVICE,
+    )
+    api.add(
+        "get",
+        "/api/v1/user-directory",
+        operation_id="listUserDirectory",
+        summary="List the user directory",
+        description=(
+            "Cursor-paginated directory rows: id, name, roles and active. No email, auth or rate fields. "
+            "Filters: ids (up to 100), role, active. A client caller receives only id and name for active users "
+            "who hold a staff, attorney or admin role."
+        ),
+        tag="Identity",
+        features=["user-directory"],
+        roles=DIRECTORY,
+        scopes=["users:directory"],
+        response_schema=_page("UserDirectoryEntry"),
+        paginate=True,
+        query=["ids", "role", "active"],
+        writes=False,
+        extra_access={**VIEWER, "client": "own", "client_schema": "UserDirectoryClient"},
+    )
+    api.add(
+        "get",
+        "/api/v1/client-access",
+        operation_id="getClientAccess",
+        summary="Get client portal access for a contact",
+        description=(
+            "Returns portal access status for the client user linked to contact_id: user_id, email, active, "
+            "must_change_password, last_sign_in_at and granted_at. 404 when no client user exists or the contact "
+            "is not a client party on a matter the caller can read. Refuses a user holding any role besides client (409)."
+        ),
+        tag="Identity",
+        features=["client-access"],
+        roles=STAFF,
+        scopes=["client_access:read"],
+        response="ClientAccess",
+        query=["contact_id"],
+        writes=False,
+        error_codes=["not_found", "conflict", "forbidden", "scope_denied", "validation_failed"],
+        extra_access=VIEWER,
+    )
+    api.add(
+        "post",
+        "/api/v1/client-access",
+        operation_id="grantClientAccess",
+        summary="Grant or refresh client portal access",
+        description=(
+            "Creates or finds the client user linked to contact_id, sets a temporary password with "
+            "must_change_password, mails the sign-in address by system mail, and returns "
+            "{user_id, created, email, mail_status}. Never returns the password. Email defaults to the "
+            "contact's primary email (400 when there is none)."
+        ),
+        tag="Identity",
+        features=["client-access"],
+        roles=STAFF,
+        scopes=["client_access:write"],
+        body="ClientAccessGrant",
+        response="ClientAccessGrantResult",
+        error_codes=["not_found", "conflict", "forbidden", "scope_denied", "validation_failed"],
+        events=["client_access.granted"],
+        extra_access=VIEWER,
+    )
+    api.add(
+        "post",
+        "/api/v1/client-access/{user_id}/temporary-password",
+        operation_id="resetClientAccessPassword",
+        summary="Set a temporary client portal password",
+        description=(
+            "Sets a new temporary password with must_change_password, revokes the user's sessions, and "
+            "returns {temporary_password} once. Temporary passwords never reach logs, the audit log or events."
+        ),
+        tag="Identity",
+        features=["client-access"],
+        roles=STAFF,
+        scopes=["client_access:write"],
+        response="ClientAccessTemporaryPassword",
+        error_codes=["not_found", "conflict", "forbidden", "scope_denied"],
+        events=["client_access.password_reset"],
+        extra_access=VIEWER,
+    )
+    api.add(
+        "post",
+        "/api/v1/client-access/{user_id}/deactivate",
+        operation_id="deactivateClientAccess",
+        summary="Deactivate client portal access",
+        description="Deactivates a client-only portal user so they can no longer sign in.",
+        tag="Identity",
+        features=["client-access"],
+        roles=STAFF,
+        scopes=["client_access:write"],
+        response="ClientAccessStatus",
+        error_codes=["not_found", "conflict", "forbidden", "scope_denied"],
+        events=["client_access.deactivated"],
+        extra_access=VIEWER,
+    )
+    api.add(
+        "post",
+        "/api/v1/client-access/{user_id}/reactivate",
+        operation_id="reactivateClientAccess",
+        summary="Reactivate client portal access",
+        description="Reactivates a previously deactivated client-only portal user.",
+        tag="Identity",
+        features=["client-access"],
+        roles=STAFF,
+        scopes=["client_access:write"],
+        response="ClientAccessStatus",
+        error_codes=["not_found", "conflict", "forbidden", "scope_denied"],
+        events=["client_access.reactivated"],
+        extra_access=VIEWER,
+    )
     api.resource(
         collection="/api/v1/api-tokens",
         schema="ApiToken",
@@ -893,7 +1230,7 @@ def _practice(api: Contract) -> None:
         tag="Matters",
         feature="matters",
         singular="matter",
-        read_roles=STAFF,
+        read_roles=STAFF + ["client"],
         write_roles=STAFF,
         read_scope="matters:read",
         write_scope="matters:write",
@@ -904,8 +1241,19 @@ def _practice(api: Contract) -> None:
         filters=["q", "status", "practice_area_id", "responsible_user_id", "billing_type", "archived", "custom"],
         archive=True,
         events={"created": "matter.created", "updated": "matter.updated", "archived": "matter.archived"},
-        extra_access=WALL,
+        extra_access={**WALL, "client": "own", "client_schema": "MatterClient"},
         extra_features=["matter-glance", "include-extensions"],
+    )
+    _project_client_matters(api)
+    api.spec["paths"]["/api/v1/matters"]["get"]["description"] = (
+        "Lists matters the caller can see. A client (mode own) sees only matters where their linked contact "
+        "is a client party, newest opened_on first, projected to MatterClient. "
+        "A closed matter stays readable for client_access.days_after_close days after closed_on; then it is omitted. "
+        "Walled matters are omitted for a caller who is not on the wall."
+    )
+    api.spec["paths"]["/api/v1/matters/{matter_id}"]["get"]["description"] = (
+        "One matter. A client receives MatterClient fields only for a matter where their linked contact is a "
+        "client party and the access window is still open. Otherwise not_found."
     )
     api.spec["paths"]["/api/v1/matters/{matter_id}"]["patch"]["description"] = (
         "Patches ordinary fields. status may move among prospect, open, and on_hold. "
@@ -1450,6 +1798,19 @@ def _admin_lists(api: Contract) -> None:
             filters=["active"] if schema != "CustomFieldDefinition" else ["record_type", "practice_area_id"],
             events={"created": "setting.updated", "updated": "setting.updated"},
         )
+    # CORE-20: settings catalog reads are viewer-delegable; writes stay undelegated.
+    for operation_id in (
+        "listCounty",
+        "getCounty",
+        "listPracticeArea",
+        "getPracticeArea",
+        "listPartyRole",
+        "getPartyRole",
+        "listCustomFieldDefinition",
+        "getCustomFieldDefinition",
+    ):
+        method, path = api.operation_ids[operation_id].split(" ", 1)
+        api.spec["paths"][path][method]["x-togavsu-access"]["module_delegation"] = "delegated_viewer"
     api.add(
         "post",
         "/api/v1/custom-field-definitions/{definition_id}/retire",
@@ -1861,7 +2222,7 @@ def _billing(api: Contract) -> None:
         operation_id="initiateProcessorPayment",
         summary="Authorize a registered payment processor",
         description=(
-            "A staff session asks the core to authorize one installed processor for this matter, contact, amount, and destination. "
+            "A signed-in viewer asks the core to authorize one installed processor for this matter, contact, amount, and destination. A client viewer is limited to the client's own readable matter and linked contact, with destination trust, or operating only with the client's own open invoice. "
             "The core delivers processor_authorization on moduleEvent payment.processor_authorized to that module only. "
             "This call does not create a payment and does not post trust. "
             "The initiation response does not contain the grant. "
@@ -1873,7 +2234,7 @@ def _billing(api: Contract) -> None:
         ),
         tag="Billing",
         features=["payments"],
-        roles=STAFF,
+        roles=DIRECTORY,
         scopes=["payments:write"],
         body="ProcessorInitializationWrite",
         response="ProcessorInitialization",
@@ -1955,6 +2316,92 @@ def _billing(api: Contract) -> None:
                 "replay": "no_event",
                 "completed_when": "status_becomes_completed",
                 "updated_when": "status_changes_without_completion",
+            },
+        },
+    )
+    api.add(
+        "get",
+        "/api/v1/payments/{payment_id}/refunds",
+        operation_id="listPaymentRefunds",
+        summary="List refunds on a payment",
+        description="Lists refunds for a payment the caller may read.",
+        tag="Billing",
+        features=["payments"],
+        roles=BILLING,
+        scopes=["payments:read"],
+        response_schema=_page("PaymentRefund"),
+        paginate=True,
+        include=True,
+        writes=False,
+        replaceable="time",
+        extra_access={**WALL, "include_scope_pattern": "views:{module_id}.{view}:read"},
+    )
+    api.add(
+        "post",
+        "/api/v1/payments/{payment_id}/refunds",
+        operation_id="createPaymentRefund",
+        summary="Create a payment refund",
+        description=(
+            "Records a refund on a completed payment. Admin and attorney only. "
+            "payments:write is required; a trust destination also needs trust:withdraw, checked before any ledger write. "
+            "Viewer call; Idempotency-Key. "
+            "Zero or more than the payment amount minus pending and completed refunds is validation_failed with code refund_exceeds_payment. "
+            "A non-completed payment is conflict. "
+            "status may be pending or completed (default pending). "
+            "Completing a trust refund posts one trust ledger entry of type refund in the same transaction; "
+            "an operating refund applied to an invoice lowers amount paid and can move the invoice back from paid to sent. "
+            "A pending create with a module-sourced payment delivers refund_authorization on payment.refund_authorized to that module."
+        ),
+        tag="Billing",
+        features=["payments"],
+        roles=ATTORNEY,
+        scopes=["payments:write"],
+        body="PaymentRefundWrite",
+        response="PaymentRefund",
+        success="201",
+        events=["payment.refund_created", "payment.refund_authorized", "payment.refunded", "trust.entry_posted", "trust.flag_raised"],
+        error_codes=["forbidden", "scope_denied", "refund_exceeds_payment"],
+        replaceable="time",
+        domain_dispatch=REVERSAL_DISPATCH,
+        extra_access={
+            **WALL,
+            "event_read_scopes": ["payments:read"],
+            "payment_events": {
+                "selection": "resulting_state",
+                "created_when": "row_inserted",
+                "completed_when": "status_becomes_completed",
+                "replay": "no_event",
+            },
+        },
+    )
+    api.add(
+        "post",
+        "/api/v1/payments/{payment_id}/refunds/{refund_id}/status",
+        operation_id="updatePaymentRefundStatus",
+        summary="Update a payment refund status",
+        description=(
+            "Pending may become completed or failed. The same status is idempotent and does not write. "
+            "Viewer call, or a refund_authorization grant from payment.refund_authorized with no viewer. "
+            "Completing a trust refund needs trust:withdraw before the ledger write. "
+            "payment.refunded or payment.refund_failed is emitted on a real change; a replay emits nothing."
+        ),
+        tag="Billing",
+        features=["payments"],
+        roles=ATTORNEY,
+        scopes=["payments:write"],
+        body="PaymentRefundStatusWrite",
+        response="PaymentRefund",
+        events=["payment.refunded", "payment.refund_failed", "trust.entry_posted", "trust.flag_raised"],
+        error_codes=["forbidden", "scope_denied"],
+        replaceable="time",
+        domain_dispatch=REVERSAL_DISPATCH,
+        extra_access={
+            **WALL,
+            "event_read_scopes": ["payments:read"],
+            "payment_events": {
+                "selection": "resulting_state",
+                "completed_when": "status_becomes_completed",
+                "replay": "no_event",
             },
         },
     )
@@ -2213,7 +2660,7 @@ def _trust(api: Contract) -> None:
         tag="Trust",
         feature="trust-replenishment",
         singular="replenishment request",
-        read_roles=BILLING,
+        read_roles=BILLING + CLIENT,
         write_roles=STAFF,
         read_scope="trust:read",
         write_scope="trust:write",
@@ -2223,8 +2670,9 @@ def _trust(api: Contract) -> None:
         filters=["matter_id", "status"],
         events={"created": "trust.replenishment_requested"},
         replaceable="trust",
-        extra_access=WALL,
+        extra_access={**WALL, "client": "own", "client_schema": "TrustReplenishmentClient"},
     )
+    _project_client_replenishment(api)
     api.add(
         "post",
         "/api/v1/trust-replenishment-requests/{replenishment_id}/cancel",
@@ -2423,7 +2871,7 @@ def _files(api: Contract) -> None:
         update=False,
         include=True,
         csv=True,
-        filters=["matter_id", "contact_id", "folder_id", "q", "trashed", "attorney_only", "category_id"],
+        filters=["matter_id", "contact_id", "folder_id", "q", "trashed", "attorney_only", "category_id", "library"],
         extra_access=SHARED,
     )
     api.add(
@@ -2517,7 +2965,7 @@ def _files(api: Contract) -> None:
     for method, path, op, summary, body, event, desc in (
         ("post", "/api/v1/files/{file_id}/rename", "renameFile", "Rename a file", "FileRename", "file.updated", "Changes the only name. The extension stays, except when an editor save converts the file to DOCX. A person may rename a locked file. Doc Tender still cannot replace that name."),
         ("post", "/api/v1/files/{file_id}/move", "moveFile", "Move a file between folders", "FileMove", "file.updated", "Changes the folder record. Bytes stay on the same key."),
-        ("post", "/api/v1/files/{file_id}/status", "markFileStatus", "Mark a file status", "FileStatusWrite", "file.updated", "Sets draft, final, executed, or filed. Received is how client and outside files arrive."),
+        ("post", "/api/v1/files/{file_id}/status", "markFileStatus", "Mark a file status", "FileStatusWrite", "file.updated", "Sets draft, final, executed, or filed. Received is how client and outside files arrive. A signature module service call (CORE-25) may only set executed on that module's signed fee-agreement file."),
         ("post", "/api/v1/files/{file_id}/trash", "trashFile", "Trash a file", None, "file.trashed", "The file stays listed and restorable."),
         ("post", "/api/v1/files/{file_id}/restore", "restoreFile", "Restore a file from trash", None, "file.updated", "Clears trashed_at."),
     ):
@@ -2925,10 +3373,13 @@ def _files(api: Contract) -> None:
         operation_id="createFileArchive",
         summary="Download a zip of files",
         description=(
-            "A folder or a selection. Each included file is written to the audit log and the case timeline as file.downloaded. "
+            "A folder, a file_ids selection, or entries (version or rendition plus a checked relative path). "
+            "Each included file is written to the audit log and the case timeline as file.downloaded. "
             "A client download is highlighted. "
             "If any selected version is quarantined and confirm_quarantine is false or omitted, the response is quarantine_confirmation_required and no zip is returned. "
-            "confirm_quarantine true includes those versions after the same confirmation a single download requires."
+            "confirm_quarantine true includes those versions after the same confirmation a single download requires. "
+            "Every entry is checked as the viewer before the first byte; a hidden one is not_found for the whole archive. "
+            "Credentials, the context token included, are checked once when the request starts, and that one response streams to completion after the token's expiry."
         ),
         tag="Files",
         features=["files"],
@@ -3419,6 +3870,23 @@ def _shell(api: Contract) -> None:
     )
     api.add(
         "get",
+        "/api/v1/nav/client-context",
+        operation_id="getClientNavContext",
+        summary="Client portal navigation",
+        description=(
+            "Lists {module_id, tab_id, title} for every enabled module's client tabs with nav true. "
+            "Client role only; staff, attorney, accountant and admin callers are forbidden."
+        ),
+        tag="Shell",
+        features=["nav", "client-portal"],
+        roles=["client"],
+        scopes=["profile:read"],
+        response="ClientNavContext",
+        writes=False,
+        extra_access={**VIEWER, "client": "own"},
+    )
+    api.add(
+        "get",
         "/api/v1/nav/context",
         operation_id="getNavContext",
         summary="Sidebar context",
@@ -3471,6 +3939,13 @@ def _shell(api: Contract) -> None:
         created["x-togavsu-access"].pop(key, None)
     created["x-togavsu-access"]["creation_separate"] = True
     created["x-togavsu-access"]["recipient"] = "named_on_create"
+    created["summary"] = "Create notifications for resolved recipients"
+    created["description"] = (
+        "Resolves recipients from user_id, audience, or recipient_roles (service call only), drops wall-excluded "
+        "users, creates one notification per recipient, and emails when the preference has email on. "
+        "Answer: {created, notification_ids}."
+    )
+    created["responses"]["201"]["content"]["application/json"]["schema"] = {"$ref": "#/components/schemas/CreateNotificationResult"}
     api.add(
         "post",
         "/api/v1/notifications/{notification_id}/read",
@@ -4123,6 +4598,81 @@ def _admin(api: Contract) -> None:
         success="202",
         response_schema={"type": "object", "additionalProperties": False, "required": ["accepted"], "properties": {"accepted": {"type": "boolean"}}},
     )
+    
+    api.add(
+        "post",
+        "/api/v1/mail/messages",
+        operation_id="sendModuleMail",
+        summary="Send module mail",
+        description=(
+            "A module token with mail:send sends firm mail to users or matter parties. "
+            "The core resolves addresses and never returns them. Each recipient is sent, failed, or skipped. "
+            "With matter_id and at least one sent recipient, a mail.sent timeline event is appended "
+            "(summary Email sent: {subject}, client_visible false). "
+            "Until CORE-05 routes through the email module, delivery uses the SMTP/outbox path. "
+            "A repeated Idempotency-Key with the same body returns the original result."
+        ),
+        tag="Mail",
+        features=["mail"],
+        roles=[],
+        scopes=["mail:send"],
+        body="ModuleMailWrite",
+        response="ModuleMailResult",
+        error_codes=["forbidden", "scope_denied", "not_found", "validation_failed", "idempotency_conflict"],
+        events=["mail.sent"],
+        extra_access={
+            **WALL,
+            "module_delegation": "delegated_viewer_or_service_principal",
+        },
+    )
+    api.add(
+        "post",
+        "/api/v1/mail/matches",
+        operation_id="matchMail",
+        summary="Match mail to contacts and matters",
+        description=(
+            "A module token with matters:read and contacts:read matches addresses, matter numbers, "
+            "case numbers, name tokens and known matter ids. Each list is at most 50. "
+            "Returns contacts_by_address and at most 50 matters with via. "
+            "A service call omits walled matters and returns match_token (15 minutes). "
+            "A viewer call applies that viewer's walls."
+        ),
+        tag="Mail",
+        features=["mail"],
+        roles=STAFF,
+        scopes=["matters:read", "contacts:read"],
+        body="MailMatchRequest",
+        response="MailMatchResult",
+        writes=False,
+        error_codes=["forbidden", "scope_denied", "validation_failed"],
+        extra_access={**WALL, "module_delegation": "delegated_viewer_or_service_principal"},
+    )
+    api.add(
+        "post",
+        "/api/v1/mail/filing-grants",
+        operation_id="issueMailFilingGrant",
+        summary="Issue a mail filing grant",
+        description=(
+            "A module service principal with notes:write and files:write presents a match_token, "
+            "matter_id (must be in the token and unwalled) and message_key. "
+            "Returns a mail_filing task authorization valid 15 minutes and emits mail.filing_authorized."
+        ),
+        tag="Mail",
+        features=["mail"],
+        roles=[],
+        scopes=["notes:write", "files:write"],
+        body="MailFilingGrantRequest",
+        response="MailFilingAuthorization",
+        success="201",
+        events=["mail.filing_authorized"],
+        error_codes=["forbidden", "scope_denied", "not_found", "validation_failed"],
+        extra_access={
+            "module_delegation": "service_principal",
+            "matter_wall": True,
+            "admin_bypasses_wall": False,
+            "client": "deny",
+        },
+    )
     api.resource(
         collection="/api/v1/problem-reports",
         schema="ProblemReport",
@@ -4488,6 +5038,143 @@ def _modules(api: Contract) -> None:
     )
     api.add(
         "post",
+        "/api/v1/me/module-devices",
+        operation_id="createModuleDeviceGrant",
+        summary="Connect a device to a module",
+        description=(
+            "Session only. Creates a device grant for the signed-in firm staff user and the named module, "
+            "which must declare device_connect. Returns the grant including the secret once. "
+            "The device-connect page uses this after the user approves. "
+            "A bearer token is refused. Grants lapse after 90 days unused or when the user is deactivated."
+        ),
+        tag="Modules",
+        features=["modules", "profile"],
+        roles=STAFF,
+        scopes=[],
+        body="ModuleDeviceWrite",
+        response="ModuleDevice",
+        success="201",
+        events=["module_device.created"],
+        error_codes=["forbidden", "not_found", "validation_failed"],
+        extra_access=DEVICE_GRANT_OWNERSHIP,
+    )
+    api.add(
+        "get",
+        "/api/v1/me/module-devices",
+        operation_id="listModuleDeviceGrants",
+        summary="List my module device grants",
+        description=(
+            "Returns the caller's active device grants that have not lapsed. The secret is never included."
+        ),
+        tag="Modules",
+        features=["modules", "profile"],
+        roles=STAFF,
+        scopes=["profile:read"],
+        response_schema=_page("ModuleDevice"),
+        paginate=True,
+        writes=False,
+        extra_access=DEVICE_GRANT_OWNERSHIP,
+    )
+    api.add(
+        "delete",
+        "/api/v1/me/module-devices/{device_id}",
+        operation_id="revokeModuleDeviceGrant",
+        summary="Revoke a module device grant",
+        description=(
+            "Revokes one device grant. The owner may revoke their own. An admin may revoke anyone's. "
+            "Emits module_device.revoked."
+        ),
+        tag="Modules",
+        features=["modules", "profile"],
+        roles=STAFF,
+        scopes=["profile:write"],
+        success="204",
+        response_content={},
+        events=["module_device.revoked"],
+        error_codes=["forbidden", "not_found", "scope_denied"],
+        extra_access=DEVICE_GRANT_OWNERSHIP,
+    )
+    api.add(
+        "post",
+        "/api/v1/modules/{module_id}/device-context-tokens",
+        operation_id="exchangeModuleDeviceGrant",
+        summary="Exchange a device grant for a context token",
+        description=(
+            "The module's own bearer, with modules:read, presents a device secret and receives a context token "
+            "for that user, valid 10 minutes, like createModuleContextToken. "
+            "Optional matter_id is checked against the wall before the token is signed. "
+            "A context token on the request is ignored. "
+            "A revoked, unused-for-90-days, or deactivated-user grant returns unauthenticated."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["modules:read"],
+        body="DeviceContextRequest",
+        response="ContextToken",
+        success="201",
+        error_codes=["forbidden", "scope_denied", "not_found", "unauthenticated"],
+        extra_access=MODULE_DEVICE_EXCHANGE,
+    )
+    api.add(
+        "put",
+        "/api/v1/modules/{module_id}/secrets/{name}",
+        operation_id="putModuleSecret",
+        summary="Store a module secret",
+        description=(
+            "The calling module's own bearer stores one sealed secret under name. "
+            "The path module_id must match the token's module. A context token is ignored. "
+            "At most 512 secrets per module, 16 KiB each; names match ^[a-z0-9/_-]{1,128}$. "
+            "The audit log records the name only. Uninstall with keep-data keeps secrets; delete removes them."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["module_secrets:write"],
+        body="ModuleSecretWrite",
+        success="204",
+        response_content={},
+        error_codes=["forbidden", "scope_denied", "not_found"],
+        extra_access=MODULE_SECRET,
+    )
+    api.add(
+        "get",
+        "/api/v1/modules/{module_id}/secrets/{name}",
+        operation_id="getModuleSecret",
+        summary="Read a module secret",
+        description=(
+            "Returns the clear value of one sealed secret for the calling module. "
+            "A missing name is not_found. A context token is ignored."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["module_secrets:write"],
+        response="ModuleSecret",
+        writes=False,
+        error_codes=["forbidden", "scope_denied", "not_found"],
+        extra_access=MODULE_SECRET,
+    )
+    api.add(
+        "delete",
+        "/api/v1/modules/{module_id}/secrets/{name}",
+        operation_id="deleteModuleSecret",
+        summary="Delete a module secret",
+        description=(
+            "Removes one sealed secret for the calling module. "
+            "A missing name is not_found. A context token is ignored."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["module_secrets:write"],
+        success="204",
+        response_content={},
+        error_codes=["forbidden", "scope_denied", "not_found"],
+        extra_access=MODULE_SECRET,
+    )
+    api.add(
+        "post",
         "/api/v1/modules/{module_id}/context-tokens",
         operation_id="createModuleContextToken",
         summary="Issue an iframe context token",
@@ -4640,6 +5327,95 @@ def _modules(api: Contract) -> None:
             }
         },
     )
+    api.add(
+        "post",
+        "/hooks/{module_id}/{hook_id}",
+        operation_id="postInboundWebhook",
+        summary="Forward an inbound provider webhook",
+        description=(
+            "Public. POST only. The core forwards the raw body, query string and headers to the "
+            "module's declared inbound_webhooks path, minus Cookie, Authorization, "
+            "X-Togavsu-Context-Token and X-CSRF-Token, and adds X-Togavsu-Module and "
+            "X-Togavsu-Inbound-Hook. A module that is not installed or disabled, or a hook it "
+            "does not declare, is not_found and forwards nothing. Bodies over "
+            "modules.inbound_webhook_max_bytes (default 1048576) are payload_too_large (413). "
+            "More than modules.inbound_webhook_rate_per_minute (default 120) per hook per minute "
+            "is rate_limited (429) with Retry-After. The response is the module's status and body. "
+            "The audit log records delivery counts, not bodies."
+        ),
+        tag="Modules",
+        features=["modules", "inbound-webhooks"],
+        roles=None,
+        scopes=[],
+        public=True,
+        writes=False,
+        request_content={
+            "*/*": {"schema": {"type": "string", "contentMediaType": "application/octet-stream"}}
+        },
+        response_content={
+            "*/*": {"schema": {"type": "string", "contentMediaType": "application/octet-stream"}}
+        },
+        error_codes=["not_found", "payload_too_large", "rate_limited"],
+        extra_responses={
+            "413": {
+                "description": "Body larger than modules.inbound_webhook_max_bytes.",
+                "content": {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}},
+            },
+        },
+    )
+
+
+
+
+def _project_client_replenishment(api: Contract) -> None:
+    staff_item = {"$ref": "#/components/schemas/TrustReplenishment"}
+    client_item = {"$ref": "#/components/schemas/TrustReplenishmentClient"}
+    mixed = {"oneOf": [staff_item, client_item]}
+    page = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["data", "page"],
+        "properties": {
+            "data": {"type": "array", "items": mixed},
+            "page": {"$ref": "#/components/schemas/Page"},
+        },
+    }
+    list_op = api.spec["paths"]["/api/v1/trust-replenishment-requests"]["get"]
+    get_op = api.spec["paths"]["/api/v1/trust-replenishment-requests/{replenishment_id}"]["get"]
+    list_op["responses"]["200"]["content"]["application/json"]["schema"] = page
+    get_op["responses"]["200"]["content"]["application/json"]["schema"] = mixed
+    for operation in (list_op, get_op):
+        operation["x-togavsu-access"]["client"] = "own"
+        operation["x-togavsu-access"]["client_schema"] = "TrustReplenishmentClient"
+        operation["x-togavsu-access"]["staff_schema"] = "TrustReplenishment"
+        operation["x-togavsu-access"]["client_projection"] = "allowlist"
+    # Writes stay staff-only.
+    for method in ("post",):
+        if method in api.spec["paths"]["/api/v1/trust-replenishment-requests"]:
+            api.spec["paths"]["/api/v1/trust-replenishment-requests"][method]["x-togavsu-access"]["client"] = "deny"
+
+def _project_client_matters(api: Contract) -> None:
+    staff_item = {"$ref": "#/components/schemas/Matter"}
+    client_item = {"$ref": "#/components/schemas/MatterClient"}
+    mixed = {"oneOf": [staff_item, client_item]}
+    page = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["data", "page"],
+        "properties": {
+            "data": {"type": "array", "items": mixed},
+            "page": {"$ref": "#/components/schemas/Page"},
+        },
+    }
+    list_op = api.spec["paths"]["/api/v1/matters"]["get"]
+    get_op = api.spec["paths"]["/api/v1/matters/{matter_id}"]["get"]
+    list_op["responses"]["200"]["content"]["application/json"]["schema"] = page
+    get_op["responses"]["200"]["content"]["application/json"]["schema"] = mixed
+    for operation in (list_op, get_op):
+        operation["x-togavsu-access"]["client"] = "own"
+        operation["x-togavsu-access"]["client_schema"] = "MatterClient"
+        operation["x-togavsu-access"]["staff_schema"] = "Matter"
+        operation["x-togavsu-access"]["client_projection"] = "allowlist"
 
 
 def _project_client_invoices(api: Contract) -> None:

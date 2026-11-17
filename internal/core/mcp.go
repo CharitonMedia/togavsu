@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,16 +12,18 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/modules"
 )
 
 // tool is one entry of api/openapi/v1/mcp-tools.json: an API operation and its scopes.
 type tool struct {
-	Name   string   `json:"name"`
-	Method string   `json:"method"`
-	Path   string   `json:"path"`
-	Scopes []string `json:"scopes"`
-	Roles  []string `json:"roles"`
-	segs   []string
+	Name       string   `json:"name"`
+	Method     string   `json:"method"`
+	Path       string   `json:"path"`
+	Scopes     []string `json:"scopes"`
+	Roles      []string `json:"roles"`
+	Delegation string   `json:"module_delegation,omitempty"`
+	segs       []string
 }
 
 func loadTools(raw []byte) ([]tool, error) {
@@ -272,12 +275,14 @@ func (a *App) callTool(w http.ResponseWriter, r *http.Request, req rpcReq) {
 	if len(params.Arguments.Body) > 0 && string(params.Arguments.Body) != "null" {
 		body = params.Arguments.Body
 	}
-	inner, err := http.NewRequestWithContext(r.Context(), t.Method, path, bytes.NewReader(body))
+	// Fresh caller memo: the /mcp POST may already have a memo poisoned by the
+	// password-change gate's authenticate of path /mcp (not a contract route).
+	inner, err := http.NewRequestWithContext(context.WithValue(r.Context(), callerKey{}, &callerMemo{}), t.Method, path, bytes.NewReader(body))
 	if err != nil {
 		rpcReply(w, req.ID, nil, &rpcErr{Code: -32602, Message: "invalid tool arguments"})
 		return
 	}
-	for _, h := range []string{"Authorization", "Cookie", "X-CSRF-Token", "Idempotency-Key"} {
+	for _, h := range []string{"Authorization", "Cookie", "X-CSRF-Token", "Idempotency-Key", modules.TaskAuthorizationHeader, modules.ContextHeader} {
 		if v := r.Header.Get(h); v != "" {
 			inner.Header.Set(h, v)
 		}

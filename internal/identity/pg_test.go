@@ -524,6 +524,9 @@ func openCoreDB(t *testing.T) *sql.DB {
 	if err := db.Apply(context.Background(), plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := plain.ExecContext(context.Background(), `ALTER TABLE core.users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1))`); err != nil {
+		t.Fatal(err)
+	}
 	_ = plain.Close()
 	out, err := db.OpenPostgres(testDSN, "core")
 	if err != nil {

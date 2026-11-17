@@ -37,13 +37,25 @@ func CoreSchemaTables() []string {
 	return out
 }
 
+// upSQL returns the goose Up body: everything before "-- +goose Down", or the whole
+// text when there is no Down marker. Applied migrations are Up only; Down is rollback.
+func upSQL(sql string) string {
+	before, _, found := strings.Cut(sql, "-- +goose Down")
+	if found {
+		return before
+	}
+	return sql
+}
+
 // CreatedTables reads migrations run in order in schema core (unqualified names, or
 // names qualified core.) and returns the tables that exist after them, sorted: each
 // CREATE TABLE, less each DROP TABLE, with ALTER TABLE ... RENAME TO followed.
+// Only the Up section is applied; Down DROP TABLE must not erase tables from the
+// inventory (release migrations keep real Downs for goose checksum stability).
 func CreatedTables(ms []db.Migration) ([]string, error) {
 	tables := map[string]bool{}
 	for _, mig := range ms {
-		toks, err := tokenize(mig.SQL)
+		toks, err := tokenize(upSQL(mig.SQL))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", mig.Name, err)
 		}

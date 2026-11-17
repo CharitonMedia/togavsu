@@ -59,6 +59,15 @@ func (s *Service) canReadMatter(ctx context.Context, p domain.Principal, matter 
 // (optional) to p. The module never sees the core session cookie; it gets this instead.
 // A matter p can't read is not_found, before anything is signed.
 func (s *Service) IssueContext(ctx context.Context, p domain.Principal, module string, matter domain.ID) (ContextToken, error) {
+	ttl, err := time.ParseDuration(strconv.Itoa(int(limits().ContextTTLSecond)) + "s")
+	if err != nil {
+		return ContextToken{}, err
+	}
+	return s.issueContext(ctx, p, module, matter, ttl)
+}
+
+// issueContext signs a context token with an explicit TTL (device exchange uses 10 minutes).
+func (s *Service) issueContext(ctx context.Context, p domain.Principal, module string, matter domain.ID, ttl time.Duration) (ContextToken, error) {
 	if p.UserID.IsZero() || p.ModuleID != "" || p.Source == domain.SourceModule || p.Source == domain.SourceSystem {
 		return ContextToken{}, domain.Forbidden("a context token is issued to a signed-in user")
 	}
@@ -83,10 +92,6 @@ func (s *Service) IssueContext(ctx context.Context, p domain.Principal, module s
 		return ContextToken{}, err
 	}
 	now := s.now()
-	ttl, err := time.ParseDuration(strconv.Itoa(int(limits().ContextTTLSecond)) + "s")
-	if err != nil {
-		return ContextToken{}, err
-	}
 	exp := now.Add(ttl)
 	claims := ContextClaims{Module: module, UserID: p.UserID, Roles: append([]domain.Role(nil), p.Roles...), MatterID: matter,
 		ExpiresAt: exp.Unix(), IssuedAt: now.Unix(), Nonce: hex.EncodeToString(nonce)}

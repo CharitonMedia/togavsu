@@ -19,6 +19,7 @@ const (
 	StatusPublished     = "published"
 	StatusException     = "exception"
 	StatusMatterClosed  = "not_processed_matter_closed"
+	StatusLibrary       = "not_processed_library"
 	StatusHeldProvider  = "held_for_provider"
 	StatusHeldAISetup   = "held_for_ai_setup"
 	unitPending         = "pending"
@@ -245,7 +246,7 @@ VALUES (?,?,?,?,?,?,?,0,?,'','',0,?,?,?,?) ON CONFLICT DO NOTHING`, id, at, at, 
 // at once (PRD 8.21 "each file as it arrives"). A grouped PDF Doc Tender made is queued
 // by the grouping step itself, with its pages already read.
 func (s *Service) OnVersion(ctx context.Context, ev files.VersionCreated) {
-	if ev.How == "grouping" {
+	if ev.How == "grouping" || ev.Library {
 		return
 	}
 	_, _ = s.Enqueue(context.WithoutCancel(ctx), ev.FileID, ev.VersionID, ev.MatterID, reasonArrival)
@@ -729,7 +730,7 @@ func (s *Service) MatterReopened(ctx context.Context, matter domain.ID) error {
 // an open exception, and any that has neither is queued. It processes nothing itself.
 func (s *Service) Sweep(ctx context.Context) (int, error) {
 	rows, err := s.query(ctx, `SELECT f.id, f.current_version_id, COALESCE(f.matter_id, '') FROM files f
-WHERE f.trashed_at = 0 AND f.purged_at = 0 AND f.current_version_id <> ''
+WHERE f.trashed_at = 0 AND f.purged_at = 0 AND f.current_version_id <> '' AND NOT f.library
   AND NOT EXISTS (SELECT 1 FROM doc_tender_jobs j WHERE j.file_version_id = f.current_version_id)
   AND NOT EXISTS (SELECT 1 FROM doc_tender_group_members g WHERE g.file_id = f.id)
   AND NOT EXISTS (SELECT 1 FROM doc_tender_exceptions e WHERE e.file_id = f.id AND e.status = 'open')`)
@@ -786,6 +787,9 @@ func (s *Service) Reprocess(ctx context.Context, p domain.Principal, fileID doma
 	f, err := s.d.Files.Get(ctx, p, fileID)
 	if err != nil {
 		return "", err
+	}
+	if f.Library {
+		return "", domain.Invalid("file_id", "library files are not processed by Doc Tender")
 	}
 	if f.CurrentVersionID == nil {
 		return "", domain.Invalid("file_id", "the file has no version")

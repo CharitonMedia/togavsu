@@ -31,7 +31,6 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/repository"
-	"github.com/CharitonMedia/togavsu/internal/trust"
 	"github.com/CharitonMedia/togavsu/web"
 	"github.com/CharitonMedia/togavsu/web/static"
 	"github.com/CharitonMedia/togavsu/web/templates/admin"
@@ -127,7 +126,7 @@ func MountUI(ctx context.Context, app *App, opt UIOptions) (*UI, error) {
 	ds, err := dashboard.New(dashboard.Deps{
 		Store: dashboard.PG{DB: app.Pool}, Settings: app.Settings, Users: app.Users, Staff: staff,
 		Catalog: u.Catalog, Notifier: cs.Notifier(), Search: cs.Searcher(), Timers: cs,
-		Mailer: trust.SMTP{Settings: app.Settings}, Badges: cs.Badges(), Now: now,
+		Mailer: app.sysMail.AsSender(), Badges: cs.Badges(), Now: now,
 	})
 	if err != nil {
 		return nil, err
@@ -174,7 +173,7 @@ func MountUI(ctx context.Context, app *App, opt UIOptions) (*UI, error) {
 	if err := u.loadScopes(); err != nil {
 		return nil, err
 	}
-	u.inner = u.route(app.setupGate(app.mux))
+	u.inner = u.route(app.setupGate(app.passwordChangeGate(app.mux)))
 	return u, nil
 }
 

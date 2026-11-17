@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -81,6 +82,21 @@ func editorDB(t *testing.T) *sql.DB {
 	}
 	if err := Migrate(ctx, plain); err != nil {
 		t.Fatalf("editor migrations: %v", err)
+	}
+	// Core release migrations the editor/files packages read but do not own (the
+	// composed core applies every package's migrations as one ordered set).
+	for _, name := range []string{"1252_file_publication_grants.sql", "1302_library_files.sql", "1303_must_change_password.sql"} {
+		raw, err := os.ReadFile("../core/migrations/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rel, err := db.LoadFS(fstest.MapFS{name: {Data: raw}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: rel}); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
 	}
 	_ = plain.Close()
 	pool, err := db.OpenPostgres(u.String(), "core")

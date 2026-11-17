@@ -10,7 +10,11 @@ import (
 )
 
 // Entry returns one ledger row. A walled matter's row is not found.
+// Firm ledger reads stay staff-facing; a client uses /api/v1/me/trust-ledger (CORE-12).
 func (s *Service) Entry(ctx context.Context, who domain.Principal, id domain.ID) (Entry, error) {
+	if clientOnly(who) {
+		return Entry{}, domain.NotFound("trust")
+	}
 	e, err := s.entry(ctx, id)
 	if err != nil {
 		return Entry{}, err
@@ -22,7 +26,11 @@ func (s *Service) Entry(ctx context.Context, who domain.Principal, id domain.ID)
 }
 
 // Entries lists ledger rows the caller may see, in posting order.
+// Firm ledger reads stay staff-facing; a client uses /api/v1/me/trust-ledger (CORE-12).
 func (s *Service) Entries(ctx context.Context, who domain.Principal, f EntryFilter) (Page[Entry], error) {
+	if clientOnly(who) {
+		return Page[Entry]{}, domain.NotFound("trust")
+	}
 	rows, err := s.visibleEntries(ctx, who, f)
 	if err != nil {
 		return Page[Entry]{}, err
@@ -116,6 +124,9 @@ func (s *Service) ledgerPage(ctx context.Context, who domain.Principal, f EntryF
 // matter per account, one per client, one per account. Rows for a walled matter are
 // absent and do not count toward the client and account rows the caller sees.
 func (s *Service) Balances(ctx context.Context, who domain.Principal, f EntryFilter) ([]BalanceRow, error) {
+	if clientOnly(who) {
+		return nil, domain.NotFound("trust")
+	}
 	rd, err := s.reader(ctx, who)
 	if err != nil {
 		return nil, err
@@ -317,7 +328,7 @@ func (s *Service) CreateAccount(ctx context.Context, who domain.Principal, in Ac
 	if err != nil {
 		return Account{}, err
 	}
-	s.publish(ctx, joined || replay, []Event{{Name: "trust_account.created", RecordID: out.ID}})
+	s.publish(ctx, joined || replay, stampActors(who, []Event{{Name: "trust_account.created", RecordID: out.ID}}))
 	return out, nil
 }
 
@@ -379,7 +390,7 @@ func (s *Service) UpdateAccount(ctx context.Context, who domain.Principal, id do
 	if err != nil {
 		return Account{}, err
 	}
-	s.publish(ctx, joined, []Event{{Name: "trust_account.updated", RecordID: id}})
+	s.publish(ctx, joined, stampActors(who, []Event{{Name: "trust_account.updated", RecordID: id}}))
 	return out, nil
 }
 
@@ -417,6 +428,9 @@ func (s *Service) Accounts(ctx context.Context, who domain.Principal, active *bo
 
 // Flag returns one flag the caller may see.
 func (s *Service) Flag(ctx context.Context, who domain.Principal, id domain.ID) (Flag, error) {
+	if clientOnly(who) {
+		return Flag{}, domain.NotFound("trust")
+	}
 	f, err := s.flag(ctx, id)
 	if err != nil {
 		return Flag{}, err
@@ -456,6 +470,9 @@ type FlagFilter struct {
 // Flags lists flags the caller may see. A flag raised by an entry on a walled matter is
 // absent, whatever its scope.
 func (s *Service) Flags(ctx context.Context, who domain.Principal, f FlagFilter) (Page[Flag], error) {
+	if clientOnly(who) {
+		return Page[Flag]{}, domain.NotFound("trust")
+	}
 	if f.Status != "" && f.Status != "open" && f.Status != "resolved" {
 		return Page[Flag]{}, domain.Invalid("status", "status is open or resolved")
 	}
@@ -544,6 +561,6 @@ func (s *Service) ResolveFlag(ctx context.Context, who domain.Principal, id doma
 	if err != nil {
 		return Flag{}, err
 	}
-	s.publish(ctx, joined, []Event{{Name: "trust.flag_resolved", RecordID: id, MatterID: f.entryMatter}})
+	s.publish(ctx, joined, stampActors(who, []Event{{Name: "trust.flag_resolved", RecordID: id, MatterID: f.entryMatter}}))
 	return f, nil
 }

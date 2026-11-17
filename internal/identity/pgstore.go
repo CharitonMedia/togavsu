@@ -100,10 +100,10 @@ func mapConflict(err error) error {
 
 func (s pgUsers) Insert(ctx context.Context, row domain.User) error {
 	return mapConflict(s.exec(ctx, `INSERT INTO users (
-		id, created_at, updated_at, created_by, name, email, roles, active, default_hourly_rate_cents, contact_id, bar_number, bar_state
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		id, created_at, updated_at, created_by, name, email, roles, active, must_change_password, default_hourly_rate_cents, contact_id, bar_number, bar_state
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		string(row.ID), domain.UnixMicroUTC(row.CreatedAt), domain.UnixMicroUTC(row.UpdatedAt), string(row.CreatedBy),
-		row.Name, row.Email, row.Roles, flag(row.Active), int64(row.DefaultHourlyRateCents), nullID(row.ContactID), row.BarNumber, row.BarState))
+		row.Name, row.Email, row.Roles, flag(row.Active), flag(row.MustChangePassword), int64(row.DefaultHourlyRateCents), nullID(row.ContactID), row.BarNumber, row.BarState))
 }
 
 // errLockBusy is returned when another process holds the account lock until the wait ends.
@@ -165,8 +165,8 @@ func (s pgUsers) LockSetup(ctx context.Context) error {
 }
 
 func (s pgUsers) Update(ctx context.Context, row domain.User) error {
-	return s.execOne(ctx, `UPDATE users SET updated_at=?, name=?, email=?, roles=?, active=?, default_hourly_rate_cents=?, contact_id=?, bar_number=?, bar_state=? WHERE id=?`,
-		domain.UnixMicroUTC(row.UpdatedAt), row.Name, row.Email, row.Roles, flag(row.Active), int64(row.DefaultHourlyRateCents), nullID(row.ContactID), row.BarNumber, row.BarState, string(row.ID))
+	return s.execOne(ctx, `UPDATE users SET updated_at=?, name=?, email=?, roles=?, active=?, must_change_password=?, default_hourly_rate_cents=?, contact_id=?, bar_number=?, bar_state=? WHERE id=?`,
+		domain.UnixMicroUTC(row.UpdatedAt), row.Name, row.Email, row.Roles, flag(row.Active), flag(row.MustChangePassword), int64(row.DefaultHourlyRateCents), nullID(row.ContactID), row.BarNumber, row.BarState, string(row.ID))
 }
 
 func (s pgUsers) Get(ctx context.Context, id domain.ID) (domain.User, error) {
@@ -194,14 +194,14 @@ func (s pgUsers) List(ctx context.Context, _ repository.Filter) (repository.Page
 	return repository.Page[domain.User]{Items: items}, rows.Err()
 }
 
-const userSelect = `SELECT id, created_at, updated_at, created_by, name, email, roles, active, default_hourly_rate_cents, contact_id, bar_number, bar_state FROM users`
+const userSelect = `SELECT id, created_at, updated_at, created_by, name, email, roles, active, must_change_password, default_hourly_rate_cents, contact_id, bar_number, bar_state FROM users`
 
 func scanUser(sc rowScanner) (domain.User, error) {
 	var row domain.User
 	var id, createdBy string
 	var contact sql.NullString
-	var created, updated, active, rate int64
-	err := sc.Scan(&id, &created, &updated, &createdBy, &row.Name, &row.Email, &row.Roles, &active, &rate, &contact, &row.BarNumber, &row.BarState)
+	var created, updated, active, mustChange, rate int64
+	err := sc.Scan(&id, &created, &updated, &createdBy, &row.Name, &row.Email, &row.Roles, &active, &mustChange, &rate, &contact, &row.BarNumber, &row.BarState)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, repository.ErrNotFound
 	}
@@ -213,6 +213,7 @@ func scanUser(sc rowScanner) (domain.User, error) {
 	row.CreatedAt = domain.FromUnixMicro(created)
 	row.UpdatedAt = domain.FromUnixMicro(updated)
 	row.Active = isOn(active)
+	row.MustChangePassword = isOn(mustChange)
 	row.DefaultHourlyRateCents = domain.Cents(rate)
 	if contact.Valid {
 		row.ContactID = domain.ID(contact.String)

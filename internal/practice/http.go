@@ -2,6 +2,7 @@ package practice
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"html/template"
@@ -43,12 +44,16 @@ type ModulePanel struct {
 
 // ModuleItem is a matter-screen panel or action a module declares (manifest
 // matter_items). Kind is "panel" (shown inline in a sandboxed frame) or "action" (a
-// button that opens the framed page); Path is the core page that frames it.
+// button that opens the framed page). For panels, Path is the module /m/ frame URL and
+// ContextTokenURL is the session refresh route the matter page's module-bridge.js uses
+// (CORE-09; staff sandbox without allow-same-origin). For actions, Path is the core
+// page that frames the module.
 type ModuleItem struct {
-	ID    string
-	Kind  string
-	Title string
-	Path  string
+	ID              string
+	Kind            string
+	Title           string
+	Path            string
+	ContextTokenURL string
 }
 
 // ModuleTab is a matter tab a module serves; Path is the core page that frames it.
@@ -193,6 +198,19 @@ type page struct {
 
 // render draws the named practice screen inside the app shell.
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data page) {
+	h.renderWithScripts(w, r, name, data, nil)
+}
+
+// renderMatter draws the matter screen; withBridge loads module-bridge.js for CORE-09 panels.
+func (h *Handler) renderMatter(w http.ResponseWriter, r *http.Request, data page, withBridge bool) {
+	var scripts []string
+	if withBridge {
+		scripts = []string{"/ui/static/module-bridge.js"}
+	}
+	h.renderWithScripts(w, r, "matter.html", data, scripts)
+}
+
+func (h *Handler) renderWithScripts(w http.ResponseWriter, r *http.Request, name string, data page, scripts []string) {
 	if h.Templates == nil {
 		http.Error(w, "templates are not loaded", http.StatusInternalServerError)
 		return
@@ -202,7 +220,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, da
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	frame.Write(w, r, frame.Page{Title: data.Title, Area: "practice", Body: template.HTML(buf.String()), Notice: data.Notice})
+	frame.Write(w, r, frame.Page{Title: data.Title, Area: "practice", Body: template.HTML(buf.String()), Notice: data.Notice, Scripts: scripts, WorkInFrame: len(scripts) > 0})
 }
 
 func (h *Handler) mattersPage(w http.ResponseWriter, r *http.Request) {
@@ -316,7 +334,23 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.render(w, r, "matter.html", page{
+	needBridge := false
+	for _, panel := range panels {
+		for _, it := range panel.Items {
+			if it.Kind == "panel" && it.ContextTokenURL != "" {
+				needBridge = true
+				break
+			}
+		}
+		if needBridge {
+			break
+		}
+	}
+	if needBridge {
+		// External module-bridge.js (script-src 'self') plus connect-src for context.refresh.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'none'")
+	}
+	h.renderMatter(w, r, page{
 		Title: view.Matter.Number + " " + view.Matter.Name, CSRF: h.csrf(w, r),
 		Matter: view, History: history, Timeline: timeline, MatterNotes: notes, Checks: checks,
 		CanReopen:     reopenErr == nil && view.Matter.Status == StatusClosed,
@@ -324,7 +358,7 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 		PartyRoles:    h.Svc.listSetting(r.Context(), "practice.party_roles", domain.DefaultPartyRoles()),
 		AttorneyName:  attorney,
 		Panels:        panels,
-	})
+	}, needBridge)
 }
 
 func (h *Handler) closePage(w http.ResponseWriter, r *http.Request) {
@@ -595,6 +629,10 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Query().Get("format") == "csv" {
+		if ClientOnly(p) {
+			writeErr(w, domain.Forbidden("csv export is not available to clients"))
+			return
+		}
 		csv, err := h.Svc.exportMattersCSV(r.Context(), p, keep)
 		if err != nil {
 			writeErr(w, err)
@@ -620,7 +658,7 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": matterItems(rows), "page": pageInfo(limit, from+len(rows), more)})
+	writeJSON(w, http.StatusOK, map[string]any{"data": h.matterItemsFor(r.Context(), p, rows), "page": pageInfo(limit, from+len(rows), more)})
 }
 
 func (h *Handler) matterJSON(w http.ResponseWriter, r *http.Request) {
@@ -634,7 +672,7 @@ func (h *Handler) matterJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, matterItem(view))
+	writeJSON(w, http.StatusOK, h.matterItemFor(r.Context(), p, view))
 }
 
 func (h *Handler) historyJSON(w http.ResponseWriter, r *http.Request) {
@@ -909,6 +947,45 @@ func matterItems(rows []MatterView) []map[string]any {
 		out = append(out, matterItem(row))
 	}
 	return out
+}
+
+func (h *Handler) matterItemsFor(ctx context.Context, p domain.Principal, rows []MatterView) []map[string]any {
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, h.matterItemFor(ctx, p, row))
+	}
+	return out
+}
+
+func (h *Handler) matterItemFor(ctx context.Context, p domain.Principal, view MatterView) map[string]any {
+	if ClientOnly(p) {
+		return h.matterClientItem(ctx, view)
+	}
+	return matterItem(view)
+}
+
+// matterClientItem is the MatterClient allowlist (CORE-11).
+func (h *Handler) matterClientItem(ctx context.Context, view MatterView) map[string]any {
+	row := view.Matter
+	areaName := ""
+	if area, err := h.Svc.db.Area(ctx, row.PracticeAreaID); err == nil {
+		areaName = area.Name
+	}
+	attorneyName := ""
+	if !row.ResponsibleAttorneyID.IsZero() {
+		if u, err := h.Svc.db.User(ctx, row.ResponsibleAttorneyID); err == nil {
+			attorneyName = u.Name
+		}
+	}
+	var closed any
+	if row.ClosedOn != "" {
+		closed = row.ClosedOn
+	}
+	return map[string]any{
+		"id": row.ID, "number": row.Number, "name": row.Name, "status": row.Status,
+		"practice_area_name": areaName, "opened_on": row.OpenedOn, "closed_on": closed,
+		"responsible_attorney_name": attorneyName,
+	}
 }
 
 func matterItem(view MatterView) map[string]any {

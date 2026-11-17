@@ -37,6 +37,7 @@ var definitions = []Definition{
 	{Key: "security.lockout_attempts", Kind: KindInt, Default: "5", Min: 1, Max: 100, HasMin: true, HasMax: true, Tab: TabSecurity, Help: "Failed sign-ins before lockout. Default 5.", PRD: true},
 	{Key: "security.lockout_length", Kind: KindDuration, Default: "15m0s", Min: int64(time.Minute), Max: int64(24 * time.Hour), HasMin: true, HasMax: true, Tab: TabSecurity, Help: "Lockout length. Default 15 minutes.", PRD: true},
 	{Key: "security.api_rate_per_minute", Kind: KindInt, Default: "600", Min: 1, Max: 1000000, HasMin: true, HasMax: true, Tab: TabSecurity, Help: "API requests allowed per minute per token. Default 600.", PRD: true},
+	{Key: "client_access.days_after_close", Kind: KindInt, Default: strconv.Itoa(domain.ClientAccessDaysAfterClose), Min: 0, Max: 3650, HasMin: true, HasMax: true, Tab: TabSecurity, Help: "Days after closed_on that a client may still read the matter, its shared files and invoices. Default 14. Reopening restores access.", PRD: true},
 
 	{Key: "practice.case_number_patterns", Kind: KindJSON, Default: jsonText([]string{domain.DefaultCasePattern}), Tab: TabPractice, Help: "Case-number patterns. The default matches Missouri docket numbers such as 23AR-CV00825.", PRD: true, Special: "regexp_list"},
 	{Key: "practice.conflict_score_minimum", Kind: KindInt, Default: strconv.Itoa(domain.ConflictScoreMinimum), Min: 0, Max: 100, HasMin: true, HasMax: true, Tab: TabPractice, Help: "Lowest conflict score shown, out of 100. Default 60.", PRD: true},
@@ -48,6 +49,7 @@ var definitions = []Definition{
 	{Key: "billing.expense_markup_percent", Kind: KindInt, Default: "0", Min: 0, Max: 1000, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Default expense markup percent. Default 0.", PRD: true},
 	{Key: "billing.payment_terms_days", Kind: KindInt, Default: "30", Min: 0, Max: 3650, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Invoice payment terms in days. Default 30.", PRD: true},
 	{Key: "billing.processor_authorization_lifetime", Kind: KindDuration, Default: "30m0s", Min: int64(time.Minute), Max: int64(24 * time.Hour), HasMin: true, HasMax: true, Tab: TabBilling, Help: "How long a payment processor module may use the authorization a staff member gave it for one payment. Default 30 minutes."},
+	{Key: "payments.processor_pending_grant_days", Kind: KindInt, Default: "30", Min: 1, Max: 365, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Days a processor grant stays valid for updatePaymentStatus after the payment was created pending. Default 30.", PRD: true},
 	{Key: "billing.grace_period_days", Kind: KindInt, Default: "15", Min: 0, Max: 3650, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Grace period before late interest, in days. Default 15.", PRD: true},
 	{Key: "billing.late_interest_enabled", Kind: KindBool, Default: "false", Tab: TabBilling, Help: "Late interest is off unless this is turned on.", PRD: true},
 	{Key: "billing.late_interest_annual_percent", Kind: KindInt, Default: "0", Min: 0, Max: 100, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Annual late-interest percent used when late interest is on."},
@@ -156,6 +158,8 @@ var definitions = []Definition{
 
 	{Key: "modules.marketplace_address", Kind: KindString, Default: domain.MarketplaceAddress, Tab: TabModules, Help: "Marketplace the firm checks. Default is the Togavsu marketplace.", PRD: true},
 	{Key: "modules.alert_check", Kind: KindEnum, Default: "daily", Allowed: []string{"hourly", "daily", "weekly"}, Tab: TabModules, Help: "How often installed modules are checked for flags and pulls. Default daily.", PRD: true},
+	{Key: "modules.inbound_webhook_max_bytes", Kind: KindInt, Default: "1048576", Min: 1, Max: 1 << 30, HasMin: true, HasMax: true, Tab: TabModules, Help: "Largest inbound provider webhook body in bytes. Over is 413. Default 1048576 (1 MiB).", PRD: true},
+	{Key: "modules.inbound_webhook_rate_per_minute", Kind: KindInt, Default: "120", Min: 1, Max: 1000000, HasMin: true, HasMax: true, Tab: TabModules, Help: "Inbound provider webhooks allowed per minute per hook. Over is 429 with Retry-After. Default 120.", PRD: true},
 	{Key: "modules.replace_time", Kind: KindString, Tab: TabModules, Help: "Module id that replaces time and invoicing. Empty keeps the core."},
 	{Key: "modules.replace_trust", Kind: KindString, Tab: TabModules, Help: "Module id that replaces trust. Empty keeps the core."},
 	{Key: "modules.replace_calendar", Kind: KindString, Tab: TabModules, Help: "Module id that replaces calendar. Empty keeps the core."},
@@ -178,4 +182,14 @@ var definitions = []Definition{
 	{Key: "api.webhook_window_hours", Kind: KindInt, Default: "24", Min: 1, Max: 168, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Hours over which webhook retries are spread. Default 24.", PRD: true},
 	{Key: "llms.show_firm_name", Kind: KindBool, Default: "true", Tab: TabAPI, Help: "Show the firm name on /llms.txt. The admin can hide it.", PRD: true},
 	{Key: "llms.firm_paragraph", Kind: KindString, Tab: TabAPI, Help: "Optional firm paragraph on /llms.txt. It must not contain client or matter data."},
+}
+
+// ModuleMailHTTPTimeout is how long a system-mail POST to the email module may wait
+// (CORE-05). seconds is mail.smtp_timeout_seconds; the catalog default applies when empty.
+func ModuleMailHTTPTimeout(seconds string) time.Duration {
+	d, err := time.ParseDuration(seconds + "s")
+	if err != nil || d <= 0 {
+		return 60 * time.Second
+	}
+	return d
 }

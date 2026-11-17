@@ -417,6 +417,7 @@ class ContractTest(unittest.TestCase):
             "getOpenAPI",
             "getSetup",
             "login",
+            "postInboundWebhook",
             "requestPasswordReset",
             "startTotpEnrollment",
             "verifyRecoveryCode",
@@ -1968,9 +1969,10 @@ class ContractTest(unittest.TestCase):
             include_views_decision(matter, {"role": "staff", "approved_scopes": granted["token_scopes"], "include": ["other.secret"]}),
             "forbidden",
         )
+        # CORE-11: a client may read matters they are party to, so include= follows the same gate.
         self.assertEqual(
             include_views_decision(matter, {"role": "client", "approved_scopes": granted["token_scopes"], "include": ["matter-clock.targets"]}),
-            "forbidden",
+            "allowed",
         )
         self.assertEqual(
             include_views_decision(
@@ -2538,7 +2540,10 @@ class ContractTest(unittest.TestCase):
 
     def test_archive_quarantine_requires_confirmation(self):
         operation = _operation(self.spec, "createFileArchive")
-        self.assertIn("confirm_quarantine", self.spec["components"]["schemas"]["FileArchiveRequest"]["properties"])
+        archive_schema = self.spec["components"]["schemas"]["FileArchiveRequest"]
+        self.assertIn("oneOf", archive_schema)
+        self.assertTrue(all("confirm_quarantine" in branch["properties"] for branch in archive_schema["oneOf"]))
+        self.assertIn("FileArchiveEntry", self.spec["components"]["schemas"])
         self.assertIn("quarantine_confirmation_required", operation["x-togavsu-error-codes"])
         cases = {(case["confirm_quarantine"], case["result"]) for case in operation["x-togavsu-access"]["archive_cases"]}
         self.assertIn((False, "quarantine_confirmation_required"), cases)
@@ -2654,7 +2659,6 @@ class ContractTest(unittest.TestCase):
             "getMatter",
             "listMatter",
             "updateFileMetadata",
-            "createNote",
             "createTimeEntry",
             "runEditor",
             "postTrustEntry",
@@ -2816,6 +2820,7 @@ class ContractTest(unittest.TestCase):
                 "locked_fields": [],
                 "warnings": [],
                 "financial_classification": classification,
+                "library": False,
                 "matter_id": matter,
                 "matter_walled": False,
             }
@@ -4493,6 +4498,7 @@ class ContractTest(unittest.TestCase):
             ("expense", "Expense", "expenses:read", ("listExpense", "getExpense")),
             ("invoice", "Invoice", "invoices:read", ("listInvoice", "getInvoice")),
             ("payment", "Payment", "payments:read", ("listPayment", "getPayment")),
+            ("payment_refund", "PaymentRefund", "payments:read", ("listPaymentRefunds",)),
             ("calendar_event", "CalendarEvent", "calendar:read", ("listCalendarEvent", "getCalendarEvent")),
             ("deadline", "Deadline", "deadlines:read", ("listDeadline", "getDeadline")),
             ("file", "File", "files:read", ("listFile", "getFile")),
@@ -4864,7 +4870,12 @@ class ContractTest(unittest.TestCase):
                 if "client" in roles:
                     shared = call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted())
                     self.assertEqual(shared["result"], "allowed", label)
-                    denied(call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted(shared=False)), "not_found", label)
+                    # CORE-12: client trust reads use ClientMatter, not SharedWithClient.
+                    if key.startswith("trust_"):
+                        still = call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted(shared=False))
+                        self.assertEqual(still["result"], "allowed", label)
+                    else:
+                        denied(call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted(shared=False)), "not_found", label)
                 else:
                     denied(call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted()), "forbidden", label)
                 if "staff" not in roles:
@@ -5278,6 +5289,10 @@ class ContractTest(unittest.TestCase):
                     "createModuleMarker",
                     "updateModuleMarker",
                     "revokeModuleMarker",
+                    "putModuleSecret",
+                    "getModuleSecret",
+                    "deleteModuleSecret",
+                    "exchangeModuleDeviceGrant",
                 },
                 "issuance": {"createApiToken"},
                 "trust_debit": {"applyTrustToInvoice", "applyFlatFee"},
@@ -5353,6 +5368,10 @@ class ContractTest(unittest.TestCase):
             arguments = {"path": {"module_id": module_id}}
             if scope == "help:write":
                 arguments["body"] = {"heading": module_id}
+            elif scope == "module_secrets:write":
+                arguments["path"]["name"] = "qbo/access_token"
+                if operation_id == "putModuleSecret":
+                    arguments["body"] = {"value": "synthetic-secret"}
             else:
                 arguments["body"] = {"marker_id": "018f1a00-7b3c-7d4e-8a11-111111111111", "label": "After hours", "color": "#336699"}
                 arguments["path"]["marker_id"] = "018f1a00-7b3c-7d4e-8a11-111111111111"
@@ -5799,7 +5818,7 @@ class ContractTest(unittest.TestCase):
             for method, _path, operation in _ops(self.spec)
             if method == "get" and any(scope.endswith(":write") for scope in operation["x-togavsu-access"]["scopes"])
         ]
-        self.assertEqual(write_gets, ["getFileUpload", "listStorageBackend", "getStorageBackend"])
+        self.assertEqual(write_gets, ["getFileUpload", "listStorageBackend", "getStorageBackend", "getModuleSecret"])
         for event_type in ("storage_backend.created", "storage_backend.updated", "storage_backend.tested"):
             self.assertEqual(event_read_scopes(event_type), ["files:write"], event_type)
         secret = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa9"
@@ -7033,7 +7052,10 @@ class ContractTest(unittest.TestCase):
             if not operation["x-togavsu-events"]:
                 uncovered.append(operation["operationId"])
         self.assertEqual(uncovered, [])
-        self.assertEqual(exempt, ["putFileChunk"])
+        self.assertEqual(
+            exempt,
+            ["putFileChunk", "exchangeModuleDeviceGrant", "putModuleSecret", "deleteModuleSecret"],
+        )
         self.assertEqual(_operation(self.spec, "cancelTrustReplenishment")["x-togavsu-events"], ["trust.replenishment_cancelled"])
         self.assertEqual(_operation(self.spec, "satisfyTrustReplenishment")["x-togavsu-events"], ["trust.replenishment_satisfied"])
         self.assertEqual(_operation(self.spec, "bulkCustomFieldValue")["x-togavsu-events"], ["custom_field.updated"])
@@ -7436,12 +7458,27 @@ class ContractTest(unittest.TestCase):
                 arguments["path"]["marker_id"] = "018f1a00-7b3c-7d4e-8a11-111111111111"
             if "{page_id}" in path:
                 arguments["path"]["page_id"] = "start"
+            if "{name}" in path:
+                arguments["path"]["name"] = "qbo/access_token"
+            if operation_id == "putModuleSecret":
+                arguments["body"] = {"value": "synthetic-secret"}
             held = {"viewer_present": False, "module_id": module_id, "installed": True, "approved_scopes": [scope], "module_scopes": [scope]}
             cases.append({"family": "module_principal", "name": operation_id + " empty token", "result": "scope_denied", "call": {**bearer(**held, token_scopes=[]), "tool": operation_id, "arguments": arguments}})
             cases.append({"family": "module_principal", "name": operation_id + " empty current approval", "result": "scope_denied", "call": {**bearer(**held, token_scopes=[scope], current_approved_scopes=[]), "tool": operation_id, "arguments": arguments}})
         self.assertEqual(
             set(principal_ids),
-            {"createModuleHelpPage", "replaceModuleHelpPages", "deleteModuleHelpPage", "createModuleMarker", "updateModuleMarker", "revokeModuleMarker"},
+            {
+                "createModuleHelpPage",
+                "replaceModuleHelpPages",
+                "deleteModuleHelpPage",
+                "createModuleMarker",
+                "updateModuleMarker",
+                "revokeModuleMarker",
+                "putModuleSecret",
+                "getModuleSecret",
+                "deleteModuleSecret",
+                "exchangeModuleDeviceGrant",
+            },
         )
         cases.append({"family": "module_principal", "name": "help bearer matches current approval", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="matter-clock", installed=True, approved_scopes=["help:write"], token_scopes=["help:write"], current_approved_scopes=["help:write"]), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}})
         grant_body = {"assignment": "matter", "matter_id": visible, "source": "email"}
@@ -8716,6 +8753,18 @@ class ContractTest(unittest.TestCase):
         _component_validator(self.spec, "FileLinkWrite").validate(link_body)
         _component_validator(self.spec, "FileArchiveRequest").validate({"file_ids": [file_id, other_file]})
         _component_validator(self.spec, "FileArchiveRequest").validate({"folder_id": folder_id})
+        version_id = "018f1a00-7b3c-7d4e-8a11-ccccccccccc1"
+        rendition_id = "018f1a00-7b3c-7d4e-8a11-ddddddddddd1"
+        _component_validator(self.spec, "FileArchiveRequest").validate(
+            {"entries": [{"file_id": file_id, "version_id": version_id, "path": "docs/a.pdf"}]}
+        )
+        _component_validator(self.spec, "FileArchiveRequest").validate(
+            {"entries": [{"file_id": file_id, "rendition_id": rendition_id, "path": "docs/a.md"}]}
+        )
+        with self.assertRaises(Exception):
+            _component_validator(self.spec, "FileArchiveRequest").validate(
+                {"file_ids": [file_id], "entries": [{"file_id": file_id, "version_id": version_id, "path": "a.pdf"}]}
+            )
         _component_validator(self.spec, "MatterWritePatch").validate({"status": "open"})
         self.assertIn({"from_visible": False, "to_visible": False, "result": "not_found"}, _operation(self.spec, "createFileLink")["x-togavsu-access"]["access_cases"])
 
@@ -8869,6 +8918,65 @@ class ContractTest(unittest.TestCase):
         bad_ids = archive({"file_ids": [{"id": file_id}]}, [row(file_id)])
         self.assertEqual(bad_ids["result"], "validation_failed")
         self.assertFalse(bad_ids["effects"])
+        version_id = "018f1a00-7b3c-7d4e-8a11-ccccccccccc1"
+        rendition_id = "018f1a00-7b3c-7d4e-8a11-ddddddddddd1"
+        entries_ok = archive(
+            {"entries": [{"file_id": file_id, "version_id": version_id, "path": "docs/a.pdf"}]},
+            [row(file_id)],
+        )
+        self.assertEqual(entries_ok["result"], "allowed")
+        self.assertTrue(entries_ok["effects"])
+        entries_rendition = archive(
+            {"entries": [{"file_id": file_id, "rendition_id": rendition_id, "path": "docs/a.md"}]},
+            [row(file_id)],
+        )
+        self.assertEqual(entries_rendition["result"], "allowed")
+        hidden_entry = quiet(
+            archive(
+                {
+                    "entries": [
+                        {"file_id": file_id, "version_id": version_id, "path": "ok.pdf"},
+                        {"file_id": other_file, "version_id": version_id, "path": "secret.pdf"},
+                    ]
+                },
+                [row(file_id), row(other_file, matter_walled=True)],
+                matter_membership={matter: False},
+            )
+        )
+        self.assertEqual(hidden_entry["result"], "not_found")
+        bad_entry_path = archive(
+            {"entries": [{"file_id": file_id, "version_id": version_id, "path": "../x.pdf"}]},
+            [row(file_id)],
+        )
+        self.assertEqual(bad_entry_path["result"], "validation_failed")
+        self.assertFalse(bad_entry_path["effects"])
+        dup_entry_path = archive(
+            {
+                "entries": [
+                    {"file_id": file_id, "version_id": version_id, "path": "Docs/A.pdf"},
+                    {"file_id": file_id, "rendition_id": rendition_id, "path": "docs/a.pdf"},
+                ]
+            },
+            [row(file_id)],
+        )
+        self.assertEqual(dup_entry_path["result"], "validation_failed")
+        self.assertFalse(dup_entry_path["effects"])
+        files_and_entries = archive(
+            {
+                "file_ids": [file_id],
+                "entries": [{"file_id": file_id, "version_id": version_id, "path": "a.pdf"}],
+            },
+            [row(file_id)],
+        )
+        self.assertEqual(files_and_entries["result"], "validation_failed")
+        self.assertFalse(files_and_entries["effects"])
+        quarantined_entry = quiet(
+            archive(
+                {"entries": [{"file_id": file_id, "version_id": version_id, "path": "q.pdf"}]},
+                [row(file_id, quarantined=True)],
+            )
+        )
+        self.assertEqual(quarantined_entry["result"], "quarantine_confirmation_required")
 
     def test_record_owner_and_client_file_access(self):
         matter = "018f1a00-7b3c-7d4e-8a11-333333333333"

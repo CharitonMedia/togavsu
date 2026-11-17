@@ -313,7 +313,10 @@ func (s *Service) proxy(module, strip, token string) http.Handler {
 			// can't use the viewer's core session.
 			resp.Header.Del("Set-Cookie")
 			if strip != "" || strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
-				resp.Header.Add("Content-Security-Policy", "sandbox allow-scripts allow-forms")
+				// CORE-09: the header lists every capability a staff or client frame may
+				// need; the frame's own sandbox attribute is the tighter of the two.
+				// Neither ever includes allow-same-origin.
+				resp.Header.Add("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation")
 			}
 			return nil
 		},

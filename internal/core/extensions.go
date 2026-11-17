@@ -80,7 +80,7 @@ func (x *extensions) openModules(a *App, cfg Config, ui *UI, now func() time.Tim
 		}
 	}
 	svc, err := modules.New(modules.Deps{DB: a.Pool, Key: cfg.Key, Audit: a.Audit, Settings: a.Settings, Walls: a.Practice.Policy.Walls,
-		Contacts: a.Practice, Signing: x.Market, Users: a.Users, Tokens: modules.IdentityTokens{Svc: a.Identity}, Help: ui.Help,
+		Contacts: a.Practice, BooksContactOK: a.booksContactReadableForModule, Signing: x.Market, Users: a.Users, Tokens: modules.IdentityTokens{Svc: a.Identity}, Help: ui.Help,
 		Widgets: ui.Catalog, Nav: ui.Dashboard, Runtime: rt, Backups: backups, Now: now})
 	if err != nil {
 		return err
@@ -88,6 +88,13 @@ func (x *extensions) openModules(a *App, cfg Config, ui *UI, now func() time.Tim
 	svc.AIBaseURLs = cfg.ProviderURLs
 	x.Modules = svc
 	x.modH = modules.NewHandler(svc, a.moduleCaller)
+	x.modH.FirmName = func(ctx context.Context) string {
+		v, err := a.Settings.Get(ctx, "firm.name")
+		if err != nil {
+			return ""
+		}
+		return v
+	}
 	return nil
 }
 
@@ -257,8 +264,20 @@ func (a *App) matterPanels(r *http.Request, p domain.Principal, matter domain.ID
 		}
 		var items []practice.ModuleItem
 		for _, it := range in.Manifest.MatterItems {
-			items = append(items, practice.ModuleItem{ID: it.ID, Kind: it.Kind, Title: it.Title,
-				Path: modules.MatterItemPage(url.PathEscape(in.ID), url.PathEscape(it.ID)) + "?matter_id=" + url.QueryEscape(string(matter))})
+			corePath := modules.MatterItemPage(url.PathEscape(in.ID), url.PathEscape(it.ID)) + "?matter_id=" + url.QueryEscape(string(matter))
+			item := practice.ModuleItem{ID: it.ID, Kind: it.Kind, Title: it.Title, Path: corePath}
+			// Panels are framed on the matter page itself (CORE-09): module /m/ URL inside
+			// the staff sandbox, with module-bridge.js on the matter page so refresh/navigate
+			// keep the session cookie and can assign top.location.
+			if it.Kind == "panel" {
+				tok, err := a.ext.Modules.IssueContext(r.Context(), p, in.ID, matter)
+				if err != nil {
+					return nil, err
+				}
+				item.Path = modules.FramePath(in.ID, it.Path, tok.Token, url.Values{"matter_id": {string(matter)}})
+				item.ContextTokenURL = modules.MatterItemPage(url.PathEscape(in.ID), url.PathEscape(it.ID)) + "/context-token?matter_id=" + url.QueryEscape(string(matter))
+			}
+			items = append(items, item)
 		}
 		if len(rows) == 0 && len(tabs) == 0 && len(items) == 0 {
 			continue

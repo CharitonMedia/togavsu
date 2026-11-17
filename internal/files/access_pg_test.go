@@ -77,7 +77,7 @@ func TestPGWalledFileHiddenOutsideTheWall(t *testing.T) {
 	if _, err := e.svc.History(ctx, out, secret.ID); !isCode(err, domain.CodeNotFound) {
 		t.Fatalf("outsider history = %v", err)
 	}
-	if err := e.svc.Archive(ctx, out, []domain.ID{open.ID, secret.ID}, "", true, io.Discard); !isCode(err, domain.CodeNotFound) {
+	if err := e.svc.Archive(ctx, out, ArchiveRequest{FileIDs: []domain.ID{open.ID, secret.ID}, ConfirmQuarantine: true}, io.Discard); !isCode(err, domain.CodeNotFound) {
 		t.Fatalf("outsider archive = %v", err)
 	}
 	if _, err := e.svc.Rename(ctx, out, secret.ID, "x"); !isCode(err, domain.CodeNotFound) {

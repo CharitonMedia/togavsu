@@ -314,6 +314,7 @@ type resp struct {
 	code int
 	body string
 	json map[string]any
+	csp  string
 }
 
 func (e *env) do(method, path string, body any, hdr ...string) resp {
@@ -349,7 +350,7 @@ func (e *env) do(method, path string, body any, hdr ...string) resp {
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
-	out := resp{code: res.StatusCode, body: string(raw)}
+	out := resp{code: res.StatusCode, body: string(raw), csp: res.Header.Get("Content-Security-Policy")}
 	_ = json.Unmarshal(raw, &out.json)
 	return out
 }

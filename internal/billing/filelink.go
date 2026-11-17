@@ -29,12 +29,26 @@ var (
 	_ Receipts     = (*FileLink)(nil)
 	_ InvoiceFiles = (*FileLink)(nil)
 	_ SignedCopies = (*FileLink)(nil)
+	_ MatterFiles  = (*FileLink)(nil)
 )
 
 // CheckMatterFile implements SignedCopies: fileID is an untrashed file on matter that p
 // may read. Anything else answers not found.
 func (l *FileLink) CheckMatterFile(ctx context.Context, p domain.Principal, matter, fileID domain.ID) error {
 	f, err := l.Svc.Get(ctx, p, fileID)
+	if err != nil {
+		return err
+	}
+	if f.TrashedAt != nil || f.MatterID == nil || *f.MatterID != matter {
+		return domain.NotFound("file")
+	}
+	return nil
+}
+
+// MatterFileExists implements MatterFiles: fileID is an untrashed file on matter, with no
+// caller ACL (CORE-25 signature service call).
+func (l *FileLink) MatterFileExists(ctx context.Context, matter, fileID domain.ID) error {
+	f, err := l.Svc.Peek(ctx, fileID)
 	if err != nil {
 		return err
 	}

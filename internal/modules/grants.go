@@ -16,26 +16,32 @@ const TaskAuthorizationHeader = "X-Togavsu-Task-Authorization"
 // ProcessorEvent delivers a payment processor grant (billing.ProcessorEvent).
 const ProcessorEvent = "payment.processor_authorized"
 
+// RefundEvent delivers a refund grant (billing.RefundEvent).
+const RefundEvent = "payment.refund_authorized"
+
 // directEvents go to one named module with its grant (DeliverGrant), never through the
 // subscription fan-out, so no other module sees them.
-var directEvents = map[string]bool{ProcessorEvent: true}
+var directEvents = map[string]bool{ProcessorEvent: true, RefundEvent: true}
 
-// Processor reports whether module is a registered payment processor: installed, enabled
-// and subscribed to payment.processor_authorized. approved is the scopes the admin
-// approved for it. An unknown module is not registered.
-func (s *Service) Processor(ctx context.Context, module string) (map[string]bool, bool, error) {
+// Processor reports whether module is a registered payment processor: installed, enabled,
+// declares payment_processor with destinations, and is subscribed to
+// payment.processor_authorized. approved is the scopes the admin approved; destinations
+// are the manifest's operating/trust list. An unknown module is not registered.
+func (s *Service) Processor(ctx context.Context, module string) (approved map[string]bool, destinations []string, registered bool, err error) {
 	in, err := s.Installed(ctx, module)
 	var api *domain.APIError
 	if errors.As(err, &api) && api.Code == domain.CodeNotFound {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
-	if !in.Enabled || in.Status != StatusInstalled || !Subscribed(in.Manifest.Events, ProcessorEvent) {
-		return nil, false, nil
+	pp := in.Manifest.PaymentProcessor
+	if !in.Enabled || in.Status != StatusInstalled || pp == nil || len(pp.Destinations) == 0 ||
+		!Subscribed(in.Manifest.Events, ProcessorEvent) {
+		return nil, nil, false, nil
 	}
-	return in.Approved, true, nil
+	return in.Approved, append([]string(nil), pp.Destinations...), true, nil
 }
 
 // DeliverGrant queues ev to module alone, in the transaction ctx carries, with grant under

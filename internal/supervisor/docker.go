@@ -70,6 +70,27 @@ func CoreEnv() []string {
 // CoreDataDir is where the core image keeps its data volume (core.DataDir).
 const CoreDataDir = "/var/lib/togavsu-core"
 
+// SupervisorDataDir is the supervisor data volume path (Config.DataDir default).
+// The core never mounts this volume; it holds the supervisor ledger, journals and
+// sealed backup destinations.
+const SupervisorDataDir = "/var/lib/togavsu"
+
+// MailOutboxDir is the shared volume path for mail-outbox.jsonl only (CORE-05).
+// Supervisor and core both mount it; nothing else from SupervisorDataDir is shared.
+const MailOutboxDir = "/var/lib/togavsu-mail"
+
+// MailOutboxFile is the supervisor notice file under MailOutboxDir.
+const MailOutboxFile = "mail-outbox.jsonl"
+
+// CoreUID and CoreGID are the unprivileged identity compose.yaml assigns to the
+// core service and every module container (user: "65532:65532"). The root
+// supervisor chowns MailOutboxDir and mail-outbox.jsonl to these so the core can
+// Take/rename notices (CORE-05); umask alone leaves a named volume root:root 0755.
+const (
+	CoreUID = 65532
+	CoreGID = 65532
+)
+
 // BackupKeyDir is where the core writes the backup passphrase (core.PassphraseFile).
 const BackupKeyDir = "/backupkey"
 
@@ -90,6 +111,9 @@ type CoreVolumes struct {
 	BackupKey string
 	// Data is upload staging and the default local-disk file store.
 	Data string
+	// MailOutbox holds only mail-outbox.jsonl so DeliverMail can drain supervisor
+	// notices (CORE-05). It is not the supervisor data volume.
+	MailOutbox string
 }
 
 func (v CoreVolumes) withDefaults() CoreVolumes {
@@ -99,21 +123,31 @@ func (v CoreVolumes) withDefaults() CoreVolumes {
 		}
 		return s
 	}
+	mailOutbox := v.MailOutbox
+	if mailOutbox == "" {
+		mailOutbox = strings.TrimSpace(os.Getenv("TOGAVSU_MAIL_OUTBOX_VOLUME"))
+	}
 	return CoreVolumes{
 		AppSecrets:   def(v.AppSecrets, "togavsu_appsecrets"),
 		AdminSecrets: def(v.AdminSecrets, "togavsu_adminsecrets"),
 		BackupKey:    def(v.BackupKey, "togavsu_backupkey"),
 		Data:         def(v.Data, "togavsu_core_data"),
+		MailOutbox:   def(mailOutbox, "togavsu_mail_outbox"),
 	}
 }
 
 // CoreBinds are the Compose core service's mounts: the secrets read-only, the backup
-// passphrase volume and the core's data volume. Without the data volume a
-// replacement core would start on an empty local-disk file store. The superuser
-// volume is never among them.
+// passphrase volume, the core's data volume, and the mail-outbox volume only.
+// Without the data volume a replacement core would start on an empty local-disk
+// file store. The superuser volume and the supervisor data volume are never among them.
 func CoreBinds(v CoreVolumes) []string {
 	v = v.withDefaults()
-	return []string{v.AppSecrets + ":/appsecrets:ro", v.BackupKey + ":" + BackupKeyDir, v.Data + ":" + CoreDataDir}
+	return []string{
+		v.AppSecrets + ":/appsecrets:ro",
+		v.BackupKey + ":" + BackupKeyDir,
+		v.Data + ":" + CoreDataDir,
+		v.MailOutbox + ":" + MailOutboxDir,
+	}
 }
 
 // MigrateBinds are the Compose migrate service's mounts: the core's secrets and the

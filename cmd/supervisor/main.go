@@ -121,10 +121,21 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, err
 	}
+	// Shared with the core (CoreUID/CoreGID, mode 0770). PrepareMailOutboxDir
+	// Chmods/Chowns even when the named volume already exists as root:root 0755,
+	// which MkdirAll alone would leave undrainable (CORE-05).
+	if err := supervisor.PrepareMailOutboxDir(cfg.MailOutboxDir); err != nil {
+		return nil, err
+	}
+	// Notices queued under the old supervisor data path before the dedicated mail
+	// volume must move with the upgrade, or update-failure mail is silently orphaned.
+	if err := supervisor.MigrateLegacyMailOutbox(cfg.DataDir, cfg.MailOutboxDir); err != nil {
+		return nil, err
+	}
 	ledger := supervisor.OpenLedger(filepath.Join(cfg.DataDir, "ledger.jsonl"))
 	journal := supervisor.OpenJournal(filepath.Join(cfg.DataDir, "restore-journal.jsonl"))
 	updateJournal := supervisor.OpenUpdateJournal(filepath.Join(cfg.DataDir, "update-journal.jsonl"))
-	outbox := supervisor.OpenOutbox(filepath.Join(cfg.DataDir, "mail-outbox.jsonl"))
+	outbox := supervisor.OpenOutbox(filepath.Join(cfg.MailOutboxDir, supervisor.MailOutboxFile))
 	coreFiles := supervisor.CoreFiles{Upstream: supervisor.UpstreamFrom(cfg.UpstreamFile), Token: cfg.Token}
 	store := &supervisor.Store{
 		Dir:            cfg.BackupDir,
@@ -142,7 +153,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Network: cfg.DockerNetwork,
 		Env:     supervisor.CoreEnv(),
 		Volumes: supervisor.CoreVolumes{AppSecrets: cfg.AppSecretsVolume, AdminSecrets: cfg.AdminSecretsVolume,
-			BackupKey: cfg.BackupKeyVolume, Data: cfg.CoreDataVolume},
+			BackupKey: cfg.BackupKeyVolume, Data: cfg.CoreDataVolume, MailOutbox: cfg.MailOutboxVolume},
 	}
 	sched, err := cfg.Schedule()
 	if err != nil {

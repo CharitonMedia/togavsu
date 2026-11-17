@@ -369,6 +369,13 @@ func (s *Service) ChangePassword(ctx context.Context, caller Caller, current, ne
 		if err := s.setPassword(ctx, user, caller.Principal.Roles, next, previous); err != nil {
 			return err
 		}
+		if user.MustChangePassword {
+			user.MustChangePassword = false
+			user.UpdatedAt = s.now().UTC()
+			if err := s.users.Update(ctx, user); err != nil {
+				return err
+			}
+		}
 		return s.revokeOtherSessions(ctx, user.ID, caller.Principal.SessionID, caller.Principal)
 	})
 }
@@ -500,8 +507,30 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, next string) 
 		if err := s.setPassword(ctx, user, roles, next, previous); err != nil {
 			return err
 		}
+		if user.MustChangePassword {
+			user.MustChangePassword = false
+			user.UpdatedAt = s.now().UTC()
+			if err := s.users.Update(ctx, user); err != nil {
+				return err
+			}
+		}
 		return s.revokeOtherSessions(ctx, user.ID, "", who)
 	})
+}
+
+// TOTPConfirmed reports whether the user has a confirmed authenticator secret.
+func (s *Service) TOTPConfirmed(ctx context.Context, userID domain.ID) (bool, error) {
+	if userID.IsZero() {
+		return false, nil
+	}
+	row, err := s.totp.GetByUser(ctx, userID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return row.Confirmed, nil
 }
 
 // ResetTOTP starts a replacement secret. The current secret stays active.

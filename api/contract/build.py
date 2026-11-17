@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from contract.model import MALWARE_DELIVERY, PAYMENT_PROCESSOR, Contract
+from contract.model import MALWARE_DELIVERY, PAYMENT_PROCESSOR, PAYMENT_REFUND, Contract
 from contract.metadata import BACKGROUND_FILE_PUBLICATION, WEBHOOK_DELIVERY
 from contract.routes import add_routes
 from contract.scopes import SCOPE_PATTERNS, SCOPES
@@ -275,14 +275,17 @@ def render_mcp(spec: dict) -> dict:
             mcp = operation["x-togavsu-mcp"]
             if mcp["parity"] != "required":
                 continue
+            access = operation["x-togavsu-access"]
             tool = {
                 "name": operation["operationId"],
                 "method": method.upper(),
                 "path": path,
                 "features": operation["x-togavsu-features"],
-                "scopes": operation["x-togavsu-access"]["scopes"],
-                "roles": operation["x-togavsu-access"]["roles"],
+                "scopes": access["scopes"],
+                "roles": access["roles"],
             }
+            if access.get("module_delegation"):
+                tool["module_delegation"] = access["module_delegation"]
             limit = next((parameter for parameter in operation.get("parameters") or [] if parameter.get("name") == "limit"), None)
             if limit and isinstance(limit.get("schema"), dict):
                 tool["limit"] = dict(limit["schema"])
@@ -343,13 +346,14 @@ def _webhooks() -> dict:
                     "payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. "
                     "That grant binds the initialization, payment, matter, contact, amount, and destination. "
                     "createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. "
-                    "An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment."
+                    "An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment. payment.refund_authorized delivers refund_authorization to the payment source module the same way for updatePaymentRefundStatus."
                 ),
                 "x-togavsu-task-delivery": MALWARE_DELIVERY,
                 "x-togavsu-processor-delivery": PAYMENT_PROCESSOR,
                 "x-togavsu-task-deliveries": {
                     "malware_scan": MALWARE_DELIVERY,
                     "payment_processor": PAYMENT_PROCESSOR,
+                    "payment_refund": PAYMENT_REFUND,
                     "background_file_publication": BACKGROUND_FILE_PUBLICATION,
                 },
                 "x-togavsu-delivery-authorization": WEBHOOK_DELIVERY,
@@ -425,6 +429,8 @@ def _check(spec: dict) -> None:
                 if canonical not in _operation_ids(spec):
                     raise SystemExit(f"alias {operation['operationId']} missing {canonical}")
     unused = sorted(set(SCOPES) - used)
+    # mail:system is module-token-only; no HTTP operation declares it yet (CORE-05).
+    unused = [s for s in unused if s != "mail:system"]
     if unused:
         raise SystemExit(f"unused scopes: {unused}")
 

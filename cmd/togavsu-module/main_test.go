@@ -185,15 +185,41 @@ func replaceIn(f map[string][]byte, name, old, new string) {
 }
 
 // waiting adds parts the core doesn't accept yet, and a pending list naming them.
+// notifications, inbound_webhooks and books:read are accepted (CORE-03, CORE-07,
+// CORE-02) and listed pending only to show unused accepted parts.
 func waiting(f map[string][]byte) {
-	replaceIn(f, modulekit.ManifestFile, "tabs:\n", "notifications:\n  - kind: hours_low\n    label: Hours below target\ntabs:\n")
-	replaceIn(f, modulekit.ManifestFile, "permissions:\n", "permissions:\n  - scope: books:read\n    reason: Read the books.\n")
-	f["migrations/0002_trust_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN trust_account_id TEXT REFERENCES core.trust_accounts (id) ON DELETE RESTRICT;\n")
-	f[modulekit.PendingFile] = []byte("pending:\n" +
-		"  - field: notifications\n    core: CORE-03\n    reason: Tell the attorney when a matter falls behind.\n" +
-		"  - scope: books:read\n    core: CORE-02\n    reason: Read the books without a viewer.\n" +
-		"  - scope: time:read\n    core: CORE-00\n    reason: Accepted already.\n" +
-		"  - migration: migrations/0002_trust_link.sql\n    core: CORE-22\n    reason: Link a target to its trust account.\n")
+	m := modulekit.ManifestFile
+	replaceIn(f, m, "tabs:\n", "notifications:\n  - kind: hours_low\n    label: Hours below target\n    default_channels: [in_app, email]\ninbound_webhooks:\n  - id: pay\n    path: /hook\nsidebar:\n  - section: time\n    id: clock\n    title: Matter Clock\n    path: /tab\n    icon: clock\ntabs:\n")
+	replaceIn(f, m, "permissions:\n", "permissions:\n  - scope: books:read\n    reason: Read the books.\n  - scope: not_a_real_scope:read\n    reason: Fake.\n")
+	replaceIn(f, m, "  - scope: events:read\n", "  - scope: firm:read\n    reason: Read the firm name.\n  - scope: events:read\n")
+	f["migrations/0002_books_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN books_ledger_id TEXT REFERENCES core.books_ledgers (id) ON DELETE RESTRICT;\n")
+	f[modulekit.PendingFile] = []byte(`# Parts that wait on a core change.
+pending:
+  - field: notifications
+    core: CORE-03
+    reason: Tell the attorney when a matter falls behind.
+  - field: inbound_webhooks
+    core: CORE-07
+    reason: Receive provider webhooks.
+  - field: sidebar[*].section
+    core: CORE-08
+    reason: File the entry under Time.
+  - scope: books:read
+    core: CORE-02
+    reason: Read the books without a viewer.
+  - scope: not_a_real_scope:read
+    core: CORE-99
+    reason: A scope the core does not expose.
+  - scope: matters:read
+    core: CORE-00
+    reason: Already in the core, so never held back.
+  - field: help.heading
+    core: CORE-00
+    reason: Accepted, so never held back.
+  - migration: migrations/0002_books_link.sql
+    core: CORE-02
+    reason: Link a target to a books ledger the core does not expose yet.
+`)
 }
 
 func TestCheckReportsEveryRefusal(t *testing.T) {
@@ -205,9 +231,9 @@ func TestCheckReportsEveryRefusal(t *testing.T) {
 	}
 	for i, want := range []string{
 		"togavsu-module check: pending.yaml: unknown_file: ",
-		"togavsu-module check: togavsu-module.yaml notifications: unknown_field: ",
-		"togavsu-module check: togavsu-module.yaml permissions[0]: unknown_scope: ",
-		"togavsu-module check: migrations/0002_trust_link.sql statement 1: core_reference: ",
+		"togavsu-module check: togavsu-module.yaml sidebar[0].section: manifest_invalid: ",
+		"togavsu-module check: togavsu-module.yaml permissions[1]: unknown_scope: ",
+		"togavsu-module check: migrations/0002_books_link.sql statement 1: core_reference: ",
 	} {
 		if !strings.HasPrefix(lines[i], want) {
 			t.Fatalf("line %d: %s", i, lines[i])
@@ -215,7 +241,7 @@ func TestCheckReportsEveryRefusal(t *testing.T) {
 	}
 	code, out, _ := cli("check", "-json", dir)
 	var res checkResult
-	if err := json.Unmarshal([]byte(out), &res); err != nil || code != exitRefused || res.OK || len(res.Refusals) != 4 || res.Refusals[3].Value != "core.trust_accounts" {
+	if err := json.Unmarshal([]byte(out), &res); err != nil || code != exitRefused || res.OK || len(res.Refusals) != 4 || res.Refusals[3].Value != "core.books_ledgers" {
 		t.Fatalf("check -json: %d %s %v", code, out, err)
 	}
 	code, out, errs = cli("check", "-installable", "-json", dir)
@@ -245,10 +271,14 @@ func TestPackageInstallable(t *testing.T) {
 	}
 	lines := strings.Split(strings.TrimSpace(errs), "\n")
 	want := []string{
-		"held back togavsu-module.yaml permissions[0] (scope books:read): waits on CORE-02: Read the books without a viewer.",
-		"held back togavsu-module.yaml notifications: waits on CORE-03: Tell the attorney when a matter falls behind.",
-		"held back migrations/0002_trust_link.sql: waits on CORE-22: Link a target to its trust account.",
-		"pending scope time:read (CORE-00) holds nothing back: the core accepts it or the package no longer has it; remove the entry",
+		"held back togavsu-module.yaml permissions[1] (scope not_a_real_scope:read): waits on CORE-99: A scope the core does not expose.",
+		"held back togavsu-module.yaml sidebar[0].section: waits on CORE-08: File the entry under Time.",
+		"held back migrations/0002_books_link.sql: waits on CORE-02: Link a target to a books ledger the core does not expose yet.",
+		"pending field notifications (CORE-03) holds nothing back: the core accepts it or the package no longer has it; remove the entry",
+		"pending field inbound_webhooks (CORE-07) holds nothing back: the core accepts it or the package no longer has it; remove the entry",
+		"pending scope books:read (CORE-02) holds nothing back: the core accepts it or the package no longer has it; remove the entry",
+		"pending scope matters:read (CORE-00) holds nothing back: the core accepts it or the package no longer has it; remove the entry",
+		"pending field help.heading (CORE-00) holds nothing back: the core accepts it or the package no longer has it; remove the entry",
 	}
 	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("stderr:\n%s", errs)
@@ -260,10 +290,10 @@ func TestPackageInstallable(t *testing.T) {
 	// A refusal the pending list doesn't cover stops the build.
 	uncovered := copyPackage(t, func(f map[string][]byte) {
 		waiting(f)
-		replaceIn(f, modulekit.ManifestFile, "  events: /events\n", "  events: /events\n  system_mail: true\n")
+		replaceIn(f, modulekit.ManifestFile, "tabs:\n", "not_a_real_manifest_field: true\ntabs:\n")
 	})
 	skipped := filepath.Join(t.TempDir(), "skipped.json")
-	if code, _, errs := cli("package", "-installable", "-dir", uncovered, "-key", seed, "-out", skipped); code != exitRefused || !strings.Contains(errs, "container.system_mail: unknown_field") {
+	if code, _, errs := cli("package", "-installable", "-dir", uncovered, "-key", seed, "-out", skipped); code != exitRefused || !strings.Contains(errs, "not_a_real_manifest_field: unknown_field") {
 		t.Fatalf("uncovered: %d %s", code, errs)
 	}
 	if _, err := os.Stat(skipped); !os.IsNotExist(err) {
@@ -300,7 +330,7 @@ func TestCheckJSONReportsInstallableRefusals(t *testing.T) {
 	}{
 		"uncovered field": {func(f map[string][]byte) {
 			waiting(f)
-			replaceIn(f, modulekit.ManifestFile, "  events: /events\n", "  events: /events\n  system_mail: true\n")
+			replaceIn(f, modulekit.ManifestFile, "tabs:\n", "not_a_real_manifest_field: true\ntabs:\n")
 		}, modulekit.RefuseUnknownField},
 		"invalid pending list": {func(f map[string][]byte) {
 			waiting(f)
@@ -339,11 +369,11 @@ func TestCheckUpdateAgainstTheShippedPackage(t *testing.T) {
 	bump := func(f map[string][]byte) {
 		replaceIn(f, modulekit.ManifestFile, `version: "1.0.0"`, `version: "1.1.0"`)
 	}
-	// v1 held 0002 back, so v2 may still change it while it waits.
+	// v1 held 0002 back, so v2 may still change it while it waits (still a refused core table).
 	v2 := copyPackage(t, func(f map[string][]byte) {
 		waiting(f)
 		bump(f)
-		f["migrations/0002_trust_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN trust_account TEXT REFERENCES core.trust_accounts (id) ON DELETE RESTRICT;\n")
+		f["migrations/0002_books_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN books_ledger_note TEXT REFERENCES core.books_ledgers (id) ON DELETE RESTRICT;\n")
 	})
 	if code, out, errs := cli("check", "-installable", "-previous-file", shipped, "-previous-pub", pemFile, v2); code != exitOK || !strings.Contains(out, "ok: matter-clock 1.1.0, 1 migration(s)") {
 		t.Fatalf("v2 against what v1 shipped: %d %s %s", code, out, errs)
@@ -379,22 +409,29 @@ func TestCheckUpdateAgainstTheShippedPackage(t *testing.T) {
 func TestStrictRefusesUnusedEntries(t *testing.T) {
 	dir := copyPackage(t, waiting)
 	code, _, errs := cli("check", "-installable", "-strict", dir)
-	if code != exitRefused || !strings.Contains(errs, "pending.yaml: pending_unused: pending scope time:read (CORE-00) holds nothing back") {
+	if code != exitRefused || !strings.Contains(errs, "pending.yaml: pending_unused: pending field notifications (CORE-03) holds nothing back") {
 		t.Fatalf("check -strict: %d %s", code, errs)
 	}
 	code, res := checkJSON(t, "-installable", "-strict", dir)
-	if code != exitRefused || res.OK || len(res.Refusals) != 1 || res.Refusals[0].Code != modulekit.RefusePendingUnused ||
-		len(res.Unused) != 1 || res.Unused[0].Scope != "time:read" || len(res.Held) != 3 {
+	if code != exitRefused || res.OK || len(res.Refusals) != 5 || res.Refusals[0].Code != modulekit.RefusePendingUnused ||
+		len(res.Unused) != 5 || res.Unused[0].Field != "notifications" || len(res.Held) != 3 {
 		t.Fatalf("check -strict -json: %d %+v", code, res)
 	}
-	// Without -strict the entry is reported but the check passes, and -json lists it.
+	// Without -strict the entries are reported but the check passes, and -json lists them.
 	code, res = checkJSON(t, "-installable", dir)
-	if code != exitOK || !res.OK || len(res.Unused) != 1 || len(res.Held) != 3 {
+	if code != exitOK || !res.OK || len(res.Unused) != 5 || len(res.Held) != 3 {
 		t.Fatalf("check -json: %d %+v", code, res)
 	}
 	used := copyPackage(t, func(f map[string][]byte) {
 		waiting(f)
-		replaceIn(f, modulekit.PendingFile, "  - scope: time:read\n    core: CORE-00\n    reason: Accepted already.\n", "")
+		replaceIn(f, modulekit.PendingFile,
+			"  - field: notifications\n    core: CORE-03\n    reason: Tell the attorney when a matter falls behind.\n"+
+				"  - field: inbound_webhooks\n    core: CORE-07\n    reason: Receive provider webhooks.\n", "")
+		replaceIn(f, modulekit.PendingFile,
+			"  - scope: books:read\n    core: CORE-02\n    reason: Read the books without a viewer.\n", "")
+		replaceIn(f, modulekit.PendingFile,
+			"  - scope: matters:read\n    core: CORE-00\n    reason: Already in the core, so never held back.\n"+
+				"  - field: help.heading\n    core: CORE-00\n    reason: Accepted, so never held back.\n", "")
 	})
 	if code, _, errs := cli("check", "-installable", "-strict", used); code != exitOK {
 		t.Fatalf("check -strict with every entry used: %d %s", code, errs)

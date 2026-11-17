@@ -3,6 +3,7 @@ package modules
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/marketplace"
+	"github.com/CharitonMedia/togavsu/internal/practice"
 )
 
 // Caller is an authenticated request: the principal, the bearer token's scopes (nil for
@@ -34,8 +36,9 @@ type Caller struct {
 
 // Handler serves the module API, the frame pages and the /m/{id}/ proxy.
 type Handler struct {
-	Svc  *Service
-	Auth func(*http.Request) (Caller, error)
+	Svc      *Service
+	Auth     func(*http.Request) (Caller, error)
+	FirmName func(ctx context.Context) string
 
 	// idemMu guards only the idem map; no handler runs under it.
 	idemMu sync.Mutex
@@ -72,18 +75,38 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("POST /api/v1/modules/{module_id}/update", h.write("modules:write", h.update))
 	m.HandleFunc("GET /api/v1/modules/{module_id}/settings", h.scoped("", h.getSettings))
 	m.HandleFunc("PUT /api/v1/modules/{module_id}/settings", h.write("modules:write", h.putSettings))
+	// {name...} so names may contain / (qbo/client_secret, account/<id>/kind).
+	m.HandleFunc("PUT /api/v1/modules/{module_id}/secrets/{name...}", h.write("module_secrets:write", h.putSecret))
+	m.HandleFunc("GET /api/v1/modules/{module_id}/secrets/{name...}", h.scoped("module_secrets:write", h.getSecret))
+	m.HandleFunc("DELETE /api/v1/modules/{module_id}/secrets/{name...}", h.write("module_secrets:write", h.deleteSecret))
 	m.HandleFunc("POST /api/v1/modules/{module_id}/context-tokens", h.write("", h.contextToken))
 	m.HandleFunc("POST /api/v1/modules/{module_id}/context-tokens/verify", h.scoped("", h.verifyContext))
+	m.HandleFunc("POST /api/v1/modules/{module_id}/device-context-tokens", h.write("modules:read", h.exchangeDevice))
 	m.HandleFunc("GET /api/v1/modules/{module_id}/views/{view}", h.scoped("", h.readView))
+	m.HandleFunc("POST /api/v1/me/module-devices", h.write("", h.createDevice))
+	m.HandleFunc("GET /api/v1/me/module-devices", h.scoped("profile:read", h.listDevices))
+	m.HandleFunc("DELETE /api/v1/me/module-devices/{device_id}", h.write("profile:write", h.revokeDevice))
 	m.HandleFunc("GET /api/v1/domain-handlers", h.scoped("modules:read", h.listDomains))
 	m.HandleFunc("PUT /api/v1/domain-handlers/{domain}", h.write("modules:write", h.switchDomain))
 	m.HandleFunc("GET /api/v1/webhook-deliveries", h.scoped("webhooks:read", h.deliveries))
 	m.HandleFunc("POST /api/v1/ai/calls", h.write("ai:use", h.aiCall))
 	m.HandleFunc("GET /api/v1/ai/calls", h.scoped("ai:admin", h.aiCalls))
 	m.HandleFunc("GET /modules/{module_id}/tabs/{tab}", h.scoped("", h.tabPage))
+	m.HandleFunc("GET /modules/{module_id}/tabs/{tab}/context-token", h.scoped("", h.staffTabContextToken))
 	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}", h.scoped("", h.widgetPage))
+	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}/context-token", h.scoped("", h.staffWidgetContextToken))
 	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}", h.scoped("", h.matterItemPage))
+	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}/context-token", h.scoped("", h.staffMatterItemContextToken))
+	m.HandleFunc("GET /modules/{module_id}/device-connect", h.scoped("", h.deviceConnectGet))
+	m.HandleFunc("POST /modules/{module_id}/device-connect", h.write("", h.deviceConnectPost))
 	m.HandleFunc("/m/{module_id}/", h.frame)
+	// CORE-07: public provider webhook intake. POST only; undeclared hooks 404.
+	m.HandleFunc("POST /hooks/{module_id}/{hook_id}", h.inboundWebhook)
+	// CORE-10
+	m.HandleFunc("GET /portal", h.scoped("", h.portalHome))
+	m.HandleFunc("GET /portal/{module_id}/{tab_id}", h.scoped("", h.portalTab))
+	m.HandleFunc("GET /portal/{module_id}/{tab_id}/context-token", h.scoped("", h.portalContextToken))
+	m.HandleFunc("GET /api/v1/nav/client-context", h.scoped("profile:read", h.clientContextJSON))
 	return m
 }
 
@@ -141,7 +164,9 @@ func (h *Handler) caller(r *http.Request) (Caller, error) {
 	if err != nil {
 		return Caller{}, err
 	}
-	if tok := r.Header.Get(ContextHeader); tok != "" {
+	// CORE-06 / CORE-28: module secret and device-exchange routes use the module bearer;
+	// a context token is ignored.
+	if tok := r.Header.Get(ContextHeader); tok != "" && !ignoreModuleContext(r.URL.Path) {
 		p, err := h.Svc.Delegate(r.Context(), c.Principal, tok)
 		if err != nil {
 			return Caller{}, err
@@ -149,6 +174,20 @@ func (h *Handler) caller(r *http.Request) (Caller, error) {
 		c.Principal = p
 	}
 	return c, nil
+}
+
+// ignoreModuleContext is secrets (CORE-06) and device-context-tokens (CORE-28).
+func ignoreModuleContext(path string) bool {
+	rest, ok := strings.CutPrefix(path, "/api/v1/modules/")
+	if !ok {
+		return false
+	}
+	_, afterSecrets, secrets := strings.Cut(rest, "/secrets/")
+	if secrets && afterSecrets != "" {
+		return true
+	}
+	_, afterDevice, device := strings.Cut(rest, "/device-context-tokens")
+	return device && (afterDevice == "" || afterDevice == "/")
 }
 
 type handlerFunc func(w http.ResponseWriter, r *http.Request, c Caller)
@@ -442,6 +481,151 @@ func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request, c Caller) 
 	writeJSON(w, http.StatusOK, v)
 }
 
+// createDevice is createModuleDeviceGrant (CORE-28): session only.
+func (h *Handler) createDevice(w http.ResponseWriter, r *http.Request, c Caller) {
+	if c.Bearer {
+		writeErr(w, domain.Forbidden("a device grant is created from a signed-in session"))
+		return
+	}
+	var body ModuleDeviceWrite
+	if err := decode(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	v, err := h.Svc.CreateModuleDeviceGrant(r.Context(), c.Principal, body)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, v)
+}
+
+func (h *Handler) listDevices(w http.ResponseWriter, r *http.Request, c Caller) {
+	v, err := h.Svc.ListModuleDeviceGrants(r.Context(), c.Principal)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": v})
+}
+
+func (h *Handler) revokeDevice(w http.ResponseWriter, r *http.Request, c Caller) {
+	if err := h.Svc.RevokeModuleDeviceGrant(r.Context(), c.Principal, domain.ID(r.PathValue("device_id"))); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// exchangeDevice is exchangeModuleDeviceGrant (CORE-28).
+func (h *Handler) exchangeDevice(w http.ResponseWriter, r *http.Request, c Caller) {
+	var body DeviceContextRequest
+	if err := decode(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	tok, err := h.Svc.ExchangeModuleDeviceGrant(r.Context(), c.Principal, r.PathValue("module_id"), body)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, tok)
+}
+
+var deviceConnectPage = template.Must(template.New("device-connect").Parse(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Connect device</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:2rem;max-width:28rem;line-height:1.4}
+button{font:inherit;padding:.5rem 1rem;cursor:pointer}
+.error{color:#8b0000}
+</style></head>
+<body>
+<h1>Connect a device</h1>
+<p>Allow <strong>{{.Name}}</strong> to act as you on this device. You can revoke the grant later from your profile.</p>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+<form method="post" action="">
+<input type="hidden" name="csrf" value="{{.CSRF}}">
+<button type="submit">Connect</button>
+</form>
+</body></html>`))
+
+func (h *Handler) deviceConnectGet(w http.ResponseWriter, r *http.Request, c Caller) {
+	h.renderDeviceConnect(w, r, c, "")
+}
+
+func (h *Handler) deviceConnectPost(w http.ResponseWriter, r *http.Request, c Caller) {
+	if c.Bearer {
+		writeErr(w, domain.Forbidden("a device grant is created from a signed-in session"))
+		return
+	}
+	module := r.PathValue("module_id")
+	_, path, err := h.Svc.DeviceConnectPath(r.Context(), module)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	v, err := h.Svc.CreateModuleDeviceGrant(r.Context(), c.Principal, ModuleDeviceWrite{ModuleID: module})
+	if err != nil {
+		h.renderDeviceConnect(w, r, c, err.Error())
+		return
+	}
+	http.Redirect(w, r, "/m/"+module+path+"#grant="+url.QueryEscape(v.Secret), http.StatusSeeOther)
+}
+
+func (h *Handler) renderDeviceConnect(w http.ResponseWriter, r *http.Request, c Caller, errText string) {
+	if ClientOnly(c.Principal) {
+		writeErr(w, domain.Forbidden("only firm staff may connect a device"))
+		return
+	}
+	module := r.PathValue("module_id")
+	name, _, err := h.Svc.DeviceConnectPath(r.Context(), module)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	csrf := ""
+	if cookie, err := r.Cookie(practice.CSRFCookie); err == nil {
+		csrf = cookie.Value
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = deviceConnectPage.Execute(w, map[string]string{"Name": name, "CSRF": csrf, "Error": errText})
+}
+
+// putSecret is putModuleSecret (CORE-06).
+func (h *Handler) putSecret(w http.ResponseWriter, r *http.Request, c Caller) {
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := decode(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := h.Svc.PutSecret(r.Context(), c.Principal, r.PathValue("module_id"), r.PathValue("name"), body.Value); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// getSecret is getModuleSecret (CORE-06).
+func (h *Handler) getSecret(w http.ResponseWriter, r *http.Request, c Caller) {
+	v, err := h.Svc.GetSecret(r.Context(), c.Principal, r.PathValue("module_id"), r.PathValue("name"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// deleteSecret is deleteModuleSecret (CORE-06).
+func (h *Handler) deleteSecret(w http.ResponseWriter, r *http.Request, c Caller) {
+	if err := h.Svc.DeleteSecret(r.Context(), c.Principal, r.PathValue("module_id"), r.PathValue("name")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) contextToken(w http.ResponseWriter, r *http.Request, c Caller) {
 	if c.Bearer && c.Principal.ModuleID == "" && !hasScope(c.Scopes, "modules:read") && !c.Principal.HasRole(domain.RoleClient) {
 		writeErr(w, domain.Forbidden("this token lacks the modules:read scope"))
@@ -607,40 +791,216 @@ func (h *Handler) aiCallQuery(r *http.Request) (AICallQuery, error) {
 
 // --- frames ---
 
+// staffFrameSandbox is the iframe sandbox for staff frames (CORE-09). Client frames add
+// allow-top-navigation-by-user-activation. Neither ever includes allow-same-origin.
+const staffFrameSandbox = "allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox"
+
+// coreFrameNavigatePrefixes are core pages a module frame may open via togavsu:navigate,
+// matching the widget-target allowlist (a tab of the same module, or a core page).
+var coreFrameNavigatePrefixes = []string{
+	"/practice/", "/billing/", "/trust/", "/calendar/", "/files/", "/help", "/me/", "/settings/", "/",
+}
+
+// BridgeNavigateURL builds the in-app URL for a togavsu:navigate message, or false when
+// page is outside the widget-target allowlist (same module tab/widget/matter-item, or a
+// core page). Absolute and protocol-relative URLs are refused.
+func BridgeNavigateURL(moduleID, page string, params map[string]string) (string, bool) {
+	page = strings.TrimSpace(page)
+	if page == "" || !strings.HasPrefix(page, "/") || strings.HasPrefix(page, "//") || strings.Contains(page, "://") {
+		return "", false
+	}
+	path, rawQuery, _ := strings.Cut(page, "?")
+	ok := false
+	modPrefix := "/modules/" + moduleID + "/"
+	for _, p := range []string{modPrefix + "tabs/", modPrefix + "widgets/", modPrefix + "matter-items/"} {
+		if strings.HasPrefix(path, p) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		for _, p := range coreFrameNavigatePrefixes {
+			if p == "/" {
+				if path == "/" {
+					ok = true
+					break
+				}
+				continue
+			}
+			if strings.HasPrefix(path, p) || path == strings.TrimSuffix(p, "/") {
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok {
+		return "", false
+	}
+	q := url.Values{}
+	if rawQuery != "" {
+		if existing, err := url.ParseQuery(rawQuery); err == nil {
+			q = existing
+		}
+	}
+	for k, v := range params {
+		if k != "" {
+			q.Set(k, v)
+		}
+	}
+	if enc := q.Encode(); enc != "" {
+		return path + "?" + enc, true
+	}
+	return path, true
+}
+
 var framePage = template.Must(template.New("frame").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{{.Title}}</title>
-<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style></head>
-<body><main aria-label="{{.Title}}">
+<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style>
+<script nonce="{{.Nonce}}">{{.Bridge}}</script>
+</head>
+<body><main aria-label="{{.Title}}" data-module="{{.Module}}">
 {{template "iframe" .}}
 </main></body></html>
-{{define "iframe"}}<iframe class="module-frame" title="{{.Title}}" src="{{.Src}}" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer"></iframe>{{end}}`))
+{{define "iframe"}}<iframe class="module-frame" title="{{.Title}}" src="{{.Src}}" sandbox="{{.Sandbox}}" referrerpolicy="no-referrer" data-module="{{.Module}}"></iframe>{{end}}`))
 
 // writeFrame renders the core page that shows a module page in a sandboxed iframe. The
 // sandbox has no allow-same-origin: the frame runs in an opaque origin, so script in it
 // can't read the core's cookies or page even though /m/ is on the core's domain.
+// CORE-09 adds the postMessage bridge (nonce-gated) and the staff sandbox list.
 //
 // A page that opens as a screen of its own (a module tab, a matter action) is drawn
 // inside the app shell; a panel or widget the core embeds in its own iframe is the bare
 // frame page, so the shell never nests.
-func writeFrame(w http.ResponseWriter, r *http.Request, screen bool, title, src string) {
+func writeFrame(w http.ResponseWriter, r *http.Request, screen bool, title, src, moduleID string) {
+	writeFrameSandbox(w, r, screen, title, src, staffFrameSandbox, moduleID, true)
+}
+
+func writeFrameSandbox(w http.ResponseWriter, r *http.Request, screen bool, title, src, sandbox, moduleID string, staff bool) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	data := map[string]string{"Title": title, "Src": src}
+	nonce := frameNonce()
+	script := frameBridgeScript(moduleID, staff)
+	bridge := template.JS(script)
+	data := map[string]any{"Title": title, "Src": src, "Nonce": nonce, "Sandbox": sandbox, "Module": moduleID, "Bridge": bridge}
 	var buf bytes.Buffer
 	if screen && r.Header.Get("Sec-Fetch-Dest") != "iframe" {
 		if err := framePage.ExecuteTemplate(&buf, "iframe", data); err != nil {
 			writeErr(w, err)
 			return
 		}
-		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(buf.String()), WorkInFrame: true})
+		// Shell would default to help.CSP (script-src 'self') and block the nonce bridge;
+		// set a policy that keeps the shell assets and allows this one inline script.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'none'")
+		body := `<span hidden data-module="` + template.HTMLEscapeString(moduleID) + `"></span>` +
+			`<script nonce="` + nonce + `">` + script + `</script>` + buf.String()
+		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(body), WorkInFrame: true})
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-src 'self'; frame-ancestors 'self'")
+	// connect-src 'self' lets the bridge fetch .../context-token (CORE-09 widgets and bare panels).
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-"+nonce+"'; connect-src 'self'; frame-src 'self'; frame-ancestors 'self'")
 	if err := framePage.Execute(&buf, data); err != nil {
 		writeErr(w, err)
 		return
 	}
 	_, _ = w.Write(buf.Bytes())
+}
+
+// FrameNonce is a CSP nonce for an inline CORE-09 bridge script.
+func FrameNonce() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "togavsu"
+	}
+	return hex.EncodeToString(b[:])
+}
+
+func frameNonce() string { return FrameNonce() }
+
+// FrameBridgeScript is the CORE-09 postMessage listener for one module's frame.
+// staff enables togavsu:editor.open; client frames omit it. Navigate and editor.open
+// use the top-level window so an embedded panel/widget iframe does not trap the app.
+// refreshPath, when set, is the absolute path the bridge fetches for context.refresh
+// (matter-screen panels host the bridge on /practice/matters/... rather than the frame URL).
+func FrameBridgeScript(moduleID string, staff bool, refreshPath string) string {
+	esc := strings.ReplaceAll(moduleID, `\`, `\\`)
+	esc = strings.ReplaceAll(esc, `"`, `\"`)
+	refreshEsc := strings.ReplaceAll(refreshPath, `\`, `\\`)
+	refreshEsc = strings.ReplaceAll(refreshEsc, `"`, `\"`)
+	editor := ""
+	if staff {
+		editor = `
+    if (t === "togavsu:editor.open" && d.file_id) {
+      go("/files/" + encodeURIComponent(d.file_id) + "/edit");
+      return;
+    }`
+	}
+	refreshJS := `window.location.pathname.replace(/\/$/, "") + "/context-token" + window.location.search`
+	if refreshPath != "" {
+		refreshJS = `"` + refreshEsc + `"`
+	}
+	return `
+(function () {
+  var moduleId = "` + esc + `";
+  var frame = null;
+  function bind() {
+    var nodes = document.querySelectorAll("iframe.module-frame");
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].getAttribute("data-module") === moduleId) { frame = nodes[i]; return; }
+    }
+    frame = nodes.length ? nodes[0] : null;
+  }
+  function go(url) {
+    try {
+      var w = (window.top && window.top !== window) ? window.top : window;
+      w.location.assign(url);
+    } catch (e) {
+      window.location.assign(url);
+    }
+  }
+  function allowed(page) {
+    if (typeof page !== "string" || page.charAt(0) !== "/" || page.indexOf("//") === 0 || page.indexOf("://") >= 0) return false;
+    var path = page.split("?")[0];
+    var pref = "/modules/" + moduleId + "/";
+    if (path.indexOf(pref + "tabs/") === 0 || path.indexOf(pref + "widgets/") === 0 || path.indexOf(pref + "matter-items/") === 0) return true;
+    var cores = ["/practice/", "/billing/", "/trust/", "/calendar/", "/files/", "/help", "/me/", "/settings/"];
+    for (var i = 0; i < cores.length; i++) {
+      if (path === cores[i].replace(/\/$/, "") || path.indexOf(cores[i]) === 0) return true;
+    }
+    return path === "/";
+  }
+  window.addEventListener("message", function (ev) {
+    if (!frame) bind();
+    if (!frame || ev.source !== frame.contentWindow || !ev.data || typeof ev.data !== "object") return;
+    var d = ev.data, t = d.type;` + editor + `
+    if (t === "togavsu:navigate" && d.page) {
+      if (!allowed(d.page)) return;
+      var u = d.page;
+      if (d.params && typeof d.params === "object") {
+        var q = new URLSearchParams();
+        Object.keys(d.params).forEach(function (k) { q.set(k, d.params[k]); });
+        u += (u.indexOf("?") >= 0 ? "&" : "?") + q.toString();
+      }
+      go(u);
+      return;
+    }
+    if (t === "togavsu:context.refresh" && d.request_id) {
+      var refresh = ` + refreshJS + `;
+      fetch(refresh, {credentials: "same-origin", headers: {"Accept": "application/json"}})
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function (body) {
+          frame.contentWindow.postMessage({type: "togavsu:context.token", request_id: d.request_id, token: body.token, expires_at: body.expires_at}, "*");
+        })
+        .catch(function () {
+          frame.contentWindow.postMessage({type: "togavsu:context.error", request_id: d.request_id, code: "session_expired"}, "*");
+        });
+    }
+  });
+})();
+`
+}
+
+func frameBridgeScript(moduleID string, staff bool) string {
+	return FrameBridgeScript(moduleID, staff, "")
 }
 
 func (h *Handler) tabPage(w http.ResponseWriter, r *http.Request, c Caller) {
@@ -668,7 +1028,7 @@ func (h *Handler) tabPage(w http.ResponseWriter, r *http.Request, c Caller) {
 	for k, v := range r.URL.Query() {
 		q[k] = v
 	}
-	writeFrame(w, r, true, tab.Title, FramePath(in.ID, tab.Path, t.Token, q))
+	writeFrame(w, r, true, tab.Title, FramePath(in.ID, tab.Path, t.Token, q), in.ID)
 }
 
 // matterItemPage frames a module's matter-screen panel or action for one matter, with a
@@ -694,7 +1054,7 @@ func (h *Handler) matterItemPage(w http.ResponseWriter, r *http.Request, c Calle
 		writeErr(w, err)
 		return
 	}
-	writeFrame(w, r, item.Kind != "panel", item.Title, FramePath(in.ID, item.Path, t.Token, url.Values{"matter_id": {string(matter)}}))
+	writeFrame(w, r, item.Kind != "panel", item.Title, FramePath(in.ID, item.Path, t.Token, url.Values{"matter_id": {string(matter)}}), in.ID)
 }
 
 func (h *Handler) widgetPage(w http.ResponseWriter, r *http.Request, c Caller) {
@@ -721,7 +1081,75 @@ func (h *Handler) widgetPage(w http.ResponseWriter, r *http.Request, c Caller) {
 			}
 		}
 	}
-	writeFrame(w, r, false, wd.Title, FramePath(in.ID, wd.Path, t.Token, q))
+	writeFrame(w, r, false, wd.Title, FramePath(in.ID, wd.Path, t.Token, q), in.ID)
+}
+
+// staff frame context-token routes (CORE-09): same user, module and matter as the frame.
+func (h *Handler) staffTabContextToken(w http.ResponseWriter, r *http.Request, c Caller) {
+	h.staffFrameContextToken(w, r, c, "tab", r.PathValue("tab"))
+}
+
+func (h *Handler) staffWidgetContextToken(w http.ResponseWriter, r *http.Request, c Caller) {
+	h.staffFrameContextToken(w, r, c, "widget", r.PathValue("widget"))
+}
+
+func (h *Handler) staffMatterItemContextToken(w http.ResponseWriter, r *http.Request, c Caller) {
+	h.staffFrameContextToken(w, r, c, "item", r.PathValue("item"))
+}
+
+func (h *Handler) staffFrameContextToken(w http.ResponseWriter, r *http.Request, c Caller, kind, id string) {
+	if ClientOnly(c.Principal) {
+		writeErr(w, domain.NotFound("frame"))
+		return
+	}
+	in, err := h.Svc.Installed(r.Context(), r.PathValue("module_id"))
+	if err != nil || !in.Enabled {
+		writeErr(w, domain.NotFound("module"))
+		return
+	}
+	var matter domain.ID
+	switch kind {
+	case "tab":
+		tab, ok := in.Manifest.Tab(id)
+		if !ok || tab.Placement == "client" {
+			writeErr(w, domain.NotFound("tab"))
+			return
+		}
+		if tab.Placement == "matter" {
+			matter = domain.ID(r.URL.Query().Get("matter_id"))
+			if matter.IsZero() {
+				writeErr(w, invalid("matter_id", "a matter tab needs the matter"))
+				return
+			}
+		}
+	case "widget":
+		if _, ok := in.Manifest.Widget(id); !ok {
+			writeErr(w, domain.NotFound("widget"))
+			return
+		}
+		if mid := r.URL.Query().Get("matter_id"); mid != "" {
+			matter = domain.ID(mid)
+		}
+	case "item":
+		if _, ok := in.Manifest.MatterItem(id); !ok {
+			writeErr(w, domain.NotFound("matter item"))
+			return
+		}
+		matter = domain.ID(r.URL.Query().Get("matter_id"))
+		if matter.IsZero() {
+			writeErr(w, invalid("matter_id", "a matter item needs the matter"))
+			return
+		}
+	default:
+		writeErr(w, domain.NotFound("frame"))
+		return
+	}
+	tok, err := h.Svc.IssueContext(r.Context(), c.Principal, in.ID, matter)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"token": tok.Token, "expires_at": tok.ExpiresAt.UTC().Format(time.RFC3339)})
 }
 
 // frame proxies /m/{id}/... to the module without the core's cookie or credentials.
@@ -744,6 +1172,7 @@ var pluralRecords = map[string]string{
 	"matters": "matter", "contacts": "contact", "users": "user", "invoices": "invoice", "payments": "payment",
 	"time-entries": "time_entry", "expenses": "expense", "files": "file", "notes": "note",
 	"calendar-events": "calendar_event", "deadlines": "deadline",
+	"fee-agreements": "fee_agreement", // CORE-22
 }
 
 // Include wraps the core's read and list endpoints: GET /api/v1/{records}/{id} and

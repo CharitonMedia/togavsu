@@ -468,6 +468,9 @@ func fixedSite(path, fn string) bool {
 		case "ParseCents", "combineCents", "String", "Sub", "addCents", "parsePositive":
 			return true
 		}
+	case strings.HasSuffix(slash, "internal/domain/client_access.go"):
+		// Calendar day offsets for the client access window; days comes from the setting.
+		return fn == "ClientAccessActive"
 	case strings.HasSuffix(slash, "internal/domain/id.go"):
 		// UUIDv7 byte indexes, variant bits, text groups, and the synthetic system-user id.
 		switch fn {
@@ -647,6 +650,79 @@ func fixedSite(path, fn string) bool {
 		// indexes. Character and hit limits are the search registry keys.
 		switch fn {
 		case "Search", "groupActivity", "searchInvoices", "sortMatterRows", "searchMatters", "searchPeople":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/modules/inbound.go"):
+		// Per-hook rate window and Retry-After floor; byte/rate ceilings are settings.
+		switch fn {
+		case "allow", "inboundWebhook":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/modules/nav.go"):
+		// Badge cache TTL and fetch timeout; order default is domain.SidebarDefaultOrder.
+		switch fn {
+		case "NavEntries", "badgeCounter", "fetchBadge":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/modules/secrets.go"):
+		// RowsAffected zero means missing; max counts are domain.ModuleSecret*.
+		switch fn {
+		case "PutSecret", "GetSecret", "DeleteSecret":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/trust/create_notification.go"):
+		// Exactly-one recipient rule; title max is domain.NotificationTitleMaxChars.
+		return fn == "CreateNotification"
+	case strings.HasSuffix(slash, "internal/trust/module_mail.go"):
+		// Recipient and body ceilings are domain.ModuleMail*; exactly-one recipient rule.
+		return fn == "SendModuleMail"
+	case strings.HasSuffix(slash, "internal/core/directory.go"):
+		// Positive limit and non-negative cursor offset checks; ids max is domain.DirectoryIDsMax.
+		switch fn {
+		case "directoryIDs", "directoryPageArgs", "directoryRoleFilter":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/practice/mail_match.go"):
+		// Match list caps and via ranks are contract bounds (CORE-26).
+		switch fn {
+		case "mailViaRankOf", "trimMailList", "trimMailIDs", "MatchMail", "caseNumberInName", "isMailTokenChar":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/billing/processor.go"):
+		// Pending-grant day floor and hour scale; lifetime comes from settings.
+		switch fn {
+		case "processorGrant", "InitiateProcessorPayment", "CreateProcessorPayment", "UpdateProcessorPaymentStatus":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/billing/refunds.go"):
+		// Zero/positive amount checks and refund state ranks.
+		switch fn {
+		case "CreatePaymentRefund", "UpdatePaymentRefundStatus", "completeRefund", "refundedPending", "positive":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/core/mail_auth.go"):
+		// Match/filing token TTL and secret width (CORE-26/27).
+		switch fn {
+		case "mailAuthTTL", "sealMailAuth", "openMailAuth", "issueMatchToken", "openMatchToken",
+			"issueFilingGrant", "openFilingGrant", "sealTaskAuth", "openTaskAuth":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/core/client_access.go"):
+		return fn == "clientOnlyUser" || fn == "tempPassword" || fn == "createClientAccess" ||
+			fn == "clientAccessRoutes" || fn == "passwordChangeGate" || fn == "issueTemporaryPassword"
+	case strings.HasSuffix(slash, "internal/identity/client_access.go"):
+		return fn == "TemporaryPassword" || fn == "TempPassword" || fn == "RandomTempPassword" || fn == "GenerateTempPassword"
+	case strings.HasSuffix(slash, "internal/modules/devices.go"):
+		// Unused-day lapse and context-token TTL (CORE-28).
+		switch fn {
+		case "deviceContextTTL", "deviceUnusedCutoff", "CreateModuleDeviceGrant", "ListModuleDeviceGrants",
+			"RevokeModuleDeviceGrant", "RevokeDevicesForUser", "ExchangeModuleDeviceGrant", "deviceConnectPage", "lapseUnused":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/files/versions.go"):
+		// Archive zip path grammar (CORE-21): length, control bytes, segments.
+		switch fn {
+		case "archiveZipPath", "resolveArchive", "Archive", "createArchive", "validateArchiveEntry":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/calendar/ical.go"):

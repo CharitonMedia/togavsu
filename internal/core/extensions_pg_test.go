@@ -442,27 +442,40 @@ func TestExtensionsMatterItems(t *testing.T) {
 	}
 	x.approveOnTab("matter-notes")
 
-	panel := "/modules/matter-notes/matter-items/notes?matter_id=" + open
+	panelCore := "/modules/matter-notes/matter-items/notes?matter_id=" + open
 	action := "/modules/matter-notes/matter-items/letter?matter_id=" + open
 	screen := x.staff.must(http.StatusOK, "GET", "/practice/matters/"+open, nil)
-	for _, want := range []string{`id="module-matter-notes"`, `<iframe src="` + panel + `"`, `sandbox="allow-scripts allow-forms"`,
+	// CORE-09: panels frame the module /m/ URL directly from the matter page with the
+	// bridge on that page (not a nested opaque core frame).
+	for _, want := range []string{`id="module-matter-notes"`, `/m/matter-notes/notes?`, "context=",
+		`sandbox="allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox"`,
+		`data-context-token-url="/modules/matter-notes/matter-items/notes/context-token?matter_id=` + open + `"`,
+		`data-staff="1"`, "/ui/static/module-bridge.js",
 		`<a class="button" href="` + action + `">Draft a letter</a>`, "Matter notes"} {
 		if !strings.Contains(screen.body, want) {
 			t.Fatalf("matter screen lacks %q:\n%s", want, screen.body)
 		}
 	}
-	for path, page := range map[string]string{panel: "/m/matter-notes/notes?", action: "/m/matter-notes/letter?"} {
-		r := x.staff.must(http.StatusOK, "GET", path, nil)
-		for _, want := range []string{page, "context=", "matter_id=" + open} {
-			if !strings.Contains(r.body, want) {
-				t.Fatalf("%s frame lacks %q: %s", path, want, r.body)
-			}
+	if strings.Contains(screen.body, "allow-same-origin") {
+		t.Fatalf("matter-screen frame must not get allow-same-origin:\n%s", screen.body)
+	}
+	if strings.Contains(screen.body, "<script>") || strings.Contains(screen.body, "<script nonce=") {
+		t.Fatal("matter screen must not embed an inline script (module-bridge.js is external)")
+	}
+	// Action still opens through the core framing page inside the shell.
+	r := x.staff.must(http.StatusOK, "GET", action, nil)
+	for _, want := range []string{"/m/matter-notes/letter?", "context=", "matter_id=" + open} {
+		if !strings.Contains(r.body, want) {
+			t.Fatalf("action frame lacks %q: %s", want, r.body)
 		}
-		// The action opens as its own screen inside the shell; the panel draws inside the
-		// matter screen's iframe, so it carries no shell of its own.
-		if shelled := strings.Contains(r.body, `<body class="shell`); shelled != (path == action) {
-			t.Fatalf("%s: inside the shell = %v", path, shelled)
-		}
+	}
+	if !strings.Contains(r.body, `<body class="shell`) {
+		t.Fatal("action should open inside the shell")
+	}
+	// Direct GET of the panel core path still works (deep link / tests); it is a bare frame.
+	panelPage := x.staff.must(http.StatusOK, "GET", panelCore, nil)
+	if !strings.Contains(panelPage.body, "/m/matter-notes/notes?") || strings.Contains(panelPage.body, `<body class="shell`) {
+		t.Fatalf("panel core path should be a bare frame: %s", panelPage.body)
 	}
 	if r := x.staff.do("GET", "/modules/matter-notes/matter-items/notes", nil); r.code == http.StatusOK {
 		t.Fatal("a matter item framed without its matter")
@@ -470,7 +483,7 @@ func TestExtensionsMatterItems(t *testing.T) {
 	if r := x.staff.do("GET", "/modules/matter-notes/matter-items/nope?matter_id="+open, nil); r.code != http.StatusNotFound {
 		t.Fatalf("undeclared matter item: %d", r.code)
 	}
-	if r := newClient(t, x.srv.URL).do("GET", panel, nil); r.code == http.StatusOK {
+	if r := newClient(t, x.srv.URL).do("GET", panelCore, nil); r.code == http.StatusOK {
 		t.Fatal("a signed-out caller got a matter item frame")
 	}
 }

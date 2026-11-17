@@ -65,6 +65,19 @@ type ContactEmail struct {
 
 func (ContactEmail) TableName() string { return "contact_emails" }
 
+// EffectiveOn reports whether a dated contact row (email, phone, address) is current on today.
+// An empty effective_to is open-ended; effective_to <= today excludes (end-exclusive), matching
+// the contact readers and mail matchers.
+func EffectiveOn(from, to, today string) bool {
+	if to != "" && to <= today {
+		return false
+	}
+	if from != "" && from > today {
+		return false
+	}
+	return true
+}
+
 // ContactPhone is one historical E.164 phone.
 type ContactPhone struct {
 	Meta
@@ -173,10 +186,12 @@ func (ReferralSource) TableName() string { return "referral_sources" }
 // User is a person who can sign in.
 type User struct {
 	Meta
-	Name                   string `db:"name"`
-	Email                  string `db:"email"`
-	Roles                  string `db:"roles"`
-	Active                 bool   `db:"active"`
+	Name   string `db:"name"`
+	Email  string `db:"email"`
+	Roles  string `db:"roles"`
+	Active bool   `db:"active"`
+	// MustChangePassword is set by CORE-14 (core migration 1303). Not in db Embedded schema.
+	MustChangePassword     bool   `db:"-"`
 	DefaultHourlyRateCents Cents  `db:"default_hourly_rate_cents"`
 	ContactID              ID     `db:"contact_id"`
 	BarNumber              string `db:"bar_number"`
@@ -259,6 +274,8 @@ type FeeAgreement struct {
 	SignedOn    string `db:"signed_on"`
 	VoidReason  string `db:"void_reason"`
 	FileID      ID     `db:"file_id"`
+	// SignatureModuleID is set by CORE-28 (core migration 1305). Not in db Embedded schema.
+	SignatureModuleID string `db:"-"`
 }
 
 func (FeeAgreement) TableName() string { return "fee_agreements" }
@@ -349,6 +366,7 @@ type InvoiceLine struct {
 func (InvoiceLine) TableName() string { return "invoice_lines" }
 
 // Payment is money received. Destination is operating or trust.
+// RefundedCents and RefundState are read-only aggregates (CORE-24); status stays completed.
 type Payment struct {
 	Meta
 	ContactID       ID     `db:"contact_id"`
@@ -361,6 +379,9 @@ type Payment struct {
 	InvoiceID       ID     `db:"invoice_id"`
 	TrustEntryID    ID     `db:"trust_entry_id"`
 	Source          string `db:"source"`
+	// RefundedCents and RefundState are CORE-24 aggregates (core migration 1300). Not in db Embedded schema.
+	RefundedCents Cents  `db:"-" json:"refunded_cents"`
+	RefundState   string `db:"-" json:"refund_state"`
 }
 
 func (Payment) TableName() string { return "payments" }
@@ -613,6 +634,8 @@ type File struct {
 	Origin           string `db:"origin"`
 	AttorneyOnly     bool   `db:"attorney_only"`
 	SharedWithClient bool   `db:"shared_with_client"`
+	// Library is set by CORE-17 (core migration 1302). Not in db Embedded schema.
+	Library          bool   `db:"-"`
 	Source           string `db:"source"`
 	ArrivedName      string `db:"arrived_name"`
 	LockedFields     string `db:"locked_fields"`

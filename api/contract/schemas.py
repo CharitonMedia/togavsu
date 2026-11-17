@@ -42,6 +42,7 @@ PROBLEM_CODES = [
     "field_locked",
     "matter_mismatch",
     "duplicate_email",
+    "password_change_required",
 ]
 
 
@@ -514,7 +515,21 @@ SCHEMAS = _register(
                 "included": _ref("Included"),
             },
             ["number", "name", "practice_area_id", "status", "billing_type", "opened_on", "pro_bono", "zero_fee", "unchecked_conflicts", "archived", "custom_fields", "glance"],
-            "A matter. Walled matters are omitted for a caller who is not on the wall.",
+            "A matter for staff. A client receives MatterClient. Walled matters are omitted for a caller who is not on the wall.",
+        ),
+        "MatterClient": _obj(
+            {
+                "id": _uuid(),
+                "number": {"type": "string"},
+                "name": {"type": "string"},
+                "status": _MATTER_STATUS,
+                "practice_area_name": {"type": "string"},
+                "opened_on": _date(),
+                "closed_on": _null(_date()),
+                "responsible_attorney_name": {"type": "string"},
+            },
+            ["id", "number", "name", "status", "practice_area_name", "opened_on", "responsible_attorney_name"],
+            "The client allowlist for matter JSON and MCP. A field that is not here is not returned.",
         ),
         "MatterWrite": _obj(
             {
@@ -690,6 +705,10 @@ SCHEMAS = _register(
                 "signed_on": _null(_date()),
                 "void_reason": {"type": "string"},
                 "signed_file_id": _null(_uuid()),
+                "signature_module_id": {
+                    "type": "string",
+                    "description": "Module that moved the agreement to sent; only that module may service-call it to signed (CORE-25).",
+                },
                 "included": _ref("Included"),
             },
             ["matter_id", "fee_type", "services_description", "status"],
@@ -1016,10 +1035,13 @@ SCHEMAS = _register(
                 "trust_account_id": _null(_uuid("Set when destination is trust. Null when destination is operating.")),
                 "trust_entry_id": _null(_uuid()),
                 "source": {"type": "string", "description": "manual, api, or a module id."},
+                "refunded_cents": _cents("Sum of pending and completed refunds. Read-only."),
+                "refund_state": _enum(["none", "partial", "full"], "Read-only aggregate. Payment status stays completed."),
+                "replenishment_request_id": _null(_uuid("Optional active replenishment this trust payment satisfies.")),
                 "included": _ref("Included"),
             },
-            ["contact_id", "matter_id", "amount_cents", "destination", "method", "status", "source", "trust_account_id"],
-            "A payment. Amount, destination, and trust account do not change after create. A correction is a reversal.",
+            ["contact_id", "matter_id", "amount_cents", "destination", "method", "status", "source", "trust_account_id", "refunded_cents", "refund_state"],
+            "A payment. Amount, destination, and trust account do not change after create. A correction is a reversal. Refunds update refunded_cents and refund_state only.",
         ),
         "PaymentWrite": {
             "description": "Records a payment. destination trust requires trust_account_id of an active authorized firm account. destination operating omits trust_account_id. internal_transfer is reserved for apply-trust.",
@@ -1035,6 +1057,7 @@ SCHEMAS = _register(
                         "status": _PAY_STATUS,
                         "invoice_id": _null(_uuid()),
                         "source": {"type": "string"},
+                        "replenishment_request_id": _null(_uuid()),
                     },
                     ["contact_id", "matter_id", "amount_cents", "destination", "method"],
                 ),
@@ -1050,11 +1073,58 @@ SCHEMAS = _register(
                         "status": _PAY_STATUS,
                         "invoice_id": _null(_uuid()),
                         "source": {"type": "string"},
+                        "replenishment_request_id": _null(_uuid()),
                     },
                     ["contact_id", "matter_id", "amount_cents", "destination", "trust_account_id", "method"],
                 ),
             ],
         },
+
+        "PaymentRefund": _meta(
+            {
+                "payment_id": _uuid(),
+                "amount_cents": _cents(),
+                "reason": {"type": "string", "minLength": 1},
+                "reference_number": {"type": "string"},
+                "status": _enum(["pending", "completed", "failed"]),
+                "trust_entry_id": _null(_uuid()),
+                "source": {"type": "string", "description": "manual, api, or the payment's source module id."},
+                "included": _ref("Included"),
+            },
+            ["payment_id", "amount_cents", "reason", "status", "source"],
+            "A payment refund. Completing a trust refund posts one trust ledger row of entry type refund in the same transaction.",
+        ),
+        "PaymentRefundWrite": _obj(
+            {
+                "amount_cents": _cents(),
+                "reason": {"type": "string", "minLength": 1},
+                "reference_number": {"type": "string"},
+                "status": _enum(["pending", "completed"]),
+            },
+            ["amount_cents", "reason"],
+            "Creates a refund on a completed payment. status defaults to pending. Zero or more than the remaining amount is refund_exceeds_payment.",
+        ),
+        "PaymentRefundStatusWrite": _obj(
+            {"status": _enum(["pending", "completed", "failed"])},
+            ["status"],
+            "Pending may become completed or failed. The same status is idempotent. A refund_authorization grant may replace the viewer.",
+        ),
+        "RefundAuthorization": _obj(
+            {
+                "module_id": {"type": "string", "minLength": 1},
+                "refund_id": _uuid(),
+                "payment_id": _uuid(),
+                "matter_id": _uuid(),
+                "amount_cents": _cents(),
+                "allowed_operations": _arr({"type": "string"}),
+                "expires_at": _dt(),
+                "revoked": {"type": "boolean"},
+                "issued_by": {"const": "core"},
+            },
+            ["module_id", "refund_id", "payment_id", "matter_id", "amount_cents", "allowed_operations", "expires_at", "revoked", "issued_by"],
+            "Task authorization delivered on payment.refund_authorized to the payment's source module.",
+        ),
+
         "PaymentStatusWrite": _obj(
             {"status": _enum(["pending", "completed", "failed"])},
             ["status"],
@@ -1074,6 +1144,7 @@ SCHEMAS = _register(
                         "amount_cents": _cents(),
                         "destination": {"const": "operating"},
                         "invoice_id": _null(_uuid()),
+                        "replenishment_request_id": _null(_uuid()),
                     },
                     ["processor_module_id", "contact_id", "matter_id", "amount_cents", "destination"],
                 ),
@@ -1086,6 +1157,7 @@ SCHEMAS = _register(
                         "destination": {"const": "trust"},
                         "trust_account_id": _uuid(),
                         "invoice_id": _null(_uuid()),
+                        "replenishment_request_id": _null(_uuid()),
                     },
                     ["processor_module_id", "contact_id", "matter_id", "amount_cents", "destination", "trust_account_id"],
                 ),
@@ -1102,6 +1174,7 @@ SCHEMAS = _register(
                 "destination": _PAY_DEST,
                 "trust_account_id": _null(_uuid("Null when destination is operating.")),
                 "invoice_id": _null(_uuid()),
+                "replenishment_request_id": _null(_uuid()),
                 "status": _enum(["authorized", "denied"]),
                 "expires_at": _dt(),
             },
@@ -1119,6 +1192,7 @@ SCHEMAS = _register(
                 "amount_cents": _cents(),
                 "destination": _PAY_DEST,
                 "trust_account_id": _null(_uuid("Null when destination is operating. Otherwise the authorized account.")),
+                "replenishment_request_id": _null(_uuid()),
                 "allowed_operations": _arr({"type": "string"}),
                 "allowed_fields": _arr({"type": "string"}),
                 "expires_at": _dt(),
@@ -1254,6 +1328,37 @@ SCHEMAS = _register(
             },
             ["matter_id", "client_id", "amount_requested_cents", "message", "status"],
             "A replenishment request from the evergreen minimum or from collections.",
+        ),
+        "TrustReplenishmentClient": _obj(
+            {
+                "id": _uuid(),
+                "matter_id": _uuid(),
+                "amount_cents": _cents("Requested amount. Renamed from amount_requested_cents for the client allowlist."),
+                "message": {"type": "string"},
+                "status": _enum(["active", "satisfied", "cancelled"]),
+                "created_at": _dt(),
+            },
+            ["id", "matter_id", "amount_cents", "message", "status", "created_at"],
+            "The client allowlist for replenishment JSON and MCP. A field that is not here is not returned.",
+        ),
+        "MeTrustMatter": _obj(
+            {
+                "matter_id": _uuid(),
+                "balance_cents": _signed_cents("The calling client's own trust balance on the matter across every account."),
+                "replenishment_requests": _arr(_ref("TrustReplenishmentClient")),
+            },
+            ["matter_id", "balance_cents", "replenishment_requests"],
+            "One readable matter's trust summary for the calling client: own balance and active replenishment requests naming the client.",
+        ),
+        "ClientTrustLedgerEntry": _obj(
+            {
+                "date": _date("Calendar date of the ledger entry (UTC date of created_at)."),
+                "type": {"type": "string", "description": "Ledger entry_type as shown to the client."},
+                "amount_cents": _signed_cents("Ledger amount for this entry."),
+                "description": {"type": "string"},
+            },
+            ["date", "type", "amount_cents", "description"],
+            "One ledger entry naming the calling client. No account numbers and no other client's figures.",
         ),
         "TrustReplenishmentWrite": _obj(
             {
@@ -1408,6 +1513,10 @@ SCHEMAS = _register(
                 ),
                 "attorney_only": {"type": "boolean"},
                 "shared_with_client": {"type": "boolean"},
+                "library": {
+                    "type": "boolean",
+                    "description": "Firm library file. When true, matter_id and contact_id are null. Firm roles only; Doc Tender does not process it.",
+                },
                 "source": {"type": "string"},
                 "arrived_as": {"type": "string", "description": "Name the file arrived with. Kept for audit and page order. Not the display name."},
                 "locked_fields": _arr(_enum(["name", "category", "matter", "grouping"])),
@@ -1418,8 +1527,8 @@ SCHEMAS = _register(
                 "warnings": _arr(_obj({"code": {"type": "string"}, "detail": {"type": "string"}}, ["code", "detail"])),
                 "included": _ref("Included"),
             },
-            ["name", "extension", "origin", "attorney_only", "shared_with_client", "source", "locked_fields", "warnings"],
-            "A core file record. Bytes live on a storage backend under an opaque key that this API does not return. financial_classification is server-owned: an expense receipt or a stored invoice PDF. Write requests cannot set it.",
+            ["name", "extension", "origin", "attorney_only", "shared_with_client", "library", "source", "locked_fields", "warnings"],
+            "A core file record. Bytes live on a storage backend under an opaque key that this API does not return. financial_classification is server-owned: an expense receipt or a stored invoice PDF. Write requests cannot set it. library is a firm-shared file with no matter or contact.",
         ),
         "FileRename": _obj({"name": {"type": "string", "minLength": 1}}, ["name"], "The extension stays. A rename is edit history."),
         "FileMove": _obj({"folder_id": _null(_uuid())}, ["folder_id"], "Moves the record between folders. Bytes stay where they are."),
@@ -1515,9 +1624,13 @@ SCHEMAS = _register(
                 "media_type": {"type": "string"},
                 "size_bytes": {"type": "integer", "minimum": 0},
                 "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "library": {
+                    "type": "boolean",
+                    "description": "When true, matter_id and contact_id must be null. Creates a firm library file on publish.",
+                },
             },
             ["file_name", "size_bytes"],
-            "Starts an upload. size_bytes above files.max_upload_bytes is payload_too_large.",
+            "Starts an upload. size_bytes above files.max_upload_bytes is payload_too_large. library true requires matter_id and contact_id null.",
         ),
         "FileBulkItem": _obj(
             {
@@ -1527,9 +1640,13 @@ SCHEMAS = _register(
                 "name": {"type": "string"},
                 "attorney_only": {"type": "boolean"},
                 "shared_with_client": {"type": "boolean"},
+                "library": {
+                    "type": "boolean",
+                    "description": "When true, matter_id and contact_id must be null. Publishes a firm library file.",
+                },
             },
             ["upload_id"],
-            "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event.",
+            "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event. library true requires matter_id and contact_id null.",
         ),
         "BackgroundFileGrantRequest": {
             "description": "Matter publication names one authorized matter. Unassigned ingestion names no matter. The body cannot name a module id, a role, or an expiry.",
@@ -1639,14 +1756,88 @@ SCHEMAS = _register(
             ["at", "actor_kind", "kind"],
             "One file history row: a field edit or a version save. Visible to anyone who can read the file.",
         ),
-        "FileArchiveRequest": _obj(
-            {
-                "file_ids": _arr(_uuid()),
-                "folder_id": _null(_uuid()),
-                "confirm_quarantine": {"type": "boolean", "description": "Must be true when any selected version is quarantined."},
-            },
-            description="One of file_ids or folder_id. confirm_quarantine defaults to false. A quarantined version without confirmation returns quarantine_confirmation_required and no zip.",
-        ),
+        "FileArchiveEntry": {
+            "description": (
+                "One zip member. Exactly one of version_id or rendition_id. path is relative, /-separated, at most 255 bytes, "
+                "with no leading /, no backslash, no . or .. segment and no control character; paths are unique without regard to case."
+            ),
+            "oneOf": [
+                _obj(
+                    {
+                        "file_id": _uuid(),
+                        "version_id": _uuid(),
+                        "path": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255,
+                            "description": "Relative zip member path.",
+                        },
+                    },
+                    ["file_id", "version_id", "path"],
+                    "A file version written at path.",
+                ),
+                _obj(
+                    {
+                        "file_id": _uuid(),
+                        "rendition_id": _uuid(),
+                        "path": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 255,
+                            "description": "Relative zip member path.",
+                        },
+                    },
+                    ["file_id", "rendition_id", "path"],
+                    "A file rendition written at path.",
+                ),
+            ],
+        },
+        "FileArchiveRequest": {
+            "description": (
+                "Exactly one of file_ids, folder_id or entries. confirm_quarantine defaults to false. "
+                "A quarantined version without confirmation returns quarantine_confirmation_required and no zip. "
+                "Credentials are checked once when the request starts; the zip streams to completion after token expiry."
+            ),
+            "oneOf": [
+                _obj(
+                    {
+                        "file_ids": {"type": "array", "minItems": 1, "items": _uuid()},
+                        "confirm_quarantine": {
+                            "type": "boolean",
+                            "description": "Must be true when any selected version is quarantined.",
+                        },
+                    },
+                    ["file_ids"],
+                    "Current versions of the named files.",
+                ),
+                _obj(
+                    {
+                        "folder_id": _uuid(),
+                        "confirm_quarantine": {
+                            "type": "boolean",
+                            "description": "Must be true when any selected version is quarantined.",
+                        },
+                    },
+                    ["folder_id"],
+                    "Current versions of every file the caller may see in the folder.",
+                ),
+                _obj(
+                    {
+                        "entries": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": _ref("FileArchiveEntry"),
+                        },
+                        "confirm_quarantine": {
+                            "type": "boolean",
+                            "description": "Must be true when any selected version is quarantined.",
+                        },
+                    },
+                    ["entries"],
+                    "Named version or rendition members (CORE-21).",
+                ),
+            ],
+        },
         "QuarantineWrite": _obj({"quarantined": {"type": "boolean"}}, ["quarantined"], "A malware-scanning module sets the flag. The version stays visible."),
         "EditLock": _obj(
             {"file_id": _uuid(), "user_id": _uuid(), "since": _dt(), "renewed_at": _dt()},
@@ -1762,13 +1953,24 @@ SCHEMAS = _register(
             {
                 "file_version_id": _uuid(),
                 "stage": {"type": "string"},
-                "status": _enum(["queued", "running", "published", "exception", "not_processed_matter_closed", "held_for_provider", "held_for_ai_setup"]),
+                "status": _enum(
+                    [
+                        "queued",
+                        "running",
+                        "published",
+                        "exception",
+                        "not_processed_matter_closed",
+                        "not_processed_library",
+                        "held_for_provider",
+                        "held_for_ai_setup",
+                    ]
+                ),
                 "attempts": {"type": "integer", "minimum": 0},
                 "next_attempt_at": _null(_dt()),
                 "last_error": {"type": "string"},
             },
             ["file_version_id", "stage", "status", "attempts"],
-            "A Doc Tender job. A closed matter is stored as not_processed_matter_closed and makes no model call. The published labels are getDocTenderResult, not this object.",
+            "A Doc Tender job. A closed matter is stored as not_processed_matter_closed and makes no model call. Library files are not_processed_library and never queued. The published labels are getDocTenderResult, not this object.",
             mutable=False,
         ),
         "DocTenderException": _meta(
@@ -1851,7 +2053,7 @@ SCHEMAS = _register(
         ),
         "DocTenderFileStatus": _obj(
             {
-                "status": {"type": "string", "description": "The newest job's status; empty when no job has run."},
+                "status": {"type": "string", "description": "The newest job's status; empty when no job has run. Library files report not_processed_library with no job."},
                 "label": {"type": "string"},
                 "flags": _arr(
                     _obj(
@@ -1862,7 +2064,7 @@ SCHEMAS = _register(
                 ),
             },
             ["status", "label", "flags"],
-            "A file's Doc Tender state as the caller sees the file.",
+            "A file's Doc Tender state as the caller sees the file. Library files are not_processed_library.",
         ),
         "DocTenderModelChoices": {
             "type": "object",
@@ -1911,6 +2113,11 @@ SCHEMAS = _register(
                 "bar_state": {"type": "string"},
                 "linked_contact_id": _null(_uuid()),
                 "profile_file_id": _null(_uuid()),
+                "access_ended_matters": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "For a client on getMe: closed matters where the access window has ended. Absent for other roles.",
+                },
                 "included": _ref("Included"),
             },
             ["name", "email", "roles", "active"],
@@ -1952,6 +2159,49 @@ SCHEMAS = _register(
                 "profile_file_id": _null(_uuid("Profile picture file record.")),
             },
             description="Fields the signed-in user may change on PATCH /api/v1/me. roles, email, and linked_contact_id are absent. Email changes use requestEmailChange and confirmEmailChange.",
+        ),
+        "MailingAddress": _obj(
+            {
+                "line1": {"type": "string"},
+                "line2": {"type": "string"},
+                "city": {"type": "string"},
+                "region": {"type": "string"},
+                "postal_code": {"type": "string"},
+                "country": {"type": "string"},
+            },
+            ["line1", "city", "region", "postal_code", "country"],
+            "Postal mailing address fields for the client's linked contact.",
+        ),
+        "MeContact": _obj(
+            {
+                "contact_id": _uuid("Linked contact id."),
+                "email": _null({"type": "string", "format": "email"}),
+                "phone": _null({"type": "string", "pattern": "^\\+[1-9]\\d{1,14}$", "description": "Primary phone in E.164."}),
+                "address": _null(_ref("MailingAddress")),
+            },
+            ["contact_id", "email", "phone", "address"],
+            "Client-linked contact primary email, phone and mailing address. Sign-in email is separate.",
+        ),
+        "ClientAppointment": _obj(
+            {
+                "title": {"type": "string"},
+                "kind": _enum(["client_meeting", "court_date"], "Upcoming appointment kinds a client may see."),
+                "start": _dt("Event start (UTC)."),
+                "end": _dt("Event end (UTC)."),
+                "all_day": {"type": "boolean"},
+                "location": {"type": "string"},
+                "matter_id": _uuid("Matter the appointment belongs to."),
+            },
+            ["title", "kind", "start", "end", "all_day", "location", "matter_id"],
+            "Upcoming client_meeting or court_date on a matter the client can read. No notes, attendees or other calendar fields.",
+        ),
+        "MeContactWrite": _obj(
+            {
+                "email": {"type": "string", "format": "email"},
+                "phone": {"type": "string", "pattern": "^\\+[1-9]\\d{1,14}$"},
+                "address": _ref("MailingAddress"),
+            },
+            description="Optional primary email, phone and mailing address. Omitted fields are left unchanged. Sign-in email stays on requestEmailChange.",
         ),
         "EmailChangeRequest": _obj(
             {"email": {"type": "string", "format": "email"}},
@@ -2041,6 +2291,152 @@ SCHEMAS = _register(
             },
             ["preset", "staff_sidebar", "staff_header", "staff_page", "staff_accent", "client_header", "heading_font", "body_font", "text_size", "mode"],
             "The same rows as the appearance.* settings. A change is visible on the next page load.",
+        ),
+        "ClientPortalTheme": _obj(
+            {
+                "client_header": {"type": "string", "description": "Client portal header color from Appearance."},
+                "label": {"type": "string", "description": "Client portal label from Appearance."},
+            },
+            ["client_header", "label"],
+            "Client portal colors and label as Appearance supplies them.",
+        ),
+        "FirmProfile": _obj(
+            {
+                "name": {"type": "string"},
+                "short_name": {"type": "string"},
+                "address": {"type": "string"},
+                "phone": {"type": "string"},
+                "email": {"type": "string"},
+                "website": {"type": "string"},
+                "logo_file_id": _null(_uuid("File id of the firm logo.")),
+                "time_zone": {"type": "string"},
+                "client_portal": _ref("ClientPortalTheme"),
+            },
+            ["name", "short_name", "address", "phone", "email", "website", "logo_file_id", "time_zone", "client_portal"],
+            "Firm profile from firm.* settings plus the client portal appearance. Read only.",
+        ),
+        "BooksProfile": _obj(
+            {
+                "firm_name": {"type": "string"},
+                "time_zone": {"type": "string"},
+                "currency": _enum(["USD"], "Always USD."),
+            },
+            ["firm_name", "time_zone", "currency"],
+            "Firm books profile for a module books reader (CORE-02).",
+        ),
+        "BooksMatter": _obj(
+            {
+                "id": _uuid(),
+                "number": {"type": "string"},
+                "name": {"type": "string"},
+                "status": {"type": "string"},
+                "client_contact_id": _null(_uuid("Primary client party contact.")),
+                "responsible_attorney_user_id": _null(_uuid()),
+            },
+            ["id", "number", "name", "status", "client_contact_id", "responsible_attorney_user_id"],
+            "Matter projection for a module books reader. A walled matter is not_found.",
+        ),
+        "BooksBillingAddress": _obj(
+            {
+                "line1": {"type": "string"},
+                "line2": {"type": "string"},
+                "city": {"type": "string"},
+                "region": {"type": "string"},
+                "postal_code": {"type": "string"},
+                "country": {"type": "string"},
+            },
+            ["line1", "line2", "city", "region", "postal_code", "country"],
+            "Primary current mailing address for books sync.",
+        ),
+        "BooksContact": _obj(
+            {
+                "id": _uuid(),
+                "kind": _KIND,
+                "display_name": {"type": "string"},
+                "given_name": {"type": "string"},
+                "family_name": {"type": "string"},
+                "organization_name": {"type": "string"},
+                "email": {"type": "string"},
+                "phone": {"type": "string"},
+                "billing_address": _null(_ref("BooksBillingAddress")),
+                "archived": {"type": "boolean"},
+            },
+            [
+                "id",
+                "kind",
+                "display_name",
+                "given_name",
+                "family_name",
+                "organization_name",
+                "email",
+                "phone",
+                "billing_address",
+                "archived",
+            ],
+            "Billing details for a contact the books reader may see. No date of birth, identifier, tags or custom fields.",
+        ),
+        "UserDirectoryEntry": _obj(
+            {
+                "id": _uuid(),
+                "name": {"type": "string"},
+                "roles": _arr(_ROLE),
+                "active": {"type": "boolean"},
+            },
+            ["id", "name", "roles", "active"],
+            "One directory row. No email, auth or rate fields. A client caller receives only id and name.",
+        ),
+        "UserDirectoryClient": _obj(
+            {
+                "id": _uuid(),
+                "name": {"type": "string"},
+            },
+            ["id", "name"],
+            "Client projection of a directory row: active staff, attorney or admin users only.",
+        ),
+        "ClientAccess": _obj(
+            {
+                "user_id": _uuid(),
+                "email": {"type": "string"},
+                "active": {"type": "boolean"},
+                "must_change_password": {"type": "boolean"},
+                "last_sign_in_at": _null(_dt()),
+                "granted_at": _dt(),
+            },
+            ["user_id", "email", "active", "must_change_password", "last_sign_in_at", "granted_at"],
+            "Portal access status for a client-only user linked to a contact.",
+        ),
+        "ClientAccessGrant": _obj(
+            {
+                "contact_id": _uuid(),
+                "email": {"type": "string", "description": "Sign-in email. Defaults to the contact's primary email."},
+            },
+            ["contact_id"],
+            "Create or refresh client portal access for a contact.",
+        ),
+        "ClientAccessGrantResult": _obj(
+            {
+                "user_id": _uuid(),
+                "created": {"type": "boolean"},
+                "email": {"type": "string"},
+                "mail_status": _enum(["sent", "failed", "skipped"]),
+            },
+            ["user_id", "created", "email", "mail_status"],
+            "Grant result. Never includes the temporary password.",
+        ),
+        "ClientAccessTemporaryPassword": _obj(
+            {"temporary_password": {"type": "string", "minLength": 12}},
+            ["temporary_password"],
+            "Temporary password shown once. Never logged or audited.",
+        ),
+        "ClientAccessStatus": _obj(
+            {
+                "user_id": _uuid(),
+                "email": {"type": "string"},
+                "active": {"type": "boolean"},
+                "must_change_password": {"type": "boolean"},
+            },
+            ["user_id", "email", "active", "must_change_password"],
+            "Active flag after deactivate or reactivate.",
         ),
         "Me": _ref("User"),
         "MeSettings": _obj(
@@ -2149,10 +2545,192 @@ SCHEMAS = _register(
             ["user_id", "kind", "title", "link"],
             "A notification for one user.",
         ),
-        "NotificationWrite": _obj(
-            {"user_id": _uuid(), "kind": {"type": "string"}, "title": {"type": "string", "minLength": 1}, "link": {"type": "string"}},
-            ["user_id", "kind", "title", "link"],
-            "A module sends a notification. The actor is the token, not a field in the body.",
+
+        "ModuleMailWrite": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["subject", "text"],
+            "properties": {
+                "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "description": "One-line subject. 1 to 200 characters; no CR or LF.",
+                },
+                "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000,
+                    "description": "Plain-text body. With link_path the core appends https://{firm domain}{link_path} as the last line.",
+                },
+                "link_path": {
+                    "type": "string",
+                    "description": "Optional path starting with /portal/ or /modules/. Absolute URL is appended to text.",
+                },
+                "matter_id": _uuid(
+                    "Optional matter. Required with to_contact_ids. With any sent recipient, emits mail.sent on the timeline."
+                ),
+                "to_user_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "uniqueItems": True,
+                    "items": _uuid(),
+                    "description": "1 to 20 user ids. Inactive users are skipped. Viewer or service call.",
+                },
+                "to_contact_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "uniqueItems": True,
+                    "items": _uuid(),
+                    "description": "1 to 20 contact ids that are parties on matter_id. Viewer call only (admin, attorney, or staff).",
+                },
+            },
+            "description": (
+                "sendModuleMail body (CORE-04). Exactly one of to_user_ids or to_contact_ids. "
+                "The core resolves addresses and never returns them."
+            ),
+        },
+        "ModuleMailRecipientResult": _obj(
+            {
+                "user_id": _uuid("Set when the recipient was a user."),
+                "contact_id": _uuid("Set when the recipient was a contact."),
+                "status": _enum(["sent", "failed", "skipped"], "Delivery outcome."),
+                "error": {"type": "string", "description": "Skip or failure reason. Never an address."},
+            },
+            ["status"],
+            "One recipient outcome. Addresses never appear.",
+        ),
+        
+        "MailMatchRequest": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "addresses": {"type": "array", "maxItems": 50, "items": {"type": "string"}, "description": "At most 50 email addresses."},
+                "matter_numbers": {"type": "array", "maxItems": 50, "items": {"type": "string"}},
+                "case_numbers": {"type": "array", "maxItems": 50, "items": {"type": "string"}},
+                "name_tokens": {"type": "array", "maxItems": 50, "items": {"type": "string"}},
+                "known_matter_ids": {"type": "array", "maxItems": 50, "items": _uuid(), "uniqueItems": True},
+            },
+            "description": "matchMail body (CORE-26). Each list is at most 50 entries.",
+        },
+        "MailMatchContact": _obj(
+            {
+                "id": _uuid(),
+                "given_name": {"type": "string"},
+                "family_name": {"type": "string"},
+                "full_name": {"type": "string"},
+                "kind": {"type": "string"},
+            },
+            ["id"],
+            "A non-archived contact whose current email matched an address.",
+        ),
+        "MailMatchClient": _obj(
+            {"given_name": {"type": "string"}, "family_name": {"type": "string"}},
+            [],
+            "Client party names on a matched matter.",
+        ),
+        "MailMatchMatter": _obj(
+            {
+                "id": _uuid(),
+                "number": {"type": "string"},
+                "name": {"type": "string"},
+                "status": {"type": "string"},
+                "case_number": {"type": "string"},
+                "practice_area": {"type": "string"},
+                "clients": _arr({"$ref": "#/components/schemas/MailMatchClient"}),
+                "via": _enum(["address", "matter_number", "case_number", "case_number_in_name", "client_name", "known"], "How the matter matched."),
+            },
+            ["id", "number", "name", "status", "via", "clients"],
+            "One matched matter (at most 50 in the response).",
+        ),
+        "MailMatchResult": _obj(
+            {
+                "contacts_by_address": {
+                    "type": "object",
+                    "additionalProperties": _arr({"$ref": "#/components/schemas/MailMatchContact"}),
+                    "description": "Map of requested address to matching non-archived contacts.",
+                },
+                "matters": _arr({"$ref": "#/components/schemas/MailMatchMatter"}),
+                "match_token": {"type": "string", "description": "Service call only: task authorization naming the module and returned matter ids, valid 15 minutes."},
+            },
+            ["contacts_by_address", "matters"],
+            "matchMail response (CORE-26).",
+        ),
+        "MailFilingGrantRequest": _obj(
+            {
+                "match_token": {"type": "string", "minLength": 1},
+                "matter_id": _uuid("Must be in the match token and unwalled."),
+                "message_key": {"type": "string", "minLength": 1},
+            },
+            ["match_token", "matter_id", "message_key"],
+            "issueMailFilingGrant body (CORE-27).",
+        ),
+        "MailFilingAuthorization": _obj(
+            {
+                "task_authorization": {"type": "string"},
+                "module_id": {"type": "string"},
+                "matter_id": _uuid(),
+                "message_key": {"type": "string"},
+                "expires_at": {"type": "string", "format": "date-time"},
+                "allowed_operations": _arr({"type": "string"}),
+                "issued_by": {"type": "string"},
+            },
+            ["task_authorization", "module_id", "matter_id", "message_key", "expires_at", "allowed_operations", "issued_by"],
+            "Mail filing task authorization (CORE-27), valid 15 minutes.",
+        ),
+
+        "ModuleMailResult": _obj(
+            {
+                "results": _arr({"$ref": "#/components/schemas/ModuleMailRecipientResult"}),
+            },
+            ["results"],
+            "Per-recipient outcomes for sendModuleMail.",
+        ),
+
+        "NotificationWrite": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["kind", "title", "link"],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Notification kind. A module token may send only its declared kinds as {module_id}.{kind}.",
+                },
+                "title": {"type": "string", "minLength": 1, "maxLength": 200},
+                "link": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Site path. A module token's link must start with /modules/{module_id}/ or /portal/{module_id}/.",
+                },
+                "matter_id": _uuid("Optional matter. Required for audience except admins. Wall drops excluded recipients."),
+                "user_id": _uuid("One active user. With matter_id the user must read the matter."),
+                "audience": _enum(
+                    ["responsible_attorney", "matter_team", "admins", "admins_and_responsible_attorney"],
+                    "Matter audience. matter_id may be omitted only for admins.",
+                ),
+                "recipient_roles": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": True,
+                    "items": _enum(["admin", "accountant"]),
+                    "description": "Service call only: active users holding any of these roles.",
+                },
+            },
+            "description": (
+                "createNotification body (CORE-03). Exactly one of user_id, audience, or recipient_roles. "
+                "The actor is the token, not a field in the body."
+            ),
+        },
+        "CreateNotificationResult": _obj(
+            {
+                "created": {"type": "integer", "minimum": 0},
+                "notification_ids": _arr(_uuid()),
+            },
+            ["created", "notification_ids"],
+            "One notification row per resolved recipient after wall drops.",
         ),
         "SearchHit": _obj(
             {
@@ -2173,6 +2751,20 @@ SCHEMAS = _register(
             },
             ["query", "scope", "groups"],
             "Grouped hits. An empty group is the no-match result. The UI sentence is: No matches for {query} in {scope}.",
+        ),
+        "ClientNavEntry": _obj(
+            {
+                "module_id": {"type": "string", "minLength": 1},
+                "tab_id": {"type": "string", "minLength": 1},
+                "title": {"type": "string", "minLength": 1},
+            },
+            ["module_id", "tab_id", "title"],
+            "One client portal nav tab from an enabled module (CORE-10).",
+        ),
+        "ClientNavContext": _obj(
+            {"data": _arr(_ref("ClientNavEntry"))},
+            ["data"],
+            "Client portal navigation entries for tabs with nav true (CORE-10).",
         ),
         "NavContext": _obj(
             {
@@ -2512,6 +3104,71 @@ SCHEMAS = _register(
         "ContextTokenRequest": _obj(
             {"matter_id": _null(_uuid())},
             description="The viewer is the authenticated caller. user_id and roles are not accepted.",
+        ),
+        "ModuleSecret": _obj(
+            {
+                "name": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9/_-]{1,128}$",
+                    "description": "Secret name. Matches the path; slash names are allowed.",
+                },
+                "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16384,
+                    "description": "Clear secret value for the calling module only.",
+                },
+            },
+            ["name", "value"],
+            "One sealed secret opened for the calling module (CORE-06).",
+        ),
+        "ModuleSecretWrite": _obj(
+            {
+                "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 16384,
+                    "description": "Clear secret value; sealed at rest with the core key.",
+                },
+            },
+            ["value"],
+            "Body for putModuleSecret.",
+        ),
+        "ModuleDevice": _obj(
+            {
+                "id": _uuid(),
+                "module_id": _module_id(),
+                "user_id": _uuid(),
+                "name": {"type": "string"},
+                "created_at": _dt(),
+                "last_used_at": _dt(),
+                "secret": {
+                    "type": "string",
+                    "description": "Clear device secret. Returned only from createModuleDeviceGrant.",
+                },
+            },
+            ["id", "module_id", "user_id", "name", "created_at", "last_used_at"],
+            "One module device grant (CORE-28). The secret is omitted on list.",
+        ),
+        "ModuleDeviceWrite": _obj(
+            {
+                "module_id": _module_id("Installed module that declares device_connect."),
+                "name": {"type": "string", "description": "Optional label for this device."},
+            },
+            ["module_id"],
+            "Body for createModuleDeviceGrant.",
+        ),
+        "DeviceContextRequest": _obj(
+            {
+                "secret": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Device grant secret from createModuleDeviceGrant or the device-connect page.",
+                },
+                "matter_id": _null(_uuid()),
+            },
+            ["secret"],
+            "Body for exchangeModuleDeviceGrant.",
         ),
         "ManifestMigration": _obj(
             {
@@ -3276,8 +3933,23 @@ QUERY = {
     "category_id": _query("category_id", _ref("Uuid"), "Category filter."),
     "trashed": _query("trashed", {"type": "boolean"}, "Trash filter. Default is false."),
     "attorney_only": _query("attorney_only", {"type": "boolean"}, "Attorney-only file filter."),
+    "library": _query("library", {"type": "boolean"}, "Library file filter. When true, only firm library files; when false, only non-library files."),
     "practice_area_id": _query("practice_area_id", _ref("Uuid"), "Practice area filter."),
     "active": _query("active", {"type": "boolean"}, "Active filter."),
+    "role": _query("role", _ROLE, "Role filter. Matches users who hold this role."),
+    "ids": {
+        "name": "ids",
+        "in": "query",
+        "required": False,
+        "style": "form",
+        "explode": True,
+        "schema": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {"$ref": "#/components/schemas/Uuid"},
+        },
+        "description": "Up to 100 user ids. When set, only those users are returned.",
+    },
     "view": _query("view", _enum(["day", "week", "month"]), "Calendar view."),
     "disposition": _query("disposition", _enum(["inline", "attachment"]), "Download disposition."),
     "confirm": _query("confirm", {"type": "boolean"}, "Must be true to download a quarantined version."),
@@ -3307,6 +3979,20 @@ QUERY = {
 PARAM_SCHEMA = {
     "setting_key": _ref("SettingKey"),
     "module_id": _module_id(),
+    "hook_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 63,
+        "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+        "description": "Inbound webhook id from the module manifest (CORE-07).",
+    },
+    "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-z0-9/_-]{1,128}$",
+        "description": "Module secret name. May include / (for example qbo/client_secret).",
+    },
     "domain": _enum(["time", "trust", "calendar"]),
     "provider": _enum(["anthropic", "openai", "openai_compatible", "local"]),
     "role": _ROLE,
@@ -3341,6 +4027,11 @@ PARAM_SCHEMA = {
         ]
     ),
     "secret": {"type": "string", "minLength": 20},
+    "name": {
+        "type": "string",
+        "pattern": "^[a-z0-9/_-]{1,128}$",
+        "description": "Module secret name (CORE-06). May include slashes.",
+    },
     "page_id": {"type": "string", "minLength": 1},
     "listing_id": {"type": "string", "minLength": 1},
     "topic_id": {"type": "string", "minLength": 1},

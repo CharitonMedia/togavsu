@@ -116,7 +116,8 @@ func (s *Service) moduleEnabled(ctx context.Context, module string) (bool, error
 // grant for the same module and target replaces the one before it, which is revoked.
 // The same Idempotency-Key and body replay the grant; another body is a conflict.
 func (s *Service) IssueGrant(ctx context.Context, p domain.Principal, in GrantRequest, idemKey string) (GrantView, error) {
-	if p.Source != domain.SourceModule || p.ModuleID == "" {
+	// Module bearer (own or with a viewer that only narrows). principal() may set SourceService.
+	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) {
 		return GrantView{}, domain.Forbidden("a background publication grant is issued to an installed module's token")
 	}
 	on, err := s.moduleEnabled(ctx, p.ModuleID)
@@ -294,7 +295,7 @@ func grantPlacement(g grantRow, in *Publish) error {
 // its own upload with no matter. Another module's upload, a human caller, or a file
 // that has since been given a matter is not found. It assigns nothing.
 func (s *Service) ReviewUnassigned(ctx context.Context, p domain.Principal, upload domain.ID) (FileView, error) {
-	if p.Source != domain.SourceModule || p.ModuleID == "" {
+	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) {
 		return FileView{}, domain.Forbidden("unassigned review belongs to the module that published the file")
 	}
 	u, err := s.ownUpload(ctx, servicePrincipal(p), upload, false)
@@ -334,6 +335,9 @@ type BulkItem struct {
 	Name             string     `json:"name"`
 	AttorneyOnly     bool       `json:"attorney_only"`
 	SharedWithClient bool       `json:"shared_with_client"`
+	Library          bool       `json:"library"`
+	// Origin is firm or received. Only a module token may set it (CORE-16).
+	Origin string `json:"origin,omitempty"`
 }
 
 // batch defers what a single publish does after its own commit until the bulk
@@ -385,7 +389,7 @@ func (s *Service) PublishBatch(ctx context.Context, p domain.Principal, items []
 		}
 		for i, it := range items {
 			v, err := s.PublishUpload(ctx, p, Publish{UploadID: it.UploadID, MatterID: it.MatterID, ContactID: it.ContactID,
-				Name: it.Name, AttorneyOnly: it.AttorneyOnly, SharedWithClient: it.SharedWithClient})
+				Name: it.Name, AttorneyOnly: it.AttorneyOnly, SharedWithClient: it.SharedWithClient, Library: it.Library, Origin: it.Origin})
 			if err != nil {
 				return itemError(i, err)
 			}

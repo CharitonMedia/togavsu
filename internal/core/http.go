@@ -12,6 +12,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 	"github.com/CharitonMedia/togavsu/internal/settings"
@@ -45,7 +46,15 @@ func (a *App) routes() {
 	m.HandleFunc("POST /api/v1/api-tokens", a.issueTokenJSON)
 	m.HandleFunc("DELETE /api/v1/api-tokens/{token_id}", a.revokeTokenJSON)
 	a.identityRoutes(m)
+	a.meContactRoutes(m)
+	a.meAppointmentsRoutes(m)
+	a.meTrustRoutes(m)
+	a.directoryRoutes(m)
+	a.booksRoutes(m)
+	a.clientAccessRoutes(m)
+	a.portalRoutes(m)
 	a.systemRoutes(m)
+	a.moduleMailRoutes(m)
 	a.eventRoutes(m)
 	a.aiProviderRoutes(m)
 	a.emailChangeRoutes(m)
@@ -180,9 +189,21 @@ type callerMemo struct {
 
 type callerKey struct{}
 
-// memoCaller gives r a fresh callerMemo. A request is served on one goroutine.
+// memoCaller gives r one callerMemo for the whole request. Nested gates (password
+// change, screens, the outer hold gate) may call it again; a second call keeps the
+// existing memo so api_rate_per_minute counts once. A presented task authorization
+// is stashed for mail_filing / mail_matching checks.
 func memoCaller(r *http.Request) *http.Request {
-	return r.WithContext(context.WithValue(r.Context(), callerKey{}, &callerMemo{}))
+	ctx := r.Context()
+	if _, ok := ctx.Value(callerKey{}).(*callerMemo); !ok {
+		ctx = context.WithValue(ctx, callerKey{}, &callerMemo{})
+	}
+	if g := r.Header.Get(modules.TaskAuthorizationHeader); g != "" {
+		if modules.TaskAuth(ctx) == "" {
+			ctx = modules.WithTaskAuth(ctx, g)
+		}
+	}
+	return r.WithContext(ctx)
 }
 
 // caller authenticates a cookie session or a bearer token, once per memoized request.
@@ -241,14 +262,13 @@ func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 	return c, nil
 }
 
-// moduleRuntimeRoute reports a module token calling the runtime's module-facing routes,
-// which the contract does not list as operations: verifying its frame's context token,
-// reading its own settings, and reading a published view. The module handler enforces
-// their rules itself (its own id only; a view only after the admin approved its scope),
-// so the contract scope gate does not apply.
-// ponytail: ceiling: three routes held outside the published contract. Upgrade path: the
-// API owner adds them to api/openapi/v1 with module-only access. Trigger: the next
-// contract revision.
+// moduleRuntimeRoute reports a module token calling the runtime's module-facing routes
+// that either sit outside the published contract (verify, own settings, published view)
+// or need a trailing path wildcard the contract's single-segment {name} cannot express
+// (module secrets with / in the name, CORE-06). The module handler still enforces own-id
+// and scope rules.
+// ponytail: ceiling: verify/settings/views plus secrets wildcard. Upgrade path: contract
+// path params that span segments. Trigger: OpenAPI gains a multi-segment secret name form.
 func moduleRuntimeRoute(r *http.Request, p domain.Principal) bool {
 	if p.ModuleID == "" || p.Source != domain.SourceModule {
 		return false
@@ -259,6 +279,10 @@ func moduleRuntimeRoute(r *http.Request, p domain.Principal) bool {
 		return moduleIDOf(r.URL.Path) == p.ModuleID
 	case "GET /api/v1/modules/{module_id}/views/{view}":
 		return true
+	case "PUT /api/v1/modules/{module_id}/secrets/{name...}",
+		"GET /api/v1/modules/{module_id}/secrets/{name...}",
+		"DELETE /api/v1/modules/{module_id}/secrets/{name...}":
+		return moduleIDOf(r.URL.Path) == p.ModuleID
 	}
 	return false
 }
@@ -266,8 +290,14 @@ func moduleRuntimeRoute(r *http.Request, p domain.Principal) bool {
 // moduleRuntimeRoutes matches moduleRuntimeRoute's patterns.
 var moduleRuntimeRoutes = func() *http.ServeMux {
 	m := http.NewServeMux()
-	for _, p := range []string{"POST /api/v1/modules/{module_id}/context-tokens/verify", "GET /api/v1/modules/{module_id}/settings",
-		"GET /api/v1/modules/{module_id}/views/{view}"} {
+	for _, p := range []string{
+		"POST /api/v1/modules/{module_id}/context-tokens/verify",
+		"GET /api/v1/modules/{module_id}/settings",
+		"GET /api/v1/modules/{module_id}/views/{view}",
+		"PUT /api/v1/modules/{module_id}/secrets/{name...}",
+		"GET /api/v1/modules/{module_id}/secrets/{name...}",
+		"DELETE /api/v1/modules/{module_id}/secrets/{name...}",
+	} {
 		m.Handle(p, http.NotFoundHandler())
 	}
 	return m
@@ -300,13 +330,86 @@ func shared(err error) error {
 
 // principal is the hook practice and every core route use. Services check roles,
 // walls and attorney-only redaction against it.
-// A module's call carrying a context token runs as the viewer (delegate).
+// A module's call carrying a context token runs as the viewer (delegate). A module
+// token with no context token is the service principal (CORE-01), audited as source
+// service, and only reaches operations marked for it.
 func (a *App) principal(r *http.Request) (domain.Principal, error) {
 	c, err := a.caller(r)
 	if err != nil {
 		return c.Principal, err
 	}
-	return a.delegate(r, c.Principal)
+	p, err := a.delegate(r, c.Principal)
+	if err != nil {
+		return p, err
+	}
+	if moduleOwn(p) {
+		runtime := moduleRuntimeRoute(r, p)
+		if err := a.allowServiceCall(r, p); err != nil {
+			return p, err
+		}
+		p.Source = domain.SourceService
+		if err := a.elevateBooksReader(r, &p, c); err != nil {
+			return p, err
+		}
+		// CORE-01: every service call writes an audit row (module, operation, source service),
+		// including reads that would otherwise leave no write-side audit.
+		if !runtime {
+			if err := a.auditServiceCall(r, p); err != nil {
+				return p, err
+			}
+		}
+	}
+	return p, nil
+}
+
+// auditServiceCall appends one CORE-01 audit row for a module service principal call.
+func (a *App) auditServiceCall(r *http.Request, p domain.Principal) error {
+	if a.Audit == nil {
+		return nil
+	}
+	t, ok := a.toolFor(r.Method, r.URL.Path)
+	if !ok {
+		return nil
+	}
+	id, err := domain.NewID()
+	if err != nil {
+		return err
+	}
+	_, err = a.Audit.Record(r.Context(), p, audit.Change{
+		Entity: "service_call", EntityID: id, Field: "operation", New: t.Name, Reason: "service.call",
+	})
+	return err
+}
+
+// serviceDelegation marks an operation a module's own token may call without a viewer.
+// service_principal and delegated_viewer_or_service_principal are CORE-01 service calls.
+// delegated_viewer_or_noninteractive is the grant path (publication, payment, refund,
+// mail filing): the handler checks the grant or task-authorization header.
+var serviceDelegation = map[string]bool{
+	"service_principal":                     true,
+	"delegated_viewer_or_service_principal": true,
+	"delegated_viewer_or_noninteractive":    true,
+}
+
+// allowServiceCall refuses a module's own token on every operation that is not marked
+// for a service principal or a noninteractive grant workflow (CORE-01). A task-authorization
+// header only skips this gate for delegated_viewer_or_noninteractive (the grant path);
+// a junk header on an unmarked write still answers scope_denied.
+func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
+	if moduleRuntimeRoute(r, p) {
+		return nil
+	}
+	t, ok := a.toolFor(r.Method, r.URL.Path)
+	if !ok {
+		return domain.Forbidden("this route is not available to tokens")
+	}
+	if r.Header.Get(modules.TaskAuthorizationHeader) != "" && t.Delegation == "delegated_viewer_or_noninteractive" {
+		return nil
+	}
+	if serviceDelegation[t.Delegation] {
+		return nil
+	}
+	return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
 }
 
 // status is the HTTP status for err: identity's own codes go through shared, and the
@@ -540,7 +643,21 @@ func (a *App) meJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Unauthenticated("sign in is required"))
 		return
 	}
-	writeJSON(w, http.StatusOK, userJSON(u))
+	out := userJSON(u)
+	if !u.ContactID.IsZero() {
+		out["linked_contact_id"] = u.ContactID
+	} else {
+		out["linked_contact_id"] = nil
+	}
+	if practice.ClientOnly(c.Principal) && a.Practice != nil {
+		n, err := a.Practice.CountAccessEndedMatters(r.Context(), c.Principal)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		out["access_ended_matters"] = n
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // admin authorizes settings and the audit log in the service layer of this package:

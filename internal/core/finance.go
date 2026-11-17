@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -64,11 +65,11 @@ type finance struct {
 // flow to the practice store through the balance sink, invoices through the mirror, and
 // committed trust entries sync flat-fee invoices through billing.TrustEvents.
 func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *settings.Registry, store *practice.Durable,
-	users trust.Users, walls domain.WallReader, fsvc *files.Service, custom billing.CustomFields, p func(*http.Request) (domain.Principal, error), scopes func(*http.Request, ...string) error, now func() time.Time) (*finance, error) {
+	users trust.Users, walls domain.WallReader, fsvc *files.Service, custom billing.CustomFields, p func(*http.Request) (domain.Principal, error), scopes func(*http.Request, ...string) error, now func() time.Time, mail *systemMailer) (*finance, error) {
 	if err := trust.InstallPrivileges(ctx, pool); err != nil {
 		return nil, fmt.Errorf("core: trust privileges: %w", err)
 	}
-	events := &billing.TrustEvents{}
+	events := &billing.TrustEvents{Next: trustCoreEvents{pool: pool, now: now}}
 	tr, err := trust.New(trust.Deps{
 		DB: pool, Audit: aud, Settings: reg, Practice: store, Users: users, Walls: walls,
 		Events: events, BalanceSink: store.PutTrust, Now: now,
@@ -91,7 +92,7 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 	}
 	bs, err := billing.New(billing.Deps{
 		Store: bstore, Practice: store, Walls: walls, Audit: aud, Settings: reg,
-		Trust: link, Mail: smtpMailer{Settings: reg}, Mirror: store, Receipts: fileLink, InvoiceFiles: fileLink, Custom: custom, Now: now,
+		Trust: link, Mail: mail, Mirror: store, Receipts: fileLink, InvoiceFiles: fileLink, Custom: custom, Now: now,
 	})
 	if err != nil {
 		return nil, err
@@ -129,6 +130,59 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 	return f, nil
 }
 
+// trustCoreEvents writes committed trust events into core.events so modules and the
+// timeline see trust.replenishment_satisfied and the other trust.Event names (CORE-23).
+// Actor kind/id and Summary come from trust.Event (the posting principal and a
+// human-readable line) so the Activities feed does not show "System — trust.entry_posted".
+type trustCoreEvents struct {
+	pool *sql.DB
+	now  func() time.Time
+}
+
+func (p trustCoreEvents) Publish(ctx context.Context, events []trust.Event) error {
+	if p.pool == nil || len(events) == 0 {
+		return nil
+	}
+	now := time.Now().UTC()
+	if p.now != nil {
+		now = p.now().UTC()
+	}
+	for _, e := range events {
+		id, err := domain.NewID()
+		if err != nil {
+			return err
+		}
+		recType := "trust"
+		switch e.Name {
+		case "trust.replenishment_satisfied", "trust.replenishment_requested", "trust.replenishment_cancelled":
+			recType = "trust_replenishment"
+		case "trust.entry_posted", "trust.entry_reversed":
+			recType = "trust_entry"
+		}
+		kind := strings.TrimSpace(e.ActorKind)
+		actor := e.ActorID
+		summary := strings.TrimSpace(e.Summary)
+		if kind == "" {
+			kind = "system"
+			actor = domain.SystemUserID
+		}
+		if actor.IsZero() {
+			actor = domain.SystemUserID
+		}
+		if summary == "" {
+			summary = e.Name
+		}
+		if err := db.PublishEvent(ctx, audit.Conn(ctx, p.pool), domain.Event{
+			Meta:      domain.Meta{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: actor},
+			ActorKind: kind, ActorID: actor, Action: e.Name,
+			RecordType: recType, RecordID: e.RecordID, MatterID: e.MatterID, Summary: summary,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // deliverTrustMail sends the trust outbox (below-zero flag mail and replenishment
 // requests) through the admin's SMTP settings until ctx ends. A failed row stays queued
 // with its error and is retried on the next tick.
@@ -150,11 +204,17 @@ func (a *App) deliverTrustMail(ctx context.Context, every time.Duration) {
 	}
 }
 
-// DeliverMail sends every queued trust mail now and returns how many went out.
+// DeliverMail sends every queued trust mail now, then drains the supervisor's
+// mail-outbox.jsonl through systemMailer (CORE-05), and returns how many went out.
 func (a *App) DeliverMail(ctx context.Context) (int, error) {
 	a.mailMu.Lock()
 	defer a.mailMu.Unlock()
-	return a.Trust.DeliverMail(ctx, trust.SMTP{Settings: a.Settings})
+	n, err := a.Trust.DeliverMail(ctx, a.sysMail.AsSender())
+	n2, err2 := a.drainSupervisorMail(ctx)
+	if err == nil {
+		err = err2
+	}
+	return n + n2, err
 }
 
 // entryTypeScoped are the contract operations whose scopes depend on the body's

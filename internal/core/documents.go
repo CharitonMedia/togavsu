@@ -31,6 +31,11 @@ import (
 // default local-disk storage backend (a Docker volume in compose.yaml).
 const DataDir = "/var/lib/togavsu-core"
 
+// SupervisorMailOutboxPath is the default path of the supervisor notice file the core
+// drains through systemMailer (CORE-05). Matches supervisor.MailOutboxDir/MailOutboxFile
+// on the shared mail-outbox volume (not the supervisor data volume).
+const SupervisorMailOutboxPath = "/var/lib/togavsu-mail/mail-outbox.jsonl"
+
 // WordcraftCLI and EditorDist are where the core image puts LawCraft's headless build
 // and its browser editor, both built at the pinned commit (PRD 8.20).
 const (
@@ -83,11 +88,13 @@ ON CONFLICT (id) DO NOTHING`, string(domain.SystemUserID), at)
 // exceptions and the daily summary) or one address (calendar reminders).
 type adminMail struct {
 	pool *sql.DB
-	smtp smtpMailer
+	mail interface {
+		Send(context.Context, billing.Message) error
+	}
 }
 
 func (m adminMail) Send(ctx context.Context, to, subject, body string) error {
-	return m.smtp.Send(ctx, billing.Message{To: []string{to}, Subject: subject, Text: body})
+	return m.mail.Send(ctx, billing.Message{To: []string{to}, Subject: subject, Text: body})
 }
 
 func (m adminMail) MailAdmins(ctx context.Context, subject, body string) error {
@@ -102,7 +109,7 @@ func (m adminMail) MailAdmins(ctx context.Context, subject, body string) error {
 	if len(list) == 0 {
 		return errors.New("no active admin to mail")
 	}
-	return m.smtp.Send(ctx, billing.Message{To: list, Subject: subject, Text: body})
+	return m.mail.Send(ctx, billing.Message{To: list, Subject: subject, Text: body})
 }
 
 type person struct {
@@ -193,14 +200,14 @@ type documentsConfig struct {
 // users by foreign key. Each new file version queues its Doc Tender job through
 // OnVersion once openDocuments has made Doc Tender.
 func openFiles(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *settings.Registry, store *practice.Durable,
-	walls domain.WallReader, key []byte, dataDir string, now func() time.Time) (*documents, error) {
+	walls domain.WallReader, key []byte, dataDir string, now func() time.Time, mail *systemMailer) (*documents, error) {
 	if err := ensureSystemUser(ctx, pool, now()); err != nil {
 		return nil, fmt.Errorf("core: system user: %w", err)
 	}
 	if err := store.EnableProjection(ctx); err != nil {
 		return nil, fmt.Errorf("core: practice projection: %w", err)
 	}
-	d := &documents{mail: adminMail{pool: pool, smtp: smtpMailer{Settings: reg}}}
+	d := &documents{mail: adminMail{pool: pool, mail: mail}}
 	fsvc, err := files.New(files.Config{
 		Pool: pool, Audit: aud, Settings: reg, Directory: files.PracticeDirectory{Store: store}, Walls: walls, Mail: d.mail, Key: key,
 		StagingDir: filepath.Join(dataDir, "staging"), Now: now,

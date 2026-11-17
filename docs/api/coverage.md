@@ -23,6 +23,11 @@ It does not claim the handlers or the MCP server are implemented.
 | auth | `POST` | `/api/v1/auth/password-resets/confirm` | `confirmPasswordReset` | required:confirmPasswordReset | public | none |
 | profile | `GET` | `/api/v1/me` | `getMe` | required:getMe | admin, attorney, staff, accountant, client | profile:read |
 | profile | `PATCH` | `/api/v1/me` | `updateMe` | required:updateMe | admin, attorney, staff, accountant, client | profile:write |
+| calendar | `GET` | `/api/v1/me/appointments` | `listMeAppointments` | required:listMeAppointments | client | calendar:read |
+| trust-replenishment | `GET` | `/api/v1/me/trust` | `getMeTrust` | required:getMeTrust | client | trust:read |
+| trust-ledger | `GET` | `/api/v1/me/trust-ledger` | `getMeTrustLedger` | required:getMeTrustLedger | client | trust:read |
+| profile | `GET` | `/api/v1/me/contact` | `getMeContact` | required:getMeContact | client | profile:read |
+| profile | `PATCH` | `/api/v1/me/contact` | `updateMeContact` | required:updateMeContact | client | profile:write |
 | profile | `POST` | `/api/v1/me/email-change` | `requestEmailChange` | required:requestEmailChange | admin, attorney, staff, accountant, client | profile:write |
 | profile | `POST` | `/api/v1/me/email-change/confirm` | `confirmEmailChange` | required:confirmEmailChange | admin, attorney, staff, accountant, client | profile:write |
 | profile | `POST` | `/api/v1/me/password` | `changePassword` | required:changePassword | admin, attorney, staff, accountant, client | profile:write |
@@ -42,6 +47,16 @@ It does not claim the handlers or the MCP server are implemented.
 | users | `GET` | `/api/v1/users/{user_id}` | `getUser` | required:getUser | admin | users:read |
 | users | `PATCH` | `/api/v1/users/{user_id}` | `updateUser` | required:updateUser | admin | users:write |
 | users | `POST` | `/api/v1/users/{user_id}/deactivate` | `deactivateUser` | required:deactivateUser | admin | users:write |
+| firm-profile | `GET` | `/api/v1/firm-profile` | `getFirmProfile` | required:getFirmProfile | admin, attorney, staff, accountant, client | firm:read |
+| books | `GET` | `/api/v1/books/profile` | `getBooksProfile` | required:getBooksProfile | admin, attorney, staff, accountant | books:read |
+| books | `GET` | `/api/v1/books/matters/{matter_id}` | `getBooksMatter` | required:getBooksMatter | admin, attorney, staff, accountant | books:read |
+| books | `GET` | `/api/v1/books/contacts/{contact_id}` | `getBooksContact` | required:getBooksContact | admin, attorney, staff, accountant | books:read |
+| user-directory | `GET` | `/api/v1/user-directory` | `listUserDirectory` | required:listUserDirectory | admin, attorney, staff, client | users:directory |
+| client-access | `GET` | `/api/v1/client-access` | `getClientAccess` | required:getClientAccess | admin, attorney, staff | client_access:read |
+| client-access | `POST` | `/api/v1/client-access` | `grantClientAccess` | required:grantClientAccess | admin, attorney, staff | client_access:write |
+| client-access | `POST` | `/api/v1/client-access/{user_id}/temporary-password` | `resetClientAccessPassword` | required:resetClientAccessPassword | admin, attorney, staff | client_access:write |
+| client-access | `POST` | `/api/v1/client-access/{user_id}/deactivate` | `deactivateClientAccess` | required:deactivateClientAccess | admin, attorney, staff | client_access:write |
+| client-access | `POST` | `/api/v1/client-access/{user_id}/reactivate` | `reactivateClientAccess` | required:reactivateClientAccess | admin, attorney, staff | client_access:write |
 | api-tokens, profile | `GET` | `/api/v1/api-tokens` | `listApiToken` | required:listApiToken | admin, attorney, staff, accountant, client | tokens:read |
 | api-tokens | `POST` | `/api/v1/api-tokens` | `createApiToken` | required:createApiToken | admin | tokens:write |
 | api-tokens, profile | `GET` | `/api/v1/api-tokens/{token_id}` | `getApiToken` | required:getApiToken | admin, attorney, staff, accountant, client | tokens:read |
@@ -74,12 +89,12 @@ It does not claim the handlers or the MCP server are implemented.
 | contact-channels | `PATCH` | `/api/v1/contact-tags/{tag_id}` | `updateContactTag` | required:updateContactTag | admin, attorney, staff | contacts:write |
 | contact-channels, bulk | `POST` | `/api/v1/contact-tags:bulk` | `bulkContactTag` | required:bulkContactTag | admin, attorney, staff | contacts:write |
 | contacts, merge | `POST` | `/api/v1/contacts/{contact_id}/merge` | `mergeContact` | required:mergeContact | admin, attorney | contacts:write |
-| matters, matter-glance, include-extensions | `GET` | `/api/v1/matters` | `listMatter` | required:listMatter | admin, attorney, staff | matters:read |
+| matters, matter-glance, include-extensions | `GET` | `/api/v1/matters` | `listMatter` | required:listMatter | admin, attorney, staff, client | matters:read |
 | matters, matter-glance, include-extensions | `POST` | `/api/v1/matters` | `createMatter` | required:createMatter | admin, attorney, staff | matters:write |
-| matters, matter-glance, include-extensions | `GET` | `/api/v1/matters/{matter_id}` | `getMatter` | required:getMatter | admin, attorney, staff | matters:read |
+| matters, matter-glance, include-extensions | `GET` | `/api/v1/matters/{matter_id}` | `getMatter` | required:getMatter | admin, attorney, staff, client | matters:read |
 | matters, matter-glance, include-extensions | `PATCH` | `/api/v1/matters/{matter_id}` | `updateMatter` | required:updateMatter | admin, attorney, staff | matters:write |
 | matters, matter-glance, include-extensions | `POST` | `/api/v1/matters/{matter_id}/archive` | `archiveMatter` | required:archiveMatter | admin, attorney, staff | matters:write |
-| matters, matter-glance, include-extensions, edit-history | `GET` | `/api/v1/matters/{matter_id}/history` | `historyMatter` | required:historyMatter | admin, attorney, staff | matters:read |
+| matters, matter-glance, include-extensions, edit-history | `GET` | `/api/v1/matters/{matter_id}/history` | `historyMatter` | required:historyMatter | admin, attorney, staff, client | matters:read |
 | matters, matter-glance, include-extensions, bulk | `POST` | `/api/v1/matters:bulk` | `bulkMatter` | required:bulkMatter | admin, attorney, staff | matters:write |
 | matter-close | `GET` | `/api/v1/matters/{matter_id}/close-preview` | `previewMatterClose` | required:previewMatterClose | admin, attorney, staff | matters:read |
 | matter-close | `POST` | `/api/v1/matters/{matter_id}/close` | `closeMatter` | required:closeMatter | admin, attorney, staff | matters:write |
@@ -202,9 +217,12 @@ It does not claim the handlers or the MCP server are implemented.
 | payments, collections | `POST` | `/api/v1/payments` | `createPayment` | required:createPayment | admin, attorney, staff | payments:write |
 | payments, collections | `GET` | `/api/v1/payments/{payment_id}` | `getPayment` | required:getPayment | admin, attorney, staff, accountant | payments:read |
 | payments, collections, bulk | `POST` | `/api/v1/payments:bulk` | `bulkPayment` | required:bulkPayment | admin, attorney, staff | payments:write |
-| payments | `POST` | `/api/v1/payments/processor-initializations` | `initiateProcessorPayment` | required:initiateProcessorPayment | admin, attorney, staff | payments:write |
+| payments | `POST` | `/api/v1/payments/processor-initializations` | `initiateProcessorPayment` | required:initiateProcessorPayment | admin, attorney, staff, client | payments:write |
 | payments | `POST` | `/api/v1/payments/{payment_id}/status` | `updatePaymentStatus` | required:updatePaymentStatus | admin, attorney, staff | payments:write |
 | payments | `POST` | `/api/v1/payments/{payment_id}/reverse` | `reversePayment` | required:reversePayment | admin, attorney | payments:write |
+| payments | `GET` | `/api/v1/payments/{payment_id}/refunds` | `listPaymentRefunds` | required:listPaymentRefunds | admin, attorney, staff, accountant | payments:read |
+| payments | `POST` | `/api/v1/payments/{payment_id}/refunds` | `createPaymentRefund` | required:createPaymentRefund | admin, attorney | payments:write |
+| payments | `POST` | `/api/v1/payments/{payment_id}/refunds/{refund_id}/status` | `updatePaymentRefundStatus` | required:updatePaymentRefundStatus | admin, attorney | payments:write |
 | billing-worklist | `GET` | `/api/v1/billing/worklist` | `getBillingWorklist` | required:getBillingWorklist | admin, attorney, staff, accountant | invoices:read |
 | billing-worklist, trust-ledger | `POST` | `/api/v1/billing/flat-fees/{matter_id}/apply` | `applyFlatFee` | required:applyFlatFee | admin, attorney | trust:withdraw |
 | reports, trust-reports | `GET` | `/api/v1/reports/unbilled-time` | `reportUnbilledTime` | required:reportUnbilledTime | admin, attorney, staff, accountant | reports:read |
@@ -230,9 +248,9 @@ It does not claim the handlers or the MCP server are implemented.
 | trust-flags | `GET` | `/api/v1/trust-flags` | `listTrustFlag` | required:listTrustFlag | admin, attorney, staff, accountant | trust:read |
 | trust-flags | `GET` | `/api/v1/trust-flags/{trust_flag_id}` | `getTrustFlag` | required:getTrustFlag | admin, attorney, staff, accountant | trust:read |
 | trust-flags | `POST` | `/api/v1/trust-flags/{trust_flag_id}/resolve` | `resolveTrustFlag` | required:resolveTrustFlag | admin, attorney | trust:write |
-| trust-replenishment | `GET` | `/api/v1/trust-replenishment-requests` | `listTrustReplenishment` | required:listTrustReplenishment | admin, attorney, staff, accountant | trust:read |
+| trust-replenishment | `GET` | `/api/v1/trust-replenishment-requests` | `listTrustReplenishment` | required:listTrustReplenishment | admin, attorney, staff, accountant, client | trust:read |
 | trust-replenishment | `POST` | `/api/v1/trust-replenishment-requests` | `createTrustReplenishment` | required:createTrustReplenishment | admin, attorney, staff | trust:write |
-| trust-replenishment | `GET` | `/api/v1/trust-replenishment-requests/{replenishment_id}` | `getTrustReplenishment` | required:getTrustReplenishment | admin, attorney, staff, accountant | trust:read |
+| trust-replenishment | `GET` | `/api/v1/trust-replenishment-requests/{replenishment_id}` | `getTrustReplenishment` | required:getTrustReplenishment | admin, attorney, staff, accountant, client | trust:read |
 | trust-replenishment, bulk | `POST` | `/api/v1/trust-replenishment-requests:bulk` | `bulkTrustReplenishment` | required:bulkTrustReplenishment | admin, attorney, staff | trust:write |
 | trust-replenishment | `POST` | `/api/v1/trust-replenishment-requests/{replenishment_id}/cancel` | `cancelTrustReplenishment` | required:cancelTrustReplenishment | admin, attorney, staff | trust:write |
 | trust-replenishment | `POST` | `/api/v1/trust-replenishment-requests/{replenishment_id}/satisfy` | `satisfyTrustReplenishment` | required:satisfyTrustReplenishment | admin, attorney, staff | trust:write |
@@ -328,6 +346,7 @@ It does not claim the handlers or the MCP server are implemented.
 | doc-tender | `GET` | `/api/v1/doc-tender/naming` | `getDocTenderNaming` | required:getDocTenderNaming | admin, attorney, staff | doc_tender:read |
 | doc-tender | `PUT` | `/api/v1/doc-tender/naming` | `putDocTenderNaming` | required:putDocTenderNaming | admin | doc_tender:write |
 | search | `GET` | `/api/v1/search` | `search` | required:search | admin, attorney, staff | search:use |
+| nav, client-portal | `GET` | `/api/v1/nav/client-context` | `getClientNavContext` | required:getClientNavContext | client | profile:read |
 | nav | `GET` | `/api/v1/nav/context` | `getNavContext` | required:getNavContext | admin, attorney, staff, accountant | profile:read |
 | notifications | `GET` | `/api/v1/notifications` | `listNotification` | required:listNotification | admin, attorney, staff, accountant, client | notifications:read |
 | notifications | `POST` | `/api/v1/notifications` | `createNotification` | required:createNotification | admin, attorney, staff | notifications:write |
@@ -397,6 +416,9 @@ It does not claim the handlers or the MCP server are implemented.
 | ai | `GET` | `/api/v1/ai/calls` | `listAiCalls` | required:listAiCalls | admin | ai:admin |
 | mail | `PUT` | `/api/v1/mail/smtp-password` | `putSmtpPassword` | required:putSmtpPassword | admin | settings:write |
 | mail | `POST` | `/api/v1/mail/test` | `testMail` | required:testMail | admin | settings:write |
+| mail | `POST` | `/api/v1/mail/messages` | `sendModuleMail` | required:sendModuleMail | public | mail:send |
+| mail | `POST` | `/api/v1/mail/matches` | `matchMail` | required:matchMail | admin, attorney, staff | matters:read, contacts:read |
+| mail | `POST` | `/api/v1/mail/filing-grants` | `issueMailFilingGrant` | required:issueMailFilingGrant | public | notes:write, files:write |
 | problem-reports | `GET` | `/api/v1/problem-reports` | `listProblemReport` | required:listProblemReport | admin | settings:read |
 | problem-reports | `POST` | `/api/v1/problem-reports` | `createProblemReport` | required:createProblemReport | admin, attorney, staff, accountant | profile:write |
 | problem-reports | `GET` | `/api/v1/problem-reports/{problem_report_id}` | `getProblemReport` | required:getProblemReport | admin | settings:read |
@@ -428,6 +450,13 @@ It does not claim the handlers or the MCP server are implemented.
 | modules | `POST` | `/api/v1/modules/{module_id}/update` | `updateModule` | required:updateModule | admin | modules:write |
 | modules | `GET` | `/api/v1/modules/{module_id}/settings` | `getModuleSettings` | required:getModuleSettings | admin | modules:read |
 | modules | `PUT` | `/api/v1/modules/{module_id}/settings` | `putModuleSettings` | required:putModuleSettings | admin | modules:write |
+| modules, profile | `POST` | `/api/v1/me/module-devices` | `createModuleDeviceGrant` | required:createModuleDeviceGrant | admin, attorney, staff | none |
+| modules, profile | `GET` | `/api/v1/me/module-devices` | `listModuleDeviceGrants` | required:listModuleDeviceGrants | admin, attorney, staff | profile:read |
+| modules, profile | `DELETE` | `/api/v1/me/module-devices/{device_id}` | `revokeModuleDeviceGrant` | required:revokeModuleDeviceGrant | admin, attorney, staff | profile:write |
+| modules | `POST` | `/api/v1/modules/{module_id}/device-context-tokens` | `exchangeModuleDeviceGrant` | required:exchangeModuleDeviceGrant | public | modules:read |
+| modules | `PUT` | `/api/v1/modules/{module_id}/secrets/{name}` | `putModuleSecret` | required:putModuleSecret | public | module_secrets:write |
+| modules | `GET` | `/api/v1/modules/{module_id}/secrets/{name}` | `getModuleSecret` | required:getModuleSecret | public | module_secrets:write |
+| modules | `DELETE` | `/api/v1/modules/{module_id}/secrets/{name}` | `deleteModuleSecret` | required:deleteModuleSecret | public | module_secrets:write |
 | modules | `POST` | `/api/v1/modules/{module_id}/context-tokens` | `createModuleContextToken` | required:createModuleContextToken | admin, attorney, staff, accountant, client | modules:read |
 | marketplace | `GET` | `/api/v1/marketplace/listings` | `listMarketplaceListings` | required:listMarketplaceListings | admin | modules:read |
 | marketplace | `GET` | `/api/v1/marketplace/listings/{listing_id}` | `getMarketplaceListing` | required:getMarketplaceListing | admin | modules:read |
@@ -440,5 +469,6 @@ It does not claim the handlers or the MCP server are implemented.
 | modules | `DELETE` | `/api/v1/trusted-signing-keys/{key_id}` | `deleteTrustedKey` | required:deleteTrustedKey | admin | modules:write |
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
+| modules, inbound-webhooks | `POST` | `/hooks/{module_id}/{hook_id}` | `postInboundWebhook` | required:postInboundWebhook | public | none |
 
-Operations: 435.
+Operations: 465.

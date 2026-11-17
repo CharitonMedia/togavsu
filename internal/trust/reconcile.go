@@ -96,7 +96,7 @@ func (s *Service) ReconcileBulk(ctx context.Context, who domain.Principal, items
 	if err != nil {
 		return nil, err
 	}
-	s.publish(ctx, joined, events)
+	s.publish(ctx, joined, stampActors(who, events))
 	return out, nil
 }
 

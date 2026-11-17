@@ -18,23 +18,26 @@ const (
 )
 
 // ActorSource names where a write came from. System is reserved for the job runner.
+// Service is a module's own token with no viewer (CORE-01 service call).
 type ActorSource string
 
 const (
 	SourceUI       ActorSource = "ui"
 	SourceAPIToken ActorSource = "api_token"
 	SourceModule   ActorSource = "module"
+	SourceService  ActorSource = "service"
 	SourceSystem   ActorSource = "system"
 )
 
 // Principal is the authenticated caller. Handlers build it; services receive it.
 type Principal struct {
-	UserID    ID
-	Roles     []Role
-	Source    ActorSource
-	SessionID ID
-	TokenID   ID
-	ModuleID  string
+	UserID             ID
+	Roles              []Role
+	Source             ActorSource
+	SessionID          ID
+	TokenID            ID
+	ModuleID           string
+	MustChangePassword bool // CORE-14: client must change a temporary password before other API use.
 }
 
 // ErrRole is returned when a role list is empty or contains an unknown role.

@@ -18,42 +18,44 @@ func replaceIn(f map[string][]byte, name, old, new string) {
 }
 
 // waiting is the sample module with parts the core doesn't accept yet: an unknown
-// top-level block, sidebar keys (one of them an item's first key), unknown scopes, and a
-// migration at the end that links to a core table modules can't link to yet.
+// top-level block, a sidebar section value the core rejects, an unknown scope, and a
+// migration that links to a core table modules can't link to yet. notifications,
+// inbound_webhooks and books:read are accepted (CORE-03, CORE-07, CORE-02) and listed
+// pending only to show unused accepted parts.
 func waiting(t *testing.T) map[string][]byte {
 	t.Helper()
 	return edit(sample(t), func(f map[string][]byte) {
 		m := modulekit.ManifestFile
-		replaceIn(f, m, "tabs:\n", "notifications:\n  - kind: hours_low\n    label: Hours below target\nsidebar:\n  - section: time\n    id: clock\n    title: Matter Clock\n    path: /tab\n    icon: clock\ntabs:\n")
-		replaceIn(f, m, "permissions:\n", "permissions:\n  - scope: books:read\n    reason: Read the books.\n")
+		replaceIn(f, m, "tabs:\n", "notifications:\n  - kind: hours_low\n    label: Hours below target\n    default_channels: [in_app, email]\ninbound_webhooks:\n  - id: pay\n    path: /hook\nsidebar:\n  - section: time\n    id: clock\n    title: Matter Clock\n    path: /tab\n    icon: clock\ntabs:\n")
+		replaceIn(f, m, "permissions:\n", "permissions:\n  - scope: books:read\n    reason: Read the books.\n  - scope: not_a_real_scope:read\n    reason: Fake.\n")
 		replaceIn(f, m, "  - scope: events:read\n", "  - scope: firm:read\n    reason: Read the firm name.\n  - scope: events:read\n")
-		f["migrations/0002_trust_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN trust_account_id TEXT REFERENCES core.trust_accounts (id) ON DELETE RESTRICT;\n")
+		f["migrations/0002_books_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN books_ledger_id TEXT REFERENCES core.books_ledgers (id) ON DELETE RESTRICT;\n")
 		f[modulekit.PendingFile] = []byte(`# Parts that wait on a core change.
 pending:
   - field: notifications
     core: CORE-03
     reason: Tell the attorney when a matter falls behind.
+  - field: inbound_webhooks
+    core: CORE-07
+    reason: Receive provider webhooks.
   - field: sidebar[*].section
     core: CORE-08
     reason: File the entry under Time.
-  - field: sidebar[].icon
-    core: CORE-08
-    reason: Show a clock in the sidebar.
   - scope: books:read
     core: CORE-02
     reason: Read the books without a viewer.
-  - scope: firm:read
-    core: CORE-18
-    reason: Show the firm name on the tab.
+  - scope: not_a_real_scope:read
+    core: CORE-99
+    reason: A scope the core does not expose.
   - scope: matters:read
     core: CORE-00
     reason: Already in the core, so never held back.
   - field: help.heading
     core: CORE-00
     reason: Accepted, so never held back.
-  - migration: migrations/0002_trust_link.sql
-    core: CORE-22
-    reason: Link a target to its trust account.
+  - migration: migrations/0002_books_link.sql
+    core: CORE-02
+    reason: Link a target to a books ledger the core does not expose yet.
 `)
 	})
 }
@@ -67,12 +69,9 @@ func TestCheckAllReportsEveryRefusal(t *testing.T) {
 	}
 	want := []string{
 		"unknown_file pending.yaml",
-		"unknown_field togavsu-module.yaml notifications",
-		"unknown_field togavsu-module.yaml sidebar[0].icon",
-		"unknown_field togavsu-module.yaml sidebar[0].section",
-		"unknown_scope togavsu-module.yaml permissions[0]",
-		"unknown_scope togavsu-module.yaml permissions[3]",
-		"core_reference migrations/0002_trust_link.sql statement 1",
+		"manifest_invalid togavsu-module.yaml sidebar[0].section",
+		"unknown_scope togavsu-module.yaml permissions[1]",
+		"core_reference migrations/0002_books_link.sql statement 1",
 	}
 	if strings.Join(codes, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("refusals:\n%s\nwant:\n%s", strings.Join(codes, "\n"), strings.Join(want, "\n"))
@@ -86,7 +85,7 @@ func TestCheckAllReportsEveryRefusal(t *testing.T) {
 	if !strings.Contains(all[0].Message, "-installable") {
 		t.Fatalf("the pending list's refusal says how to build: %s", all[0].Message)
 	}
-	if modulekit.Code(err) != "validation" || !strings.Contains(err.Error(), `unknown field "notifications"`) {
+	if modulekit.Code(err) != "validation" || !strings.Contains(err.Error(), "pending.yaml") {
 		t.Fatalf("Code and text: %q %v", modulekit.Code(err), err)
 	}
 	if refs := modulekit.CheckAll(sample(t)); refs != nil {
@@ -100,10 +99,10 @@ func TestScopesAreTheCoresList(t *testing.T) {
 	for _, s := range scopes {
 		has[s] = true
 	}
-	if !has["matters:read"] || !has["events:read"] || has["books:read"] {
+	if !has["matters:read"] || !has["events:read"] || !has["firm:read"] || !has["books:read"] {
 		t.Fatalf("scopes: %v", scopes)
 	}
-	if !modulekit.KnownScope("views:other-module.view:read") || modulekit.KnownScope("firm:read") {
+	if !modulekit.KnownScope("views:other-module.view:read") || !modulekit.KnownScope("firm:read") || !modulekit.KnownScope("books:read") || modulekit.KnownScope("not_a_real_scope:read") {
 		t.Fatal("KnownScope")
 	}
 	a := modulekit.Accepts()
@@ -112,10 +111,10 @@ func TestScopesAreTheCoresList(t *testing.T) {
 	}
 	// Check refuses an unknown scope at package time.
 	unknown := edit(sample(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "permissions:\n", "permissions:\n  - scope: mail:send\n    reason: Send mail.\n")
+		replaceIn(f, modulekit.ManifestFile, "permissions:\n", "permissions:\n  - scope: not_a_real_scope:read\n    reason: Fake.\n")
 	})
 	refs := modulekit.CheckAll(unknown)
-	if len(refs) != 1 || refs[0].Code != modulekit.RefuseUnknownScope || refs[0].Value != "mail:send" || refs[0].Path != "permissions[0]" {
+	if len(refs) != 1 || refs[0].Code != modulekit.RefuseUnknownScope || refs[0].Value != "not_a_real_scope:read" || refs[0].Path != "permissions[0]" {
 		t.Fatalf("unknown scope: %v", refs)
 	}
 }
@@ -131,15 +130,11 @@ func TestInstallableHoldsBackExactlyTheRefusedPendingParts(t *testing.T) {
 	for _, h := range held {
 		got = append(got, h.Pending.Core.String()+" "+h.File+" "+h.Part)
 	}
-	// In the order the parts are written: permissions come before the notifications and
-	// sidebar blocks in the fixture, and an item's section before its icon.
+	// Permissions: books:read is accepted (CORE-02); not_a_real_scope stays held.
 	want := []string{
-		"CORE-02 togavsu-module.yaml permissions[0]",
-		"CORE-18 togavsu-module.yaml permissions[3]",
-		"CORE-03 togavsu-module.yaml notifications",
+		"CORE-99 togavsu-module.yaml permissions[1]",
 		"CORE-08 togavsu-module.yaml sidebar[0].section",
-		"CORE-08 togavsu-module.yaml sidebar[0].icon",
-		"CORE-22 migrations/0002_trust_link.sql migrations/0002_trust_link.sql",
+		"CORE-02 migrations/0002_books_link.sql migrations/0002_books_link.sql",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("held:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -147,23 +142,23 @@ func TestInstallableHoldsBackExactlyTheRefusedPendingParts(t *testing.T) {
 	if _, ok := out[modulekit.PendingFile]; ok {
 		t.Fatal("the pending list ships")
 	}
-	if _, ok := out["migrations/0002_trust_link.sql"]; ok {
+	if _, ok := out["migrations/0002_books_link.sql"]; ok {
 		t.Fatal("the held migration ships")
 	}
 	m, err := modulekit.ParseManifest(out[modulekit.ManifestFile])
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The accepted parts stay: the sidebar entry without its pending keys, matters:read,
-	// the help heading; the manifest keeps its comments.
-	if len(m.Sidebar) != 1 || m.Sidebar[0].ID != "clock" || m.Help.Heading != "Matter Clock" || strings.Join(m.Scopes(), " ") != "events:read matters:read time:read" {
+	// Accepted parts stay: notifications (CORE-03), inbound_webhooks (CORE-07), sidebar
+	// without the bad section, firm:read, help heading; the manifest keeps its comments.
+	if len(m.Notifications) != 1 || m.Notifications[0].Kind != "hours_low" || len(m.InboundWebhooks) != 1 || m.InboundWebhooks[0].ID != "pay" || len(m.Sidebar) != 1 || m.Sidebar[0].ID != "clock" || m.Sidebar[0].Section != "" || m.Help.Heading != "Matter Clock" || strings.Join(m.Scopes(), " ") != "books:read events:read firm:read matters:read time:read" {
 		t.Fatalf("installable manifest: %+v", m)
 	}
 	if !strings.HasPrefix(string(out[modulekit.ManifestFile]), "# Matter Clock: the sample module") {
 		t.Fatal("comments lost")
 	}
-	if !strings.Contains(held[4].String(), "waits on CORE-08: Show a clock in the sidebar.") || !strings.Contains(held[0].String(), "(scope books:read)") {
-		t.Fatalf("held lines: %s / %s", held[4], held[0])
+	if !strings.Contains(held[1].String(), "waits on CORE-08:") || !strings.Contains(held[0].String(), "(scope not_a_real_scope:read)") {
+		t.Fatalf("held lines: %s / %s", held[1], held[0])
 	}
 	entries, err := modulekit.ParsePending(files[modulekit.PendingFile])
 	if err != nil {
@@ -173,7 +168,7 @@ func TestInstallableHoldsBackExactlyTheRefusedPendingParts(t *testing.T) {
 	for _, e := range modulekit.Unused(entries, held) {
 		unused = append(unused, e.Part())
 	}
-	if strings.Join(unused, ", ") != "scope matters:read, field help.heading" {
+	if strings.Join(unused, ", ") != "field notifications, field inbound_webhooks, scope books:read, scope matters:read, field help.heading" {
 		t.Fatalf("unused: %v", unused)
 	}
 	// Installable returns the parsed list and the same unused entries.
@@ -184,7 +179,7 @@ func TestInstallableHoldsBackExactlyTheRefusedPendingParts(t *testing.T) {
 	if len(ip.Pending) != len(entries) || strings.Join(fromIP, ", ") != strings.Join(unused, ", ") {
 		t.Fatalf("Installable's pending %d and unused %v", len(ip.Pending), fromIP)
 	}
-	if refs := ip.UnusedRefusals(); len(refs) != 2 || refs[0].Code != modulekit.RefusePendingUnused || refs[0].Value != "scope matters:read" {
+	if refs := ip.UnusedRefusals(); len(refs) != 5 || refs[0].Code != modulekit.RefusePendingUnused || refs[0].Value != "field notifications" {
 		t.Fatalf("UnusedRefusals: %v", refs)
 	}
 	// The result passes Check, Build signs it, and the core's whole check verifies it.
@@ -209,8 +204,7 @@ func TestInstallableHoldsBackExactlyTheRefusedPendingParts(t *testing.T) {
 func TestInstallableKeepsWhatTheCoreAccepts(t *testing.T) {
 	// A pending part the core now accepts is kept, with no edit to the pending list.
 	files := edit(waiting(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "  - scope: books:read\n    reason: Read the books.\n", "")
-		replaceIn(f, modulekit.ManifestFile, "    icon: clock\n", "")
+		replaceIn(f, modulekit.ManifestFile, "  - scope: not_a_real_scope:read\n    reason: Fake.\n", "")
 	})
 	ip, err := modulekit.Installable(files)
 	if err != nil {
@@ -218,32 +212,37 @@ func TestInstallableKeepsWhatTheCoreAccepts(t *testing.T) {
 	}
 	held := ip.Held
 	for _, h := range held {
-		if h.Pending.Scope == "books:read" || h.Pending.Field == "sidebar[].icon" {
+		if h.Pending.Scope == "not_a_real_scope:read" {
 			t.Fatalf("held a part the package no longer has: %s", h)
 		}
 	}
-	if len(held) != 4 {
+	if len(held) != 2 {
 		t.Fatalf("held: %v", held)
+	}
+	raw := string(ip.Files[modulekit.ManifestFile])
+	if raw == "" || !strings.Contains(raw, "hours_low") || !strings.Contains(raw, "inbound_webhooks") || !strings.Contains(raw, "books:read") {
+		t.Fatal("accepted notifications, inbound_webhooks or books:read were dropped")
 	}
 }
 
 func TestInstallableRefusesWhatNoEntryCovers(t *testing.T) {
 	files := edit(waiting(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "  events: /events\n", "  events: /events\n  system_mail: true\n")
-		replaceIn(f, modulekit.ManifestFile, "permissions:\n", "permissions:\n  - scope: mail:send\n    reason: Send mail.\n")
+		replaceIn(f, modulekit.ManifestFile, "tabs:\n", "not_a_real_manifest_field: true\ntabs:\n")
+		replaceIn(f, modulekit.ManifestFile, "permissions:\n", "permissions:\n  - scope: another_fake:read\n    reason: Fake.\n")
 	})
 	_, err := modulekit.Installable(files)
 	var refs modulekit.Refusals
 	if !errors.As(err, &refs) || len(refs) != 2 {
-		t.Fatalf("uncovered: %v", err)
+		t.Fatalf("uncovered: %v", refs)
 	}
-	if refs[0].Path != "container.system_mail" || refs[1].Value != "mail:send" {
+	if refs[0].Path != "not_a_real_manifest_field" || refs[1].Value != "another_fake:read" {
 		t.Fatalf("uncovered: %v", refs)
 	}
 	// A held-back part whose removal breaks what is left is refused, not shipped broken:
 	// the held migration creates the table a declared extension needs.
 	broken := edit(waiting(t), func(f map[string][]byte) {
-		f["migrations/0002_trust_link.sql"] = []byte("CREATE TABLE trust_links (matter_id TEXT PRIMARY KEY REFERENCES core.matters (id) ON DELETE RESTRICT, account_id TEXT REFERENCES core.trust_accounts (id) ON DELETE RESTRICT);\n")
+		f["migrations/0002_books_link.sql"] = []byte("CREATE TABLE trust_links (matter_id TEXT PRIMARY KEY REFERENCES core.matters (id) ON DELETE RESTRICT, account_id TEXT);\n" +
+			"ALTER TABLE matter_targets ADD COLUMN books_ledger_id TEXT REFERENCES core.books_ledgers (id) ON DELETE RESTRICT;\n")
 		replaceIn(f, modulekit.ManifestFile, "  views:\n", "    - name: links\n      record: matter\n      table: trust_links\n      key: matter_id\n      columns:\n        - name: account_id\n  views:\n")
 	})
 	_, err = modulekit.Installable(broken)
@@ -258,7 +257,7 @@ func TestInstallableHoldsMigrationsAtTheEnd(t *testing.T) {
 	})
 	_, err := modulekit.Installable(files)
 	var refs modulekit.Refusals
-	if !errors.As(err, &refs) || len(refs) != 1 || refs[0].Code != modulekit.RefusePendingOrder || refs[0].File != "migrations/0002_trust_link.sql" {
+	if !errors.As(err, &refs) || len(refs) != 1 || refs[0].Code != modulekit.RefusePendingOrder || refs[0].File != "migrations/0002_books_link.sql" {
 		t.Fatalf("held migration before an installed one: %v", err)
 	}
 }
@@ -289,13 +288,13 @@ func TestParsePending(t *testing.T) {
 func TestBuildChecks(t *testing.T) {
 	_, priv := key(t)
 	unknown := edit(sample(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "tabs:\n", "notifications:\n  - kind: a\ntabs:\n")
+		replaceIn(f, modulekit.ManifestFile, "tabs:\n", "payment_processor:\n  destinations: [operating]\ntabs:\n")
 	})
 	if signed, err := modulekit.Build(priv, unknown); err == nil || signed != nil || modulekit.Code(err) != "validation" {
 		t.Fatalf("Build signed an unknown field: %v", err)
 	}
 	scope := edit(sample(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "permissions:\n", "permissions:\n  - scope: books:read\n    reason: r\n")
+		replaceIn(f, modulekit.ManifestFile, "permissions:\n", "permissions:\n  - scope: not_a_real_scope:read\n    reason: r\n")
 	})
 	if _, err := modulekit.Build(priv, scope); err == nil {
 		t.Fatal("Build signed an unknown scope")
@@ -337,7 +336,7 @@ func TestCheckUpdateReadsWhatShipped(t *testing.T) {
 	}
 	// The held migration never shipped, so it may change, or ship now.
 	if err := modulekit.CheckUpdate(shipped, next(func(m map[string][]byte) {
-		m["migrations/0002_trust_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN trust_note TEXT REFERENCES core.trust_accounts (id) ON DELETE RESTRICT;\n")
+		m["migrations/0002_books_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN trust_note TEXT REFERENCES core.trust_accounts (id) ON DELETE RESTRICT;\n")
 	})); err != nil {
 		t.Fatalf("changed held migration: %v", err)
 	}
@@ -370,7 +369,7 @@ func TestThePackageFileSetIsExplicit(t *testing.T) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	if strings.Join(names, " ") != "migrations/0001_matter_targets.sql migrations/0002_trust_link.sql pending.yaml togavsu-module.yaml" {
+	if strings.Join(names, " ") != "migrations/0001_matter_targets.sql migrations/0002_books_link.sql pending.yaml togavsu-module.yaml" {
 		t.Fatalf("package files: %v", names)
 	}
 	extra := edit(sample(t), func(f map[string][]byte) { f["files.go"] = []byte("package pkgfiles\n") })
@@ -393,7 +392,7 @@ func TestThePackageFileSetIsExplicit(t *testing.T) {
 
 func TestUncoveredRefusalsSaySo(t *testing.T) {
 	files := edit(waiting(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "  events: /events\n", "  events: /events\n  system_mail: true\n")
+		replaceIn(f, modulekit.ManifestFile, "  events: /events\n", "  events: /events\n  mystery_hook: /x\n")
 	})
 	_, err := modulekit.Installable(files)
 	var refs modulekit.Refusals
@@ -411,7 +410,7 @@ func TestUncoveredRefusalsSaySo(t *testing.T) {
 // Every refused manifest value is reported, not only the first.
 func TestCheckAllReportsEveryRefusedValue(t *testing.T) {
 	files := edit(sample(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "    placement: matter\n", "    placement: client\n")
+		replaceIn(f, modulekit.ManifestFile, "    placement: matter\n", "    placement: desk\n")
 		replaceIn(f, modulekit.ManifestFile, "    type: int\n", "    type: number\n")
 		replaceIn(f, modulekit.ManifestFile, "  - time_entry.*\n", "  - Time Entry\n")
 	})
@@ -429,12 +428,12 @@ func TestCheckAllReportsEveryRefusedValue(t *testing.T) {
 // manifest as written, however many items before them are held back.
 func TestPendingPathsNameTheManifestAsWritten(t *testing.T) {
 	clientTabs := func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "help:\n", "  - id: pay\n    title: Pay\n    placement: client\n    path: /pay\n"+
-			"  # The client's signing tab.\n  - id: sign\n    title: Sign\n    placement: client\n    path: /sign\n"+
-			"  - id: account\n    title: Account\n    placement: client\n    path: /account\nhelp:\n")
+		replaceIn(f, modulekit.ManifestFile, "help:\n", "  - id: pay\n    title: Pay\n    placement: desk\n    path: /pay\n"+
+			"  # The client's signing tab.\n  - id: sign\n    title: Sign\n    placement: desk\n    path: /sign\n"+
+			"  - id: account\n    title: Account\n    placement: desk\n    path: /account\nhelp:\n")
 	}
 	for name, pending := range map[string]string{
-		"selector": "pending:\n  - field: tabs[placement=client]\n    core: CORE-10\n    reason: Client tabs.\n",
+		"selector": "pending:\n  - field: tabs[placement=desk]\n    core: CORE-10\n    reason: Client tabs.\n",
 		"indexes": "pending:\n  - field: tabs[2]\n    core: CORE-10\n    reason: Pay.\n  - field: tabs[3]\n    core: CORE-10\n    reason: Sign.\n" +
 			"  - field: tabs[4]\n    core: CORE-10\n    reason: Account.\n",
 		"ids": "pending:\n  - field: tabs[id=pay]\n    core: CORE-10\n    reason: Pay.\n  - field: tabs[id=sign]\n    core: CORE-10\n    reason: Sign.\n" +
@@ -480,30 +479,31 @@ func TestPendingPathsNameTheManifestAsWritten(t *testing.T) {
 
 func TestHeldPartsTakeTheirOwnComments(t *testing.T) {
 	files := edit(waiting(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "  - scope: books:read\n", "  # CORE-02: the books, with no one signed in.\n  - scope: books:read\n")
+		replaceIn(f, modulekit.ManifestFile, "  - scope: not_a_real_scope:read\n", "  # CORE-99: a fake scope.\n  - scope: not_a_real_scope:read\n")
 	})
 	ip, err := modulekit.Installable(files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(ip.Files[modulekit.ManifestFile]), "CORE-02") {
+	if strings.Contains(string(ip.Files[modulekit.ManifestFile]), "CORE-99") {
 		t.Fatalf("the held scope's comment stayed:\n%s", ip.Files[modulekit.ManifestFile])
 	}
 }
 
 func TestPendingCoreIsOneItemOrAList(t *testing.T) {
 	files := edit(waiting(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.PendingFile, "    core: CORE-22\n", "    core: [CORE-22, CORE-24]\n")
+		replaceIn(f, modulekit.PendingFile, "    core: CORE-02\n    reason: Link a target to a books ledger the core does not expose yet.\n",
+			"    core: [CORE-02, CORE-24]\n    reason: Link a target to a books ledger the core does not expose yet.\n")
 	})
 	ip, err := modulekit.Installable(files)
 	if err != nil {
 		t.Fatal(err)
 	}
 	last := ip.Held[len(ip.Held)-1]
-	if strings.Join(last.Pending.Core, ",") != "CORE-22,CORE-24" || !strings.Contains(last.String(), "waits on CORE-22 and CORE-24: ") {
+	if strings.Join(last.Pending.Core, ",") != "CORE-02,CORE-24" || !strings.Contains(last.String(), "waits on CORE-02 and CORE-24: ") {
 		t.Fatalf("core list: %v %s", last.Pending.Core, last)
 	}
-	if ip.Held[0].Pending.Core.String() != "CORE-02" {
+	if ip.Held[0].Pending.Core.String() != "CORE-99" {
 		t.Fatalf("one item: %v", ip.Held[0].Pending.Core)
 	}
 	for _, bad := range []string{"core: []", "core: {a: b}"} {
@@ -523,13 +523,13 @@ func TestPendingEntriesCoverOnlyTheirKind(t *testing.T) {
 		why  string
 	}{
 		"another statement in a held migration": {func(f map[string][]byte) {
-			f["migrations/0002_trust_link.sql"] = append(f["migrations/0002_trust_link.sql"], []byte("CREATE TABLE public.leak (id TEXT);\n")...)
+			f["migrations/0002_books_link.sql"] = append(f["migrations/0002_books_link.sql"], []byte("CREATE TABLE public.leak (id TEXT);\n")...)
 		}, modulekit.RefuseStatement, "a migration entry holds back only the file's references to core relations"},
 		"a second problem in the held statement": {func(f map[string][]byte) {
-			replaceIn(f, "migrations/0002_trust_link.sql", "ON DELETE RESTRICT", "ON DELETE CASCADE")
-		}, modulekit.RefuseStatement, "held back for CORE-22, but refused even once the core relations it references exist"},
+			replaceIn(f, "migrations/0002_books_link.sql", "ON DELETE RESTRICT", "ON DELETE CASCADE")
+		}, modulekit.RefuseStatement, "held back for CORE-02, but refused even once the core relations it references exist"},
 		"a scope named by a field entry": {func(f map[string][]byte) {
-			replaceIn(f, modulekit.PendingFile, "  - scope: books:read\n", "  - field: permissions[0]\n")
+			replaceIn(f, modulekit.PendingFile, "  - scope: not_a_real_scope:read\n", "  - field: permissions[1]\n")
 		}, modulekit.RefuseUnknownScope, "name the scope in a scope entry"},
 	} {
 		_, err := modulekit.Installable(edit(waiting(t), tc.edit))
@@ -554,7 +554,7 @@ func TestHoldingBackARequiredValueFailsClosed(t *testing.T) {
 		part string
 	}{
 		"a tab's placement": {func(f map[string][]byte) {
-			replaceIn(f, modulekit.ManifestFile, "    placement: matter\n", "    placement: client\n")
+			replaceIn(f, modulekit.ManifestFile, "    placement: matter\n", "    placement: desk\n")
 			f[modulekit.PendingFile] = []byte("pending:\n  - field: tabs[1].placement\n    core: CORE-10\n    reason: A client tab.\n")
 		}, "tabs[1].placement"},
 		"the version": {func(f map[string][]byte) {
@@ -575,7 +575,7 @@ func TestHoldingBackARequiredValueFailsClosed(t *testing.T) {
 	}
 	// Holding back the whole tab works.
 	files := edit(sample(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "    placement: matter\n", "    placement: client\n")
+		replaceIn(f, modulekit.ManifestFile, "    placement: matter\n", "    placement: desk\n")
 		f[modulekit.PendingFile] = []byte("pending:\n  - field: tabs[1]\n    core: CORE-10\n    reason: A client tab.\n")
 	})
 	if ip, err := modulekit.Installable(files); err != nil || len(ip.Held) != 1 || ip.Held[0].Part != "tabs[1]" {
@@ -588,9 +588,9 @@ func TestHoldingBackARequiredValueFailsClosed(t *testing.T) {
 // tabs[3], tabs[4], tabs[5], tabs[2], tabs[6].
 func TestHeldPartsComeInManifestOrder(t *testing.T) {
 	files := edit(waiting(t), func(f map[string][]byte) {
-		replaceIn(f, modulekit.ManifestFile, "help:\n", "  - id: pay\n    title: Pay\n    placement: client\n    path: /pay\n"+
-			"  - id: sign\n    title: Sign\n    placement: matter\n    path: /sign\n    nav: client\n"+
-			"  - id: account\n    title: Account\n    placement: client\n    path: /account\nhelp:\n")
+		replaceIn(f, modulekit.ManifestFile, "help:\n", "  - id: pay\n    title: Pay\n    placement: desk\n    path: /pay\n"+
+			"  - id: sign\n    title: Sign\n    placement: desk\n    path: /sign\n"+
+			"  - id: account\n    title: Account\n    placement: desk\n    path: /account\nhelp:\n")
 		replaceIn(f, modulekit.PendingFile, "pending:\n", "pending:\n  - field: tabs[2]\n    core: CORE-10\n    reason: Pay.\n"+
 			"  - field: tabs[3]\n    core: CORE-10\n    reason: Sign.\n  - field: tabs[4]\n    core: CORE-10\n    reason: Account.\n")
 	})
@@ -607,7 +607,7 @@ func TestHeldPartsComeInManifestOrder(t *testing.T) {
 	for _, h := range ip.Held {
 		got = append(got, h.Part)
 	}
-	want := "permissions[0] permissions[3] notifications sidebar[0].section sidebar[0].icon tabs[2] tabs[3] tabs[4] migrations/0002_trust_link.sql"
+	want := "permissions[1] sidebar[0].section tabs[2] tabs[3] tabs[4] migrations/0002_books_link.sql"
 	if strings.Join(got, " ") != want {
 		t.Fatalf("held in order:\n%s\nwant:\n%s", strings.Join(got, " "), want)
 	}
@@ -631,7 +631,7 @@ func TestCoreItemsHas(t *testing.T) {
 
 func TestWritePendingReadsBack(t *testing.T) {
 	entries := []modulekit.Pending{
-		{Field: "tabs[placement=client]", Core: modulekit.CoreItems{"CORE-10"}, Reason: "The client tabs (Dashboard, Documents), framed in the portal."},
+		{Field: "tabs[placement=desk]", Core: modulekit.CoreItems{"CORE-10"}, Reason: "The client tabs (Dashboard, Documents), framed in the portal."},
 		{Field: `tabs[title="Pay now"]`, Core: modulekit.CoreItems{"CORE-10", "CORE-12"}, Reason: "Pay: the client's invoice # and amount."},
 		{Scope: "books:read", Core: modulekit.CoreItems{"CORE-02"}, Reason: "true"},
 		{Migration: "migrations/0004_trust_bank_map.sql", Core: modulekit.CoreItems{"CORE-22"}, Reason: "Map each trust account to its bank account: "},
@@ -654,7 +654,7 @@ func TestWritePendingReadsBack(t *testing.T) {
 		}
 	}
 	// Plain where that reads back, so the file stays readable.
-	if !strings.Contains(string(src), "  - field: tabs[placement=client]\n    core: CORE-10\n") || !strings.Contains(string(src), "core: [CORE-10, CORE-12]") {
+	if !strings.Contains(string(src), "  - field: tabs[placement=desk]\n    core: CORE-10\n") || !strings.Contains(string(src), "core: [CORE-10, CORE-12]") {
 		t.Fatalf("not plain:\n%s", src)
 	}
 	// What ParsePending refuses, WritePending refuses.

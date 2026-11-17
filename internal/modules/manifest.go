@@ -16,28 +16,55 @@ const ManifestFile = "togavsu-module.yaml"
 
 // Manifest is togavsu-module.yaml (PRD 9.2).
 type Manifest struct {
-	ID          string        `json:"id"`
-	Name        string        `json:"name"`
-	Version     string        `json:"version"`
-	Author      string        `json:"author"`
-	Homepage    string        `json:"homepage"`
-	License     string        `json:"license"`
-	Price       string        `json:"price"`
-	Container   Container     `json:"container"`
-	Permissions []Permission  `json:"permissions"`
-	Widgets     []Widget      `json:"widgets"`
-	Help        HelpGuide     `json:"help"`
-	Tabs        []Tab         `json:"tabs"`
-	MatterItems []MatterItem  `json:"matter_items"`
-	Sidebar     []Link        `json:"sidebar"`
-	QuickCreate []Link        `json:"quick_create"`
-	Search      []Link        `json:"search_scopes"`
-	Events      []string      `json:"events"`
-	Emits       []string      `json:"emits"`
-	Data        Data          `json:"data"`
-	Replaces    string        `json:"replaces"`
-	Settings    []SettingSpec `json:"settings"`
-	AITasks     []AITask      `json:"ai_tasks"`
+	ID              string             `json:"id"`
+	Name            string             `json:"name"`
+	Version         string             `json:"version"`
+	Author          string             `json:"author"`
+	Homepage        string             `json:"homepage"`
+	License         string             `json:"license"`
+	Price           string             `json:"price"`
+	Container       Container          `json:"container"`
+	Permissions     []Permission       `json:"permissions"`
+	Widgets         []Widget           `json:"widgets"`
+	Help            HelpGuide          `json:"help"`
+	Tabs            []Tab              `json:"tabs"`
+	MatterItems     []MatterItem       `json:"matter_items"`
+	Sidebar         []Link             `json:"sidebar"`
+	QuickCreate     []Link             `json:"quick_create"`
+	Search          []Link             `json:"search_scopes"`
+	Notifications   []NotificationKind `json:"notifications"`
+	InboundWebhooks []InboundWebhook   `json:"inbound_webhooks"`
+	// ClientHome names one of this module's client tabs as the portal landing tab (CORE-10).
+	ClientHome string `json:"client_home"`
+	// DeviceConnect is the module path the device-connect page redirects to with #grant= (CORE-28).
+	DeviceConnect string `json:"device_connect"`
+	// PaymentProcessor registers this module as a payment processor (CORE-23).
+	PaymentProcessor *PaymentProcessor `json:"payment_processor"`
+	Events           []string          `json:"events"`
+	Emits            []string          `json:"emits"`
+	Data             Data              `json:"data"`
+	Replaces         string            `json:"replaces"`
+	Settings         []SettingSpec     `json:"settings"`
+	AITasks          []AITask          `json:"ai_tasks"`
+}
+
+// PaymentProcessor is manifest payment_processor: destinations the module may charge (CORE-23).
+type PaymentProcessor struct {
+	Destinations []string `json:"destinations"`
+}
+
+// NotificationKind is one module notification kind (CORE-03). The core names it
+// {module_id}.{kind} in preferences and createNotification.
+type NotificationKind struct {
+	Kind            string   `json:"kind"`
+	Label           string   `json:"label"`
+	DefaultChannels []string `json:"default_channels"`
+}
+
+// InboundWebhook is one provider webhook at POST /hooks/{module_id}/{id} (CORE-07).
+type InboundWebhook struct {
+	ID   string `json:"id"`
+	Path string `json:"path"`
 }
 
 // Container is the image the supervisor runs, pinned by digest.
@@ -47,6 +74,8 @@ type Container struct {
 	Port   int    `json:"port"`
 	// Events is the path on the module that receives signed event webhooks.
 	Events string `json:"events"`
+	// SystemMail is the module path that receives core system mail (CORE-05).
+	SystemMail string `json:"system_mail"`
 }
 
 // Permission is one requested API scope. Required defaults to true.
@@ -98,14 +127,21 @@ type HelpPage struct {
 	Covers   []string `json:"covers"`
 }
 
-// Tab is a home-screen or matter-screen tab the module serves.
+// Tab is a home, matter or client tab the module serves (CORE-10 adds client).
 type Tab struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
-	// Placement is "home" or "matter".
+	// Placement is "home", "matter" or "client".
 	Placement string `json:"placement"`
 	Path      string `json:"path"`
+	// Params lists query parameters the core passes through to the module page.
+	Params []string `json:"params"`
+	// Nav keeps a client tab out of portal navigation when false (default true).
+	Nav *bool `json:"nav"`
 }
+
+// TabNav reports whether the tab appears in client portal navigation (default true).
+func (t Tab) TabNav() bool { return t.Nav == nil || *t.Nav }
 
 // MatterItem is a matter-screen panel or action.
 type MatterItem struct {
@@ -116,10 +152,23 @@ type MatterItem struct {
 }
 
 // Link is a sidebar entry, quick-create item or search scope.
+// Section, Subgroup, Icon, Order and Badge are CORE-08 sidebar placement fields;
+// they apply only to sidebar entries (validated in Validate).
 type Link struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Path  string `json:"path"`
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Path     string `json:"path"`
+	Section  string `json:"section,omitempty"`
+	Subgroup string `json:"subgroup,omitempty"`
+	Icon     string `json:"icon,omitempty"`
+	Order    *int   `json:"order,omitempty"`
+	Badge    *Badge `json:"badge,omitempty"`
+}
+
+// Badge is a sidebar count the core fetches from the module (CORE-08).
+type Badge struct {
+	Path string `json:"path"`
+	Tone string `json:"tone"`
 }
 
 // Data is the module's database extension (PRD 9.9).
@@ -194,6 +243,8 @@ var (
 	eventRe   = regexp.MustCompile(`^[a-z_]+\.([a-z_]+|\*)$`)
 	digestRe  = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	versionRe = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$`)
+	// notifyKind is CORE-03: short kind in the manifest before the module id is prefixed.
+	notifyKind = regexp.MustCompile(`^[a-z][a-z0-9_]{0,47}$`)
 )
 
 // forbiddenScopes are scopes a module can't hold: they would let it mint tokens, approve
@@ -206,6 +257,9 @@ var coreRecords = map[string]string{
 	"payment": "payments", "time_entry": "time_entries", "expense": "expenses", "file": "files",
 	"note": "notes", "calendar_event": "calendar_events", "deadline": "deadlines",
 	"trust_entry": "trust_ledger", "practice_area": "practice_areas",
+	// CORE-22: modules may link to and extend these. payment_refunds is created by the
+	// module-core migration that lands with this record (CORE-24 fills the refund API).
+	"fee_agreement": "fee_agreements", "payment_refund": "payment_refunds", "trust_account": "trust_accounts",
 }
 
 // CoreTable returns the schema-core table for a record name.
@@ -367,6 +421,115 @@ func (m Manifest) validate(report func(error) bool) {
 	if len(m.AITasks) > 0 && !seen["ai:use"] {
 		ok(invalid("ai_tasks", "AI tasks need the ai:use permission"))
 	}
+	if path := strings.TrimSpace(m.Container.SystemMail); path != "" {
+		if !ok(modulePath("container.system_mail", path)) {
+			return
+		}
+		if !seen["mail:system"] && !ok(invalid("container.system_mail", "system mail needs the mail:system permission")) {
+			return
+		}
+	}
+	if path := strings.TrimSpace(m.DeviceConnect); path != "" {
+		if !ok(modulePath("device_connect", path)) {
+			return
+		}
+	}
+	if !m.validateNotifications(ok) {
+		return
+	}
+	if !m.validateInboundWebhooks(ok) {
+		return
+	}
+	if !m.validatePaymentProcessor(ok) {
+		return
+	}
+}
+
+func (m Manifest) validatePaymentProcessor(ok func(error) bool) bool {
+	if m.PaymentProcessor == nil {
+		return true
+	}
+	if len(m.PaymentProcessor.Destinations) == 0 {
+		return ok(invalid("payment_processor.destinations", "at least one of operating or trust is required"))
+	}
+	seen := map[string]bool{}
+	for i, d := range m.PaymentProcessor.Destinations {
+		f := fmt.Sprintf("payment_processor.destinations[%d]", i)
+		if d != "operating" && d != "trust" {
+			if !ok(invalid(f, "must be operating or trust")) {
+				return false
+			}
+			continue
+		}
+		if seen[d] {
+			if !ok(invalid(f, "duplicate destination "+d)) {
+				return false
+			}
+			continue
+		}
+		seen[d] = true
+	}
+	if !Subscribed(m.Events, "payment.processor_authorized") {
+		return ok(invalid("payment_processor", "a payment processor must subscribe to payment.processor_authorized"))
+	}
+	needWrite := true
+	needTrust := seen["trust"]
+	for _, p := range m.Permissions {
+		if p.Scope == "payments:write" {
+			needWrite = false
+		}
+		if p.Scope == "trust:write" {
+			needTrust = false
+		}
+	}
+	if needWrite {
+		return ok(invalid("payment_processor", "a payment processor needs the payments:write permission"))
+	}
+	if needTrust {
+		return ok(invalid("payment_processor", "a trust destination needs the trust:write permission"))
+	}
+	return true
+}
+
+func (m Manifest) validateNotifications(ok func(error) bool) bool {
+	seen := map[string]bool{}
+	for i, n := range m.Notifications {
+		f := fmt.Sprintf("notifications[%d]", i)
+		if !notifyKind.MatchString(n.Kind) || seen[n.Kind] {
+			if !ok(invalid(f+".kind", "kind is a unique lower-case name up to 48 characters")) {
+				return false
+			}
+			continue
+		}
+		seen[n.Kind] = true
+		if strings.TrimSpace(n.Label) == "" {
+			if !ok(invalid(f+".label", "label is required")) {
+				return false
+			}
+		}
+		if len(n.DefaultChannels) == 0 {
+			if !ok(invalid(f+".default_channels", "default_channels is a non-empty subset of in_app and email")) {
+				return false
+			}
+			continue
+		}
+		ch := map[string]bool{}
+		for j, c := range n.DefaultChannels {
+			if c != "in_app" && c != "email" || ch[c] {
+				if !ok(invalid(fmt.Sprintf("%s.default_channels[%d]", f, j), "default_channels is a non-empty subset of in_app and email")) {
+					return false
+				}
+				break
+			}
+			ch[c] = true
+		}
+	}
+	return true
+}
+
+// FullNotificationKind is the preference and createNotification kind for a short manifest kind.
+func FullNotificationKind(moduleID, kind string) string {
+	return moduleID + "." + kind
 }
 
 func contains(list []string, s string) bool {
@@ -398,14 +561,29 @@ func (m Manifest) validatePages(ok func(error) bool) bool {
 			continue
 		}
 		ids[t.ID] = true
-		if t.Placement != "home" && t.Placement != "matter" {
-			if !ok(invalid(f+".placement", "placement is home or matter")) {
+		if t.Placement != "home" && t.Placement != "matter" && t.Placement != "client" {
+			if !ok(invalid(f+".placement", "placement is home, matter or client")) {
 				return false
 			}
 			continue
 		}
 		if !ok(modulePath(f+".path", t.Path)) {
 			return false
+		}
+		for j, p := range t.Params {
+			if !ident.MatchString(p) {
+				if !ok(invalid(fmt.Sprintf("%s.params[%d]", f, j), "params are lower-case names")) {
+					return false
+				}
+			}
+		}
+	}
+	if home := strings.TrimSpace(m.ClientHome); home != "" {
+		tab, found := m.Tab(home)
+		if !found || tab.Placement != "client" {
+			if !ok(invalid("client_home", "client_home names one of this module's client tabs")) {
+				return false
+			}
 		}
 	}
 	for i, it := range m.MatterItems {
@@ -418,6 +596,12 @@ func (m Manifest) validatePages(ok func(error) bool) bool {
 		}
 		if !ok(modulePath(f+".path", it.Path)) {
 			return false
+		}
+	}
+	homePaths := map[string]bool{}
+	for _, t := range m.Tabs {
+		if t.Placement == "home" {
+			homePaths[t.Path] = true
 		}
 	}
 	for _, list := range []struct {
@@ -435,10 +619,69 @@ func (m Manifest) validatePages(ok func(error) bool) bool {
 			if !ok(modulePath(f+".path", l.Path)) {
 				return false
 			}
+			if list.name != "sidebar" {
+				if l.Section != "" || l.Subgroup != "" || l.Icon != "" || l.Order != nil || l.Badge != nil {
+					if !ok(invalid(f, "section, subgroup, icon, order and badge are sidebar fields")) {
+						return false
+					}
+				}
+				continue
+			}
+			if !homePaths[l.Path] {
+				if !ok(invalid(f+".path", "a sidebar path must match a home tab")) {
+					return false
+				}
+			}
+			if l.Section != "" && !sidebarSection(l.Section) {
+				if !ok(invalid(f+".section", "section is a PRD 8.9 sidebar section")) {
+					return false
+				}
+			}
+			if l.Icon != "" && !sidebarIcon(l.Icon) {
+				if !ok(invalid(f+".icon", "icon is not in the core icon set")) {
+					return false
+				}
+			}
+			if l.Badge != nil {
+				if !ok(modulePath(f+".badge.path", l.Badge.Path)) {
+					return false
+				}
+				if l.Badge.Tone != "normal" && l.Badge.Tone != "warning" {
+					if !ok(invalid(f+".badge.tone", "tone is normal or warning")) {
+						return false
+					}
+				}
+			}
 		}
 	}
 	return true
 }
+
+// sidebarSection is a PRD 8.9 section id (CORE-08).
+func sidebarSection(s string) bool {
+	switch s {
+	case "top", "communications", "documents", "litigation", "money", "intake", "activity", "system":
+		return true
+	}
+	return false
+}
+
+// sidebarIcon is a glyph in the core icon set (catalog.json plus puzzle, mail, message, file).
+func sidebarIcon(name string) bool {
+	return sidebarIcons[name]
+}
+
+var sidebarIcons = func() map[string]bool {
+	out := map[string]bool{
+		"puzzle": true, "mail": true, "message": true, "file": true,
+	}
+	for _, n := range dashboard.CoreNav() {
+		if n.Icon != "" {
+			out[n.Icon] = true
+		}
+	}
+	return out
+}()
 
 // Tab returns the tab with id.
 func (m Manifest) Tab(id string) (Tab, bool) {
@@ -631,3 +874,31 @@ func (m Manifest) Readables() []Readable {
 
 // ViewScope is the scope another module needs to read a published view.
 func ViewScope(module, view string) string { return "views:" + module + "." + view + ":read" }
+
+func (m Manifest) validateInboundWebhooks(ok func(error) bool) bool {
+	seen := map[string]bool{}
+	for i, h := range m.InboundWebhooks {
+		f := fmt.Sprintf("inbound_webhooks[%d]", i)
+		if !slug.MatchString(h.ID) || seen[h.ID] {
+			if !ok(invalid(f+".id", "inbound webhook ids are unique slugs")) {
+				return false
+			}
+			continue
+		}
+		seen[h.ID] = true
+		if !ok(modulePath(f+".path", h.Path)) {
+			return false
+		}
+	}
+	return true
+}
+
+// InboundWebhook returns the declared inbound webhook with id.
+func (m Manifest) InboundWebhook(id string) (InboundWebhook, bool) {
+	for _, h := range m.InboundWebhooks {
+		if h.ID == id {
+			return h, true
+		}
+	}
+	return InboundWebhook{}, false
+}

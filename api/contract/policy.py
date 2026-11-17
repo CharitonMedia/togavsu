@@ -860,17 +860,72 @@ def _stored_file_for_request(call: dict) -> dict | None:
     return None
 
 
+def _archive_zip_path_ok(path) -> bool:
+    r"""Relative /-separated zip path: 1..255 bytes, no leading /, \, empty/. /.. or controls."""
+    if not isinstance(path, str) or not path or len(path.encode("utf-8")) > 255:
+        return False
+    if path.startswith("/") or "\\" in path:
+        return False
+    for ch in path:
+        if ord(ch) < 0x20 or ord(ch) == 0x7F:
+            return False
+    for part in path.split("/"):
+        if part in ("", ".", ".."):
+            return False
+    return True
+
+
 def _bind_archive(subject: dict, call: dict, body: dict) -> None:
-    """Every requested file or folder member must resolve. Inaccessible rows are not dropped."""
+    """Every requested file, folder member or entry must resolve. Inaccessible rows are not dropped."""
     file_ids = body.get("file_ids") if "file_ids" in body else None
     folder_id = body.get("folder_id") if isinstance(body.get("folder_id"), str) and body.get("folder_id") else None
+    entries = body.get("entries") if "entries" in body else None
     has_files = isinstance(file_ids, list)
-    if has_files == (folder_id is not None) or (has_files and not file_ids):
+    has_folder = folder_id is not None
+    has_entries = isinstance(entries, list)
+    selectors = int(has_files) + int(has_folder) + int(has_entries)
+    if selectors != 1 or (has_files and not file_ids) or (has_entries and not entries):
         subject["archive_result"] = "validation_failed"
         subject["archive_rows"] = []
         return
     records = [row for row in call.get("stored_files") or [] if isinstance(row, dict)]
-    if folder_id is not None:
+    if has_entries:
+        paths: set[str] = set()
+        rows = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                subject["archive_result"] = "validation_failed"
+                subject["archive_rows"] = []
+                return
+            path = entry.get("path")
+            if not _archive_zip_path_ok(path):
+                subject["archive_result"] = "validation_failed"
+                subject["archive_rows"] = []
+                return
+            key = path.casefold()
+            if key in paths:
+                subject["archive_result"] = "validation_failed"
+                subject["archive_rows"] = []
+                return
+            paths.add(key)
+            version_id = entry.get("version_id")
+            rendition_id = entry.get("rendition_id")
+            has_version = isinstance(version_id, str) and bool(version_id)
+            has_rendition = isinstance(rendition_id, str) and bool(rendition_id)
+            file_id = entry.get("file_id")
+            if has_version == has_rendition or not isinstance(file_id, str) or not file_id:
+                subject["archive_result"] = "validation_failed"
+                subject["archive_rows"] = []
+                return
+            resolved = _trusted_file(records, file_id)
+            if resolved is None:
+                subject["archive_result"] = "not_found"
+                subject["archive_rows"] = []
+                return
+            rows.append(resolved)
+        subject["archive_rows"] = rows
+        return
+    if has_folder:
         folders = call.get("stored_folders") if isinstance(call.get("stored_folders"), list) else []
         if not any(isinstance(folder, dict) and folder.get("id") == folder_id for folder in folders):
             subject["archive_result"] = "not_found"
@@ -1163,6 +1218,8 @@ def _principal_code(operation: dict, call: dict) -> str | None:
         if isinstance(call.get("stored_definitions"), list):
             rows.extend(dict(row) for row in call["stored_definitions"] if isinstance(row, dict))
         return module_marker_registration(operation, {"definitions": rows, "attachments": []}, adapted)["result"]
+    if scope == "module_secrets:write":
+        return module_secret_access(operation, adapted)
     return "forbidden"
 
 
@@ -2822,6 +2879,26 @@ def issue_api_token(operation: dict, call: dict) -> dict:
         },
         "secret": "issued-once",
     }
+
+
+def module_secret_access(operation: dict, call: dict) -> str:
+    """module_secrets:write is the calling module's own sealed secret store only (CORE-06)."""
+    principal = operation["x-togavsu-access"].get("module_principal") or {}
+    if (
+        not principal.get("own_secrets_only")
+        or principal.get("grants_admin")
+        or principal.get("scope") != "module_secrets:write"
+    ):
+        return "forbidden"
+    if call.get("actor") != "module" or call.get("human_session"):
+        return "forbidden"
+    if "module_secrets:write" not in set(call.get("scopes") or []):
+        return "scope_denied"
+    if not module_id_slug(call.get("module_id")) or not module_id_slug(call.get("path_module_id")):
+        return "forbidden"
+    if call.get("module_id") != call.get("path_module_id"):
+        return "forbidden"
+    return "allowed"
 
 
 def module_help_registration(operation: dict, call: dict) -> str:

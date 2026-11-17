@@ -13,7 +13,9 @@ var catalog = map[string]struct{}{
 	"sessions:read": {}, "sessions:write": {},
 	"tokens:read": {}, "tokens:write": {},
 	"users:read": {}, "users:write": {},
-	"contacts:read": {}, "contacts:write": {},
+	"users:directory": {},
+	"firm:read":       {},
+	"contacts:read":   {}, "contacts:write": {},
 	"matters:read": {}, "matters:write": {},
 	"markers:write": {},
 	"notes:read":    {}, "notes:write": {},
@@ -40,6 +42,21 @@ var catalog = map[string]struct{}{
 	"ai:use":        {}, "ai:admin": {},
 	"backups:admin": {}, "updates:admin": {},
 	"modules:read": {}, "modules:write": {},
+	"module_secrets:write": {},
+	"mail:send":            {},
+	"mail:system":          {},
+	"client_access:read":   {},
+	"client_access:write":  {},
+	"books:read":           {},
+}
+
+// moduleOnlyScopes are grantable only on a module token (CORE-02, CORE-04 to CORE-06).
+// Entries land with the CORE item that adds the scope to the catalog.
+var moduleOnlyScopes = map[string]struct{}{
+	"books:read":           {},
+	"module_secrets:write": {},
+	"mail:send":            {},
+	"mail:system":          {},
 }
 
 func knownScope(scope string) bool {
@@ -67,6 +84,9 @@ func roleScopes(role domain.Role) map[string]struct{} {
 		for _, drop := range []string{"settings:write", "users:write", "tokens:write", "backups:admin", "updates:admin", "modules:write", "ai:admin"} {
 			delete(out, drop)
 		}
+		for scope := range moduleOnlyScopes {
+			delete(out, scope)
+		}
 		return out
 	case domain.RoleStaff:
 		return scopeSet(
@@ -79,17 +99,19 @@ func roleScopes(role domain.Role) map[string]struct{} {
 			"trust:read", "trust:write", "reports:read", "search:use",
 			"notifications:read", "notifications:write", "layouts:read", "layouts:write",
 			"help:read", "events:read", "doc_tender:read", "conflicts:read", "conflicts:write",
-			"users:read", "settings:read",
+			"users:read", "users:directory", "settings:read", "firm:read",
+			"client_access:read", "client_access:write",
 		)
 	case domain.RoleAccountant:
 		return scopeSet(
 			"profile:read", "profile:write", "sessions:read", "sessions:write", "tokens:read",
-			"invoices:read", "payments:read", "trust:read", "reports:read", "files:read",
+			"invoices:read", "payments:read", "trust:read", "reports:read", "files:read", "firm:read",
 		)
 	case domain.RoleClient:
 		return scopeSet(
 			"profile:read", "profile:write", "sessions:read", "sessions:write", "tokens:read",
 			"matters:read", "files:read", "invoices:read", "notes:read", "calendar:read", "deadlines:read",
+			"trust:read", "firm:read", "users:directory",
 		)
 	default:
 		return map[string]struct{}{}
@@ -112,6 +134,12 @@ func copyCatalog() map[string]struct{} {
 		out[scope] = struct{}{}
 	}
 	return out
+}
+
+// ModuleOnlyScope reports a scope that may only sit on a module token (CORE-02).
+func ModuleOnlyScope(scope string) bool {
+	_, ok := moduleOnlyScopes[scope]
+	return ok
 }
 
 func scopeSet(scopes ...string) map[string]struct{} {

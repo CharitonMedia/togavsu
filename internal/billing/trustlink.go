@@ -118,6 +118,26 @@ func (l *TrustLink) RequestReplenishment(ctx context.Context, p domain.Principal
 	return TrustPosted{EntryID: r.ID, Result: r, Pending: joined, Effects: ev}, nil
 }
 
+// Replenishment returns one replenishment request (CORE-23).
+func (l *TrustLink) Replenishment(ctx context.Context, p domain.Principal, id domain.ID) (TrustReplenishment, error) {
+	r, err := l.Svc.Replenishment(ctx, p, id)
+	if err != nil {
+		return TrustReplenishment{}, err
+	}
+	return TrustReplenishment{ID: r.ID, MatterID: r.MatterID, ClientID: r.ClientID, Status: r.Status}, nil
+}
+
+// SatisfyReplenishment marks an active request satisfied (CORE-23).
+func (l *TrustLink) SatisfyReplenishment(ctx context.Context, p domain.Principal, id domain.ID) (TrustPosted, error) {
+	joined := l.joined(ctx)
+	r, err := l.Svc.SatisfyReplenishment(ctx, p, id)
+	if err != nil {
+		return TrustPosted{}, err
+	}
+	ev := trust.PostResult{Events: []trust.Event{{Name: "trust.replenishment_satisfied", RecordID: r.ID, MatterID: r.MatterID}}}
+	return TrustPosted{EntryID: r.ID, Result: r, Pending: joined, Effects: ev}, nil
+}
+
 // Reversal finds the ledger entry that reverses entry on the matter, reading the matter's
 // ledger as the system.
 func (l *TrustLink) Reversal(ctx context.Context, matter, entry domain.ID) (domain.ID, error) {

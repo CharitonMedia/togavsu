@@ -2,6 +2,7 @@ package trust
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -366,6 +367,23 @@ type Sender interface {
 	Send(ctx context.Context, to, subject, body string) error
 }
 
+// OutboxSender receives the full outbox row (id and kind) for CORE-05 routing.
+type OutboxSender interface {
+	SendOutbox(ctx context.Context, m Mail) error
+}
+
+// PermanentMailError is a permanent delivery failure (module 422); DeliverMail records
+// it on the row and does not retry.
+type PermanentMailError struct{ Msg string }
+
+func (e PermanentMailError) Error() string { return e.Msg }
+
+// IsPermanentMail reports a PermanentMailError.
+func IsPermanentMail(err error) bool {
+	var p PermanentMailError
+	return errors.As(err, &p)
+}
+
 // Mail is one outbox row.
 type Mail struct {
 	ID       domain.ID
@@ -423,10 +441,23 @@ func (s *Service) DeliverMail(ctx context.Context, sender Sender) (int, error) {
 			return sent, ctx.Err()
 		}
 		now := micro(s.now())
-		if err := sender.Send(ctx, m.To, m.Subject, m.Body); err != nil {
+		var sendErr error
+		if os, ok := sender.(OutboxSender); ok {
+			sendErr = os.SendOutbox(ctx, m)
+		} else {
+			sendErr = sender.Send(ctx, m.To, m.Subject, m.Body)
+		}
+		if sendErr != nil {
 			// A send cut off by ctx's deadline or cancellation is still recorded, so the
-			// admin sees why the row is waiting.
-			if _, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE mail_outbox SET attempts = attempts + 1, last_error = $1, updated_at = $2 WHERE id = $3`, err.Error(), now, string(m.ID)); err != nil {
+			// admin sees why the row is waiting. A permanent failure (module 422) is
+			// marked sent so DeliverMail does not retry it (CORE-05).
+			if IsPermanentMail(sendErr) {
+				if _, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE mail_outbox SET attempts = attempts + 1, sent_at = $1, last_error = $2, updated_at = $1 WHERE id = $3`, now, sendErr.Error(), string(m.ID)); err != nil {
+					return sent, err
+				}
+				continue
+			}
+			if _, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE mail_outbox SET attempts = attempts + 1, last_error = $1, updated_at = $2 WHERE id = $3`, sendErr.Error(), now, string(m.ID)); err != nil {
 				return sent, err
 			}
 			continue

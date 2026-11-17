@@ -121,6 +121,7 @@ PAYMENT_PROCESSOR = {
         "amount_cents",
         "destination",
         "trust_account_id",
+        "replenishment_request_id",
     ],
     "binding": {
         "cardinality": "one_payment_per_initialization",
@@ -145,6 +146,25 @@ PAYMENT_PROCESSOR = {
     "idempotency_conflict": "idempotency_conflict",
     "no_mutation_on_denial": True,
 }
+
+PAYMENT_REFUND = {
+    "event_type": "payment.refund_authorized",
+    "delivered_on": "moduleEvent",
+    "header": "X-Togavsu-Task-Authorization",
+    "body_field": "refund_authorization",
+    "issued_by": "core",
+    "viewer_context_required": False,
+    "callback_requires_viewer": False,
+    "module_identity_mismatch": "forbidden",
+    "invalid": "forbidden",
+    "expired": "forbidden",
+    "revoked": "forbidden",
+    "missing_grant": "forbidden",
+    "sequence": ["updatePaymentRefundStatus"],
+    "allowed_operations": ["updatePaymentRefundStatus"],
+    "no_mutation_on_denial": True,
+}
+
 PAYMENT_STATUS_GRAPH = {
     "initial": "pending",
     "transitions": {
@@ -204,6 +224,7 @@ CORE_EXTENSION_TARGETS = (
     ("expense", "Expense", "expenses:read", ("listExpense", "getExpense")),
     ("invoice", "Invoice", "invoices:read", ("listInvoice", "getInvoice")),
     ("payment", "Payment", "payments:read", ("listPayment", "getPayment")),
+    ("payment_refund", "PaymentRefund", "payments:read", ("listPaymentRefunds",)),
     ("calendar_event", "CalendarEvent", "calendar:read", ("listCalendarEvent", "getCalendarEvent")),
     ("deadline", "Deadline", "deadlines:read", ("listDeadline", "getDeadline")),
     ("file", "File", "files:read", ("listFile", "getFile")),
@@ -348,6 +369,38 @@ CORE_EXTENSION_EXCLUSIONS = {
         "editor commands",
         'the pinned LawCraft command list. PRD 8.20: "GET /api/v1/editor/commands lists the allowed commands." Not stored rows.',
     ),
+    "BooksProfile": (
+        "books profile",
+        'module books reader projection (CORE-02 / PRD 9.10). Firm settings fields for sync, not a section 5 record a module extends.',
+    ),
+    "BooksMatter": (
+        "books matter",
+        'module books reader projection (CORE-02 / PRD 9.10). A narrowed matter view for sync; Matter is the extension target.',
+    ),
+    "BooksContact": (
+        "books contact",
+        'module books reader projection (CORE-02 / PRD 9.10). A narrowed contact view for sync; Contact is the extension target.',
+    ),
+    "ModuleMailResult": (
+        "module mail result",
+        'sendModuleMail response (CORE-04 / PRD 9.10). Delivery outcomes, not a stored firm record.',
+    ),
+    "ModuleDevice": (
+        "module device grants",
+        'per-user device grant (CORE-28 / PRD 9.10). Credential material for a module, not a section 5 record.',
+    ),
+    "UserDirectoryEntry": (
+        "user directory",
+        'module directory projection (CORE-19 / PRD 9.10). A narrowed user list for modules; User is the extension target.',
+    ),
+    "MatterClient": (
+        "client matter view",
+        'client-facing matter projection (CORE-11 / PRD 9.10). Matter is the extension target.',
+    ),
+    "TrustReplenishmentClient": (
+        "client trust replenishment view",
+        'client-facing replenishment projection (CORE-12 / PRD 9.10). TrustReplenishment is the extension target.',
+    ),
 }
 # Section 5 records that have no read or list operation of their own, so there is no read to take include=.
 # edit_locks is returned only by acquire and renew. doc_tender_units is internal to a job.
@@ -355,11 +408,11 @@ CORE_RECORDS_WITHOUT_READS = ("edit_locks", "doc_tender_units")
 
 CORE_PAGE_TARGETS = {
     "time_entries": {"operation": "listTimeEntry", "scopes": ["time:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
-    "matters": {"operation": "listMatter", "scopes": ["matters:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
+    "matters": {"operation": "listMatter", "scopes": ["matters:read"], "roles": ["admin", "attorney", "staff", "client"], "matter_wall": True},
     "deadlines": {"operation": "listDeadline", "scopes": ["deadlines:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
     "calendar": {"operation": "listCalendarEvent", "scopes": ["calendar:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
     "trust_alerts": {"operation": "listTrustFlag", "scopes": ["trust:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
-    "replenishment_requests": {"operation": "listTrustReplenishment", "scopes": ["trust:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
+    "replenishment_requests": {"operation": "listTrustReplenishment", "scopes": ["trust:read"], "roles": ["admin", "attorney", "staff", "accountant", "client"], "matter_wall": True},
     "ar_aging": {"operation": "reportArAging", "scopes": ["reports:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
     "activity": {"operation": "listEvents", "scopes": ["events:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
     "conflict_checks": {"operation": "listConflictChecks", "scopes": ["conflicts:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
@@ -394,13 +447,49 @@ BACKGROUND_FILE_PUBLICATION = {
     "on_failure": "no_file_no_event",
     "publish_events": ["file.created", "file.version_created"],
 }
+
+MAIL_FILING_SEQUENCE = [
+    "createNote",
+    "createFileUpload",
+    "getFileUpload",
+    "putFileChunk",
+    "completeFileUpload",
+    "publishFile",
+    "bulkFile",
+    "createFileLink",
+]
+MAIL_FILING = {
+    "sequence": list(MAIL_FILING_SEQUENCE),
+    "issued_by": "core",
+    "registered_module": True,
+    "viewer_context_required": False,
+    "scopes": ["notes:write", "files:write"],
+    "grants_admin": False,
+    "firmwide_bypass": False,
+    "expired": "forbidden",
+    "wrong_module": "forbidden",
+    "wrong_matter": "not_found",
+    "operation_outside_grant": "forbidden",
+    "event_type": "mail.filing_authorized",
+}
+MAIL_MATCHING = {
+    "sequence": ["createAiCall"],
+    "issued_by": "core",
+    "viewer_context_required": False,
+    "scopes": ["ai:use"],
+    "grants_admin": False,
+    "firmwide_bypass": False,
+    "expired": "forbidden",
+    "wrong_module": "forbidden",
+    "without_matter_id": True,
+}
+
 GENERIC_NONINTERACTIVE = frozenset(
     {
-        "createEvent",
-        "bulkEvent",
-        "createNotification",
+        # createEvent, bulkEvent and createNotification take a service principal
+        # (CORE-01 / CORE-03) instead of a noninteractive task grant.
+        # createFileLink also accepts mail_filing (CORE-27).
         "createFileLink",
-        "createAiCall",
     }
 )
 SERVICE_PRINCIPAL_ISSUANCE = frozenset({"issueFilePublicationGrant"})
@@ -408,7 +497,10 @@ NONINTERACTIVE_OPERATIONS = (
     GENERIC_NONINTERACTIVE
     | frozenset(MALWARE_SEQUENCE)
     | frozenset(PAYMENT_PROCESSOR["sequence"])
+    | frozenset(PAYMENT_REFUND["sequence"])
     | frozenset(BACKGROUND_FILE_SEQUENCE)
+    | frozenset(MAIL_FILING_SEQUENCE)
+    | frozenset(MAIL_MATCHING["sequence"])
 )
 
 _TRUST_POST = {
@@ -622,10 +714,18 @@ def tag_noninteractive_workflows(spec: dict) -> None:
         operation_id = operation["operationId"]
         if operation_id in PAYMENT_PROCESSOR["sequence"]:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "payment_processor"
+        elif operation_id in PAYMENT_REFUND["sequence"]:
+            operation["x-togavsu-access"]["noninteractive_workflow"] = "payment_refund"
         elif operation_id in MALWARE_SEQUENCE:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "malware_scan"
         elif operation_id in BACKGROUND_FILE_SEQUENCE:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "background_file_publication"
+        elif operation_id == "createNote":
+            operation["x-togavsu-access"]["noninteractive_workflow"] = "mail_filing"
+        elif operation_id == "createAiCall":
+            operation["x-togavsu-access"]["noninteractive_workflow"] = "mail_matching"
+        elif operation_id == "createFileLink":
+            operation["x-togavsu-access"]["noninteractive_workflow"] = "mail_filing"
 
 def _json_schema_slot(operation: dict) -> dict:
     for code, response in operation["responses"].items():
@@ -856,6 +956,23 @@ EVENT_EXEMPTIONS = {
         "A file and file.version_created are emitted only after publish commits. "
         "A failed chunk emits nothing."
     ),
+    "putModuleSecret": (
+        "Sealed module credentials. The audit log records the secret name only; "
+        "no activity-stream event carries a secret name or value (CORE-06)."
+    ),
+    "deleteModuleSecret": (
+        "Removes a sealed module credential. The audit log records the secret name only; "
+        "no activity-stream event is emitted (CORE-06)."
+    ),
+    "exchangeModuleDeviceGrant": (
+        "Exchanges a device grant secret for a short-lived context token (CORE-28). "
+        "The grant's module_device.created or module_device.revoked events already cover the grant lifecycle; "
+        "the exchange itself emits no activity-stream event."
+    ),
+    "matchMail": (
+        "Mail address matching for the email module (CORE-26). Returns match results and an optional match_token; "
+        "no activity-stream event is emitted on the match itself."
+    )
 }
 
 MUTATION_EVENTS = {
@@ -906,7 +1023,13 @@ MUTATION_EVENTS = {
     "testBackupDestination": ["backup_destination.tested"],
     "createBackupUpload": ["backup_upload.created"],
     "createModuleContextToken": ["module.context_issued"],
+    "createModuleDeviceGrant": ["module_device.created"],
+    "revokeModuleDeviceGrant": ["module_device.revoked"],
     "updateTrustedKey": ["signing_key.updated"],
+    "grantClientAccess": ["client_access.granted"],
+    "resetClientAccessPassword": ["client_access.password_reset"],
+    "deactivateClientAccess": ["client_access.deactivated"],
+    "reactivateClientAccess": ["client_access.reactivated"],
 }
 
 def ensure_mutation_events(spec: dict) -> None:
@@ -1392,6 +1515,9 @@ PAYMENT_PROCESSOR["status_graph"] = PAYMENT_STATUS_GRAPH
 
 __all__ = [
     'BACKGROUND_FILE_PUBLICATION',
+    'MAIL_FILING',
+    'MAIL_FILING_SEQUENCE',
+    'MAIL_MATCHING',
     'BACKGROUND_FILE_SEQUENCE',
     'CORE_EXTENSION_TARGETS',
     'CORE_EXTENSION_EXCLUSIONS',
@@ -1409,6 +1535,7 @@ __all__ = [
     'MUTATION_EVENTS',
     'NONINTERACTIVE_OPERATIONS',
     'PAYMENT_PROCESSOR',
+    'PAYMENT_REFUND',
     'PAYMENT_STATUS_GRAPH',
     'PRIVATE_GRANT_FIELDS',
     'REQUIRED_BACKGROUND_EVENTS',

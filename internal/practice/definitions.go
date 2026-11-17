@@ -29,6 +29,11 @@ func (s *Service) SetModuleCheck(fn func(ctx context.Context, module string) (bo
 	s.moduleOn = fn
 }
 
+// SetMailFilingCheck wires CORE-27 mail_filing grant verification for module note writes.
+func (s *Service) SetMailFilingCheck(fn func(ctx context.Context, p domain.Principal, matter domain.ID) error) {
+	s.mailFiling = fn
+}
+
 // MarkerWrite patches or creates a marker definition. Nil leaves a field as it is.
 type MarkerWrite struct {
 	Label  *string
@@ -243,7 +248,8 @@ func markerChanges(prev, next MarkerDef, action, summary string) []change {
 // no viewer, no user, the path module id equal to the signed module id on the token.
 // The core route has already required markers:write on that token.
 func (s *Service) moduleGate(ctx context.Context, p domain.Principal, module string) error {
-	if p.Source != domain.SourceModule || p.ModuleID == "" || !p.UserID.IsZero() {
+	// SourceService is CORE-01's label for the same module-own token after allowServiceCall.
+	if (p.Source != domain.SourceModule && p.Source != domain.SourceService) || p.ModuleID == "" || !p.UserID.IsZero() {
 		return domain.Forbidden("only a module's own token registers module markers")
 	}
 	if !moduleIDRule.MatchString(module) || module != p.ModuleID {

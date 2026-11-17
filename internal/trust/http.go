@@ -501,6 +501,14 @@ func (h *Handler) listRepl(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	if clientOnly(p) {
+		rows := make([]ClientReplenishment, 0, len(page.Items))
+		for _, item := range page.Items {
+			rows = append(rows, clientReplenishment(item))
+		}
+		listJSON(w, Page[ClientReplenishment]{Items: rows, Limit: page.Limit, NextCursor: page.NextCursor})
+		return
+	}
 	listJSON(w, page)
 }
 
@@ -550,6 +558,10 @@ func (h *Handler) getRepl(w http.ResponseWriter, r *http.Request) {
 	out, err := h.Svc.Replenishment(r.Context(), p, pathID(r, "replenishment_id"))
 	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if clientOnly(p) {
+		writeJSON(w, http.StatusOK, clientReplenishment(out))
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -795,22 +807,17 @@ func (h *Handler) sendNotification(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct {
-		UserID domain.ID `json:"user_id"`
-		Kind   string    `json:"kind"`
-		Title  string    `json:"title"`
-		Link   string    `json:"link"`
-	}
+	var body NotificationWrite
 	if err := decode(r, &body); err != nil {
 		writeErr(w, err)
 		return
 	}
-	n, err := h.Svc.SendNotification(r.Context(), p, body.UserID, body.Kind, body.Title, body.Link)
+	out, err := h.Svc.CreateNotification(r.Context(), p, body)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, n)
+	writeJSON(w, http.StatusCreated, out)
 }
 
 func (h *Handler) readAll(w http.ResponseWriter, r *http.Request) {

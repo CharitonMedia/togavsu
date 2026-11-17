@@ -2,16 +2,23 @@ package access
 
 import (
 	"context"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 )
 
 // Reader loads matter walls and whether a client user is a party on the matter.
+// Days and Matters apply the client access window (CORE-11): a closed matter stays
+// readable for Days() calendar days after closed_on; reopening restores access.
 type Reader struct {
 	Walls   repository.MatterWalls
 	Parties repository.MatterParties
 	Users   repository.Users
+	Matters repository.Matters
+	// Days returns client_access.days_after_close. Nil uses domain.ClientAccessDaysAfterClose.
+	Days func(ctx context.Context) int
+	Now  func() time.Time
 }
 
 // View implements domain.WallReader. A matter with any wall row is walled.
@@ -56,10 +63,34 @@ func (r Reader) clientMatter(ctx context.Context, p domain.Principal, matterID d
 	if err != nil {
 		return false, err
 	}
+	matched := false
 	for _, party := range parties.Items {
 		if party.MatterID == matterID && party.ContactID == user.ContactID && party.Role == "client" {
-			return true, nil
+			matched = true
+			break
 		}
 	}
-	return false, nil
+	if !matched {
+		return false, nil
+	}
+	return r.accessWindowOpen(ctx, matterID)
+}
+
+func (r Reader) accessWindowOpen(ctx context.Context, matterID domain.ID) (bool, error) {
+	if r.Matters == nil {
+		return true, nil
+	}
+	matter, err := r.Matters.Get(ctx, matterID)
+	if err != nil {
+		return false, err
+	}
+	days := domain.ClientAccessDaysAfterClose
+	if r.Days != nil {
+		days = r.Days(ctx)
+	}
+	now := time.Now
+	if r.Now != nil {
+		now = r.Now
+	}
+	return domain.ClientAccessActive(matter.Status, matter.ClosedOn, days, now().UTC()), nil
 }

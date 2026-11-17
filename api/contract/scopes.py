@@ -65,6 +65,18 @@ SCOPES = {
     "updates:admin": "Read update history and start an update.",
     "modules:read": "Read modules, marketplace listings, and domain handlers.",
     "modules:write": "Install, configure, and remove modules.",
+    "module_secrets:write": "Store and read the calling module's own sealed secrets.",
+    "mail:send": "Send mail from the firm to Togavsu users and to parties on a matter, through system mail.",
+    "mail:system": "Receive the core's system mail and deliver it through the firm's mail.",
+    "users:directory": "Read the firm user directory (id, name, roles, active). No email or auth fields.",
+    "firm:read": "Read the firm profile: name, contact details, time zone, and client portal appearance.",
+    "client_access:read": "Read whether a client contact has portal access and its status.",
+    "client_access:write": "Grant, reset, deactivate or reactivate client portal access for a client contact.",
+    "books:read": (
+        "Read the firm's invoices, payments, expenses, trust accounts and trust ledger, "
+        "and the billing details of billed contacts, firm-wide except walled matters and without a viewer, "
+        "for a module's background money work."
+    ),
 }
 
 SCOPE_PATTERNS = [

@@ -184,11 +184,12 @@ func (i Invoice) matterFeeCents() domain.Cents {
 // trust transfer drew on. ReceivedOn is the firm-date the money arrived.
 type Payment struct {
 	domain.Payment
-	TrustAccountID domain.ID  `json:"trust_account_id,omitempty"`
-	ReceivedOn     string     `json:"received_on"`
-	ReversedAt     *time.Time `json:"reversed_at,omitempty"`
-	ReverseReason  string     `json:"reverse_reason,omitempty"`
-	ReversalEntry  domain.ID  `json:"reversal_entry_id,omitempty"`
+	TrustAccountID         domain.ID  `json:"trust_account_id,omitempty"`
+	ReceivedOn             string     `json:"received_on"`
+	ReversedAt             *time.Time `json:"reversed_at,omitempty"`
+	ReverseReason          string     `json:"reverse_reason,omitempty"`
+	ReversalEntry          domain.ID  `json:"reversal_entry_id,omitempty"`
+	ReplenishmentRequestID domain.ID  `json:"replenishment_request_id,omitempty"`
 	// MatterFee marks the trust transfer Apply flat fee posted for the matter's own fee.
 	MatterFee bool `json:"matter_fee,omitempty"`
 	// TrustSynced marks a fee payment that credits a flat-fee application made on the trust

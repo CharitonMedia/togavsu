@@ -54,12 +54,19 @@ func TestDecide(t *testing.T) {
 		{"client hidden", principal(RoleClient), AccessInput{Resource: ResFile, Action: ActionRead, MatterID: matter, ClientMatter: true}, Decision{Reason: ReasonClientScope}},
 		{"client other matter", principal(RoleClient), AccessInput{Resource: ResMatter, Action: ActionRead, MatterID: matter, SharedWithClient: true}, Decision{Reason: ReasonClientScope}},
 		{"client write", principal(RoleClient), AccessInput{Resource: ResNote, Action: ActionWrite, MatterID: matter, ClientMatter: true, SharedWithClient: true}, Decision{Reason: ReasonRole}},
-		{"client trust", principal(RoleClient), AccessInput{Resource: ResTrust, Action: ActionRead, MatterID: matter, ClientMatter: true, SharedWithClient: true}, Decision{Reason: ReasonRole}},
+		{"client trust", principal(RoleClient), AccessInput{Resource: ResTrust, Action: ActionRead, MatterID: matter, ClientMatter: true}, Decision{Allow: true}},
+		{"client trust deposit", principal(RoleClient), AccessInput{Resource: ResTrust, Action: ActionTrustDeposit, MatterID: matter, ClientMatter: true}, Decision{Reason: ReasonRole}},
+		{"client trust write", principal(RoleClient), AccessInput{Resource: ResTrust, Action: ActionWrite, MatterID: matter, ClientMatter: true}, Decision{Reason: ReasonRole}},
+		{"client trust other matter", principal(RoleClient), AccessInput{Resource: ResTrust, Action: ActionRead, MatterID: matter}, Decision{Reason: ReasonClientScope}},
 		{"attorney settings write", principal(RoleAttorney), AccessInput{Resource: ResSettings, Action: ActionWrite}, Decision{Reason: ReasonRole}},
 		{"staff approve", principal(RoleStaff), AccessInput{Resource: ResInvoice, Action: ActionApproveInvoice}, Decision{Reason: ReasonRole}},
 		{"attorney approve", principal(RoleAttorney), AccessInput{Resource: ResInvoice, Action: ActionApproveInvoice}, Decision{Allow: true}},
 		{"union write", principal(RoleAccountant, RoleAttorney), AccessInput{Resource: ResInvoice, Action: ActionWrite}, Decision{Allow: true}},
 		{"system wall", SystemPrincipal(), AccessInput{Resource: ResMatter, Action: ActionRead, MatterID: matter, Walled: true}, Decision{Allow: true, Reason: ReasonSystem}},
+		{"books reader invoice", Principal{ModuleID: "quickbooks", Source: SourceService, Roles: []Role{RoleAccountant}}, AccessInput{Resource: ResInvoice, Action: ActionRead}, Decision{Allow: true}},
+		{"books reader walled", Principal{ModuleID: "quickbooks", Source: SourceService, Roles: []Role{RoleAccountant}}, AccessInput{Resource: ResInvoice, Action: ActionRead, MatterID: matter, Walled: true}, Decision{Reason: ReasonMatterWall}},
+		{"books reader write", Principal{ModuleID: "quickbooks", Source: SourceService, Roles: []Role{RoleAccountant}}, AccessInput{Resource: ResInvoice, Action: ActionWrite}, Decision{Reason: ReasonRole}},
+		{"service no roles", Principal{ModuleID: "quickbooks", Source: SourceService}, AccessInput{Resource: ResInvoice, Action: ActionRead}, Decision{Reason: ReasonUnauthenticated}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

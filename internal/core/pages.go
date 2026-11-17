@@ -11,6 +11,7 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/qrcode"
 	"github.com/CharitonMedia/togavsu/internal/settings"
@@ -72,6 +73,34 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 <p><button type="submit">Verify</button></p></form>
 {{template "bottom" .}}{{end}}
 
+{{define "portal_security"}}{{template "top" .}}
+<p>Change the password you use to sign in to the client portal. Two-factor is optional.</p>
+<form class="card" method="post" action="/portal/security"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label>Current password<br><input name="current_password" type="password" required autocomplete="current-password"></label></p>
+<p><label>New password<br><input name="new_password" type="password" required autocomplete="new-password"></label></p>
+<p><label>Confirm new password<br><input name="confirm_password" type="password" required autocomplete="new-password"></label></p>
+<p><button type="submit">Change password</button> <a href="/portal">Back to portal</a></p></form>
+{{if .Codes}}<section class="card" id="recovery-codes"><h2>Your new recovery codes</h2>
+<p>Save these somewhere safe; they are shown only once.</p>
+<ul>{{range .Codes}}<li><code>{{.}}</code></li>{{end}}</ul></section>{{end}}
+{{if .Enroll.EnrollmentToken}}<section class="card" id="totp-reset"><h2>Finish setting up two-factor</h2>
+<p>Scan this code with your authenticator app, then enter the 6-digit code it shows.</p>
+<div class="qr">{{qr .Enroll.OTPAuthURI}}</div>
+<p>Can't scan it? Enter this key instead: <code>{{.Enroll.Secret}}</code></p>
+<form method="post" action="/portal/security/totp/confirm"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<input type="hidden" name="enrollment_token" value="{{.Enroll.EnrollmentToken}}">
+<input type="hidden" name="otpauth_uri" value="{{.Enroll.OTPAuthURI}}">
+<input type="hidden" name="secret" value="{{.Enroll.Secret}}">
+<p><label>Code from the authenticator<br><input name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="6"></label></p>
+<p><button type="submit">Confirm</button></p></form></section>
+{{else}}<section class="card" id="two-factor"><h2>Two-factor</h2>
+{{if eq .Form.totp_on "1"}}<p>Two-factor is on. Set it up again to move it to a new authenticator.</p>{{else}}<p>Two-factor is optional. Turn it on to require an authenticator code at sign-in.</p>{{end}}
+<form method="post" action="/portal/security/totp"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label>Password<br><input name="password" type="password" required autocomplete="current-password"></label></p>
+<p><button type="submit">{{if eq .Form.totp_on "1"}}Replace authenticator{{else}}Set up two-factor{{end}}</button></p></form></section>{{end}}
+<form class="card" method="post" action="/portal/sign-out"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><button type="submit">Sign out</button></p></form>
+{{template "bottom" .}}{{end}}
 {{define "logout"}}{{template "top" .}}
 <form class="card" method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}">
 <p>Sign out of Togavsu on this browser?</p><p><button type="submit">Sign out</button> <a href="/practice/matters">Cancel</a></p></form>
@@ -143,12 +172,25 @@ func csrfOf(r *http.Request) string {
 	return ""
 }
 
+// afterSignInPath is where a signed-in user lands: /portal for client-only users (CORE-10),
+// or /portal/security when a temporary password must be changed (CORE-14).
+func afterSignInPath(p domain.Principal) string {
+	if modules.ClientOnly(p) {
+		if p.MustChangePassword {
+			return "/portal/security"
+		}
+		return "/portal"
+	}
+	return "/practice/matters"
+}
+
 func (a *App) home(w http.ResponseWriter, r *http.Request) {
-	if _, err := a.principal(r); err != nil {
+	p, err := a.principal(r)
+	if err != nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/practice/matters", http.StatusSeeOther)
+	http.Redirect(w, r, afterSignInPath(p), http.StatusSeeOther)
 }
 
 func (a *App) setupPage(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +247,11 @@ func (a *App) loginStep(w http.ResponseWriter, r *http.Request, res identity.Log
 	switch {
 	case res.SessionToken != "":
 		signIn(w, r, res)
-		http.Redirect(w, r, "/practice/matters", http.StatusSeeOther)
+		roles, _ := domain.ParseRoles(res.User.Roles)
+		http.Redirect(w, r, afterSignInPath(domain.Principal{
+			UserID: res.User.ID, Roles: roles, Source: domain.SourceUI,
+			MustChangePassword: res.User.MustChangePassword,
+		}), http.StatusSeeOther)
 	case res.TOTPToken != "":
 		render(w, http.StatusOK, "totp", view{Title: "Two-factor code", Token: res.TOTPToken})
 	case res.EnrollmentToken != "":

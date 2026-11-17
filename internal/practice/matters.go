@@ -114,7 +114,7 @@ type MatterQuery struct {
 // the page it returns. more reports whether readable matters follow the page.
 func (s *Service) ListMattersPage(ctx context.Context, p domain.Principal, q MatterQuery) (out []MatterView, more bool, err error) {
 	ctx = withSettingsMemo(ctx)
-	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
+	if err := s.gateMatterList(ctx, p); err != nil {
 		return nil, false, err
 	}
 	all := s.db.Matters()
@@ -126,7 +126,11 @@ func (s *Service) ListMattersPage(ctx context.Context, p domain.Principal, q Mat
 		}
 		idx = append(idx, i)
 	}
-	sort.Slice(idx, func(i, j int) bool { return matterOrder(&all[idx[i]], &all[idx[j]]) })
+	if ClientOnly(p) {
+		sort.Slice(idx, func(i, j int) bool { return clientMatterOrder(&all[idx[i]], &all[idx[j]]) })
+	} else {
+		sort.Slice(idx, func(i, j int) bool { return matterOrder(&all[idx[i]], &all[idx[j]]) })
+	}
 	skip := q.Offset
 	for _, i := range idx {
 		row := all[i]
@@ -154,7 +158,7 @@ func (s *Service) ListMattersPage(ctx context.Context, p domain.Principal, q Mat
 // CountMatters counts the matters ListMatters would return, without building their views.
 func (s *Service) CountMatters(ctx context.Context, p domain.Principal, status string, area domain.ID) (int, error) {
 	ctx = withSettingsMemo(ctx)
-	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
+	if err := s.gateMatterList(ctx, p); err != nil {
 		return 0, err
 	}
 	visible := func(id domain.ID) bool { return s.visibleMatter(ctx, p, id) }
@@ -166,6 +170,44 @@ func (s *Service) CountMatters(ctx context.Context, p domain.Principal, status s
 	for i := range keys {
 		row := &keys[i]
 		if (status == "" || row.Status == status) && (area.IsZero() || row.PracticeAreaID == area) && visible(row.ID) {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// gateMatterList authorizes a collection read. A client-only principal skips the
+// firm-wide matter gate and is filtered per matter by clientMatter (CORE-11).
+func (s *Service) gateMatterList(ctx context.Context, p domain.Principal) error {
+	if ClientOnly(p) {
+		return nil
+	}
+	_, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead})
+	return err
+}
+
+// CountAccessEndedMatters counts closed matters where the client's linked contact is a
+// client party and the access window has ended (CORE-11).
+func (s *Service) CountAccessEndedMatters(ctx context.Context, p domain.Principal) (int, error) {
+	if !ClientOnly(p) {
+		return 0, nil
+	}
+	user, err := s.db.User(ctx, p.UserID)
+	if err != nil || user.ContactID.IsZero() {
+		return 0, nil
+	}
+	days := s.intSetting(ctx, "client_access.days_after_close", domain.ClientAccessDaysAfterClose)
+	now := s.clock()
+	var n int
+	for _, party := range s.db.Parties(domain.ID(""), user.ContactID) {
+		if party.Role != "client" {
+			continue
+		}
+		row, err := s.db.Matter(ctx, party.MatterID)
+		if err != nil {
+			continue
+		}
+		if row.Status == StatusClosed && !domain.ClientAccessActive(row.Status, row.ClosedOn, days, now) {
 			n++
 		}
 	}
@@ -874,6 +916,17 @@ func matterOrder(a, b *domain.Matter) bool {
 	if openRank(a.Status) != openRank(b.Status) {
 		return openRank(a.Status) < openRank(b.Status)
 	}
+	if a.OpenedOn != b.OpenedOn {
+		return a.OpenedOn > b.OpenedOn
+	}
+	if a.Number != b.Number {
+		return a.Number > b.Number
+	}
+	return a.ID < b.ID
+}
+
+// clientMatterOrder is newest opened_on first for client matter lists (CORE-11).
+func clientMatterOrder(a, b *domain.Matter) bool {
 	if a.OpenedOn != b.OpenedOn {
 		return a.OpenedOn > b.OpenedOn
 	}

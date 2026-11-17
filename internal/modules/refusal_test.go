@@ -59,9 +59,9 @@ func TestCheckAllPassesWhatCheckPackagePasses(t *testing.T) {
 
 func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 	raw := samplePackage(t, func(f map[string][]byte) {
-		replace(f, modules.ManifestFile, "  events: /events\n", "  events: /events\n  system_mail: true\n")
-		replace(f, modules.ManifestFile, "    placement: home\n", "    placement: home\n    params: [matter_id]\n")
-		replace(f, modules.ManifestFile, "tabs:\n", "notifications:\n  - kind: a\n    label: A\ntabs:\n")
+		replace(f, modules.ManifestFile, "  events: /events\n", "  events: /events\n  mystery_hook: true\n")
+		replace(f, modules.ManifestFile, "    placement: home\n", "    placement: home\n    mystery: true\n")
+		replace(f, modules.ManifestFile, "tabs:\n", "not_a_real_manifest_field: true\ntabs:\n")
 		replace(f, modules.ManifestFile, "      h: 2\n    sizes:", "      h: 2\n      d: 1\n    sizes:")
 	})
 	_, _, refs := modules.CheckAll(raw)
@@ -72,7 +72,7 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 		}
 		got[r.Path] = r.Value
 	}
-	want := map[string]string{"container.system_mail": "system_mail", "tabs[0].params": "params", "notifications": "notifications", "widgets[0].size.d": "d"}
+	want := map[string]string{"container.mystery_hook": "mystery_hook", "tabs[0].mystery": "mystery", "not_a_real_manifest_field": "not_a_real_manifest_field", "widgets[0].size.d": "d"}
 	if len(got) != len(want) {
 		t.Fatalf("refusals %v, want %v", got, want)
 	}
@@ -87,7 +87,7 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 		t.Fatal("the install check passed an unknown field")
 	}
 	one := samplePackage(t, func(f map[string][]byte) {
-		replace(f, modules.ManifestFile, "tabs:\n", "notifications:\n  - kind: a\ntabs:\n")
+		replace(f, modules.ManifestFile, "tabs:\n", "pending_core_field: true\ntabs:\n")
 	})
 	_, _, refs = modules.CheckAll(one)
 	_, _, err = modules.CheckPackage(one)
@@ -96,28 +96,42 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 	}
 }
 
+func TestDeviceConnectManifestAccepted(t *testing.T) {
+	raw := samplePackage(t, func(f map[string][]byte) {
+		replace(f, modules.ManifestFile, "tabs:\n", "device_connect: /outlook-addin/connected\ntabs:\n")
+	})
+	if _, _, refs := modules.CheckAll(raw); len(refs) != 0 {
+		t.Fatalf("valid device_connect refused: %v", refs)
+	}
+	bad := samplePackage(t, func(f map[string][]byte) {
+		replace(f, modules.ManifestFile, "tabs:\n", "device_connect: https://evil.example/x\ntabs:\n")
+	})
+	_, _, refs := modules.CheckAll(bad)
+	if len(refs) == 0 || refs[0].Path != "device_connect" {
+		t.Fatalf("bad device_connect: %v", refs)
+	}
+}
+
 func TestCheckAllReportsUnknownScopes(t *testing.T) {
 	raw := samplePackage(t, func(f map[string][]byte) {
-		replace(f, modules.ManifestFile, "permissions:\n", "permissions:\n  - scope: books:read\n    reason: r\n  - scope: views:other.view:read\n    reason: r\n  - scope: firm:read\n    reason: r\n")
+		replace(f, modules.ManifestFile, "permissions:\n", "permissions:\n  - scope: not_a_real_scope:read\n    reason: r\n  - scope: views:other.view:read\n    reason: r\n  - scope: books:read\n    reason: r\n  - scope: firm:read\n    reason: r\n")
 	})
 	_, _, refs := modules.CheckAll(raw)
-	if len(refs) != 2 {
+	if len(refs) != 1 {
 		t.Fatalf("refusals: %v", refs)
 	}
-	for i, want := range []string{"books:read", "firm:read"} {
-		r := refs[i]
-		if r.Code != modules.RefuseUnknownScope || r.Kind != modules.KindScope || r.Value != want || r.APICode != domain.CodeValidation {
-			t.Fatalf("refusal %d: %+v", i, r)
-		}
+	r := refs[0]
+	if r.Code != modules.RefuseUnknownScope || r.Kind != modules.KindScope || r.Value != "not_a_real_scope:read" || r.APICode != domain.CodeValidation {
+		t.Fatalf("refusal: %+v", r)
 	}
-	if refs[0].Path != "permissions[0]" || refs[1].Path != "permissions[2]" {
-		t.Fatalf("paths: %s %s", refs[0].Path, refs[1].Path)
+	if r.Path != "permissions[0]" {
+		t.Fatalf("path: %s", r.Path)
 	}
 	// The install check itself still reads scopes only at approval, as before.
 	if _, _, err := modules.CheckPackage(raw); err != nil {
 		t.Fatalf("install check: %v", err)
 	}
-	if identity.KnownScope("books:read") || !identity.KnownScope("matters:read") || !identity.KnownScope("views:a.b:read") {
+	if !identity.KnownScope("books:read") || !identity.KnownScope("firm:read") || !identity.KnownScope("matters:read") || !identity.KnownScope("views:a.b:read") || identity.KnownScope("not_a_real_scope:read") {
 		t.Fatal("KnownScope")
 	}
 }
@@ -135,11 +149,10 @@ func TestCheckAllReportsEveryMigrationRefusal(t *testing.T) {
 		code, file, value string
 		statement         int
 	}
+	// CORE-22: trust_accounts and payment_refunds are linkable core records, so those
+	// REFERENCES pass. CREATE TABLE contacts still collides with a core name.
 	wants := []want{
-		{modules.RefuseCoreReference, "migrations/0001_matter_targets.sql", "core.trust_accounts", 1},
-		{modules.RefuseCoreReference, "migrations/0002_more.sql", "core.payment_refunds", 1},
 		{modules.RefuseStatement, "migrations/0002_more.sql", "", 2},
-		{modules.RefuseCoreReference, "migrations/0002_more.sql", "core.trust_accounts", 3},
 	}
 	if len(refs) != len(wants) {
 		t.Fatalf("refusals: %v", refs)
@@ -183,10 +196,10 @@ func TestCheckAllStopsWhereNothingCanBeRead(t *testing.T) {
 	// A manifest value refused alongside an unknown field: both reported, with the
 	// value's path.
 	both := samplePackage(t, func(f map[string][]byte) {
-		replace(f, modules.ManifestFile, "    placement: matter\n", "    placement: client\n    nav: x\n")
+		replace(f, modules.ManifestFile, "    placement: matter\n", "    placement: desk\n    mystery: true\n")
 	})
 	_, _, refs = modules.CheckAll(both)
-	if len(refs) != 2 || refs[0].Path != "tabs[1].nav" || refs[1].Code != modules.RefuseManifest || refs[1].Path != "tabs[1].placement" {
+	if len(refs) != 2 || refs[0].Path != "tabs[1].mystery" || refs[1].Code != modules.RefuseManifest || refs[1].Path != "tabs[1].placement" {
 		t.Fatalf("value and field: %v", refs)
 	}
 	misnamed := samplePackage(t, func(f map[string][]byte) { f["migrations/bad.sql"] = []byte("SELECT 1;") })
@@ -207,12 +220,12 @@ func TestAccepts(t *testing.T) {
 		t.Fatal(a.ManifestSchema)
 	}
 	fields := strings.Join(a.ManifestFields, " ")
-	for _, f := range []string{"id", "sidebar[*].path", "widgets[*].target.params", "data.extends[*].columns[*].attorney_only", "permissions[*].required"} {
+	for _, f := range []string{"id", "sidebar[*].path", "widgets[*].target.params", "data.extends[*].columns[*].attorney_only", "permissions[*].required", "notifications[*].kind", "notifications[*].label", "notifications[*].default_channels", "client_home", "tabs[*].params", "tabs[*].nav"} {
 		if !strings.Contains(" "+fields+" ", " "+f+" ") {
 			t.Fatalf("%s missing from %s", f, fields)
 		}
 	}
-	if strings.Contains(fields, "notifications") || len(a.Scopes) != len(identity.Scopes()) || len(a.ForbiddenScopes) != 3 {
+	if len(a.Scopes) != len(identity.Scopes()) || len(a.ForbiddenScopes) != 3 {
 		t.Fatalf("accepts: %+v", a)
 	}
 	if !strings.Contains(strings.Join(a.CoreRelations, " "), "core.matters") || !strings.Contains(strings.Join(a.CoreRecords, " "), "time_entry") {
@@ -239,5 +252,25 @@ func TestInstallCheckRefusesFilesTheCoreDoesNotRead(t *testing.T) {
 	}
 	if !modules.PackageFile("migrations/0001_x.sql") || modules.PackageFile("README.md") {
 		t.Fatal("PackageFile")
+	}
+}
+
+func TestSystemMailManifestAccepted(t *testing.T) {
+	raw := samplePackage(t, func(f map[string][]byte) {
+		replace(f, modules.ManifestFile, "  events: /events\n", "  events: /events\n  system_mail: /system-mail\n")
+		replace(f, modules.ManifestFile, "permissions:\n", "permissions:\n  - scope: mail:system\n    reason: Deliver system mail.\n")
+	})
+	if _, _, refs := modules.CheckAll(raw); len(refs) != 0 {
+		t.Fatalf("valid system_mail refused: %v", refs)
+	}
+	if !identity.KnownScope("mail:system") {
+		t.Fatal("mail:system missing from catalog")
+	}
+	bad := samplePackage(t, func(f map[string][]byte) {
+		replace(f, modules.ManifestFile, "  events: /events\n", "  events: /events\n  system_mail: /system-mail\n")
+	})
+	_, _, refs := modules.CheckAll(bad)
+	if len(refs) == 0 || refs[0].Path != "container.system_mail" {
+		t.Fatalf("system_mail without mail:system: %v", refs)
 	}
 }

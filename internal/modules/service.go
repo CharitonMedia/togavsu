@@ -62,8 +62,12 @@ type Deps struct {
 	// no contact-keyed module row is readable, so a composition that leaves it out fails
 	// closed.
 	Contacts ContactReader
-	HTTP     *http.Client
-	Now      func() time.Time
+	// BooksContactOK reports whether a books:read module may receive contact.updated for
+	// the contact (CORE-02). moduleID is the installed module so the books-reader principal
+	// is authenticated. Nil drops every contact.updated for books:read modules.
+	BooksContactOK func(ctx context.Context, moduleID string, contactID domain.ID) (bool, error)
+	HTTP           *http.Client
+	Now            func() time.Time
 }
 
 // Service is the module runtime (PRD 9).
@@ -77,7 +81,21 @@ type Service struct {
 	aiErr   error
 	// AIBaseURLs overrides provider endpoints, as doctender.Router.BaseURLs does.
 	AIBaseURLs map[string]string
+
+	inboundOnce sync.Once
+	inbound     *inboundRate
+
+	// mailMatchingCheck verifies a match_token on createAiCall (CORE-27).
+	mailMatchingCheck func(ctx context.Context, p domain.Principal, credential string) error
 }
+
+// SetMailMatchingCheck wires CORE-27 mail_matching grant verification for AI calls.
+func (s *Service) SetMailMatchingCheck(fn func(ctx context.Context, p domain.Principal, credential string) error) {
+	s.mailMatchingCheck = fn
+}
+
+// MailAuthKey is the HMAC key for mail match tokens and filing grants (CORE-26, CORE-27).
+func (s *Service) MailAuthKey() []byte { return s.subkey("mail-task-auth") }
 
 // Installed is an installed module as the runtime serves it.
 type Installed struct {
@@ -566,6 +584,12 @@ func (s *Service) install(ctx context.Context, p domain.Principal, v marketplace
 		return View{}, err
 	}
 	m := pkg.Manifest
+	if err := s.assertClientHomeFree(ctx, m.ID, m.ClientHome); err != nil {
+		return View{}, err
+	}
+	if err := s.checkSystemMailUnique(ctx, m); err != nil {
+		return View{}, err
+	}
 	existing, err := s.row(ctx, m.ID)
 	switch {
 	case err == nil && existing.Status != StatusRemoved && existing.Status != StatusCancelled:
@@ -899,7 +923,7 @@ func (s *Service) bringUp(ctx context.Context, p domain.Principal, r modRow, m M
 	}
 	if s.d.Nav != nil {
 		s.d.Nav.RemoveModuleNav(r.ID)
-		if err := s.d.Nav.AddModuleNav(r.ID, NavEntries(m), nil); err != nil {
+		if err := s.d.Nav.AddModuleNav(r.ID, NavEntries(m), s.badgeCounter(r.ID, m)); err != nil {
 			errs = append(errs, "sidebar: "+err.Error())
 		}
 	}
@@ -987,6 +1011,9 @@ func (s *Service) Enable(ctx context.Context, p domain.Principal, id string) (Vi
 	}
 	pkg, err := s.loadPackage(ctx, r.PackageID)
 	if err != nil {
+		return View{}, err
+	}
+	if err := s.assertClientHomeFree(ctx, id, pkg.Manifest.ClientHome); err != nil {
 		return View{}, err
 	}
 	if !r.Enabled {
@@ -1134,6 +1161,9 @@ func (s *Service) update(ctx context.Context, p domain.Principal, id string, v m
 	}
 	if m.Version == r.Version {
 		return UpdateResult{}, domain.Conflict("version " + m.Version + " is already installed")
+	}
+	if err := s.checkSystemMailUnique(ctx, m); err != nil {
+		return UpdateResult{}, err
 	}
 	if err := s.schemas.CheckHistory(ctx, id, ms); err != nil {
 		return UpdateResult{}, refuse(CodeMigration, err.Error())
@@ -1533,6 +1563,12 @@ func (s *Service) Uninstall(ctx context.Context, p domain.Principal, id string, 
 		reason = "uninstalled; data deleted after backup " + backup
 	}
 	if err := s.commit(ctx, func(ctx context.Context) error {
+		// CORE-06: delete removes sealed secrets; keep leaves them for a later reinstall.
+		if in.Data == "delete" {
+			if err := s.deleteModuleSecrets(ctx, id); err != nil {
+				return err
+			}
+		}
 		if err := s.saveRow(ctx, r); err != nil {
 			return err
 		}
@@ -1633,7 +1669,7 @@ func (s *Service) Start(ctx context.Context) error {
 	}
 	for _, in := range mods {
 		if s.d.Nav != nil {
-			if err := s.d.Nav.AddModuleNav(in.ID, NavEntries(in.Manifest), nil); err != nil {
+			if err := s.d.Nav.AddModuleNav(in.ID, NavEntries(in.Manifest), s.badgeCounter(in.ID, in.Manifest)); err != nil {
 				return err
 			}
 		}

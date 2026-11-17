@@ -60,6 +60,7 @@ services:
       context: .
       dockerfile: deploy/core.Dockerfile
     image: togavsu-core:local
+    # CoreUID:CoreGID (internal/supervisor.CoreUID / CoreGID); same as serving core.
     user: "65532:65532"
     command: ["migrate"]
     environment:
@@ -117,6 +118,8 @@ services:
       TOGAVSU_ADMINSECRETS_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_adminsecrets
       TOGAVSU_BACKUPKEY_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_backupkey
       TOGAVSU_CORE_DATA_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_core_data
+      TOGAVSU_MAIL_OUTBOX_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_mail_outbox
+      SUPERVISOR_MAIL_OUTBOX: /var/lib/togavsu-mail
       FIRM_TIMEZONE: UTC
       # The release public key ships in the supervisor image (deploy/release/cosign.pub).
       # Release signatures are made off GitHub and are not in the public transparency
@@ -130,6 +133,8 @@ services:
       - backupkey:/backupkey:ro
       - backups:/var/lib/togavsu/backups
       - supervisor_data:/var/lib/togavsu
+      # Owned for CoreUID (65532) by the supervisor image and wire(); see CORE-05.
+      - mail_outbox:/var/lib/togavsu-mail
       - runtime:/runtime
       - caddy_admin:/run/caddy-admin
       - /var/run/docker.sock:/var/run/docker.sock
@@ -156,6 +161,7 @@ services:
       context: .
       dockerfile: deploy/core.Dockerfile
     image: togavsu-core:local
+    # CoreUID:CoreGID (internal/supervisor.CoreUID / CoreGID).
     user: "65532:65532"
     environment:
       TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
@@ -169,6 +175,9 @@ services:
       # Upload staging and the default local-disk file store (core.DataDir). The
       # supervisor mounts the same volume on a replacement core.
       - core_data:/var/lib/togavsu-core
+      # Supervisor notices only (mail-outbox.jsonl); DeliverMail drains them (CORE-05).
+      # Directory/file owned as CoreUID so this user can Take/rename; not supervisor_data.
+      - mail_outbox:/var/lib/togavsu-mail
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -191,4 +200,5 @@ volumes:
   runtime:
   backups:
   supervisor_data:
+  mail_outbox:
   core_data:

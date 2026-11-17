@@ -24,6 +24,7 @@ type NewFile struct {
 	FolderID         domain.ID
 	AttorneyOnly     bool
 	SharedWithClient bool
+	Library          bool
 	MediaType        string
 	// Source is upload, client_upload, editor, email, zoom, drop_folder, importer or a module id.
 	Source string
@@ -58,6 +59,7 @@ type FileView struct {
 	FinancialClass   *string    `json:"financial_classification"`
 	AttorneyOnly     bool       `json:"attorney_only"`
 	SharedWithClient bool       `json:"shared_with_client"`
+	Library          bool       `json:"library"`
 	Source           string     `json:"source"`
 	ArrivedAs        string     `json:"arrived_as"`
 	LockedFields     []string   `json:"locked_fields"`
@@ -91,8 +93,8 @@ func view(f fileRow, warnings []string) FileView {
 		ID: f.ID, CreatedAt: domain.FormatUTC(f.CreatedAt), CreatedBy: f.CreatedBy, UpdatedAt: domain.FormatUTC(f.UpdatedAt),
 		Name: f.Name, Extension: f.Extension, MatterID: optID(f.MatterID), ContactID: optID(f.ContactID),
 		FolderID: optID(domain.ID(f.Folder)), CategoryID: optString(f.Category), Status: optString(f.Status),
-		Origin: f.Origin, AttorneyOnly: f.AttorneyOnly, SharedWithClient: f.SharedWithClient, Source: f.Source,
-		ArrivedAs: f.ArrivedName, LockedFields: lockedFields(f), CurrentVersionID: optID(f.CurrentVersionID),
+		Origin: f.Origin, AttorneyOnly: f.AttorneyOnly, SharedWithClient: f.SharedWithClient, Library: f.Library,
+		Source: f.Source, ArrivedAs: f.ArrivedName, LockedFields: lockedFields(f), CurrentVersionID: optID(f.CurrentVersionID),
 		TrashedBy: optID(f.TrashedBy), Warnings: warnings, MarkdownName: MarkdownName(f.Name),
 	}
 	if f.FinancialClass != "" && f.FinancialClass != string(domain.FileGeneral) {
@@ -133,6 +135,20 @@ func validName(name string) error {
 
 // maxName is the common file-system name limit in bytes.
 const maxName = 1<<8 - 1
+
+// libraryPlacement refuses a library file that names a matter or contact.
+func libraryPlacement(library bool, matter, contact domain.ID) error {
+	if !library {
+		return nil
+	}
+	if matter != "" {
+		return domain.Invalid("matter_id", "a library file has no matter")
+	}
+	if contact != "" {
+		return domain.Invalid("contact_id", "a library file has no contact")
+	}
+	return nil
+}
 
 func validHow(how string) bool {
 	switch how {
@@ -243,6 +259,9 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 	default:
 		return FileView{}, domain.Invalid("financial_classification", "unknown class")
 	}
+	if err := libraryPlacement(nf.Library, nf.MatterID, nf.ContactID); err != nil {
+		return FileView{}, err
+	}
 	if nf.unassigned {
 		if nf.MatterID != "" || nf.AttorneyOnly {
 			return FileView{}, domain.Forbidden("an unassigned module file has no matter and is not attorney-only")
@@ -273,8 +292,8 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 	f := fileRow{File: domain.File{
 		Meta: fm, Name: nf.Name, Extension: extensionOf(nf.Name), MatterID: nf.MatterID, ContactID: nf.ContactID,
 		Folder: string(nf.FolderID), Status: status, Origin: nf.Origin, AttorneyOnly: nf.AttorneyOnly,
-		SharedWithClient: nf.SharedWithClient, Source: nf.Source, ArrivedName: nf.Name, LockedFields: "[]",
-		CurrentVersionID: vm.ID,
+		SharedWithClient: nf.SharedWithClient, Library: nf.Library, Source: nf.Source, ArrivedName: nf.Name,
+		LockedFields: "[]", CurrentVersionID: vm.ID,
 	}, FinancialClass: class}
 	v := domain.FileVersion{
 		Meta: vm, FileID: fm.ID, Number: int(zero) + 1, StorageBackendID: loc.Backend, StorageKey: string(vm.ID), SizeBytes: size,
@@ -336,7 +355,9 @@ func versionNote(v domain.FileVersion) string {
 
 func (s *Service) versionCreated(ctx context.Context, f fileRow, v domain.FileVersion) {
 	if s.onVersion != nil {
-		s.onVersion(context.WithoutCancel(ctx), VersionCreated{FileID: f.ID, VersionID: v.ID, MatterID: f.MatterID, Number: v.Number, How: v.How, Source: f.Source})
+		s.onVersion(context.WithoutCancel(ctx), VersionCreated{
+			FileID: f.ID, VersionID: v.ID, MatterID: f.MatterID, Number: v.Number, How: v.How, Source: f.Source, Library: f.Library,
+		})
 	}
 }
 
@@ -463,6 +484,7 @@ type ListQuery struct {
 	ContactID domain.ID
 	FolderID  *domain.ID
 	Trashed   bool
+	Library   *bool
 	Text      string
 	Cursor    domain.ID
 	Limit     int
@@ -476,7 +498,7 @@ func (s *Service) List(ctx context.Context, p domain.Principal, q ListQuery) ([]
 			return nil, "", err
 		}
 	}
-	fq := fileQuery{MatterID: q.MatterID, ContactID: q.ContactID, Trashed: q.Trashed, Text: q.Text, After: q.Cursor}
+	fq := fileQuery{MatterID: q.MatterID, ContactID: q.ContactID, Trashed: q.Trashed, Library: q.Library, Text: q.Text, After: q.Cursor}
 	if q.FolderID != nil {
 		folder := string(*q.FolderID)
 		fq.Folder = &folder
@@ -646,17 +668,99 @@ func (s *Service) MoveToFolder(ctx context.Context, p domain.Principal, id domai
 }
 
 // MarkStatus is Mark draft, final, executed or filed. A model never calls it.
+// A module service call (CORE-25) may only set executed on the signed fee-agreement file
+// for that module.
 func (s *Service) MarkStatus(ctx context.Context, p domain.Principal, id domain.ID, status string) (FileView, error) {
 	switch status {
 	case "draft", "final", "executed", "filed", "received":
 	default:
 		return FileView{}, domain.Invalid("status", "status is draft, final, executed, filed or received")
 	}
+	if p.Source == domain.SourceService && p.ModuleID != "" && p.UserID.IsZero() {
+		return s.signatureMarkExecuted(ctx, p, id, status)
+	}
 	return s.change(ctx, p, id, "status", func(f *fileRow) (string, string, error) {
 		old := f.Status
 		f.Status = status
 		return old, status, nil
 	})
+}
+
+// signatureMarkExecuted is CORE-25: the signature module marks its signed copy executed.
+func (s *Service) signatureMarkExecuted(ctx context.Context, p domain.Principal, id domain.ID, status string) (FileView, error) {
+	if status != "executed" {
+		return FileView{}, &domain.APIError{Code: "scope_denied", Message: "a signature service call may only mark the signed file executed"}
+	}
+	if s.feeSignedFile == nil {
+		return FileView{}, &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
+	}
+	ok, err := s.feeSignedFile(ctx, p.ModuleID, id)
+	if err != nil {
+		return FileView{}, err
+	}
+	if !ok {
+		return FileView{}, &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
+	}
+	var out fileRow
+	err = s.tx(ctx, func(ctx context.Context) error {
+		f, err := s.lockedFile(ctx, id)
+		if err != nil {
+			return err
+		}
+		if f.PurgedAt != zero {
+			return domain.NotFound("file")
+		}
+		// Service principals sit outside every wall (PRD 4.1), same as signatureUpdate:
+		// refuse before any status write or FileView return. Attorney-only matches
+		// moduleDecision for service tokens.
+		if f.MatterID != "" {
+			wall, err := s.policy.Walls.View(ctx, p, f.MatterID)
+			if err != nil {
+				return err
+			}
+			if wall.Walled {
+				return domain.NotFound("matter")
+			}
+		}
+		if f.AttorneyOnly {
+			return domain.NotFound("file")
+		}
+		old := f.Status
+		if old == status {
+			out = f
+			return nil
+		}
+		f.Status = status
+		f.UpdatedAt = s.now().UTC()
+		if err := s.st.updateFile(ctx, f); err != nil {
+			return err
+		}
+		if err := s.record(ctx, p, "file", f.ID, "status", old, status); err != nil {
+			return err
+		}
+		if err := s.event(ctx, p, f, "file.updated", fmt.Sprintf("Changed status of %s", f.Name)); err != nil {
+			return err
+		}
+		out = f
+		return nil
+	})
+	if err != nil {
+		return FileView{}, err
+	}
+	return view(out, nil), nil
+}
+
+// Peek returns a file with no caller ACL, for cross-service links that already know the
+// caller may name it (CORE-25 signed copy check).
+func (s *Service) Peek(ctx context.Context, id domain.ID) (FileView, error) {
+	f, err := s.loadFile(ctx, id)
+	if err != nil {
+		return FileView{}, err
+	}
+	if f.PurgedAt != zero {
+		return FileView{}, domain.NotFound("file")
+	}
+	return view(f, nil), nil
 }
 
 // Metadata is updateFileMetadata. Nil fields stay as they are.
@@ -701,11 +805,17 @@ func (s *Service) UpdateMetadata(ctx context.Context, p domain.Principal, id dom
 			lock(&next, "category")
 		}
 		if m.MatterID != nil && *m.MatterID != f.MatterID {
+			if f.Library {
+				return domain.Invalid("matter_id", "a library file has no matter")
+			}
 			next.MatterID = *m.MatterID
 			next.Folder = ""
 			lock(&next, "matter")
 		}
 		if m.ContactID != nil {
+			if f.Library && *m.ContactID != "" {
+				return domain.Invalid("contact_id", "a library file has no contact")
+			}
 			next.ContactID = *m.ContactID
 		}
 		if next.MatterID != f.MatterID || next.ContactID != f.ContactID || next.AttorneyOnly != f.AttorneyOnly {

@@ -34,7 +34,9 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -93,6 +95,11 @@ type Core struct {
 	DatabaseURL string
 	Runtime     *Runtime
 	Backups     *Backups
+	// Mail is the CORE-29 SMTP stand-in the core is pointed at (client-access mail,
+	// notification email, module mail SMTP fallback).
+	Mail *Mail
+	// SupervisorMailOutbox is the temp-dir path of the supervisor notice file DeliverMail drains.
+	SupervisorMailOutbox string
 
 	// Users holds one signed-in user of every role, by role name; the fields below are
 	// the same users.
@@ -131,8 +138,11 @@ func New(t *testing.T) *Core {
 	testkit.DropModuleRoles(t, c.DatabaseURL)
 	c.Runtime = testkit.NewRuntime(func() string { return c.URL }, c.DatabaseURL)
 	t.Cleanup(c.Runtime.Close)
+	c.Mail = startMail(t)
+	c.SupervisorMailOutbox = filepath.Join(t.TempDir(), "mail-outbox.jsonl")
 	app, err := core.Open(context.Background(), core.Config{DatabaseURL: c.DatabaseURL, Key: testKey, Domain: "firm.example",
-		MailEvery: -time.Nanosecond, DataDir: t.TempDir(), ModuleRuntime: c.Runtime, ModuleBackups: c.Backups, NoBackground: true})
+		MailEvery: -time.Nanosecond, DataDir: t.TempDir(), SupervisorMailOutbox: c.SupervisorMailOutbox,
+		ModuleRuntime: c.Runtime, ModuleBackups: c.Backups, NoBackground: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +157,17 @@ func New(t *testing.T) *Core {
 	admin := testkit.FirstRun(t, c.URL)
 	c.Admin = c.add(&User{Client: admin, Role: Admin, Name: testkit.AdminName, Email: testkit.AdminEmail})
 	c.Admin.ID = testkit.Str(t, admin.Must(http.StatusOK, "GET", "/api/v1/me", nil).JSON, "id")
+	// Point system mail at the stand-in (CORE-29); STARTTLS off so the fake relay works.
+	port, err := strconv.Atoi(c.Mail.port())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range map[string]any{
+		"mail.smtp_host": "127.0.0.1", "mail.smtp_port": port, "mail.smtp_from": "system@firm.example",
+		"mail.smtp_starttls": false,
+	} {
+		c.Admin.Must(http.StatusOK, "PATCH", "/api/v1/settings/"+k, map[string]any{"value": v})
+	}
 	c.Attorney = c.enroll(Attorney, "Ada Attorney", "ada@firm.example", "")
 	c.Staff = c.enroll(Staff, "Sam Staff", "sam@firm.example", "")
 	c.Accountant = c.enroll(Accountant, "Ari Accountant", "ari@firm.example", "")
@@ -372,6 +393,17 @@ func (c *Core) DeliverEvents() int {
 		c.T.Fatal(err)
 	}
 	return sent
+}
+
+// DeliverMail drains the supervisor mail outbox and the core mail queue through the
+// system mailer (CORE-05), the way the background loop does, and returns how many went out.
+func (c *Core) DeliverMail() int {
+	c.T.Helper()
+	n, err := c.app.DeliverMail(context.Background())
+	if err != nil {
+		c.T.Fatal(err)
+	}
+	return n
 }
 
 // Count runs a counting query on the core's database as the core role.

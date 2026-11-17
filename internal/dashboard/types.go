@@ -83,7 +83,10 @@ type Prefs struct {
 
 // NotificationPref is one cell row of the preference grid.
 type NotificationPref struct {
+	// Group is the module name for module kinds; empty for core kinds (CORE-03).
+	Group         string `json:"group,omitempty"`
 	Kind          string `json:"kind"`
+	Label         string `json:"label,omitempty"`
 	InApp         bool   `json:"in_app"`
 	Email         bool   `json:"email"`
 	EmailRequired bool   `json:"email_required"`

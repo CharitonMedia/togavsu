@@ -10,9 +10,12 @@ from __future__ import annotations
 
 from contract.metadata import (
     BACKGROUND_FILE_PUBLICATION,
+    MAIL_FILING,
+    MAIL_MATCHING,
     MALWARE_DELIVERY,
     NONINTERACTIVE_OPERATIONS,
     PAYMENT_PROCESSOR,
+    PAYMENT_REFUND,
     SERVICE_PRINCIPAL_ISSUANCE,
 )
 from contract.schemas import COMPONENTS, PARAM_SCHEMA, QUERY
@@ -66,7 +69,54 @@ DELEGABLE_SCOPES = {
     "help:read",
     "help:write",
     "markers:write",
+    "firm:read",
+    "users:directory",
 }
+
+# Operations that accept a module service principal with no viewer (CORE-01), and a
+# viewer context token when present. createEvent/bulkEvent keep today's module append.
+SERVICE_PRINCIPAL_OPERATIONS = frozenset(
+    {
+        "createEvent",
+        "bulkEvent",
+        "createNotification",
+        "sendModuleMail",
+        "matchMail",
+        "updateFeeAgreement",
+        "markFileStatus",
+        "listInvoice",
+        "getInvoice",
+        "listPayment",
+        "getPayment",
+        "listExpense",
+        "getExpense",
+        "listTrustAccount",
+        "getTrustAccount",
+        "listTrustEntry",
+        "getTrustEntry",
+        "getTrustBalances",
+    }
+)
+
+# Money reads that a books:read service call elevates to the accountant books reader (CORE-02).
+BOOKS_READER_OPERATIONS = frozenset(
+    {
+        "listInvoice",
+        "getInvoice",
+        "listPayment",
+        "getPayment",
+        "listExpense",
+        "getExpense",
+        "listTrustAccount",
+        "getTrustAccount",
+        "listTrustEntry",
+        "getTrustEntry",
+        "getTrustBalances",
+        "getBooksProfile",
+        "getBooksMatter",
+        "getBooksContact",
+    }
+)
 
 # Background calls use a core-issued workflow grant. The set is the union of those workflows.
 
@@ -104,7 +154,10 @@ MODULE_DELEGATION_POLICY = {
         "attorney_only_redaction": True,
         "malware_scan": MALWARE_DELIVERY,
         "payment_processor": PAYMENT_PROCESSOR,
+        "payment_refund": PAYMENT_REFUND,
         "background_file_publication": BACKGROUND_FILE_PUBLICATION,
+        "mail_filing": MAIL_FILING,
+        "mail_matching": MAIL_MATCHING,
         "operations": sorted(NONINTERACTIVE_OPERATIONS),
     },
     "service_principal_issuance": {
@@ -120,6 +173,16 @@ MODULE_DELEGATION_POLICY = {
         "missing_scope": "scope_denied",
         "wrong_matter": "not_found",
         "wrong_recipient": "forbidden",
+    },
+    "service_principal": {
+        "mode": "delegated_viewer_or_service_principal",
+        "operations": sorted(SERVICE_PRINCIPAL_OPERATIONS),
+        "credential": "module_bearer",
+        "viewer_required": False,
+        "task_grant_required": False,
+        "missing_mark": "scope_denied",
+        "audit_source": "service",
+        "unmarked_write": "scope_denied",
     },
     "cases": [
         {"operation_scope": "ai:use", "module_scopes": ["ai:use"], "viewer_role": "staff", "result": "allowed"},
@@ -287,8 +350,8 @@ def _delegated_viewer(access: dict, public: bool, mcp: str) -> bool:
     scopes = access.get("scopes") or []
     if not scopes or not all(scope in DELEGABLE_SCOPES for scope in scopes):
         return False
-    # Firm help and firm markers stay admin-only. These two scopes are own-namespace principals, not viewer delegation.
-    if scopes == ["help:write"] or scopes == ["markers:write"]:
+    # Firm help, firm markers, and module secrets stay own-namespace principals, not viewer delegation.
+    if scopes == ["help:write"] or scopes == ["markers:write"] or scopes == ["module_secrets:write"]:
         return False
     return True
 
@@ -296,6 +359,17 @@ def _delegated_viewer(access: dict, public: bool, mcp: str) -> bool:
 def _delegation_mode(access: dict, public: bool, mcp: str, operation_id: str) -> str | None:
     if access.get("authorization_category") == "service_principal_issuance":
         return "service_principal"
+    # Explicit mark wins (CORE-01 delegated_viewer_or_service_principal and later items).
+    explicit = access.get("module_delegation")
+    if explicit in (
+        "delegated_viewer",
+        "delegated_viewer_or_noninteractive",
+        "delegated_viewer_or_service_principal",
+        "service_principal",
+    ):
+        return explicit
+    if operation_id in SERVICE_PRINCIPAL_OPERATIONS:
+        return "delegated_viewer_or_service_principal"
     if not _delegated_viewer(access, public, mcp):
         return None
     if operation_id in NONINTERACTIVE_OPERATIONS:
@@ -360,7 +434,22 @@ class Contract:
         if mcp == "required" and public and roles:
             raise ContractError(f"public operation {operation_id} cannot also require roles")
         module_principal = (extra_access or {}).get("module_principal")
-        if not public and mcp == "required" and not roles and not module_principal:
+        delegation = (extra_access or {}).get("module_delegation")
+        # Module-only ops may omit human roles when they declare a service/viewer
+        # delegation (CORE-01/04/27) or an own-namespace module_principal.
+        if (
+            not public
+            and mcp == "required"
+            and not roles
+            and not module_principal
+            and delegation
+            not in (
+                "service_principal",
+                "delegated_viewer_or_service_principal",
+                "delegated_viewer_or_noninteractive",
+                "delegated_viewer",
+            )
+        ):
             raise ContractError(f"{operation_id} needs roles")
 
         parameters: list = []
@@ -825,7 +914,11 @@ def _attach_mcp_transfer(operation: dict) -> None:
     access = operation.get("x-togavsu-access") or {}
     delegation = access.get("module_delegation")
     credentials: dict = {}
-    if delegation in ("delegated_viewer", "delegated_viewer_or_noninteractive"):
+    if delegation in (
+        "delegated_viewer",
+        "delegated_viewer_or_noninteractive",
+        "delegated_viewer_or_service_principal",
+    ):
         credentials["context_token"] = {
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
@@ -841,7 +934,7 @@ def _attach_mcp_transfer(operation: dict) -> None:
             "roles_from_arguments": False,
         }
         arguments.append("task_authorization")
-    if delegation == "service_principal":
+    if delegation in ("service_principal", "delegated_viewer_or_service_principal"):
         credentials["module_bearer"] = {
             "header": "Authorization",
             "scheme": "Bearer",

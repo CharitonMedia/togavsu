@@ -89,7 +89,7 @@ type fileRow struct {
 
 const fileCols = `id, created_at, updated_at, created_by, name, extension, matter_id, contact_id, folder, category,
 status, origin, attorney_only, shared_with_client, source, arrived_name, locked_fields, current_version_id,
-trashed_at, trashed_by, financial_class, purged_at, purged_by`
+trashed_at, trashed_by, financial_class, purged_at, purged_by, library`
 
 func scanFile(sc interface{ Scan(...any) error }) (fileRow, error) {
 	var f fileRow
@@ -97,7 +97,7 @@ func scanFile(sc interface{ Scan(...any) error }) (fileRow, error) {
 	var ao, shared int
 	err := sc.Scan(&f.ID, ts(&f.CreatedAt), ts(&f.UpdatedAt), &f.CreatedBy, &f.Name, &f.Extension, &matter, &contact,
 		&f.Folder, &category, &f.Status, &f.Origin, &ao, &shared, &f.Source, &f.ArrivedName, &f.LockedFields,
-		&f.CurrentVersionID, &f.TrashedAt, &trashedBy, &f.FinancialClass, &f.PurgedAt, &purgedBy)
+		&f.CurrentVersionID, &f.TrashedAt, &trashedBy, &f.FinancialClass, &f.PurgedAt, &purgedBy, &f.Library)
 	if err != nil {
 		return fileRow{}, notFound(err)
 	}
@@ -108,11 +108,11 @@ func scanFile(sc interface{ Scan(...any) error }) (fileRow, error) {
 }
 
 func (s *store) insertFile(ctx context.Context, f fileRow) error {
-	return s.exec(ctx, `INSERT INTO files (`+fileCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	return s.exec(ctx, `INSERT INTO files (`+fileCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		f.ID, us(f.CreatedAt), us(f.UpdatedAt), f.CreatedBy, f.Name, f.Extension, nullID(f.MatterID), nullID(f.ContactID),
 		f.Folder, nullCategory(f.Category), f.Status, f.Origin, flag(f.AttorneyOnly), flag(f.SharedWithClient), f.Source,
 		f.ArrivedName, f.LockedFields, f.CurrentVersionID, f.TrashedAt, nullID(f.TrashedBy), f.FinancialClass,
-		f.PurgedAt, nullID(f.PurgedBy))
+		f.PurgedAt, nullID(f.PurgedBy), f.Library)
 }
 
 func nullCategory(c string) any {
@@ -152,6 +152,7 @@ type fileQuery struct {
 	ContactID domain.ID
 	Folder    *string
 	Trashed   bool
+	Library   *bool
 	Text      string
 	IDs       []domain.ID
 	After     domain.ID
@@ -176,6 +177,9 @@ func (s *store) listFiles(ctx context.Context, fq fileQuery) ([]fileRow, error) 
 	}
 	if fq.ContactID != "" {
 		where, args = append(where, "contact_id = ?"), append(args, fq.ContactID)
+	}
+	if fq.Library != nil {
+		where, args = append(where, "library = ?"), append(args, *fq.Library)
 	}
 	if fq.Folder != nil {
 		where, args = append(where, "folder = ?"), append(args, *fq.Folder)
@@ -651,16 +655,17 @@ type uploadRow struct {
 	VersionID      domain.ID
 	// GrantID is the background publication grant the upload was created under.
 	GrantID domain.ID
+	Library bool
 }
 
 const uploadCols = `id, created_at, updated_at, created_by, owner_user_id, owner_module_id, file_name, matter_id, contact_id,
-media_type, size_bytes, declared_sha256, chunk_bytes, received_bytes, sha256, status, expires_at, file_id, version_id, grant_id`
+media_type, size_bytes, declared_sha256, chunk_bytes, received_bytes, sha256, status, expires_at, file_id, version_id, grant_id, library`
 
 func (s *store) insertUpload(ctx context.Context, u uploadRow) error {
-	return s.exec(ctx, `INSERT INTO file_uploads (`+uploadCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	return s.exec(ctx, `INSERT INTO file_uploads (`+uploadCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		u.ID, us(u.CreatedAt), us(u.UpdatedAt), u.CreatedBy, u.OwnerUserID, u.OwnerModuleID, u.FileName, nullID(u.MatterID),
 		nullID(u.ContactID), u.MediaType, u.SizeBytes, u.DeclaredSHA256, u.ChunkBytes, u.ReceivedBytes, u.SHA256,
-		u.Status, u.ExpiresAt, nullID(u.FileID), nullID(u.VersionID), nullID(u.GrantID))
+		u.Status, u.ExpiresAt, nullID(u.FileID), nullID(u.VersionID), nullID(u.GrantID), u.Library)
 }
 
 func (s *store) updateUpload(ctx context.Context, u uploadRow) error {
@@ -692,7 +697,7 @@ func (s *store) getUpload(ctx context.Context, id domain.ID, lock bool) (uploadR
 	var matter, contact, file, version, grant nullString
 	err := s.row(ctx, query, id).Scan(&u.ID, ts(&u.CreatedAt), ts(&u.UpdatedAt), &u.CreatedBy, &u.OwnerUserID, &u.OwnerModuleID,
 		&u.FileName, &matter, &contact, &u.MediaType, &u.SizeBytes, &u.DeclaredSHA256, &u.ChunkBytes, &u.ReceivedBytes,
-		&u.SHA256, &u.Status, &u.ExpiresAt, &file, &version, &grant)
+		&u.SHA256, &u.Status, &u.ExpiresAt, &file, &version, &grant, &u.Library)
 	u.MatterID, u.ContactID, u.FileID, u.VersionID, u.GrantID = matter.id(), contact.id(), file.id(), version.id(), grant.id()
 	return u, notFound(err)
 }

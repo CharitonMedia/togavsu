@@ -181,6 +181,7 @@ func (s *Service) CallAI(ctx context.Context, p domain.Principal, scopes []strin
 	default:
 		return AICall{}, domain.Forbidden("AI calls are for staff and modules")
 	}
+	moduleOwn := p.ModuleID != "" && p.UserID.IsZero()
 	var matter domain.ID
 	if in.MatterID != nil && !in.MatterID.IsZero() {
 		matter = *in.MatterID
@@ -190,6 +191,14 @@ func (s *Service) CallAI(ctx context.Context, p domain.Principal, scopes []strin
 		}
 		if !dec.Allow {
 			return AICall{}, domain.NotFound("matter")
+		}
+	} else if moduleOwn && s.mailMatchingCheck != nil {
+		cred := TaskAuth(ctx)
+		if cred == "" {
+			return AICall{}, domain.Forbidden("a mail matching grant is required")
+		}
+		if err := s.mailMatchingCheck(ctx, p, cred); err != nil {
+			return AICall{}, err
 		}
 	}
 	prompt, system, err := aiPrompt(in.Input)

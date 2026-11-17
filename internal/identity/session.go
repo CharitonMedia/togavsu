@@ -64,6 +64,7 @@ func (s *Service) authSession(ctx context.Context, in Presented) (Caller, error)
 	}
 	return Caller{Principal: domain.Principal{
 		UserID: user.ID, Roles: roles, Source: domain.SourceUI, SessionID: row.ID,
+		MustChangePassword: user.MustChangePassword,
 	}}, nil
 }
 
@@ -102,6 +103,7 @@ func (s *Service) authBearer(ctx context.Context, raw string) (Caller, error) {
 		}
 		who.UserID = user.ID
 		who.Roles = roles
+		who.MustChangePassword = user.MustChangePassword
 	}
 	if row.ModuleID != "" && row.UserID.IsZero() {
 		who.Source = domain.SourceModule
@@ -111,7 +113,8 @@ func (s *Service) authBearer(ctx context.Context, raw string) (Caller, error) {
 
 // RequireScopes checks a bearer token. A session is authorized by role.
 func (c Caller) RequireScopes(need ...string) error {
-	if c.Principal.Source != domain.SourceAPIToken && c.Principal.Source != domain.SourceModule {
+	src := c.Principal.Source
+	if src != domain.SourceAPIToken && src != domain.SourceModule && src != domain.SourceService {
 		return nil
 	}
 	have := map[string]struct{}{}

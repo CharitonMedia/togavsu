@@ -56,6 +56,10 @@ type Config struct {
 	// DataDir holds upload staging, editor run folders and the default local-disk
 	// backend. Empty is DataDir (the core volume); tests give a temporary folder.
 	DataDir string
+	// SupervisorMailOutbox is the supervisor's mail-outbox.jsonl path (CORE-05).
+	// Empty is SupervisorMailOutboxPath; tests point at a temp file. A missing file
+	// is a no-op drain.
+	SupervisorMailOutbox string
 	// WordcraftCLI and EditorDist locate LawCraft's builds. Empty uses the image paths;
 	// a missing binary or folder leaves those features answering that they are absent.
 	WordcraftCLI string
@@ -109,6 +113,9 @@ type App struct {
 	UI      *UI
 	Modules *modules.Service
 	Market  *marketplace.Service
+	sysMail *systemMailer
+	// supervisorMailOutbox is Config.SupervisorMailOutbox (resolved), drained by DeliverMail.
+	supervisorMailOutbox string
 
 	// providerURLs is Config.ProviderURLs, for the AI tab's Provider check.
 	providerURLs map[string]string
@@ -137,6 +144,10 @@ type App struct {
 	// by Close so a hold released during shutdown starts nothing.
 	bgMu     sync.Mutex
 	bgClosed bool
+
+	// revokeDevicesForUser, when set, overrides Modules.RevokeDevicesForUser after
+	// deactivate (tests inject a failure to assert the error reaches the client).
+	revokeDevicesForUser func(context.Context, domain.Principal, domain.ID) error
 }
 
 // Migrate applies every embedded core migration to dsn in schema core.
@@ -276,11 +287,12 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	if err != nil {
 		return fail(err)
 	}
+	sysMail := &systemMailer{Settings: reg, Now: now}
 	pg := identity.NewPG(pool)
 	ids, err := identity.New(identity.Deps{
 		Users: pg.Users(), Sessions: pg.Sessions(), Passwords: pg.Passwords(),
 		TOTP: pg.TOTP(), Recovery: pg.Recovery(), Tokens: pg.Tokens(),
-		Audit: aud, Settings: reg, Key: cfg.Key, Now: now, Mail: resetMailer{mail: smtpMailer{Settings: reg}},
+		Audit: aud, Settings: reg, Key: cfg.Key, Now: now, Mail: resetMailer{mail: sysMail},
 	})
 	if err != nil {
 		return fail(err)
@@ -293,6 +305,11 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	app := &App{
 		Pool: pool, Audit: aud, Settings: reg, Identity: ids, Users: users,
 		Practice: practice.NewWithKey(store, reg, cfg.Key), Store: store, ledger: ledger,
+	}
+	app.sysMail = sysMail
+	app.supervisorMailOutbox = cfg.SupervisorMailOutbox
+	if app.supervisorMailOutbox == "" {
+		app.supervisorMailOutbox = SupervisorMailOutboxPath
 	}
 	sub, err := fs.Sub(web.Practice, "templates/practice")
 	if err != nil {
@@ -307,16 +324,19 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	if dataDir == "" {
 		dataDir = DataDir
 	}
-	docs, err := openFiles(ctx, pool, aud, reg, store, app.Practice.Policy.Walls, cfg.Key, dataDir, now)
+	docs, err := openFiles(ctx, pool, aud, reg, store, app.Practice.Policy.Walls, cfg.Key, dataDir, now, sysMail)
 	if err != nil {
 		return fail(err)
 	}
 	app.docs = docs
-	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, docs.Files, app.Practice, app.principal, app.scopes, now)
+	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, docs.Files, app.Practice, app.principal, app.scopes, now, sysMail)
 	if err != nil {
 		return fail(err)
 	}
 	app.Trust, app.Billing = fin.Trust, fin.Billing
+	// CORE-05: absolute links and delivery through the system mail router.
+	app.Trust.FirmDomain = cfg.Domain
+	app.Trust.MailSender = sysMail.AsSender()
 	if cli == "" {
 		cli = WordcraftCLI
 	}
@@ -354,6 +374,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	// (PRD 8.19, 9.3); the files service asks the module runtime, which is opened after
 	// the ui, so until then every module principal is refused.
 	docs.Files.SetModuleCheck(app.moduleEnabled)
+	docs.Files.SetFeeSignatureFile(app.Billing.IsSignatureFile)
 	app.Practice.SetModuleCheck(app.moduleEnabled)
 	if app.tools, err = loadTools(api.MCPTools); err != nil {
 		return fail(err)
@@ -375,6 +396,40 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.Modules = ext.Modules
+	docs.Files.SetMailFilingCheck(app.optionalMailFilingFromContext)
+	app.Practice.SetMailFilingCheck(app.requireMailFilingFromContext)
+	ext.Modules.SetMailMatchingCheck(app.verifyMailMatchingGrant)
+	if app.sysMail != nil {
+		app.sysMail.Modules = ext.Modules
+	}
+	// CORE-03: createNotification kind checks, preference grid groups, and email wants.
+	if ext.Modules != nil && app.Trust != nil {
+		mods := ext.Modules
+		app.Trust.DeclaredKind = mods.DeclaresNotificationKind
+		if ui.Dashboard != nil {
+			ui.Dashboard.SetModuleNotifyKinds(func(ctx context.Context) ([]dashboard.ModuleNotifyGroup, error) {
+				groups, err := mods.NotificationKindGroups(ctx)
+				if err != nil {
+					return nil, err
+				}
+				out := make([]dashboard.ModuleNotifyGroup, 0, len(groups))
+				for _, g := range groups {
+					row := dashboard.ModuleNotifyGroup{ModuleID: g.ModuleID, ModuleName: g.ModuleName}
+					for _, k := range g.Kinds {
+						row.Kinds = append(row.Kinds, dashboard.ModuleNotifyKind{
+							Kind: k.Kind, Label: k.Label, DefaultInApp: k.DefaultInApp, DefaultEmail: k.DefaultEmail,
+						})
+					}
+					out = append(out, row)
+				}
+				return out, nil
+			})
+			dash := ui.Dashboard
+			app.Trust.EmailWanted = func(ctx context.Context, user domain.ID, kind string) (bool, error) {
+				return dash.Wants(ctx, user, kind, "email")
+			}
+		}
+	}
 	// Payment processor grants go out through the module runtime (initiateProcessorPayment).
 	if ext.Modules != nil {
 		app.Billing.SetProcessors(ext.Modules)
@@ -396,6 +451,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	// (AC-017); the memo ends with the request, so changes apply from the next one.
 	inner := ui.Handler()
 	app.handler = app.holdGate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = memoCaller(r)
 		inner.ServeHTTP(w, r.WithContext(practice.WithRequestMemo(r.Context())))
 	}))
 	if err := ext.start(ctx); err != nil {

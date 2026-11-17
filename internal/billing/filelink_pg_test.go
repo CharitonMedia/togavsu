@@ -8,8 +8,10 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"os"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/db"
@@ -34,7 +36,16 @@ func realFilesFx(t *testing.T) *realFiles {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool := billingDBWith(t, mig...)
+	// Core release migration the files package reads but does not own (CORE-17 library).
+	libRaw, err := os.ReadFile("../core/migrations/1302_library_files.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	libMig, err := db.LoadFS(fstest.MapFS{"1302_library_files.sql": {Data: libRaw}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool := billingDBWith(t, append(mig, libMig...)...)
 	f := newFxStore(t, NewPostgres(pool))
 	f.newService(audit.NewPostgres(pool))
 	ctx := f.ctx
