@@ -196,24 +196,16 @@
 </section>
 {{end}}{{end}}
 
-{{if .Settings}}
+{{if or .Settings .Advanced}}
 <section class="card settings"><h2>Settings</h2>
-<table class="settings-table"><thead><tr><th>Name</th><th>Current value</th><th>Default</th><th></th></tr></thead><tbody>
-{{range .Settings}}<tr id="s-{{.Key}}"{{if .Changed}} class="changed"{{end}}>
-  <td>{{.Label}}<p class="help-text">{{.Help}}</p><p class="setting-key">{{.Key}}</p></td>
-  <td>{{if .Locked}}<span>{{.Value}}</span> <span class="tag">read only</span>{{else}}
-    <form method="post" action="/admin/settings/{{.Key}}" class="setting-form"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Page.Tab}}"><input type="hidden" name="kind" value="{{.Kind}}">
-    <label class="visually-hidden" for="v-{{.Key}}">{{.Label}}</label>
-    {{if eq .Kind "bool"}}<select id="v-{{.Key}}" name="value"><option value="true"{{if eq .Value "true"}} selected{{end}}>On</option><option value="false"{{if eq .Value "false"}} selected{{end}}>Off</option></select>
-    {{else if .Allowed}}<select id="v-{{.Key}}" name="value">{{if .Optional}}<option value="">(none)</option>{{end}}{{$v := .Value}}{{range .Allowed}}<option{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}</select>
-    {{else if eq .Kind "json"}}<textarea id="v-{{.Key}}" name="value" rows="3">{{.Value}}</textarea>
-    {{else if .Secret}}<input id="v-{{.Key}}" name="value" type="password" autocomplete="new-password" placeholder="{{if .SecretSet}}set; type to replace{{else}}not set{{end}}">
-    {{else}}<input id="v-{{.Key}}" name="value" value="{{.Value}}">{{end}}
-    <button type="submit">Save</button></form>{{end}}
-    {{if .Changed}}<span class="tag changed">changed</span>{{end}}</td>
-  <td><code>{{if .Default}}{{.Default}}{{else}}(none){{end}}</code></td>
-  <td>{{if not .Locked}}<form method="post" action="/admin/settings/{{.Key}}/reset"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Page.Tab}}"><button type="submit">Reset to default</button></form>{{end}}</td>
-</tr>{{end}}</tbody></table>
+{{if .Settings}}{{template "settings-table" dict "Rows" .Settings "Root" $ "Tab" .Tab "Advanced" false}}{{end}}
+{{if .Advanced}}
+<details class="settings-advanced"{{if .AdvancedOpen}} open{{end}}>
+<summary>Advanced</summary>
+<p class="hint">Raw values for patterns and JSON that need a custom form. Leave this closed unless you need them.</p>
+{{template "settings-table" dict "Rows" .Advanced "Root" $ "Tab" .Tab "Advanced" true}}
+</details>
+{{end}}
 </section>
 {{else if not (or (eq .Tab "help") (eq .Tab "users_roles") (eq .Tab "system") (eq .Tab "home_screen") (eq .Tab "appearance") (eq .Tab "modules"))}}<p class="hint">This tab has no settings in this core yet.</p>
 {{end}}
@@ -232,3 +224,61 @@
 <p class="muted">Calls on matters behind a wall you are not on are not listed. The same log is at /api/v1/ai/calls.</p>
 </section>{{end}}{{end}}
 {{end}}{{template "shell-bottom" .}}{{end}}
+
+{{define "settings-table"}}
+{{$root := .Root}}{{$tab := .Tab}}{{$adv := .Advanced}}
+<table class="settings-table"><thead><tr><th>Name</th><th>Current value</th><th>Default</th><th></th></tr></thead><tbody>
+{{range .Rows}}{{$id := .Key}}{{if and $adv (ne .Plain "advanced_only")}}{{$id = printf "%s-advanced" .Key}}{{end}}
+<tr id="s-{{$id}}"{{if .Changed}} class="changed"{{end}}>
+  <td>{{.Label}}<p class="help-text">{{.Help}}</p>{{if and $adv .AdvancedHelp}}<p class="help-text">{{.AdvancedHelp}}</p>{{end}}<p class="setting-key">{{.Key}}</p></td>
+  <td>
+  {{if .Locked}}<span class="setting-value">{{.ValuePlain}}</span> <span class="tag">read only</span>
+  {{else if and (not $adv) .ReadOnlyPlain}}<span class="setting-value">{{.ValuePlain}}</span>
+  {{else}}
+    <form method="post" action="/admin/settings/{{.Key}}" class="setting-form"><input type="hidden" name="csrf" value="{{$root.CSRF}}"><input type="hidden" name="tab" value="{{$tab}}"><input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="plain" value="{{if and $adv (or (eq .Plain "model_prices") (eq .Plain "task_overrides"))}}raw{{else}}{{.Plain}}{{end}}">
+    <label class="visually-hidden" for="v-{{$id}}">{{.Label}}</label>
+    {{if and $adv (or (eq .Plain "model_prices") (eq .Plain "task_overrides") (eq .Plain "advanced_only"))}}
+      <textarea id="v-{{$id}}" name="value" rows="3">{{.Value}}</textarea>
+    {{else if eq .Plain "duration"}}
+      <input id="v-{{$id}}" name="amount" inputmode="numeric" value="{{.Amount}}" class="setting-amount">
+      <select name="unit" aria-label="Unit for {{.Label}}">
+        <option value="milliseconds"{{if eq .Unit "milliseconds"}} selected{{end}}>milliseconds</option>
+        <option value="seconds"{{if eq .Unit "seconds"}} selected{{end}}>seconds</option>
+        <option value="minutes"{{if eq .Unit "minutes"}} selected{{end}}>minutes</option>
+        <option value="hours"{{if eq .Unit "hours"}} selected{{end}}>hours</option>
+        <option value="days"{{if eq .Unit "days"}} selected{{end}}>days</option>
+      </select>
+    {{else if eq .Plain "bytes"}}
+      <input id="v-{{$id}}" name="amount" inputmode="numeric" value="{{.Amount}}" class="setting-amount">
+      <select name="unit" aria-label="Unit for {{.Label}}"><option value="MB"{{if eq .Unit "MB"}} selected{{end}}>MB</option><option value="GB"{{if eq .Unit "GB"}} selected{{end}}>GB</option></select>
+    {{else if or (eq .Plain "lines") (eq .Plain "case_examples") (eq .Plain "retry")}}
+      {{if .CustomPatterns}}<p class="hint">Custom patterns are in use; see Advanced.</p>{{end}}
+      <textarea id="v-{{$id}}" name="value" rows="3">{{.Lines}}</textarea>
+    {{else if eq .Plain "notifications"}}
+      <div class="notify-grid" role="table">
+        <div class="notify-head" role="row"><span role="columnheader">Kind</span><span role="columnheader">Email</span><span role="columnheader">In app</span></div>
+        {{range .Notify}}<div class="notify-row" role="row"><span role="cell">{{.Label}}</span>
+          <span role="cell">{{if .EmailRequired}}<input type="checkbox" name="{{.Kind}}.email" checked disabled aria-label="{{.Label}} email"><input type="hidden" name="{{.Kind}}.email" value="on">{{else}}<input type="checkbox" name="{{.Kind}}.email"{{if .Email}} checked{{end}} aria-label="{{.Label}} email">{{end}}</span>
+          <span role="cell"><input type="checkbox" name="{{.Kind}}.in_app"{{if .InApp}} checked{{end}} aria-label="{{.Label}} in app"></span></div>{{end}}
+      </div>
+    {{else if eq .Plain "colors"}}
+      {{range .Colors}}<div class="color-row">
+        <span>{{.Label}}</span>
+        <label><input type="radio" name="color_{{.Key}}_mode" value="preset"{{if not .Custom}} checked{{end}}> Use the preset</label>
+        <label><input type="radio" name="color_{{.Key}}_mode" value="custom"{{if .Custom}} checked{{end}}> Custom</label>
+        <input type="color" name="color_{{.Key}}" value="{{.Value}}">
+      </div>{{end}}
+    {{else if eq .Plain "naming"}}
+      <input id="v-{{$id}}" name="value" value="{{.Value}}">
+      <p class="hint">Sample: {{.NamingSample}}</p>
+    {{else if eq .Kind "bool"}}<select id="v-{{$id}}" name="value"><option value="true"{{if eq .Value "true"}} selected{{end}}>On</option><option value="false"{{if eq .Value "false"}} selected{{end}}>Off</option></select>
+    {{else if .Allowed}}<select id="v-{{$id}}" name="value">{{if .Optional}}<option value="">None</option>{{end}}{{$v := .Value}}{{range .Allowed}}<option{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}</select>
+    {{else if .Secret}}<input id="v-{{$id}}" name="value" type="password" autocomplete="new-password" placeholder="{{if .SecretSet}}set; type to replace{{else}}not set{{end}}">
+    {{else}}<input id="v-{{$id}}" name="value" value="{{.Value}}">{{end}}
+    <button type="submit">Save</button></form>
+  {{end}}
+  {{if .Changed}}<span class="tag changed">changed</span>{{end}}</td>
+  <td class="setting-default">{{.DefaultPlain}}</td>
+  <td>{{if and (not .Locked) (not (and (not $adv) .ReadOnlyPlain))}}<form method="post" action="/admin/settings/{{.Key}}/reset"><input type="hidden" name="csrf" value="{{$root.CSRF}}"><input type="hidden" name="tab" value="{{$tab}}"><button type="submit">Reset to default</button></form>{{end}}</td>
+</tr>{{end}}</tbody></table>
+{{end}}

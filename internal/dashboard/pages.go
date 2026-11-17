@@ -60,6 +60,7 @@ var funcs = template.FuncMap{
 	"url":   func(t Target) string { return t.URL() },
 	"join":  strings.Join,
 	"lower": strings.ToLower,
+	"dict": templateDict,
 	"when": func(t time.Time) string {
 		if t.IsZero() {
 			return ""
@@ -1001,7 +1002,19 @@ func tabLabel(id string) string {
 
 type settingRow struct {
 	settings.Entry
-	Changed bool
+	Changed        bool
+	Plain          string
+	DefaultPlain   string
+	ValuePlain     string
+	CustomPatterns bool
+	Amount         int64
+	Unit           string
+	Lines          string
+	Notify         []settings.NotifyRow
+	Colors         []settings.ColorRow
+	NamingSample   string
+	ReadOnlyPlain  bool
+	AdvancedHelp   string
 }
 
 type roleLayoutView struct {
@@ -1012,27 +1025,29 @@ type roleLayoutView struct {
 }
 
 type adminView struct {
-	Tabs       []struct{ ID, Label string }
-	Tab        string
-	Settings   []settingRow
-	Error      string
-	Appearance Appearance
-	Presets    []Preset
-	Fonts      []string
-	Roles      []roleLayoutView
-	Help       []helpSectionView
-	Users      []UserRow
-	Roles5     []domain.Role
-	Tokens     []TokenRow
-	Scopes     []ScopeInfo
-	Issued     *IssuedView
-	Owners     []domain.User
-	Seats      Seats
-	Problems   []ProblemReport
-	Audit      []AuditRow
-	HelpPath   string
-	Modules    any
-	AICalls    any
+	Tabs           []struct{ ID, Label string }
+	Tab            string
+	Settings       []settingRow
+	Advanced       []settingRow
+	AdvancedOpen   bool
+	Error          string
+	Appearance     Appearance
+	Presets        []Preset
+	Fonts          []string
+	Roles          []roleLayoutView
+	Help           []helpSectionView
+	Users          []UserRow
+	Roles5         []domain.Role
+	Tokens         []TokenRow
+	Scopes         []ScopeInfo
+	Issued         *IssuedView
+	Owners         []domain.User
+	Seats          Seats
+	Problems       []ProblemReport
+	Audit          []AuditRow
+	HelpPath       string
+	Modules        any
+	AICalls        any
 }
 
 func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Principal) (string, string, any, error) {
@@ -1050,23 +1065,51 @@ func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Pri
 	if !known {
 		tab = adminTabs[0].ID
 	}
-	v := adminView{Tabs: adminTabs, Tab: tab, Error: r.URL.Query().Get("error")}
+	v := adminView{Tabs: adminTabs, Tab: tab, Error: r.URL.Query().Get("error"), AdvancedOpen: r.URL.Query().Get("advanced") == "1"}
 	entries, err := h.Svc.d.Settings.List(ctx)
 	if err != nil {
 		return "", "", nil, err
 	}
+	byKey := map[string]settings.Entry{}
 	for _, e := range entries {
-		if e.Tab == tab {
-			v.Settings = append(v.Settings, settingRow{Entry: e, Changed: e.Overridden && e.Value != e.Default})
-		}
+		byKey[e.Key] = e
 	}
-	switch tab {
-	case settings.TabAppearance:
+	presetColors := map[string]string{}
+	if tab == settings.TabAppearance {
 		v.Appearance = h.Svc.appearance(ctx)
 		v.Presets = Presets
 		for _, f := range Fonts {
 			v.Fonts = append(v.Fonts, f.Name)
 		}
+		pr, ok := presetByID(v.Appearance.Preset)
+		if !ok {
+			pr = Presets[0]
+		}
+		presetColors = map[string]string{
+			"staff_sidebar": pr.Sidebar, "staff_header": pr.Header, "staff_page": pr.Page,
+			"staff_accent": pr.Accent, "client_header": pr.Header,
+		}
+	}
+	for _, e := range entries {
+		if e.Tab != tab {
+			continue
+		}
+		row := buildSettingRow(e, byKey, presetColors)
+		if settings.AdvancedOnly(e.Definition) || settings.HasAdvancedJSON(e.Definition) {
+			adv := row
+			if settings.HasAdvancedJSON(e.Definition) {
+				adv.ReadOnlyPlain = false
+				adv.AdvancedHelp = advancedHelp(e.Key)
+				v.Settings = append(v.Settings, row) // plain read-only summary in the main table
+			}
+			v.Advanced = append(v.Advanced, adv)
+			continue
+		}
+		v.Settings = append(v.Settings, row)
+	}
+	switch tab {
+	case settings.TabAppearance:
+		// appearance fields filled above
 	case settings.TabHome:
 		titles := map[string]string{}
 		for _, d := range h.Svc.d.Catalog.For(domain.Principal{Roles: allStaff}) {
@@ -1171,6 +1214,23 @@ func (h *Handler) settingPost(r *http.Request, p domain.Principal) (string, stri
 	value := r.FormValue("value")
 	if r.FormValue("kind") == settings.KindBool && value == "" {
 		value = "false"
+	}
+	if plain := r.FormValue("plain"); plain != "" && plain != settings.PlainRaw && plain != settings.PlainAdvancedOnly {
+		var def settings.Definition
+		for _, d := range settings.Definitions() {
+			if d.Key == key {
+				def = d
+				break
+			}
+		}
+		if def.Key == "" {
+			return back, "", settingErr(key, settings.ErrUnknown)
+		}
+		parsed, err := settings.ParsePlainForm(def, r.Form)
+		if err != nil {
+			return back, "", settingErr(key, err)
+		}
+		value = parsed
 	}
 	ch, err := h.Svc.d.Settings.Set(r.Context(), key, value, p)
 	if err != nil {

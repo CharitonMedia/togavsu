@@ -27,6 +27,7 @@ var expectedLabels = map[string]string{
 	"security.lockout_attempts":                "Failed Sign-Ins Before Lockout",
 	"security.lockout_length":                  "Lockout Length",
 	"security.api_rate_per_minute":             "API Requests per Minute",
+	"practice.case_number_examples":            "Case Number Formats",
 	"practice.case_number_patterns":            "Case Number Patterns",
 	"practice.conflict_score_minimum":          "Lowest Conflict Score Shown",
 	"practice.party_roles":                     "Party Roles",

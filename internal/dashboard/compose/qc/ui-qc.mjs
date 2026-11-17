@@ -99,6 +99,39 @@ for (const pg of plan.pages) {
     return out;
   }).catch((e) => ["grid check: " + e.message]);
   problems.push(...gridProblems);
+  // Phone-width pages: fail on document horizontal overflow or a control the
+  // viewport cannot scroll to (desk-fix settings plain values).
+  if ((pg.width || 1366) <= 430) {
+    const layoutProblems = await page.evaluate(() => {
+      const out = [];
+      const doc = document.documentElement;
+      if (doc.scrollWidth > doc.clientWidth + 1) {
+        out.push(`horizontal overflow: scrollWidth ${doc.scrollWidth} > clientWidth ${doc.clientWidth}`);
+      }
+      const vw = window.innerWidth, vh = window.innerHeight;
+      for (const el of document.querySelectorAll("button, input, select, textarea, a[href], summary")) {
+        const r = el.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) continue;
+        const style = window.getComputedStyle(el);
+        if (style.visibility === "hidden" || style.display === "none") continue;
+        // Skip controls inside a closed <details> (Advanced closed).
+        const details = el.closest("details");
+        if (details && !details.open && !details.querySelector(":scope > summary")?.contains(el)) continue;
+        if (r.right > vw + 1 || r.left < -1) {
+          out.push(`control unreachable horizontally: ${el.tagName}#${el.id || el.name || ""} at right=${r.right.toFixed(0)} vw=${vw}`);
+          break;
+        }
+        // Must be reachable by vertical scroll within the document.
+        if (r.bottom + window.scrollY > doc.scrollHeight + 1) {
+          out.push(`control below document: ${el.tagName}#${el.id || ""}`);
+          break;
+        }
+        void vh;
+      }
+      return out;
+    }).catch((e) => ["layout check: " + e.message]);
+    problems.push(...layoutProblems);
+  }
   const title = await page.title().catch(() => "");
   const file = path.join(outDir, pg.name + ".png");
   await page.screenshot({ path: file, fullPage: !!pg.full });

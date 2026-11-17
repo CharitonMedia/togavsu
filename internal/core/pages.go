@@ -81,8 +81,8 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 <nav class="tabs" aria-label="Settings tabs">{{range .Tabs}}<a href="/admin/settings?tab={{.}}" {{if eq . $.Tab}}aria-current="page"{{end}}>{{label .}}</a>{{end}}</nav>
 <table><thead><tr><th>Name</th><th>Value</th><th>Default</th><th></th></tr></thead><tbody>
 {{range .Settings}}<tr><td>{{.Label}}<br><span class="muted">{{.Help}}</span><br><small class="muted">{{.Key}}</small></td>
-<td>{{if .Secret}}<span class="muted">{{if .SecretSet}}configured{{else}}not set{{end}}</span>{{else}}{{.Value}}{{end}}{{if and (not .Secret) (ne .Value .Default)}} <span class="badge">changed</span>{{end}}</td>
-<td>{{if not .Secret}}{{.Default}}{{end}}</td>
+<td>{{if .Secret}}<span class="muted">{{if .SecretSet}}configured{{else}}not set{{end}}</span>{{else}}{{.ValuePlain}}{{end}}{{if and (not .Secret) (ne .Value .Default)}} <span class="badge">changed</span>{{end}}</td>
+<td>{{if not .Secret}}{{.DefaultPlain}}{{end}}</td>
 <td>{{if .Locked}}<span class="muted">locked</span>{{else}}
 <form method="post" action="/admin/settings/{{.Key}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}">
 <input name="value" aria-label="New value for {{.Label}}" {{if not .Secret}}value="{{.Value}}"{{end}} {{if .Secret}}type="password"{{end}}> <button type="submit">Save</button></form>
@@ -117,7 +117,7 @@ type view struct {
 	Token    string
 	Tabs     []string
 	Tab      string
-	Settings []settings.Entry
+	Settings []coreSettingRow
 }
 
 func render(w http.ResponseWriter, code int, name string, v view) {
@@ -268,13 +268,22 @@ func (a *App) settingsView(r *http.Request, errText string) (view, error) {
 	if !seen[tab] && len(tabs) > 0 {
 		tab = tabs[0]
 	}
-	var rows []settings.Entry
+	var rows []coreSettingRow
 	for _, e := range list {
 		if e.Tab == tab {
-			rows = append(rows, e)
+			rows = append(rows, coreSettingRow{
+				Entry: e, ValuePlain: settings.DisplayPlain(e.Definition, e.Value),
+				DefaultPlain: settings.DisplayPlain(e.Definition, e.Default),
+			})
 		}
 	}
 	return view{Title: "Settings", Nav: true, CSRF: csrfOf(r), Error: errText, Tabs: tabs, Tab: tab, Settings: rows}, nil
+}
+
+type coreSettingRow struct {
+	settings.Entry
+	ValuePlain   string
+	DefaultPlain string
 }
 
 func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {

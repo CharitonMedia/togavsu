@@ -248,6 +248,8 @@ func (r *Registry) List(ctx context.Context) ([]Entry, error) {
 // Set validates and stores a value, then audits the old and new values.
 // who supplies the actor id, roles, and source written to the audit log.
 // Only an admin may write. Any other principal returns before the store or the audit log changes.
+// Saving practice.case_number_examples also derives and stores practice.case_number_patterns
+// in the same transaction (one audit entry each).
 func (r *Registry) Set(ctx context.Context, key, value string, who domain.Principal) (Change, error) {
 	def, err := r.definition(key)
 	if err != nil {
@@ -270,16 +272,92 @@ func (r *Registry) Set(ctx context.Context, key, value string, who domain.Princi
 	if def.Special == "required" && strings.TrimSpace(value) == "" {
 		return Change{}, fmt.Errorf("%w: %s is required", ErrInvalid, key)
 	}
+	if key == keyCaseExamples {
+		return r.setCaseExamples(ctx, def, value, who)
+	}
 	return r.persist(ctx, def, value, who)
 }
 
 // Reset restores the default and audits the change.
+// Resetting practice.case_number_examples also restores the derived default patterns.
 func (r *Registry) Reset(ctx context.Context, key string, who domain.Principal) (Change, error) {
 	def, err := r.definition(key)
 	if err != nil {
 		return Change{}, err
 	}
 	return r.Set(ctx, key, def.Default, who)
+}
+
+func (r *Registry) setCaseExamples(ctx context.Context, def Definition, value string, who domain.Principal) (Change, error) {
+	patterns, err := DeriveCasePatterns(value)
+	if err != nil {
+		return Change{}, err
+	}
+	patDef, err := r.definition(keyCasePatterns)
+	if err != nil {
+		return Change{}, err
+	}
+	patValue := jsonText(patterns)
+	if err := validate(patDef, patValue); err != nil {
+		return Change{}, err
+	}
+	var change Change
+	err = r.store.Transact(ctx, func(tx Store) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		exChange, err := r.writeOne(ctx, tx, def, value, who)
+		if err != nil {
+			return err
+		}
+		if _, err := r.writeOne(ctx, tx, patDef, patValue, who); err != nil {
+			return err
+		}
+		change = exChange
+		return ctx.Err()
+	})
+	if err != nil {
+		return Change{}, err
+	}
+	return change, nil
+}
+
+// writeOne applies one setting mutation inside an open store transaction and audits it.
+func (r *Registry) writeOne(ctx context.Context, tx Store, def Definition, value string, who domain.Principal) (Change, error) {
+	prev, ok, err := tx.Get(ctx, def.Key)
+	if err != nil {
+		return Change{}, err
+	}
+	current := def.Default
+	if ok {
+		current = prev
+	}
+	at := r.now().UTC()
+	change := Change{
+		Key: def.Key, Actor: who.UserID, Role: formatRoles(who.Roles), Source: who.Source,
+		TokenID: who.TokenID, ModuleID: who.ModuleID, At: at, Redacted: def.Secret,
+	}
+	change.Old = display(def, current)
+	change.New = display(def, value)
+	if value == current {
+		return change, nil
+	}
+	if value == def.Default {
+		if err := tx.Delete(ctx, def.Key); err != nil {
+			return Change{}, err
+		}
+	} else if err := tx.Put(ctx, def.Key, value, at, who.UserID); err != nil {
+		return Change{}, err
+	}
+	if logger, ok := tx.(ChangeLogger); ok {
+		if err := logger.LogChange(ctx, change); err != nil {
+			return Change{}, err
+		}
+	}
+	if err := r.audit.SettingChanged(ctx, change); err != nil {
+		return Change{}, err
+	}
+	return change, nil
 }
 
 func (r *Registry) definition(key string) (Definition, error) {
@@ -307,39 +385,11 @@ func (r *Registry) persist(ctx context.Context, def Definition, value string, wh
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		prev, ok, err := tx.Get(ctx, def.Key)
+		ch, err := r.writeOne(ctx, tx, def, value, who)
 		if err != nil {
 			return err
 		}
-		current := def.Default
-		if ok {
-			current = prev
-		}
-		at := r.now().UTC()
-		change = Change{
-			Key: def.Key, Actor: who.UserID, Role: formatRoles(who.Roles), Source: who.Source,
-			TokenID: who.TokenID, ModuleID: who.ModuleID, At: at, Redacted: def.Secret,
-		}
-		change.Old = display(def, current)
-		change.New = display(def, value)
-		if value == current {
-			return nil
-		}
-		if value == def.Default {
-			if err := tx.Delete(ctx, def.Key); err != nil {
-				return err
-			}
-		} else if err := tx.Put(ctx, def.Key, value, at, who.UserID); err != nil {
-			return err
-		}
-		if logger, ok := tx.(ChangeLogger); ok {
-			if err := logger.LogChange(ctx, change); err != nil {
-				return err
-			}
-		}
-		if err := r.audit.SettingChanged(ctx, change); err != nil {
-			return err
-		}
+		change = ch
 		return ctx.Err()
 	})
 	if err != nil {
@@ -457,6 +507,10 @@ func validateSpecial(def Definition, value string) error {
 			if err != nil || n < 0 || n > 365 {
 				return fmt.Errorf("%w: %s", ErrInvalid, def.Key)
 			}
+		}
+	case "case_examples":
+		if _, err := DeriveCasePatterns(value); err != nil {
+			return err
 		}
 	case "regexp_list":
 		var patterns []string

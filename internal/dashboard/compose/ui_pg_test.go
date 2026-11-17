@@ -585,12 +585,14 @@ func TestUIAdminSettings(t *testing.T) {
 			t.Errorf("PRD default %s is not on its tab %s", d.Key, d.Tab)
 			continue
 		}
-		def := d.Default
-		if def == "" {
-			def = "(none)"
+		def := settings.DisplayPlain(d, d.Default)
+		if !strings.Contains(html.UnescapeString(row), def) {
+			t.Errorf("%s does not show its plain default %q on %s", d.Key, def, d.Tab)
 		}
-		if !strings.Contains(html.UnescapeString(row), "<code>"+def+"</code>") {
-			t.Errorf("%s does not show its default %q on %s", d.Key, def, d.Tab)
+		if settings.PlainOf(d) == settings.PlainDuration || settings.PlainOf(d) == settings.PlainBytes {
+			if strings.Contains(row, d.Default) && d.Default != def {
+				t.Errorf("%s still shows raw default %q", d.Key, d.Default)
+			}
 		}
 		if d.Locked || d.Secret {
 			continue
@@ -730,6 +732,70 @@ func queryParam(loc, name string) string {
 		return ""
 	}
 	return u.Query().Get(name)
+}
+
+// TestUIAdminSettingsPlainValues covers desk-fix plain editors: duration and
+// case-number examples convert on the server, Advanced stays closed by default,
+// and raw JSON/regex stay out of the main Firm/Practice/Files/AI tables.
+func TestUIAdminSettingsPlainValues(t *testing.T) {
+	e := newEnv(t)
+	practice := e.admin.must(http.StatusOK, "GET", "/admin?tab=practice", nil).body
+	if !strings.Contains(practice, `id="s-practice.case_number_examples"`) {
+		t.Fatal("Case Number Formats row missing")
+	}
+	if !strings.Contains(practice, "23AR-CV00825") || strings.Contains(between(practice, `<tr id="s-practice.case_number_examples"`, "</tr>"), `^\d{2}`) {
+		t.Fatal("examples row should show the sample, not the regexp")
+	}
+	if !strings.Contains(practice, `<details class="settings-advanced">`) || strings.Contains(practice, `<details class="settings-advanced" open`) {
+		t.Fatal("Advanced should be present and closed by default")
+	}
+	if !strings.Contains(practice, `id="s-practice.case_number_patterns"`) {
+		t.Fatal("patterns row should sit behind Advanced")
+	}
+	openAdv := e.admin.must(http.StatusOK, "GET", "/admin?tab=practice&advanced=1", nil).body
+	if !strings.Contains(openAdv, `<details class="settings-advanced" open`) {
+		t.Fatal("advanced=1 should open Advanced")
+	}
+	// Plain duration save stores Duration.String() for the same length.
+	e.admin.form("/admin/settings/security.idle_timeout", url.Values{
+		"tab": {"security"}, "kind": {"duration"}, "plain": {"duration"}, "amount": {"6"}, "unit": {"hours"},
+	})
+	cur := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/security.idle_timeout", nil)
+	if fmt.Sprint(cur.json["value"]) != (6 * time.Hour).String() {
+		t.Fatalf("idle timeout stored %v, want %s", cur.json["value"], (6 * time.Hour).String())
+	}
+	sec := e.admin.must(http.StatusOK, "GET", "/admin?tab=security", nil).body
+	row := between(sec, `<tr id="s-security.idle_timeout"`, "</tr>")
+	if !strings.Contains(row, `value="6"`) || !strings.Contains(row, `value="hours" selected`) || strings.Contains(row, "6h0m0s") {
+		t.Fatalf("idle timeout should show plain amount 6 hours: %s", row)
+	}
+	if !strings.Contains(row, `setting-default">12 hours<`) {
+		t.Fatalf("idle timeout default should read 12 hours: %s", row)
+	}
+	// Case number examples derive patterns in one save.
+	e.admin.form("/admin/settings/practice.case_number_examples", url.Values{
+		"tab": {"practice"}, "kind": {"json"}, "plain": {"case_examples"}, "value": {"23AR-CV00825\n2026-CV-1"},
+	})
+	ex := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/practice.case_number_examples", nil)
+	pat := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/practice.case_number_patterns", nil)
+	if !sameJSON(fmt.Sprint(ex.json["value"]), `["23AR-CV00825","2026-CV-1"]`) {
+		t.Fatalf("examples: %v", ex.json["value"])
+	}
+	wantPat, _ := json.Marshal([]string{domain.DefaultCasePattern, `^\d{4}-[A-Z]{2}-\d+$`})
+	if !sameJSON(fmt.Sprint(pat.json["value"]), string(wantPat)) {
+		t.Fatalf("patterns: %v", pat.json["value"])
+	}
+	files := e.admin.must(http.StatusOK, "GET", "/admin?tab=files_storage", nil).body
+	if !strings.Contains(between(files, `<tr id="s-files.max_upload_bytes"`, "</tr>"), "2 GB") {
+		t.Fatal("Largest Upload should show 2 GB")
+	}
+	ai := e.admin.must(http.StatusOK, "GET", "/admin?tab=ai", nil).body
+	if !strings.Contains(between(ai, `<tr id="s-ai.model_prices"`, "</tr>"), "None set") {
+		t.Fatal("Model Prices plain summary missing")
+	}
+	if strings.Contains(between(ai, `<tr id="s-ai.model_prices"`, "</tr>"), `name="value"`) {
+		t.Fatal("Model Prices main row should be read-only")
+	}
 }
 
 // TestUIProblemReportAndSettings covers Report a problem, My settings and the role

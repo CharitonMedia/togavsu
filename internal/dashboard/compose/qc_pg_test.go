@@ -140,6 +140,13 @@ func TestUIVisualQC(t *testing.T) {
 	add(qcPage{Name: "11-profile", Role: "staff", Path: "/me/profile", Full: true})
 	add(qcPage{Name: "12-user-edit-refused", Role: "staff", Path: "/admin/users/" + e.atty.id, Expect: http.StatusForbidden})
 	add(qcPage{Name: "08-phone-home", Role: "staff", Path: "/", Width: 390, Height: 844, Full: true})
+	// Desk-fix plain settings: Firm, Practice, Files and AI at phone width with
+	// Advanced closed and open. ui-qc.mjs fails on horizontal overflow or an
+	// unreachable control at width ≤ 430.
+	for _, tab := range []string{"firm_profile", "practice", "files_storage", "ai"} {
+		add(qcPage{Name: "settings-" + tab + "-phone", Role: "admin", Path: "/admin?tab=" + tab, Width: 390, Height: 844, Full: true})
+		add(qcPage{Name: "settings-" + tab + "-phone-advanced", Role: "admin", Path: "/admin?tab=" + tab + "&advanced=1", Width: 390, Height: 844, Full: true})
+	}
 	add(qcPage{Name: "09-collapsed-sidebar", Role: "staff", Path: "/", Action: "collapse"})
 	add(qcPage{Name: "10-deadlines-click-through", Role: "staff", Path: "/calendar/deadlines?from_date=" + today + "&to_date=" + time.Now().AddDate(0, 0, 7).Format("2006-01-02") + "&status=open&include_overdue=true"})
 	add(qcPage{Name: "01-home", Role: "accountant", Path: "/", Full: true})
