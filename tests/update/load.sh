@@ -116,6 +116,11 @@ images="$images upd-supervisor:local"
   || fail "the supervisor image has no /usr/share/togavsu/cosign.pub"
 cmp -s "$work/image-cosign.pub" "$root/deploy/release/cosign.pub" \
   || fail "the supervisor image's cosign.pub is not deploy/release/cosign.pub"
+# CORE-05: image pre-creates /var/lib/togavsu-mail as CoreUID so a fresh named volume is drainable.
+mail_stat=$("$docker" run --rm --entrypoint /bin/sh upd-supervisor:local -c "stat -c '%u:%g %a' /var/lib/togavsu-mail") \
+  || fail "supervisor image missing /var/lib/togavsu-mail"
+[ "$mail_stat" = "65532:65532 770" ] || fail "supervisor mail dir in image is '$mail_stat', want 65532:65532 770"
+echo "CORE-05 supervisor image mail dir: $mail_stat"
 thin() { # tag, then Dockerfile lines after FROM upd-core:2.0.0
   tag=$1
   shift
@@ -186,6 +191,12 @@ until curl -skf "$base/api/v1/health" >/dev/null; do
   [ "$i" -le 90 ] || fail "core did not answer $base/api/v1/health"
   sleep 1
 done
+# CORE-05: with both containers up, CoreUID can rename on the shared mail outbox
+# (supervisor writes as root; Take uses rename). Proves the volume is not root:root 0755.
+compose exec -T -u 65532 core sh -c \
+  'touch /var/lib/togavsu-mail/zz && mv /var/lib/togavsu-mail/zz /var/lib/togavsu-mail/zz2 && rm /var/lib/togavsu-mail/zz2' \
+  || fail "core user cannot rename on mail outbox volume (CORE-05)"
+echo "CORE-05 core uid 65532 can rename on mail outbox volume"
 (cd "$root" && python3 -m tests.e2e.first_run setup "$base" "$work/state.json")
 
 version() { curl -skf --max-time 10 "$base/api/v1/health" 2>/dev/null | json 'd["version"]' 2>/dev/null || echo unreachable; }

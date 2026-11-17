@@ -4,8 +4,93 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
+
+func assertMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := st.Mode().Perm()
+	if got != want {
+		t.Fatalf("%s mode %#o, want %#o", path, got, want)
+	}
+}
+
+func assertOwnerWhenRoot(t *testing.T, path string) {
+	t.Helper()
+	if os.Geteuid() != 0 {
+		t.Log("skip owner check: not running as root")
+		return
+	}
+	var info syscall.Stat_t
+	if err := syscall.Stat(path, &info); err != nil {
+		t.Fatal(err)
+	}
+	if int(info.Uid) != CoreUID || int(info.Gid) != CoreGID {
+		t.Fatalf("%s owner %d:%d, want %d:%d", path, info.Uid, info.Gid, CoreUID, CoreGID)
+	}
+}
+
+func TestPrepareMailOutboxDirAndNotifyPutAllPermissions(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "mail")
+	// Simulate a Docker named volume: root-owned 0755 already present (MkdirAll no-op).
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := PrepareMailOutboxDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	assertMode(t, dir, MailOutboxDirMode)
+	assertOwnerWhenRoot(t, dir)
+
+	path := filepath.Join(dir, MailOutboxFile)
+	box := OpenOutbox(path)
+	if err := box.Notify(context.Background(), "Update failed", "image refused"); err != nil {
+		t.Fatal(err)
+	}
+	assertMode(t, path, MailOutboxFileMode)
+	assertOwnerWhenRoot(t, path)
+
+	got, err := box.Take()
+	if err != nil || len(got) != 1 {
+		t.Fatalf("take: %v %+v", err, got)
+	}
+	if err := box.PutAll(got); err != nil {
+		t.Fatal(err)
+	}
+	if err := box.Ack(); err != nil {
+		t.Fatal(err)
+	}
+	assertMode(t, path, MailOutboxFileMode)
+	assertOwnerWhenRoot(t, path)
+}
+
+func TestMigrateLegacyMailOutboxPermissions(t *testing.T) {
+	root := t.TempDir()
+	data := filepath.Join(root, "data")
+	mail := filepath.Join(root, "mail")
+	if err := os.MkdirAll(data, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(data, MailOutboxFile)
+	if err := os.WriteFile(legacy, []byte("{\"id\":\"a1\",\"subject\":\"Update failed\",\"body\":\"old\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateLegacyMailOutbox(data, mail); err != nil {
+		t.Fatal(err)
+	}
+	assertMode(t, mail, MailOutboxDirMode)
+	assertMode(t, filepath.Join(mail, MailOutboxFile), MailOutboxFileMode)
+	assertOwnerWhenRoot(t, mail)
+	assertOwnerWhenRoot(t, filepath.Join(mail, MailOutboxFile))
+}
 
 func TestOutboxTakeAckSurvivesCrashWindow(t *testing.T) {
 	dir := t.TempDir()

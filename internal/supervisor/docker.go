@@ -82,6 +82,15 @@ const MailOutboxDir = "/var/lib/togavsu-mail"
 // MailOutboxFile is the supervisor notice file under MailOutboxDir.
 const MailOutboxFile = "mail-outbox.jsonl"
 
+// CoreUID and CoreGID are the unprivileged identity compose.yaml assigns to the
+// core service and every module container (user: "65532:65532"). The root
+// supervisor chowns MailOutboxDir and mail-outbox.jsonl to these so the core can
+// Take/rename notices (CORE-05); umask alone leaves a named volume root:root 0755.
+const (
+	CoreUID = 65532
+	CoreGID = 65532
+)
+
 // BackupKeyDir is where the core writes the backup passphrase (core.PassphraseFile).
 const BackupKeyDir = "/backupkey"
 

@@ -121,8 +121,10 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, err
 	}
-	// Shared with the core (mode 0777) so a non-root core can Take/PutAll the outbox.
-	if err := os.MkdirAll(cfg.MailOutboxDir, 0o777); err != nil {
+	// Shared with the core (CoreUID/CoreGID, mode 0770). PrepareMailOutboxDir
+	// Chmods/Chowns even when the named volume already exists as root:root 0755,
+	// which MkdirAll alone would leave undrainable (CORE-05).
+	if err := supervisor.PrepareMailOutboxDir(cfg.MailOutboxDir); err != nil {
 		return nil, err
 	}
 	// Notices queued under the old supervisor data path before the dedicated mail

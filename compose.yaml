@@ -60,6 +60,7 @@ services:
       context: .
       dockerfile: deploy/core.Dockerfile
     image: togavsu-core:local
+    # CoreUID:CoreGID (internal/supervisor.CoreUID / CoreGID); same as serving core.
     user: "65532:65532"
     command: ["migrate"]
     environment:
@@ -132,6 +133,7 @@ services:
       - backupkey:/backupkey:ro
       - backups:/var/lib/togavsu/backups
       - supervisor_data:/var/lib/togavsu
+      # Owned for CoreUID (65532) by the supervisor image and wire(); see CORE-05.
       - mail_outbox:/var/lib/togavsu-mail
       - runtime:/runtime
       - caddy_admin:/run/caddy-admin
@@ -159,6 +161,7 @@ services:
       context: .
       dockerfile: deploy/core.Dockerfile
     image: togavsu-core:local
+    # CoreUID:CoreGID (internal/supervisor.CoreUID / CoreGID).
     user: "65532:65532"
     environment:
       TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
@@ -173,7 +176,7 @@ services:
       # supervisor mounts the same volume on a replacement core.
       - core_data:/var/lib/togavsu-core
       # Supervisor notices only (mail-outbox.jsonl); DeliverMail drains them (CORE-05).
-      # Not the supervisor data volume (ledger, journals, destinations).
+      # Directory/file owned as CoreUID so this user can Take/rename; not supervisor_data.
       - mail_outbox:/var/lib/togavsu-mail
     depends_on:
       migrate:

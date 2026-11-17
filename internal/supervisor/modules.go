@@ -35,11 +35,12 @@ type ModuleRuntime interface {
 // convention the sample module's -secrets flag defaults to).
 const ModuleSecretsDir = "/run/secrets"
 
-// ModuleUser is the unprivileged uid:gid every module container runs as.
+// ModuleUser is the unprivileged uid:gid every module container runs as
+// (CoreUID:CoreGID, same as compose.yaml's core user).
 const ModuleUser = "65532:65532"
 
 const (
-	moduleUID          = 65532
+	moduleUID          = CoreUID
 	maxModuleSecrets   = 32
 	maxModuleSecretLen = 64 << 10
 )

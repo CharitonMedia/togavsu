@@ -44,6 +44,11 @@ RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}" \
 # release signatures are made there and are not in the public transparency log.
 COPY deploy/release/cosign.pub /usr/share/togavsu/cosign.pub
 RUN chmod 644 /usr/share/togavsu/cosign.pub
+# Shared mail outbox (CORE-05): compose.yaml core runs as CoreUID/CoreGID (65532).
+# A fresh named volume inherits this directory's owner/mode so the core can Take
+# notices the root supervisor writes; runtime Chown in wire() covers existing volumes.
+RUN install -d -o 65532 -g 65532 -m 0770 /var/lib/togavsu-mail \
+    && test "$(stat -c '%u:%g %a' /var/lib/togavsu-mail)" = "65532:65532 770"
 COPY --from=supervisor-build /out/supervisor /usr/local/bin/supervisor
 ENTRYPOINT ["/usr/local/bin/supervisor"]
 CMD ["serve"]

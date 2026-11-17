@@ -10,6 +10,38 @@ import (
 	"time"
 )
 
+// MailOutboxDirMode is the shared mail directory mode after umask (CORE-05).
+// Group-writable so CoreUID can rename; not world-writable.
+const MailOutboxDirMode = 0o770
+
+// MailOutboxFileMode is the notice file mode after umask so CoreUID can Take it.
+const MailOutboxFileMode = 0o660
+
+// PrepareMailOutboxDir creates MailOutboxDir (or re-owns an existing volume mount)
+// for the core user. MkdirAll alone leaves an existing root:root 0755 volume
+// untouched and umask still cuts a new directory to 0755; Chmod/Chown fix both.
+func PrepareMailOutboxDir(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(dir, MailOutboxDirMode); err != nil {
+		return err
+	}
+	return ownForCore(dir, MailOutboxDirMode)
+}
+
+// ownForCore sets mode always, and owner to CoreUID/CoreGID when running as root
+// (the supervisor image). Non-root unit tests skip chown; production is root.
+func ownForCore(path string, mode os.FileMode) error {
+	if err := os.Chmod(path, mode); err != nil {
+		return err
+	}
+	if os.Geteuid() != 0 {
+		return nil
+	}
+	return os.Chown(path, CoreUID, CoreGID)
+}
+
 // Notice is one admin message waiting for core system mail. The core's DeliverMail
 // drains this file through systemMailer (CORE-05). ID is stable across retries and is
 // the Idempotency-Key the email module sees.
@@ -58,14 +90,20 @@ func (o *Outbox) Notify(_ context.Context, subject, body string) error {
 		return err
 	}
 	line = append(line, '\n')
-	// 0666 so the core user on the shared mail-outbox volume can Take/rename the file.
+	// Create with 0666 then Chmod/Chown: umask would cut OpenFile's mode to 0644
+	// owned by root, and the core (CoreUID) could not rename for Take.
 	f, err := os.OpenFile(o.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o666)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	_, err = f.Write(line)
-	return err
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return ownForCore(o.path, MailOutboxFileMode)
 }
 
 func (o *Outbox) List() ([]Notice, error) {
@@ -139,17 +177,21 @@ func (o *Outbox) PutAll(notices []Notice) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	for _, n := range notices {
 		line, err := json.Marshal(n)
 		if err != nil {
+			_ = f.Close()
 			return err
 		}
 		if _, err := f.Write(append(line, '\n')); err != nil {
+			_ = f.Close()
 			return err
 		}
 	}
-	return nil
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return ownForCore(o.path, MailOutboxFileMode)
 }
 
 // MigrateLegacyMailOutbox moves notices left in the pre-mail-volume path
@@ -174,7 +216,7 @@ func MigrateLegacyMailOutbox(dataDir, mailOutboxDir string) error {
 	if len(raw) == 0 {
 		return os.Remove(legacy)
 	}
-	if err := os.MkdirAll(mailOutboxDir, 0o777); err != nil {
+	if err := PrepareMailOutboxDir(mailOutboxDir); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(dest, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o666)
@@ -186,6 +228,9 @@ func MigrateLegacyMailOutbox(dataDir, mailOutboxDir string) error {
 		return err
 	}
 	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := ownForCore(dest, MailOutboxFileMode); err != nil {
 		return err
 	}
 	return os.Remove(legacy)
