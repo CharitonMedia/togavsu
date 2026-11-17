@@ -1,7 +1,7 @@
 {
   "task_id": "marketplace-paid",
   "status": "pass",
-  "tested_revision": "8e2a9c93b31d0ce3fed0927dd306a0fc9b0d2f9f",
+  "tested_revision": "edf87f61a03c69af0cb7ba20c97ad93fbd4a0499",
   "tests": [
     {
       "name": "marketplace package",
@@ -26,6 +26,11 @@
     {
       "name": "price-edit",
       "command": "go test -count=1 -timeout 60s -run '^TestMKT03PriceEdit$' ./marketplace/",
+      "exit_code": 0
+    },
+    {
+      "name": "price-edit-access",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT03PriceEditAccessAndValidation$' ./marketplace/",
       "exit_code": 0
     },
     {
@@ -92,7 +97,7 @@
     {
       "id": "price-edit",
       "status": "pass",
-      "command": "go test -count=1 -timeout 60s -run '^TestMKT03PriceEdit$' ./marketplace/",
+      "command": "go test -count=1 -timeout 60s -run '^TestMKT03PriceEdit$|^TestMKT03PriceEditAccessAndValidation$' ./marketplace/",
       "exit_code": 0,
       "acceptance_ids": ["MKT-03"]
     },
