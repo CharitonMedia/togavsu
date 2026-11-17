@@ -1,8 +1,8 @@
 {
   "task_id": "desk-fix-marketplace-catalog",
   "status": "pass",
-  "scope": "Desk fix Lane A: Admin Modules marketplace catalog (browse when search is empty, Install/Installed/Update states, plain errors, unreachable message, http://togavsu-marketplace without marketplace key trust). status pass means the required local commands on this revision exited 0. It is not full product acceptance. CI correction: phone-width Modules tab no longer overflows on Install-from-file (#pkg).",
-  "tested_revision": "dcb219eea1a37f97bfc21d3cf3b1072c4b1ac149",
+  "scope": "Desk fix Lane A: Admin Modules marketplace catalog (browse when search is empty, Install/Installed/Update states, plain errors, unreachable message, http://togavsu-marketplace without marketplace key trust). status pass means the required local commands on this revision exited 0. It is not full product acceptance. Codex checkpoint repair on PR #78: ponytail markers on BaseURL/TrustsMarketplaceKeys, installPlain maps known codes only (update failures worded as updates), evidence net_lines reconciled.",
+  "tested_revision": "3acb374fa4d49e9395e7b75c9d8c56b249ead750",
   "prd_sections": [
     "10"
   ],
@@ -11,30 +11,47 @@
     {
       "command": "go vet ./...",
       "exit_code": 0,
-      "seconds": 8
+      "seconds": 6
     },
     {
       "command": "go test -count=1 -timeout 45m ./internal/...",
       "exit_code": 0,
-      "seconds": 160
+      "seconds": 163
     },
     {
-      "command": "go test -count=1 ./web/static/ -run TestModulesPhoneKeepsFileInputsInsideViewport",
+      "command": "go test -count=1 ./internal/core/ -run 'TestExtensionsMarketplaceCatalog|TestInstallPlainSentences'",
       "exit_code": 0,
-      "seconds": 1
+      "seconds": 2,
+      "note": "Codex P2 regression: plain install/update sentences; raw migration text does not leak; update failure says updated"
     },
     {
-      "command": "sh tests/ui/run.sh",
+      "command": "python3 scripts/release/check_debt.py",
       "exit_code": 0,
-      "seconds": 199,
-      "note": "Regression for Supervisor tests / TestUIVisualQC: admin Modules at Width 390 with three listings; no horizontal overflow"
+      "note": "ponytail markers: 110; ledger entries: 68"
+    }
+  ],
+  "codex_findings_resolved": [
+    {
+      "priority": "P2",
+      "file": "internal/marketplace/client.go",
+      "resolution": "Added ponytail markers on httpHostAllowed and TrustsMarketplaceKeys naming Marketplace ceiling 4 (plain http only for loopback and togavsu-marketplace; no key trust over the latter) and the upgrade trigger (any marketplace across a network the firm does not control)."
+    },
+    {
+      "priority": "P2",
+      "file": "internal/core/modules_admin.go",
+      "resolution": "installPlain maps known marketplace/module codes to fixed sentences, uses the generic sentence for everything else (never appends api.Message), and words marketplace update failures as updates. Covered by TestInstallPlainSentences and an update-yank path in TestExtensionsMarketplaceCatalog."
+    },
+    {
+      "priority": "P2",
+      "file": "docs/build/reports/desk-fix-marketplace-catalog.json",
+      "resolution": "Recomputed net_lines vs reviewed base a65934ac excluding this report file; tested_revision is the code commit below; any following commit on this lane changes only this evidence file."
     }
   ],
   "implemented": [
     "Marketplace card moved to the top of Admin > Modules; empty search browses all non-pulled listings via the existing install-listing / update actions",
     "Each listing shows name, version, author, signed-by key, PriceNote or Free, PRD 10.2 notice, flagged warning, Permissions (N) in a closed details, and Install / Installed / Update to X.Y.Z / Installed X.Y.Z (never a downgrade)",
-    "BrowseError and install failures are plain sentences; unreachable shows the address message and Settings Modules link",
-    "BaseURL allows plain http on loopback and togavsu-marketplace; over http://togavsu-marketplace marketplace keys are not fetched or trusted (local keys only); https and loopback unchanged",
+    "BrowseError and install/update failures are plain sentences; unreachable shows the address message and Settings Modules link",
+    "BaseURL allows plain http on loopback and togavsu-marketplace; over http://togavsu-marketplace marketplace keys are not fetched or trusted (local keys only); https and loopback unchanged; ponytail markers at httpHostAllowed/TrustsMarketplaceKeys",
     "Card compose-http note, trusted-keys hint, marketplace_address help text, and PONYTAIL-DEBT marketplace ceiling 4",
     "Phone-width QC entry (Width 390) for Modules with three listings; CSS constrains form-grid file inputs and #install-module so #pkg stays inside the viewport; web/static TestModulesPhoneKeepsFileInputsInsideViewport regression"
   ],
@@ -44,13 +61,14 @@
     "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
   ],
   "simplification": {
-    "net_lines": 468,
+    "net_lines": 895,
+    "base_sha": "a65934ac6c391107f69b1bf09a2a9989c409746d",
     "ponytail_debt_sections": 68,
-    "note": "CI fix adds 66 lines (CSS media rules + static regression). Marketplace ceiling 4 unchanged. No second marketplace card or install route."
+    "note": "Net lines = git diff --numstat base...tested_revision excluding this report file (add-del). Marketplace ceiling 4 unchanged. No second marketplace card or install route."
   },
   "ci_correction": {
     "failed_check": "Supervisor tests / TestUIVisualQC",
     "root_cause": "horizontal overflow on /admin?tab=modules at Width 390: scrollWidth 396 > clientWidth 390; INPUT#pkg unreachable at right=396",
-    "fix": "constrain .form-grid input[type=file] and #install-module under @media (max-width:700px); CSS regression test; re-ran tests/ui/run.sh PASS"
+    "fix": "constrain .form-grid input[type=file] and #install-module under @media (max-width:700px); CSS regression test; prior local sh tests/ui/run.sh PASS on dcb219e"
   }
 }
