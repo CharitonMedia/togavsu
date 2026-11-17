@@ -1,7 +1,7 @@
 {
   "task_id": "marketplace-paid",
   "status": "pass",
-  "tested_revision": "5362c49952fe960ed8b60351642f2eafd37df6ee",
+  "tested_revision": "308745d158fca5f86ee68b3aab98470982a93f17",
   "tests": [
     {
       "name": "marketplace package",
@@ -9,7 +9,7 @@
       "exit_code": 0
     },
     {
-      "name": "MKT acceptance suite",
+      "name": "MKT-01..07 suite",
       "command": "go test -count=1 -timeout 180s -v -run 'TestMKT0' ./marketplace/",
       "exit_code": 0
     },
@@ -49,17 +49,17 @@
       "exit_code": 0
     },
     {
-      "name": "module-clean-settings",
+      "name": "settings module clean",
       "command": "go test ./internal/settings/ -run TestModuleClean -count=1",
       "exit_code": 0
     },
     {
-      "name": "gofmt",
+      "name": "gofmt marketplace",
       "command": "gofmt -l marketplace/",
       "exit_code": 0
     },
     {
-      "name": "go-vet",
+      "name": "go vet marketplace",
       "command": "go vet ./marketplace/...",
       "exit_code": 0
     }
