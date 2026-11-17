@@ -71,3 +71,45 @@ func TestCORE01ServicePrincipalCalls(t *testing.T) {
 		t.Fatalf("viewer service call: %d %s", r.code, r.body)
 	}
 }
+
+// TestCORE01ServiceCallReadAudits: books profile and matchMail (service-call reads) each
+// write one audit row naming the operation with source service (CORE-01 gate audit).
+func TestCORE01ServiceCallReadAudits(t *testing.T) {
+	x := newExt(t)
+	ctx := context.Background()
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = bytes.Replace(f[modules.ManifestFile], []byte("permissions:\n"),
+			[]byte("permissions:\n  - scope: books:read\n    reason: Read the books.\n"+
+				"  - scope: contacts:read\n    reason: Match mail contacts.\n"), 1)
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("matter-clock")
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = x.rt.Last("matter-clock").Secrets["togavsu_api_token"]
+
+	countOp := func(op string) int {
+		t.Helper()
+		var n int
+		if err := x.app.Pool.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM core.audit_log WHERE entity = 'service_call' AND field = 'operation' AND new_value = $1 AND source = 'service' AND reason LIKE '%module=matter-clock%'`,
+			op).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	beforeBooks := countOp("getBooksProfile")
+	bot.must(http.StatusOK, "GET", "/api/v1/books/profile", nil)
+	if got := countOp("getBooksProfile"); got != beforeBooks+1 {
+		t.Fatalf("getBooksProfile audits: got %d want %d", got, beforeBooks+1)
+	}
+
+	beforeMatch := countOp("matchMail")
+	bot.must(http.StatusOK, "POST", "/api/v1/mail/matches", map[string]any{"addresses": []string{"nobody@example.com"}})
+	if got := countOp("matchMail"); got != beforeMatch+1 {
+		t.Fatalf("matchMail audits: got %d want %d", got, beforeMatch+1)
+	}
+}

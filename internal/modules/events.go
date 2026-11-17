@@ -245,7 +245,6 @@ VALUES ($1,$2,$2,'',$3,$4,$5,$6,'pending',0,$2,'',0) ON CONFLICT (module_id, eve
 	return queued, nil
 }
 
-
 // dropBooksEvent reports whether a books:read module must not receive ev (CORE-02):
 // money events on a walled matter, and contact.updated for a contact getBooksContact
 // would not return.

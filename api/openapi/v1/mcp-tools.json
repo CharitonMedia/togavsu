@@ -8964,6 +8964,12 @@
         "accountant"
       ],
       "module_delegation": "delegated_viewer",
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 50
+      },
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -18678,6 +18684,12 @@
         "attorney",
         "staff"
       ],
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 50
+      },
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",

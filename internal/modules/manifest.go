@@ -16,24 +16,24 @@ const ManifestFile = "togavsu-module.yaml"
 
 // Manifest is togavsu-module.yaml (PRD 9.2).
 type Manifest struct {
-	ID            string             `json:"id"`
-	Name          string             `json:"name"`
-	Version       string             `json:"version"`
-	Author        string             `json:"author"`
-	Homepage      string             `json:"homepage"`
-	License       string             `json:"license"`
-	Price         string             `json:"price"`
-	Container     Container          `json:"container"`
-	Permissions   []Permission       `json:"permissions"`
-	Widgets       []Widget           `json:"widgets"`
-	Help          HelpGuide          `json:"help"`
-	Tabs          []Tab              `json:"tabs"`
-	MatterItems   []MatterItem       `json:"matter_items"`
-	Sidebar       []Link             `json:"sidebar"`
-	QuickCreate   []Link             `json:"quick_create"`
-	Search        []Link             `json:"search_scopes"`
-	Notifications    []NotificationKind `json:"notifications"`
-	InboundWebhooks  []InboundWebhook   `json:"inbound_webhooks"`
+	ID              string             `json:"id"`
+	Name            string             `json:"name"`
+	Version         string             `json:"version"`
+	Author          string             `json:"author"`
+	Homepage        string             `json:"homepage"`
+	License         string             `json:"license"`
+	Price           string             `json:"price"`
+	Container       Container          `json:"container"`
+	Permissions     []Permission       `json:"permissions"`
+	Widgets         []Widget           `json:"widgets"`
+	Help            HelpGuide          `json:"help"`
+	Tabs            []Tab              `json:"tabs"`
+	MatterItems     []MatterItem       `json:"matter_items"`
+	Sidebar         []Link             `json:"sidebar"`
+	QuickCreate     []Link             `json:"quick_create"`
+	Search          []Link             `json:"search_scopes"`
+	Notifications   []NotificationKind `json:"notifications"`
+	InboundWebhooks []InboundWebhook   `json:"inbound_webhooks"`
 	// ClientHome names one of this module's client tabs as the portal landing tab (CORE-10).
 	ClientHome string `json:"client_home"`
 	// DeviceConnect is the module path the device-connect page redirects to with #grant= (CORE-28).
@@ -41,11 +41,11 @@ type Manifest struct {
 	// PaymentProcessor registers this module as a payment processor (CORE-23).
 	PaymentProcessor *PaymentProcessor `json:"payment_processor"`
 	Events           []string          `json:"events"`
-	Emits         []string           `json:"emits"`
-	Data          Data               `json:"data"`
-	Replaces      string             `json:"replaces"`
-	Settings      []SettingSpec      `json:"settings"`
-	AITasks       []AITask           `json:"ai_tasks"`
+	Emits            []string          `json:"emits"`
+	Data             Data              `json:"data"`
+	Replaces         string            `json:"replaces"`
+	Settings         []SettingSpec     `json:"settings"`
+	AITasks          []AITask          `json:"ai_tasks"`
 }
 
 // PaymentProcessor is manifest payment_processor: destinations the module may charge (CORE-23).

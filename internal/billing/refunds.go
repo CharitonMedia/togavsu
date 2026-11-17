@@ -17,19 +17,19 @@ import (
 
 // Refund events (CORE-24).
 const (
-	RefundEventCreated     = "payment.refund_created"
-	RefundEventAuthorized  = "payment.refund_authorized"
-	RefundEventCompleted   = "payment.refunded"
-	RefundEventFailed      = "payment.refund_failed"
-	RefundHeader           = ProcessorHeader
-	kindRefund             = "payment_refund"
-	refundGrantPrefix      = "tra1."
-	RefundPending          = "pending"
-	RefundCompleted        = "completed"
-	RefundFailed           = "failed"
-	RefundNone             = "none"
-	RefundFull             = "full"
-	RefundPartial          = "partial"
+	RefundEventCreated    = "payment.refund_created"
+	RefundEventAuthorized = "payment.refund_authorized"
+	RefundEventCompleted  = "payment.refunded"
+	RefundEventFailed     = "payment.refund_failed"
+	RefundHeader          = ProcessorHeader
+	kindRefund            = "payment_refund"
+	refundGrantPrefix     = "tra1."
+	RefundPending         = "pending"
+	RefundCompleted       = "completed"
+	RefundFailed          = "failed"
+	RefundNone            = "none"
+	RefundFull            = "full"
+	RefundPartial         = "partial"
 )
 
 // Refund is a payment_refunds row (CORE-24). Status is pending, completed or failed.

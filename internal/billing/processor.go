@@ -59,13 +59,13 @@ type ProcessorInput struct {
 // access the grant carries.
 type ProcessorInit struct {
 	domain.Meta
-	PaymentID         domain.ID    `json:"payment_id"`
-	ProcessorModuleID string       `json:"processor_module_id"`
-	ContactID         domain.ID    `json:"contact_id"`
-	MatterID          domain.ID    `json:"matter_id"`
-	AmountCents       domain.Cents `json:"amount_cents"`
-	Destination       string       `json:"destination"`
-	TrustAccountID    domain.ID    `json:"trust_account_id,omitempty"`
+	PaymentID              domain.ID    `json:"payment_id"`
+	ProcessorModuleID      string       `json:"processor_module_id"`
+	ContactID              domain.ID    `json:"contact_id"`
+	MatterID               domain.ID    `json:"matter_id"`
+	AmountCents            domain.Cents `json:"amount_cents"`
+	Destination            string       `json:"destination"`
+	TrustAccountID         domain.ID    `json:"trust_account_id,omitempty"`
 	InvoiceID              domain.ID    `json:"invoice_id,omitempty"`
 	ReplenishmentRequestID domain.ID    `json:"replenishment_request_id,omitempty"`
 	Status                 string       `json:"status"`
@@ -244,7 +244,7 @@ func (s *Service) InitiateProcessorPayment(ctx context.Context, p domain.Princip
 		Meta: meta, PaymentID: payID, ProcessorModuleID: in.ProcessorModuleID, ContactID: in.ContactID, MatterID: in.MatterID,
 		AmountCents: in.AmountCents, Destination: in.Destination, TrustAccountID: in.TrustAccountID, InvoiceID: in.InvoiceID,
 		ReplenishmentRequestID: in.ReplenishmentRequestID,
-		Status: "authorized", ExpiresAt: s.now().Add(lifetime), SecretHash: hex.EncodeToString(sum[:]),
+		Status:                 "authorized", ExpiresAt: s.now().Add(lifetime), SecretHash: hex.EncodeToString(sum[:]),
 		AuthorizedBy: p.UserID,
 	}
 	credential := grantPrefix + string(row.ID) + "." + base64.RawURLEncoding.EncodeToString(secret)
@@ -306,7 +306,7 @@ func (s *Service) processorGrant(ctx context.Context, p domain.Principal, creden
 			if days < 1 {
 				days = 30
 			}
-			if !s.now().Before(pay.CreatedAt.Add(time.Duration(days)*24*time.Hour)) {
+			if !s.now().Before(pay.CreatedAt.Add(time.Duration(days) * 24 * time.Hour)) {
 				return ProcessorInit{}, domain.Principal{}, denied
 			}
 		} else {
@@ -412,7 +412,7 @@ func authorizationView(row ProcessorInit) map[string]any {
 		"matter_id": row.MatterID, "contact_id": row.ContactID, "invoice_id": idOrNil(row.InvoiceID),
 		"amount_cents": int64(row.AmountCents), "destination": row.Destination, "trust_account_id": idOrNil(row.TrustAccountID),
 		"replenishment_request_id": idOrNil(row.ReplenishmentRequestID),
-		"allowed_operations": []string{"createPayment", "updatePaymentStatus"}, "allowed_fields": processorFields,
+		"allowed_operations":       []string{"createPayment", "updatePaymentStatus"}, "allowed_fields": processorFields,
 		"expires_at": row.ExpiresAt.UTC().Format(time.RFC3339Nano), "revoked": row.Revoked, "issued_by": "core",
 	}
 }
@@ -424,6 +424,6 @@ func ProcessorInitView(row ProcessorInit) map[string]any {
 		"matter_id": row.MatterID, "amount_cents": int64(row.AmountCents), "destination": row.Destination,
 		"trust_account_id": idOrNil(row.TrustAccountID), "invoice_id": idOrNil(row.InvoiceID),
 		"replenishment_request_id": idOrNil(row.ReplenishmentRequestID),
-		"status": row.Status, "expires_at": row.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		"status":                   row.Status, "expires_at": row.ExpiresAt.UTC().Format(time.RFC3339Nano),
 	}
 }

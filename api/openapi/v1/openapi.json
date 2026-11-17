@@ -30776,6 +30776,36 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter payment_id."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from page.next_cursor."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 50
+            },
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -30789,7 +30819,23 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PaymentRefund"
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PaymentRefund"
+                      }
+                    },
+                    "page": {
+                      "$ref": "#/components/schemas/Page"
+                    }
+                  }
                 }
               }
             }
@@ -30827,7 +30873,15 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -60643,11 +60697,6 @@
           "client": "deny",
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer_or_service_principal",
-          "module_principal": {
-            "actor_kind": "module",
-            "scope": "mail:send",
-            "grants_admin": false
-          },
           "events_on": "commit",
           "events_on_failure": "none",
           "admin_bypasses_wall": false,
@@ -60936,11 +60985,6 @@
           "client": "deny",
           "module_delegation": "service_principal",
           "admin_bypasses_wall": false,
-          "module_principal": {
-            "actor_kind": "module",
-            "scope": "notes:write",
-            "grants_admin": false
-          },
           "events_on": "commit",
           "events_on_failure": "none",
           "effect_order": "authorize_before_external_effect"
@@ -64717,7 +64761,29 @@
         "tags": [
           "Modules"
         ],
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from page.next_cursor."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 50
+            },
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success.",
@@ -64730,8 +64796,10 @@
               "application/json": {
                 "schema": {
                   "type": "object",
+                  "additionalProperties": false,
                   "required": [
-                    "data"
+                    "data",
+                    "page"
                   ],
                   "properties": {
                     "data": {
@@ -64739,6 +64807,9 @@
                       "items": {
                         "$ref": "#/components/schemas/ModuleDevice"
                       }
+                    },
+                    "page": {
+                      "$ref": "#/components/schemas/Page"
                     }
                   }
                 }
@@ -64820,7 +64891,9 @@
               "credential": "bearer",
               "result": "forbidden"
             }
-          ]
+          ],
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,

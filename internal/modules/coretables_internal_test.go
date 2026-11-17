@@ -62,6 +62,18 @@ func TestCreatedTables(t *testing.T) {
 	}
 }
 
+// Down DROP TABLE is rollback only; CreatedTables must keep tables created in Up so
+// release migrations with real Downs still match core_tables.txt (Codex P0 / CU-05).
+func TestCreatedTablesIgnoresDownDrop(t *testing.T) {
+	got, err := CreatedTables([]db.Migration{
+		{Version: 1252, Name: "1252_grants", SQL: "-- +goose Up\nCREATE TABLE file_publication_grants (id TEXT);\n-- +goose Down\nDROP TABLE file_publication_grants;\n"},
+		{Version: 1256, Name: "1256_idem", SQL: "-- +goose Up\nCREATE TABLE core_idempotency (id TEXT);\n-- +goose Down\nDROP TABLE core_idempotency;\n"},
+	})
+	if err != nil || len(got) != 2 || got[0] != "core_idempotency" || got[1] != "file_publication_grants" {
+		t.Fatalf("tables after Up with Down DROP: %v %v", got, err)
+	}
+}
+
 // Every refused manifest value is reported by ValidateAll; Validate returns the first.
 func TestValidateAll(t *testing.T) {
 	m := Manifest{ID: "Bad Id", Version: "1.0.0", Name: "n", Author: "a",

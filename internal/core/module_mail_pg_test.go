@@ -2,9 +2,12 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
+	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -126,5 +129,62 @@ func TestPGSendModuleMail(t *testing.T) {
 		"name": "human-mail", "user_id": x.adminID, "scopes": []string{"mail:send"},
 	}); r.code == http.StatusCreated || (!strings.Contains(r.body, "scope_denied") && r.json["code"] != "scope_denied") {
 		t.Fatalf("human token mail:send: %d %s", r.code, r.body)
+	}
+}
+
+// TestPGSendModuleMailOutboxIdempotencyKey: sendModuleMail posts to the email module with
+// Idempotency-Key equal to the mail_outbox row id (CORE-05 same-key on every attempt).
+func TestPGSendModuleMailOutboxIdempotencyKey(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+
+	var mu sync.Mutex
+	var keys []string
+	x.rt.Handle("mail-router", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/system-mail" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = io.ReadAll(r.Body)
+		mu.Lock()
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+
+	pkg := x.build(func(f map[string][]byte) {
+		m := string(f[modules.ManifestFile])
+		m = strings.Replace(m, "id: matter-clock", "id: mail-router", 1)
+		m = strings.Replace(m, "name: Matter Clock", "name: Mail Router", 1)
+		m = strings.Replace(m, "  events: /events\n", "  events: /events\n  system_mail: /system-mail\n", 1)
+		m = strings.Replace(m, "permissions:\n",
+			"permissions:\n  - scope: mail:system\n    reason: Deliver system mail.\n    required: false\n"+
+				"  - scope: mail:send\n    reason: Send firm mail.\n", 1)
+		f[modules.ManifestFile] = []byte(m)
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("mail-router")
+	x.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/mail.route_through_email_module", map[string]any{"value": true})
+
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = x.rt.Last("mail-router").Secrets["togavsu_api_token"]
+	sent := bot.do("POST", "/api/v1/mail/messages", map[string]any{
+		"subject": "Via module", "text": "hello", "to_user_ids": []string{x.staffID},
+	}, "Idempotency-Key", "mod-mail-key")
+	if sent.code != http.StatusOK || sent.json["results"].([]any)[0].(map[string]any)["status"] != "sent" {
+		t.Fatalf("send: %d %s", sent.code, sent.body)
+	}
+
+	var outboxID string
+	if err := x.app.Pool.QueryRowContext(context.Background(),
+		`SELECT id FROM core.mail_outbox WHERE subject = 'Via module' ORDER BY created_at DESC LIMIT 1`).Scan(&outboxID); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(keys) != 1 || keys[0] != outboxID {
+		t.Fatalf("Idempotency-Key=%v want outbox id %q", keys, outboxID)
 	}
 }

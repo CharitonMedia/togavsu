@@ -369,6 +369,38 @@ CORE_EXTENSION_EXCLUSIONS = {
         "editor commands",
         'the pinned LawCraft command list. PRD 8.20: "GET /api/v1/editor/commands lists the allowed commands." Not stored rows.',
     ),
+    "BooksProfile": (
+        "books profile",
+        'module books reader projection (CORE-02 / PRD 9.10). Firm settings fields for sync, not a section 5 record a module extends.',
+    ),
+    "BooksMatter": (
+        "books matter",
+        'module books reader projection (CORE-02 / PRD 9.10). A narrowed matter view for sync; Matter is the extension target.',
+    ),
+    "BooksContact": (
+        "books contact",
+        'module books reader projection (CORE-02 / PRD 9.10). A narrowed contact view for sync; Contact is the extension target.',
+    ),
+    "ModuleMailResult": (
+        "module mail result",
+        'sendModuleMail response (CORE-04 / PRD 9.10). Delivery outcomes, not a stored firm record.',
+    ),
+    "ModuleDevice": (
+        "module device grants",
+        'per-user device grant (CORE-28 / PRD 9.10). Credential material for a module, not a section 5 record.',
+    ),
+    "UserDirectoryEntry": (
+        "user directory",
+        'module directory projection (CORE-19 / PRD 9.10). A narrowed user list for modules; User is the extension target.',
+    ),
+    "MatterClient": (
+        "client matter view",
+        'client-facing matter projection (CORE-11 / PRD 9.10). Matter is the extension target.',
+    ),
+    "TrustReplenishmentClient": (
+        "client trust replenishment view",
+        'client-facing replenishment projection (CORE-12 / PRD 9.10). TrustReplenishment is the extension target.',
+    ),
 }
 # Section 5 records that have no read or list operation of their own, so there is no read to take include=.
 # edit_locks is returned only by acquire and renew. doc_tender_units is internal to a job.
@@ -376,11 +408,11 @@ CORE_RECORDS_WITHOUT_READS = ("edit_locks", "doc_tender_units")
 
 CORE_PAGE_TARGETS = {
     "time_entries": {"operation": "listTimeEntry", "scopes": ["time:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
-    "matters": {"operation": "listMatter", "scopes": ["matters:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
+    "matters": {"operation": "listMatter", "scopes": ["matters:read"], "roles": ["admin", "attorney", "staff", "client"], "matter_wall": True},
     "deadlines": {"operation": "listDeadline", "scopes": ["deadlines:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
     "calendar": {"operation": "listCalendarEvent", "scopes": ["calendar:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
     "trust_alerts": {"operation": "listTrustFlag", "scopes": ["trust:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
-    "replenishment_requests": {"operation": "listTrustReplenishment", "scopes": ["trust:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
+    "replenishment_requests": {"operation": "listTrustReplenishment", "scopes": ["trust:read"], "roles": ["admin", "attorney", "staff", "accountant", "client"], "matter_wall": True},
     "ar_aging": {"operation": "reportArAging", "scopes": ["reports:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
     "activity": {"operation": "listEvents", "scopes": ["events:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
     "conflict_checks": {"operation": "listConflictChecks", "scopes": ["conflicts:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},

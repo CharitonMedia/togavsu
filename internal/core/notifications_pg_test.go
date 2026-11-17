@@ -113,6 +113,16 @@ func TestCORE03CreateNotification(t *testing.T) {
 	if !strings.Contains(prefs.body, kind) {
 		t.Fatalf("prefs missing module kind: %s", prefs.body)
 	}
+
+	// CORE-03: user_id + matter_id requires full matter read (not wall alone). An
+	// accountant clears an unwalled matter's wall but cannot read the matter record.
+	acctID := str(t, x.acct.must(http.StatusOK, "GET", "/api/v1/me", nil).json, "id")
+	denied := bot.do("POST", "/api/v1/notifications", map[string]any{
+		"kind": kind, "title": "Acct ping", "link": link, "matter_id": open, "user_id": acctID,
+	})
+	if denied.code != http.StatusNotFound || denied.json["code"] != "not_found" {
+		t.Fatalf("accountant recipient on matter: %d %s", denied.code, denied.body)
+	}
 }
 
 func (x *ext) countNotifications(ctx context.Context, user, kind string) int {

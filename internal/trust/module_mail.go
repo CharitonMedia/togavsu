@@ -192,7 +192,14 @@ func (s *Service) deliverQueuedModuleMail(ctx context.Context, id domain.ID, to,
 		return mailStatusFailed, "system mailer is not configured"
 	}
 	now := micro(s.now())
-	err := sender.Send(ctx, to, subject, body)
+	// Prefer OutboxSender so Idempotency-Key is the outbox row id on every attempt
+	// (first delivery and later DeliverMail retries) per CORE-05.
+	var err error
+	if os, ok := sender.(OutboxSender); ok {
+		err = os.SendOutbox(ctx, Mail{ID: id, Kind: mailKindModule, To: to, Subject: subject, Body: body})
+	} else {
+		err = sender.Send(ctx, to, subject, body)
+	}
 	if err != nil {
 		// Same connection as queueMailID so the update lands inside idempotentTx.
 		_, _ = s.q(ctx).ExecContext(ctx,

@@ -417,6 +417,7 @@ class ContractTest(unittest.TestCase):
             "getOpenAPI",
             "getSetup",
             "login",
+            "postInboundWebhook",
             "requestPasswordReset",
             "startTotpEnrollment",
             "verifyRecoveryCode",
@@ -1968,9 +1969,10 @@ class ContractTest(unittest.TestCase):
             include_views_decision(matter, {"role": "staff", "approved_scopes": granted["token_scopes"], "include": ["other.secret"]}),
             "forbidden",
         )
+        # CORE-11: a client may read matters they are party to, so include= follows the same gate.
         self.assertEqual(
             include_views_decision(matter, {"role": "client", "approved_scopes": granted["token_scopes"], "include": ["matter-clock.targets"]}),
-            "forbidden",
+            "allowed",
         )
         self.assertEqual(
             include_views_decision(
@@ -2657,7 +2659,6 @@ class ContractTest(unittest.TestCase):
             "getMatter",
             "listMatter",
             "updateFileMetadata",
-            "createNote",
             "createTimeEntry",
             "runEditor",
             "postTrustEntry",
@@ -2819,6 +2820,7 @@ class ContractTest(unittest.TestCase):
                 "locked_fields": [],
                 "warnings": [],
                 "financial_classification": classification,
+                "library": False,
                 "matter_id": matter,
                 "matter_walled": False,
             }
@@ -4496,6 +4498,7 @@ class ContractTest(unittest.TestCase):
             ("expense", "Expense", "expenses:read", ("listExpense", "getExpense")),
             ("invoice", "Invoice", "invoices:read", ("listInvoice", "getInvoice")),
             ("payment", "Payment", "payments:read", ("listPayment", "getPayment")),
+            ("payment_refund", "PaymentRefund", "payments:read", ("listPaymentRefunds",)),
             ("calendar_event", "CalendarEvent", "calendar:read", ("listCalendarEvent", "getCalendarEvent")),
             ("deadline", "Deadline", "deadlines:read", ("listDeadline", "getDeadline")),
             ("file", "File", "files:read", ("listFile", "getFile")),
@@ -4867,7 +4870,12 @@ class ContractTest(unittest.TestCase):
                 if "client" in roles:
                     shared = call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted())
                     self.assertEqual(shared["result"], "allowed", label)
-                    denied(call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted(shared=False)), "not_found", label)
+                    # CORE-12: client trust reads use ClientMatter, not SharedWithClient.
+                    if key.startswith("trust_"):
+                        still = call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted(shared=False))
+                        self.assertEqual(still["result"], "allowed", label)
+                    else:
+                        denied(call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted(shared=False)), "not_found", label)
                 else:
                     denied(call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted()), "forbidden", label)
                 if "staff" not in roles:
@@ -5284,6 +5292,7 @@ class ContractTest(unittest.TestCase):
                     "putModuleSecret",
                     "getModuleSecret",
                     "deleteModuleSecret",
+                    "exchangeModuleDeviceGrant",
                 },
                 "issuance": {"createApiToken"},
                 "trust_debit": {"applyTrustToInvoice", "applyFlatFee"},
@@ -5809,7 +5818,7 @@ class ContractTest(unittest.TestCase):
             for method, _path, operation in _ops(self.spec)
             if method == "get" and any(scope.endswith(":write") for scope in operation["x-togavsu-access"]["scopes"])
         ]
-        self.assertEqual(write_gets, ["getFileUpload", "listStorageBackend", "getStorageBackend"])
+        self.assertEqual(write_gets, ["getFileUpload", "listStorageBackend", "getStorageBackend", "getModuleSecret"])
         for event_type in ("storage_backend.created", "storage_backend.updated", "storage_backend.tested"):
             self.assertEqual(event_read_scopes(event_type), ["files:write"], event_type)
         secret = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa9"
@@ -7043,7 +7052,10 @@ class ContractTest(unittest.TestCase):
             if not operation["x-togavsu-events"]:
                 uncovered.append(operation["operationId"])
         self.assertEqual(uncovered, [])
-        self.assertEqual(exempt, ["putFileChunk"])
+        self.assertEqual(
+            exempt,
+            ["putFileChunk", "exchangeModuleDeviceGrant", "putModuleSecret", "deleteModuleSecret"],
+        )
         self.assertEqual(_operation(self.spec, "cancelTrustReplenishment")["x-togavsu-events"], ["trust.replenishment_cancelled"])
         self.assertEqual(_operation(self.spec, "satisfyTrustReplenishment")["x-togavsu-events"], ["trust.replenishment_satisfied"])
         self.assertEqual(_operation(self.spec, "bulkCustomFieldValue")["x-togavsu-events"], ["custom_field.updated"])
@@ -7465,6 +7477,7 @@ class ContractTest(unittest.TestCase):
                 "putModuleSecret",
                 "getModuleSecret",
                 "deleteModuleSecret",
+                "exchangeModuleDeviceGrant",
             },
         )
         cases.append({"family": "module_principal", "name": "help bearer matches current approval", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="matter-clock", installed=True, approved_scopes=["help:write"], token_scopes=["help:write"], current_approved_scopes=["help:write"]), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}})

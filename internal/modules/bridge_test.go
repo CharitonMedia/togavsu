@@ -1,6 +1,9 @@
 package modules
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestBridgeNavigateURL(t *testing.T) {
 	mod := "matter-clock"
@@ -37,5 +40,25 @@ func TestBridgeNavigateURL(t *testing.T) {
 		if got, ok := BridgeNavigateURL(mod, page, nil); ok {
 			t.Fatalf("denied %q but got %q", page, got)
 		}
+	}
+}
+
+func TestFrameBridgeScriptTopLevelNavigate(t *testing.T) {
+	staff := frameBridgeScript("matter-clock", true)
+	if !strings.Contains(staff, "window.top") || !strings.Contains(staff, "togavsu:editor.open") {
+		t.Fatal("staff bridge missing top navigate or editor.open")
+	}
+	if !strings.Contains(staff, "togavsu:navigate") {
+		t.Fatal("staff bridge missing navigate")
+	}
+}
+
+func TestFrameBridgeScriptClientOmitsEditorOpen(t *testing.T) {
+	client := frameBridgeScript("matter-clock", false)
+	if strings.Contains(client, "togavsu:editor.open") {
+		t.Fatal("client bridge must omit editor.open")
+	}
+	if !strings.Contains(client, "window.top") || !strings.Contains(client, "togavsu:navigate") {
+		t.Fatal("client bridge missing top navigate")
 	}
 }

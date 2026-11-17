@@ -22,10 +22,10 @@ def _file_hashes() -> dict[str, str]:
 
 
 BASELINE_ARTIFACTS = {
-    "api/openapi/v1/openapi.json": "8eba98ee01595cba26346c96fcf2bfe28e1c486edde1097df2a8615a4a1346cc",
+    "api/openapi/v1/openapi.json": "e2aad30720be7394306142b786649c0414d620fc595c175d63a924989e3d8195",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
-    "api/openapi/v1/mcp-tools.json": "c21f1dbe15161e6516996345e7a104261a3a68e999a181bd7bdb3990c51ed8a1",
-    "docs/api/coverage.md": "793adc1016befc48f1d3f47d81b250025be96f2fdee29b4985516f5b7145e887",
+    "api/openapi/v1/mcp-tools.json": "4581fcdcb373bf6d4e17dbd1676a618089604c77836d4840b8d85f5b85363fc6",
+    "docs/api/coverage.md": "a7a9f8a630722b302c13338135e0e36ffab008b1acfced995de4ac3aaad94bfa",
 }
 
 DECISION_RESULTS = {
@@ -427,6 +427,11 @@ def write_stage1_documents() -> None:
                 "id": "doc-tender-status-reprocess-model-choices",
                 "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json", "docs/api/coverage.md"],
                 "change": "The core's Doc Tender routes join the contract so tokens and /mcp reach them: getDocTenderStatus (GET /api/v1/files/{file_id}/doc-tender-status, staff, doc_tender:read), reprocessDocTenderFile (POST /api/v1/files/{file_id}/doc-tender-reprocess, admin or attorney, doc_tender:write, 202 with the queued DocTenderJob, emits doc_tender.retry_scheduled) and getDocTenderModelChoices (GET /api/v1/doc-tender/model-choices, admin, doc_tender:read). The two file routes carry the file wall. The settings catalog adds ai.model_prices (json, AI tab, default {}), the price table AI call costs read.",
+            },
+            {
+                "id": "ai-call-log-filters",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "listAiCalls (GET /api/v1/ai/calls) gains the task, provider and module_id query filters the AI tab's call log uses, and its description says the log is newest first and omits calls on matters behind a wall the admin is not on. The MCP catalog still describes query as one object, and coverage does not list parameters, so their bytes stay the same.",
             },
         ],
         "intentional_corrections": [

@@ -85,7 +85,13 @@ func (m *systemMailer) client() *http.Client {
 	if m.HTTP != nil {
 		return m.HTTP
 	}
-	return http.DefaultClient
+	// Bound every module POST so a stalled email module cannot block the outbox drain,
+	// password reset or sendModuleMail (CORE-05). Reuse mail.smtp_timeout_seconds.
+	sec := ""
+	if m.Settings != nil {
+		sec, _ = m.Settings.Get(context.Background(), "mail.smtp_timeout_seconds")
+	}
+	return &http.Client{Timeout: settings.ModuleMailHTTPTimeout(sec)}
 }
 
 func (m *systemMailer) now() time.Time {
@@ -167,11 +173,22 @@ func isModuleUnreachable(err error) bool {
 	if err == nil {
 		return false
 	}
+	// Timeouts and deadline exceeded are retried with the same Idempotency-Key (CORE-05),
+	// not treated as "module not running" SMTP fallback (which would double-deliver).
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return false
+	}
 	var ne net.Error
 	if errors.As(err, &ne) {
+		if ne.Timeout() {
+			return false
+		}
 		return true
 	}
 	s := err.Error()
+	if strings.Contains(s, "context deadline exceeded") || strings.Contains(s, "Client.Timeout") {
+		return false
+	}
 	return strings.Contains(s, "connection refused") || strings.Contains(s, "no such host") ||
 		strings.Contains(s, "module not running") || strings.Contains(s, "connect:")
 }

@@ -156,13 +156,15 @@ func (s *Service) resolveNotificationRecipients(ctx context.Context, in Notifica
 			return nil, domain.Invalid("user_id", "the recipient is not an active user")
 		}
 		if !in.MatterID.IsZero() {
-			sees, err := s.matterVisible(ctx, u, in.MatterID)
+			// CORE-03: with user_id and matter_id the recipient must fully read the matter
+			// (role + client-party rules), not only clear the wall.
+			ok, err := s.matterReadable(ctx, u, in.MatterID)
 			if err != nil {
 				return nil, err
 			}
-			if !sees {
-				// Hide a walled matter from a service call; interactive callers keep the
-				// validation detail so they can fix the recipient.
+			if !ok {
+				// Hide a walled or out-of-scope matter from a service call; interactive
+				// callers keep the validation detail so they can fix the recipient.
 				if serviceCall {
 					return nil, domain.NotFound("matter")
 				}
@@ -309,4 +311,25 @@ func (s *Service) matterVisible(ctx context.Context, u domain.User, matter domai
 		return true, nil
 	}
 	return view.Allows, nil
+}
+
+// matterReadable is whether u may read the matter record under the same rules as
+// allow(ResMatter, ActionRead): wall, role, and client-party SharedWithClient.
+func (s *Service) matterReadable(ctx context.Context, u domain.User, matter domain.ID) (bool, error) {
+	roles, err := domain.ParseRoles(u.Roles)
+	if err != nil {
+		return false, nil
+	}
+	p := domain.Principal{UserID: u.ID, Roles: roles}
+	view, err := s.policy.Walls.View(ctx, p, matter)
+	if err != nil {
+		return false, err
+	}
+	d := domain.Decide(p, domain.AccessInput{
+		Resource: domain.ResMatter, Action: domain.ActionRead, MatterID: matter,
+		Walled: view.Walled, WallAllows: view.Allows, ClientMatter: view.ClientMatter,
+		// Matter record reads are shared with the client party (practice.gateMatter).
+		SharedWithClient: view.ClientMatter,
+	})
+	return d.Allow, nil
 }

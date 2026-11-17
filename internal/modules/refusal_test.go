@@ -96,7 +96,6 @@ func TestCheckAllReportsEveryUnknownField(t *testing.T) {
 	}
 }
 
-
 func TestDeviceConnectManifestAccepted(t *testing.T) {
 	raw := samplePackage(t, func(f map[string][]byte) {
 		replace(f, modules.ManifestFile, "tabs:\n", "device_connect: /outlook-addin/connected\ntabs:\n")
@@ -255,7 +254,6 @@ func TestInstallCheckRefusesFilesTheCoreDoesNotRead(t *testing.T) {
 		t.Fatal("PackageFile")
 	}
 }
-
 
 func TestSystemMailManifestAccepted(t *testing.T) {
 	raw := samplePackage(t, func(f map[string][]byte) {

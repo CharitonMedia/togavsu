@@ -152,7 +152,6 @@ func csrfOf(r *http.Request) string {
 	return ""
 }
 
-
 // afterSignInPath is where a signed-in user lands: /portal for client-only users (CORE-10),
 // or /portal/security when a temporary password must be changed (CORE-14).
 func afterSignInPath(p domain.Principal) string {

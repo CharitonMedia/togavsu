@@ -36,8 +36,8 @@ type Caller struct {
 
 // Handler serves the module API, the frame pages and the /m/{id}/ proxy.
 type Handler struct {
-	Svc  *Service
-	Auth func(*http.Request) (Caller, error)
+	Svc      *Service
+	Auth     func(*http.Request) (Caller, error)
 	FirmName func(ctx context.Context) string
 
 	// idemMu guards only the idem map; no handler runs under it.
@@ -481,7 +481,6 @@ func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request, c Caller) 
 	writeJSON(w, http.StatusOK, v)
 }
 
-
 // createDevice is createModuleDeviceGrant (CORE-28): session only.
 func (h *Handler) createDevice(w http.ResponseWriter, r *http.Request, c Caller) {
 	if c.Bearer {
@@ -873,13 +872,14 @@ var framePage = template.Must(template.New("frame").Parse(`<!doctype html>
 // inside the app shell; a panel or widget the core embeds in its own iframe is the bare
 // frame page, so the shell never nests.
 func writeFrame(w http.ResponseWriter, r *http.Request, screen bool, title, src, moduleID string) {
-	writeFrameSandbox(w, r, screen, title, src, staffFrameSandbox, moduleID)
+	writeFrameSandbox(w, r, screen, title, src, staffFrameSandbox, moduleID, true)
 }
 
-func writeFrameSandbox(w http.ResponseWriter, r *http.Request, screen bool, title, src, sandbox, moduleID string) {
+func writeFrameSandbox(w http.ResponseWriter, r *http.Request, screen bool, title, src, sandbox, moduleID string, staff bool) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	nonce := frameNonce()
-	bridge := template.JS(frameBridgeScript(moduleID))
+	script := frameBridgeScript(moduleID, staff)
+	bridge := template.JS(script)
 	data := map[string]any{"Title": title, "Src": src, "Nonce": nonce, "Sandbox": sandbox, "Module": moduleID, "Bridge": bridge}
 	var buf bytes.Buffer
 	if screen && r.Header.Get("Sec-Fetch-Dest") != "iframe" {
@@ -891,7 +891,7 @@ func writeFrameSandbox(w http.ResponseWriter, r *http.Request, screen bool, titl
 		// set a policy that keeps the shell assets and allows this one inline script.
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'nonce-"+nonce+"'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; frame-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'none'")
 		body := `<span hidden data-module="` + template.HTMLEscapeString(moduleID) + `"></span>` +
-			`<script nonce="` + nonce + `">` + frameBridgeScript(moduleID) + `</script>` + buf.String()
+			`<script nonce="` + nonce + `">` + script + `</script>` + buf.String()
 		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(body), WorkInFrame: true})
 		return
 	}
@@ -913,14 +913,28 @@ func frameNonce() string {
 }
 
 // frameBridgeScript is the CORE-09 postMessage listener for one module's frame.
-func frameBridgeScript(moduleID string) string {
+// staff enables togavsu:editor.open; client frames omit it. Navigate and editor.open
+// use the top-level window so an embedded panel/widget iframe does not trap the app.
+func frameBridgeScript(moduleID string, staff bool) string {
 	esc := strings.ReplaceAll(moduleID, `\`, `\\`)
 	esc = strings.ReplaceAll(esc, `"`, `\"`)
+	editor := ""
+	if staff {
+		editor = `
+    if (t === "togavsu:editor.open" && d.file_id) {
+      go("/files/" + encodeURIComponent(d.file_id) + "/edit");
+      return;
+    }`
+	}
 	return `
 (function () {
   var moduleId = "` + esc + `";
   var frame = null;
   function bind() { frame = document.querySelector("iframe.module-frame"); }
+  function go(url) {
+    var w = (window.top && window.top !== window) ? window.top : window;
+    w.location.assign(url);
+  }
   function allowed(page) {
     if (typeof page !== "string" || page.charAt(0) !== "/" || page.indexOf("//") === 0 || page.indexOf("://") >= 0) return false;
     var path = page.split("?")[0];
@@ -935,11 +949,7 @@ func frameBridgeScript(moduleID string) string {
   window.addEventListener("message", function (ev) {
     if (!frame) bind();
     if (!frame || ev.source !== frame.contentWindow || !ev.data || typeof ev.data !== "object") return;
-    var d = ev.data, t = d.type;
-    if (t === "togavsu:editor.open" && d.file_id) {
-      window.location.assign("/files/" + encodeURIComponent(d.file_id) + "/edit");
-      return;
-    }
+    var d = ev.data, t = d.type;` + editor + `
     if (t === "togavsu:navigate" && d.page) {
       if (!allowed(d.page)) return;
       var u = d.page;
@@ -948,7 +958,7 @@ func frameBridgeScript(moduleID string) string {
         Object.keys(d.params).forEach(function (k) { q.set(k, d.params[k]); });
         u += (u.indexOf("?") >= 0 ? "&" : "?") + q.toString();
       }
-      window.location.assign(u);
+      go(u);
       return;
     }
     if (t === "togavsu:context.refresh" && d.request_id) {

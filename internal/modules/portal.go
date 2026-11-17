@@ -10,7 +10,6 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
-
 // ClientOnly reports a principal that holds only the client role (CORE-10).
 func ClientOnly(p domain.Principal) bool {
 	return p.HasRole(domain.RoleClient) &&
@@ -108,7 +107,7 @@ func tabQuery(tab Tab, q url.Values) url.Values {
 }
 
 func writeClientFrame(w http.ResponseWriter, r *http.Request, title, src, moduleID string) {
-	writeFrameSandbox(w, r, false, title, src, clientFrameSandbox, moduleID)
+	writeFrameSandbox(w, r, false, title, src, clientFrameSandbox, moduleID, false)
 }
 
 func (h *Handler) portalHome(w http.ResponseWriter, r *http.Request, c Caller) {

@@ -2329,10 +2329,12 @@ def _billing(api: Contract) -> None:
         features=["payments"],
         roles=BILLING,
         scopes=["payments:read"],
-        response="PaymentRefund",
+        response_schema=_page("PaymentRefund"),
+        paginate=True,
+        include=True,
         writes=False,
         replaceable="time",
-        extra_access=WALL,
+        extra_access={**WALL, "include_scope_pattern": "views:{module_id}.{view}:read"},
     )
     api.add(
         "post",
@@ -4621,11 +4623,6 @@ def _admin(api: Contract) -> None:
         extra_access={
             **WALL,
             "module_delegation": "delegated_viewer_or_service_principal",
-            "module_principal": {
-                "actor_kind": "module",
-                "scope": "mail:send",
-                "grants_admin": False,
-            },
         },
     )
     api.add(
@@ -4674,11 +4671,6 @@ def _admin(api: Contract) -> None:
             "matter_wall": True,
             "admin_bypasses_wall": False,
             "client": "deny",
-            "module_principal": {
-                "actor_kind": "module",
-                "scope": "notes:write",
-                "grants_admin": False,
-            },
         },
     )
     api.resource(
@@ -5078,7 +5070,8 @@ def _modules(api: Contract) -> None:
         features=["modules", "profile"],
         roles=STAFF,
         scopes=["profile:read"],
-        response_schema={"type": "object", "required": ["data"], "properties": {"data": {"type": "array", "items": {"$ref": "#/components/schemas/ModuleDevice"}}}},
+        response_schema=_page("ModuleDevice"),
+        paginate=True,
         writes=False,
         extra_access=DEVICE_GRANT_OWNERSHIP,
     )

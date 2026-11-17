@@ -183,3 +183,13 @@ var definitions = []Definition{
 	{Key: "llms.show_firm_name", Kind: KindBool, Default: "true", Tab: TabAPI, Help: "Show the firm name on /llms.txt. The admin can hide it.", PRD: true},
 	{Key: "llms.firm_paragraph", Kind: KindString, Tab: TabAPI, Help: "Optional firm paragraph on /llms.txt. It must not contain client or matter data."},
 }
+
+// ModuleMailHTTPTimeout is how long a system-mail POST to the email module may wait
+// (CORE-05). seconds is mail.smtp_timeout_seconds; the catalog default applies when empty.
+func ModuleMailHTTPTimeout(seconds string) time.Duration {
+	d, err := time.ParseDuration(seconds + "s")
+	if err != nil || d <= 0 {
+		return 60 * time.Second
+	}
+	return d
+}

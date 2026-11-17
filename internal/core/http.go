@@ -343,6 +343,7 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 		return p, err
 	}
 	if moduleOwn(p) {
+		runtime := moduleRuntimeRoute(r, p)
 		if err := a.allowServiceCall(r, p); err != nil {
 			return p, err
 		}
@@ -350,8 +351,34 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 		if err := a.elevateBooksReader(r, &p, c); err != nil {
 			return p, err
 		}
+		// CORE-01: every service call writes an audit row (module, operation, source service),
+		// including reads that would otherwise leave no write-side audit.
+		if !runtime {
+			if err := a.auditServiceCall(r, p); err != nil {
+				return p, err
+			}
+		}
 	}
 	return p, nil
+}
+
+// auditServiceCall appends one CORE-01 audit row for a module service principal call.
+func (a *App) auditServiceCall(r *http.Request, p domain.Principal) error {
+	if a.Audit == nil {
+		return nil
+	}
+	t, ok := a.toolFor(r.Method, r.URL.Path)
+	if !ok {
+		return nil
+	}
+	id, err := domain.NewID()
+	if err != nil {
+		return err
+	}
+	_, err = a.Audit.Record(r.Context(), p, audit.Change{
+		Entity: "service_call", EntityID: id, Field: "operation", New: t.Name, Reason: "service.call",
+	})
+	return err
 }
 
 // serviceDelegation marks an operation a module's own token may call without a viewer.

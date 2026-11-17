@@ -28,7 +28,7 @@ type Service struct {
 	// ponytail: ceiling: when New is called without a key, each process generates its own AES-256-GCM key. A restart cannot open identifiers sealed by the previous key, and redactContact then returns an empty value. Upgrade path: identity calls NewWithKey with the installer Docker secret. Trigger: a persistent Store is constructed.
 	key []byte
 	// moduleOn is the module runtime's installed-and-enabled check (SetModuleCheck).
-	moduleOn func(ctx context.Context, module string) (bool, error)
+	moduleOn   func(ctx context.Context, module string) (bool, error)
 	mailFiling func(ctx context.Context, p domain.Principal, matter domain.ID) error
 }
 

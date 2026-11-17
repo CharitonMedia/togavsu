@@ -434,7 +434,22 @@ class Contract:
         if mcp == "required" and public and roles:
             raise ContractError(f"public operation {operation_id} cannot also require roles")
         module_principal = (extra_access or {}).get("module_principal")
-        if not public and mcp == "required" and not roles and not module_principal:
+        delegation = (extra_access or {}).get("module_delegation")
+        # Module-only ops may omit human roles when they declare a service/viewer
+        # delegation (CORE-01/04/27) or an own-namespace module_principal.
+        if (
+            not public
+            and mcp == "required"
+            and not roles
+            and not module_principal
+            and delegation
+            not in (
+                "service_principal",
+                "delegated_viewer_or_service_principal",
+                "delegated_viewer_or_noninteractive",
+                "delegated_viewer",
+            )
+        ):
             raise ContractError(f"{operation_id} needs roles")
 
         parameters: list = []
