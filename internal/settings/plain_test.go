@@ -1,6 +1,8 @@
 package settings_test
 
 import (
+	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"testing"
@@ -63,16 +65,65 @@ func TestBytesPlainRoundTrip(t *testing.T) {
 		{"2147483648", "2 GB", "2", "GB"},
 		{"8388608", "8 MB", "8", "MB"},
 		{"1073741824", "1 GB", "1", "GB"},
+		{"1500000", "1500000 bytes", "1500000", "bytes"},
 	}
 	for _, tc := range cases {
 		got, err := settings.FormatBytesPlain(tc.stored)
 		if err != nil || got != tc.plain {
 			t.Fatalf("format %s: %q (%v)", tc.stored, got, err)
 		}
+		amount, unit, err := settings.BytesParts(tc.stored)
+		if err != nil {
+			t.Fatalf("parts %s: %v", tc.stored, err)
+		}
+		if fmt.Sprint(amount) != tc.amount || unit != tc.unit {
+			t.Fatalf("parts %s: got %d %s want %s %s", tc.stored, amount, unit, tc.amount, tc.unit)
+		}
 		back, err := settings.ParseBytesPlain(tc.amount, tc.unit)
 		if err != nil || back != tc.stored {
 			t.Fatalf("parse %s %s: got %q (%v)", tc.amount, tc.unit, back, err)
 		}
+	}
+}
+
+func TestBytesPartsNonAlignedDoesNotMislabelAsMB(t *testing.T) {
+	// API-allowed values that are not a whole number of MB must keep unit "bytes"
+	// so an unchanged Save stores the same count (never multiplies by 1<<20).
+	amount, unit, err := settings.BytesParts("1500000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if amount != 1500000 || unit != "bytes" {
+		t.Fatalf("got %d %q", amount, unit)
+	}
+	back, err := settings.ParseBytesPlain(fmt.Sprint(amount), unit)
+	if err != nil || back != "1500000" {
+		t.Fatalf("unchanged save: %q %v", back, err)
+	}
+}
+
+func TestParseBytesPlainOverflow(t *testing.T) {
+	// 17179869185 << 30 wraps int64 to 1<<30 without a guard.
+	_, err := settings.ParseBytesPlain("17179869185", "GB")
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("GB overflow: %v", err)
+	}
+	_, err = settings.ParseBytesPlain("17592186044417", "MB")
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("MB overflow: %v", err)
+	}
+}
+
+func TestParseDurationPlainOverflow(t *testing.T) {
+	_, err := settings.ParseDurationPlain("9223372036854775808", "milliseconds")
+	if err == nil {
+		t.Fatal("amount above int64 should fail parse")
+	}
+	// Largest int64 / time.Hour + 1 overflows the duration scale.
+	tooBig := fmt.Sprint(int64(math.MaxInt64/int64(time.Hour)) + 1)
+	_, err = settings.ParseDurationPlain(tooBig, "hours")
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("hour overflow: %v", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package settings
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
 	"sort"
@@ -18,7 +19,7 @@ const (
 	PlainRaw           = "raw"            // bool, enum, cents, plain string/int
 	PlainLines         = "lines"          // JSON string list ↔ one item per line
 	PlainDuration      = "duration"       // Go duration ↔ amount + unit
-	PlainBytes         = "bytes"          // byte count ↔ amount + MB/GB
+	PlainBytes         = "bytes"          // byte count ↔ amount + bytes/MB/GB
 	PlainRetry         = "retry"          // retry schedule JSON ↔ plain delay lines
 	PlainNotifications = "notifications"  // channel grid
 	PlainColors        = "colors"         // named color rows
@@ -219,22 +220,38 @@ func ParseDurationPlain(amountStr, unit string) (string, error) {
 	if err != nil || n < 0 {
 		return "", fmt.Errorf("%w: duration amount must be a whole number", ErrInvalid)
 	}
-	var d time.Duration
+	var unitDur time.Duration
 	switch strings.ToLower(strings.TrimSpace(unit)) {
 	case "millisecond", "milliseconds", "ms":
-		d = time.Duration(n) * time.Millisecond
+		unitDur = time.Millisecond
 	case "second", "seconds", "s":
-		d = time.Duration(n) * time.Second
+		unitDur = time.Second
 	case "minute", "minutes", "m":
-		d = time.Duration(n) * time.Minute
+		unitDur = time.Minute
 	case "hour", "hours", "h":
-		d = time.Duration(n) * time.Hour
+		unitDur = time.Hour
 	case "day", "days", "d":
-		d = time.Duration(n) * 24 * time.Hour
+		unitDur = 24 * time.Hour
 	default:
 		return "", fmt.Errorf("%w: unknown duration unit", ErrInvalid)
 	}
+	d, err := scaleDuration(n, unitDur)
+	if err != nil {
+		return "", err
+	}
 	return d.String(), nil
+}
+
+// scaleDuration multiplies n by unit without wrapping int64.
+func scaleDuration(n int64, unit time.Duration) (time.Duration, error) {
+	if unit <= 0 {
+		return 0, fmt.Errorf("%w: unknown duration unit", ErrInvalid)
+	}
+	u := int64(unit)
+	if n > 0 && n > math.MaxInt64/u {
+		return 0, fmt.Errorf("%w: duration is too large", ErrInvalid)
+	}
+	return time.Duration(n) * unit, nil
 }
 
 // FormatBytesPlain shows a byte count as "2 GB", "8 MB", or "1 GB".
@@ -257,7 +274,9 @@ func FormatBytesPlain(stored string) (string, error) {
 	return fmt.Sprintf("%d bytes", n), nil
 }
 
-// BytesParts splits a stored byte count into amount and MB/GB for the editor.
+// BytesParts splits a stored byte count into amount and unit for the editor.
+// Whole GB/MB values use those units; any other count uses bytes so a Save
+// without edits stores the same value (never pre-fills a different scale).
 func BytesParts(stored string) (amount int64, unit string, err error) {
 	n, err := strconv.ParseInt(strings.TrimSpace(stored), 10, 64)
 	if err != nil || n < 0 {
@@ -271,10 +290,10 @@ func BytesParts(stored string) (amount int64, unit string, err error) {
 	if n%mb == 0 {
 		return n / mb, "MB", nil
 	}
-	return n, "MB", nil
+	return n, "bytes", nil
 }
 
-// ParseBytesPlain builds the stored byte count from amount and MB/GB.
+// ParseBytesPlain builds the stored byte count from amount and bytes/MB/GB.
 func ParseBytesPlain(amountStr, unit string) (string, error) {
 	amountStr = strings.TrimSpace(amountStr)
 	n, err := strconv.ParseInt(amountStr, 10, 64)
@@ -283,12 +302,33 @@ func ParseBytesPlain(amountStr, unit string) (string, error) {
 	}
 	switch strings.ToUpper(strings.TrimSpace(unit)) {
 	case "GB":
-		return strconv.FormatInt(n<<30, 10), nil
+		scaled, err := scaleBytes(n, 30)
+		if err != nil {
+			return "", err
+		}
+		return strconv.FormatInt(scaled, 10), nil
 	case "MB":
-		return strconv.FormatInt(n<<20, 10), nil
+		scaled, err := scaleBytes(n, 20)
+		if err != nil {
+			return "", err
+		}
+		return strconv.FormatInt(scaled, 10), nil
+	case "BYTES", "B":
+		return strconv.FormatInt(n, 10), nil
 	default:
-		return "", fmt.Errorf("%w: byte unit is MB or GB", ErrInvalid)
+		return "", fmt.Errorf("%w: byte unit is bytes, MB, or GB", ErrInvalid)
 	}
+}
+
+// scaleBytes left-shifts n by shift bits without wrapping int64.
+func scaleBytes(n int64, shift uint) (int64, error) {
+	if shift >= 63 {
+		return 0, fmt.Errorf("%w: byte size is too large", ErrInvalid)
+	}
+	if n > 0 && n > math.MaxInt64>>shift {
+		return 0, fmt.Errorf("%w: byte size is too large", ErrInvalid)
+	}
+	return n << shift, nil
 }
 
 // FormatLinesPlain turns a JSON string list into one item per line.

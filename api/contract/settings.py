@@ -54,6 +54,13 @@ SETTINGS: list[dict] = [
     _s("security.lockout_seconds", "integer", "security", 15 * 60, "Lockout length after repeated failed sign-ins.", minimum=1),
     _s("security.api_rate_limit_per_minute", "integer", "security", 600, "Requests a minute per API token.", minimum=1),
     _s(
+        "practice.case_number_examples",
+        "json",
+        "practice",
+        ["23AR-CV00825"],
+        "Type one real case number per line in each format your courts use. Togavsu learns the format from the example.",
+    ),
+    _s(
         "practice.case_number_patterns",
         "json",
         "practice",

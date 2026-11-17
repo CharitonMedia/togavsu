@@ -138,6 +138,8 @@ tr.changed td:first-child{border-left:3px solid var(--accent)}
   .topic-list{columns:1}
   .grid-stack:not(.gs-ready) .grid-stack-item{grid-column:1/-1}
   .settings-table,.settings-table thead,.settings-table tbody,.settings-table tr,.settings-table th,.settings-table td{display:block;width:100%}
+  /* nth-child width rules above beat a bare td{width:100%}; force full-width cells when stacked. */
+  .settings-table th:nth-child(n),.settings-table td:nth-child(n){width:100%}
   .settings-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
   .settings-table tr{border:1px solid var(--line);border-radius:8px;padding:10px;margin:0 0 10px;background:var(--surface)}
   .settings-table td{border:0;padding:4px 0}

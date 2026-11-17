@@ -250,10 +250,14 @@
       </select>
     {{else if eq .Plain "bytes"}}
       <input id="v-{{$id}}" name="amount" inputmode="numeric" value="{{.Amount}}" class="setting-amount">
-      <select name="unit" aria-label="Unit for {{.Label}}"><option value="MB"{{if eq .Unit "MB"}} selected{{end}}>MB</option><option value="GB"{{if eq .Unit "GB"}} selected{{end}}>GB</option></select>
+      <select name="unit" aria-label="Unit for {{.Label}}"><option value="bytes"{{if eq .Unit "bytes"}} selected{{end}}>bytes</option><option value="MB"{{if eq .Unit "MB"}} selected{{end}}>MB</option><option value="GB"{{if eq .Unit "GB"}} selected{{end}}>GB</option></select>
     {{else if or (eq .Plain "lines") (eq .Plain "case_examples") (eq .Plain "retry")}}
-      {{if .CustomPatterns}}<p class="hint">Custom patterns are in use; see Advanced.</p>{{end}}
+      {{if and (eq .Plain "case_examples") .CustomPatterns}}
+      <p class="hint">Custom patterns are in use; see Advanced.</p>
+      <textarea id="v-{{$id}}" name="value" rows="3" placeholder="Type new examples to replace custom patterns"></textarea>
+      {{else}}
       <textarea id="v-{{$id}}" name="value" rows="3">{{.Lines}}</textarea>
+      {{end}}
     {{else if eq .Plain "notifications"}}
       <div class="notify-grid" role="table">
         <div class="notify-head" role="row"><span role="columnheader">Kind</span><span role="columnheader">Email</span><span role="columnheader">In app</span></div>

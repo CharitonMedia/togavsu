@@ -541,8 +541,8 @@ func fixedSite(path, fn string) bool {
 		// forms. Unit sizes (ms/s/min/h/day, 1<<20 MB, 1<<30 GB) are the Go/IEC scales,
 		// not firm tunables; the stored values remain the registry settings.
 		switch fn {
-		case "FormatDurationPlain", "DurationParts", "ParseDurationPlain",
-			"FormatBytesPlain", "BytesParts", "ParseBytesPlain",
+		case "FormatDurationPlain", "DurationParts", "ParseDurationPlain", "scaleDuration",
+			"FormatBytesPlain", "BytesParts", "ParseBytesPlain", "scaleBytes",
 			"parsePlainDelay", "FormatModelPricesPlain", "plural":
 			return true
 		}

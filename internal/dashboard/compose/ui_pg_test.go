@@ -789,6 +789,35 @@ func TestUIAdminSettingsPlainValues(t *testing.T) {
 	if !strings.Contains(between(files, `<tr id="s-files.max_upload_bytes"`, "</tr>"), "2 GB") {
 		t.Fatal("Largest Upload should show 2 GB")
 	}
+	// Non-MB-aligned stored bytes keep unit "bytes" so an unchanged Save does not rescale.
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/files.max_upload_bytes", map[string]any{"value": 1500000})
+	files = e.admin.must(http.StatusOK, "GET", "/admin?tab=files_storage", nil).body
+	uploadRow := between(files, `<tr id="s-files.max_upload_bytes"`, "</tr>")
+	if !strings.Contains(uploadRow, `value="1500000"`) || !strings.Contains(uploadRow, `value="bytes" selected`) {
+		t.Fatalf("non-aligned bytes should pre-fill amount 1500000 unit bytes: %s", uploadRow)
+	}
+	e.admin.form("/admin/settings/files.max_upload_bytes", url.Values{
+		"tab": {"files_storage"}, "kind": {"int"}, "plain": {"bytes"}, "amount": {"1500000"}, "unit": {"bytes"},
+	})
+	up := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/files.max_upload_bytes", nil)
+	if fmt.Sprint(up.json["value"]) != "1500000" {
+		t.Fatalf("unchanged bytes save rescaled: %v", up.json["value"])
+	}
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/files.max_upload_bytes", map[string]any{"value": 2147483648})
+	// Custom patterns (API) replace the examples textarea with the Advanced hint.
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/practice.case_number_patterns", map[string]any{
+		"value": []string{`^\d{4}-CV-\d+$`},
+	})
+	customPractice := e.admin.must(http.StatusOK, "GET", "/admin?tab=practice", nil).body
+	exRow := between(customPractice, `<tr id="s-practice.case_number_examples"`, "</tr>")
+	if !strings.Contains(exRow, "Custom patterns are in use; see Advanced.") {
+		t.Fatalf("custom patterns hint missing: %s", exRow)
+	}
+	// Current-value cell shows the hint instead of the stored examples; Default may still list them.
+	valueCell := between(exRow, "<td>", `<td class="setting-default"`)
+	if strings.Contains(valueCell, "23AR-CV00825") || strings.Contains(valueCell, "2026-CV-1") {
+		t.Fatalf("examples should not fill the current value when custom patterns are in use: %s", valueCell)
+	}
 	ai := e.admin.must(http.StatusOK, "GET", "/admin?tab=ai", nil).body
 	if !strings.Contains(between(ai, `<tr id="s-ai.model_prices"`, "</tr>"), "None set") {
 		t.Fatal("Model Prices plain summary missing")
