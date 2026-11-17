@@ -16,7 +16,11 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 		return LoginResult{}, err
 	}
 	email = normalizeEmail(email)
-	if email == "" || password == "" {
+	optional, err := s.PasswordOptional(ctx)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if email == "" || (password == "" && !optional) {
 		return LoginResult{}, domain.Invalid("email", "email and password are required")
 	}
 	user, lookupErr := s.userByEmail(ctx, email)
@@ -43,12 +47,16 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 	if !stored {
 		ok = false
 	}
+	// With security.password_optional on, the account only has to exist and be active.
+	if optional && lookupErr == nil {
+		ok = true
+	}
 	lockID := unknownLoginID(email)
 	if lookupErr == nil && user.Active {
 		lockID = user.ID
 	}
 	var result LoginResult
-	err := s.withUser(ctx, lockID, func() error {
+	err = s.withUser(ctx, lockID, func() error {
 		if lookupErr != nil || !ok || !user.Active {
 			if lookupErr == nil && user.Active {
 				var ferr error
@@ -448,4 +456,10 @@ func (s *Service) spendRecovery(ctx context.Context, user domain.User, roles []d
 		return domain.Unauthenticated("wrong recovery code")
 	}
 	return err
+}
+
+// PasswordOptional reports whether security.password_optional lets users sign in
+// with their email alone (test and demo installs only).
+func (s *Service) PasswordOptional(ctx context.Context) (bool, error) {
+	return s.flag(ctx, "security.password_optional")
 }

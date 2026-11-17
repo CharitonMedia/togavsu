@@ -61,7 +61,7 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 {{define "login"}}{{template "top" .}}
 <form class="card" method="post" action="/login">
 <p><label>Email<br><input name="email" type="email" required value="{{.Form.email}}" autocomplete="username"></label></p>
-<p><label>Password<br><input name="password" type="password" required autocomplete="current-password"></label></p>
+<p><label>Password{{if .Form.password_optional}} (optional on this install){{end}}<br><input name="password" type="password" {{if not .Form.password_optional}}required {{end}}autocomplete="current-password"></label></p>
 <p><button type="submit">Sign in</button></p></form>
 {{template "bottom" .}}{{end}}
 
@@ -177,7 +177,7 @@ func (a *App) confirmPost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		e, serr := a.Identity.StartEnrollment(r.Context(), token)
 		if serr != nil {
-			render(w, status(err), "login", view{Title: "Sign in", Error: message(err), Form: map[string]string{}})
+			a.renderLogin(w, r, status(err), message(err), "")
 			return
 		}
 		render(w, status(err), "enroll", view{Title: "Turn on two-factor sign-in", Error: message(err), Enroll: e})
@@ -188,14 +188,27 @@ func (a *App) confirmPost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	render(w, http.StatusOK, "login", view{Title: "Sign in", Form: map[string]string{}})
+	a.renderLogin(w, r, http.StatusOK, "", "")
+}
+
+// renderLogin shows the sign-in form; the password box is optional when
+// security.password_optional is on.
+func (a *App) renderLogin(w http.ResponseWriter, r *http.Request, code int, errMsg, email string) {
+	form := map[string]string{}
+	if email != "" {
+		form["email"] = email
+	}
+	if on, err := a.Identity.PasswordOptional(r.Context()); err == nil && on {
+		form["password_optional"] = "true"
+	}
+	render(w, code, "login", view{Title: "Sign in", Error: errMsg, Form: form})
 }
 
 func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	res, err := a.Identity.Login(r.Context(), email, r.FormValue("password"))
 	if err != nil {
-		render(w, status(err), "login", view{Title: "Sign in", Error: message(err), Form: map[string]string{"email": email}})
+		a.renderLogin(w, r, status(err), message(err), email)
 		return
 	}
 	a.loginStep(w, r, res)
@@ -211,12 +224,12 @@ func (a *App) loginStep(w http.ResponseWriter, r *http.Request, res identity.Log
 	case res.EnrollmentToken != "":
 		e, err := a.Identity.StartEnrollment(r.Context(), res.EnrollmentToken)
 		if err != nil {
-			render(w, status(err), "login", view{Title: "Sign in", Error: message(err), Form: map[string]string{}})
+			a.renderLogin(w, r, status(err), message(err), "")
 			return
 		}
 		render(w, http.StatusOK, "enroll", view{Title: "Turn on two-factor sign-in", Enroll: e})
 	default:
-		render(w, http.StatusUnauthorized, "login", view{Title: "Sign in", Error: "Sign in did not complete.", Form: map[string]string{}})
+		a.renderLogin(w, r, http.StatusUnauthorized, "Sign in did not complete.", "")
 	}
 }
 

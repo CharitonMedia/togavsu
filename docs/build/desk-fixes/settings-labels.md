@@ -22,6 +22,7 @@ Use these labels exactly, in Title Case as written.
 | security.totp_required.staff | Require Two-Factor for Staff |
 | security.totp_required.accountant | Require Two-Factor for Accountants |
 | security.totp_required.client | Require Two-Factor for Clients |
+| security.password_optional | Sign In Without a Password |
 | security.idle_timeout | Idle Sign-Out Time |
 | security.lockout_attempts | Failed Sign-Ins Before Lockout |
 | security.lockout_length | Lockout Length |
