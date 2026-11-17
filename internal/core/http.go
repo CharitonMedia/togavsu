@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -318,8 +319,11 @@ func shared(err error) error {
 		return err
 	}
 	switch api.Code {
-	case "csrf_required", "scope_denied":
+	case "csrf_required":
 		return domain.Forbidden(api.Message)
+	// CORE-36: keep scope_denied in the JSON body (status stays 403 via APIError.HTTPStatus).
+	case "scope_denied":
+		return err
 	case "ambiguous_auth":
 		return domain.Invalid("authorization", api.Message)
 	case "locked_out":
@@ -351,6 +355,9 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 		if err := a.elevateBooksReader(r, &p, c); err != nil {
 			return p, err
 		}
+		// CORE-30: non-books service calls need a staff role so Decide allows them; UserID
+		// stays zero so the principal is on no wall (walled matters stay omitted / not_found).
+		a.elevateServiceStaff(&p, r)
 		// CORE-01: every service call writes an audit row (module, operation, source service),
 		// including reads that would otherwise leave no write-side audit.
 		if !runtime {
@@ -360,6 +367,19 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 		}
 	}
 	return p, nil
+}
+
+// elevateServiceStaff gives a CORE-30 service principal the staff role when books
+// elevation did not already assign roles.
+func (a *App) elevateServiceStaff(p *domain.Principal, r *http.Request) {
+	if len(p.Roles) > 0 || p.ModuleID == "" || p.Source != domain.SourceService {
+		return
+	}
+	t, ok := a.toolFor(r.Method, r.URL.Path)
+	if !ok || !serviceDelegation[t.Delegation] {
+		return
+	}
+	p.Roles = []domain.Role{domain.RoleStaff}
 }
 
 // auditServiceCall appends one CORE-01 audit row for a module service principal call.
@@ -406,11 +426,66 @@ func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
 	if r.Header.Get(modules.TaskAuthorizationHeader) != "" && t.Delegation == "delegated_viewer_or_noninteractive" {
 		return nil
 	}
-	if serviceDelegation[t.Delegation] {
+	if !serviceDelegation[t.Delegation] {
+		return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
+	}
+	return a.enforceServiceCallLimit(r.Context(), p, t.Name)
+}
+
+// enforceServiceCallLimit applies modules.service_call_limit.<operation> when that
+// setting exists (CORE-30). Operations without a dedicated setting are unlimited
+// here; the firm-wide security.api_rate_per_minute still applies. A defined limit
+// that cannot be read or parsed refuses the call (fail closed).
+//
+// ponytail: ceiling: counters live in this process and stale module/op keys are not
+// pruned from the map after the window. Upgrade path: store hits in Postgres (or
+// prune empty keys after each check) so a second core process shares the budget.
+// trigger: more than one core process serves module API traffic, or the map grows
+// past a few thousand keys under churn.
+func (a *App) enforceServiceCallLimit(ctx context.Context, p domain.Principal, op string) error {
+	if a.Settings == nil {
 		return nil
 	}
-	return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
+	key := "modules.service_call_limit." + op
+	raw, err := a.Settings.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, settings.ErrUnknown) {
+			// Not a CORE-30 limited operation.
+			return nil
+		}
+		return &domain.APIError{Code: "scope_denied", Message: "service call limit unavailable for " + op}
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil || !serviceCallLimitOK(limit) {
+		return &domain.APIError{Code: "scope_denied", Message: "service call limit unavailable for " + op}
+	}
+	id := p.ModuleID + "\x00" + op
+	now := time.Now().UTC()
+	window := serviceCallWindow()
+	a.svcHitMu.Lock()
+	defer a.svcHitMu.Unlock()
+	if a.svcHits == nil {
+		a.svcHits = map[string][]time.Time{}
+	}
+	var kept []time.Time
+	for _, at := range a.svcHits[id] {
+		if now.Sub(at) < window {
+			kept = append(kept, at)
+		}
+	}
+	if len(kept) >= limit {
+		a.svcHits[id] = kept
+		return domain.RateLimited()
+	}
+	a.svcHits[id] = append(kept, now)
+	return nil
 }
+
+// serviceCallWindow is the minute named by modules.service_call_limit.* (CORE-30).
+func serviceCallWindow() time.Duration { return time.Minute }
+
+// serviceCallLimitOK rejects non-positive limits from a corrupt setting value.
+func serviceCallLimitOK(n int) bool { return n >= 1 }
 
 // status is the HTTP status for err: identity's own codes go through shared, and the
 // two setup codes are conflicts.
@@ -633,12 +708,13 @@ func (a *App) logoutJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) meJSON(w http.ResponseWriter, r *http.Request) {
-	c, err := a.caller(r)
+	// CORE-36: a module bearer with X-Togavsu-Context-Token answers as the viewer.
+	p, err := a.principal(r)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	u, err := a.Users.Get(r.Context(), c.Principal.UserID)
+	u, err := a.Users.Get(r.Context(), p.UserID)
 	if err != nil {
 		writeErr(w, domain.Unauthenticated("sign in is required"))
 		return
@@ -649,8 +725,8 @@ func (a *App) meJSON(w http.ResponseWriter, r *http.Request) {
 	} else {
 		out["linked_contact_id"] = nil
 	}
-	if practice.ClientOnly(c.Principal) && a.Practice != nil {
-		n, err := a.Practice.CountAccessEndedMatters(r.Context(), c.Principal)
+	if practice.ClientOnly(p) && a.Practice != nil {
+		n, err := a.Practice.CountAccessEndedMatters(r.Context(), p)
 		if err != nil {
 			writeErr(w, err)
 			return

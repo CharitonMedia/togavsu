@@ -298,11 +298,16 @@ func (s *Service) proxy(module, strip, token string) http.Handler {
 				}
 				pr.Out.URL.RawPath = ""
 			}
+			// CORE-36: forward an inbound context token through /m/ (and replacements).
+			inbound := pr.In.Header.Get(ContextHeader)
 			pr.Out.Header.Del("Cookie")
 			pr.Out.Header.Del("Authorization")
 			pr.Out.Header.Del(ContextHeader)
 			pr.Out.Header.Del("X-Csrf-Token")
-			if token != "" {
+			switch {
+			case inbound != "":
+				pr.Out.Header.Set(ContextHeader, inbound)
+			case token != "":
 				pr.Out.Header.Set(ContextHeader, token)
 			}
 			pr.Out.Header.Set("X-Togavsu-Module", module)

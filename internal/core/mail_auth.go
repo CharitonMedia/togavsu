@@ -147,7 +147,16 @@ func (a *App) requireMailFilingFromContext(ctx context.Context, p domain.Princip
 	}
 	cred := modules.TaskAuth(ctx)
 	if cred == "" {
-		return &domain.APIError{Code: "scope_denied", Message: "a mail filing grant is required"}
+		// CORE-30: createNote with notes:write is an ordinary service call. Still
+		// enforce walls: a walled matter is not_found (service principal is on no wall).
+		view, err := a.Practice.Policy.Walls.View(ctx, domain.Principal{}, matter)
+		if err != nil {
+			return err
+		}
+		if view.Walled {
+			return domain.NotFound("matter")
+		}
+		return nil
 	}
 	return a.verifyMailFilingGrant(ctx, p, cred, matter)
 }

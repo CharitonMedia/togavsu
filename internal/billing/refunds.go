@@ -418,23 +418,14 @@ ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, status = EXCLUD
 }
 
 // syncCorePaymentRefund updates payments.refunded_cents and refund_state on the SQL table,
-// upserting the payment row when needed so the refund FK can resolve. Invoice ids stay null
-// here: billing keeps invoices in billing_records, and the SQL invoices table is not the
-// write path, so a projection FK would fail the refund.
+// upserting the payment row when needed so the refund FK can resolve (CORE-36 writes
+// invoice_id once core.invoices holds the parent).
 func (s *Service) syncCorePaymentRefund(ctx context.Context, pay Payment) error {
 	pg, ok := s.d.Store.(*Postgres)
 	if !ok {
 		return nil
 	}
-	conn := audit.Conn(ctx, pg.pool)
-	_, err := conn.ExecContext(ctx, `INSERT INTO payments (id, created_at, updated_at, created_by, contact_id, matter_id, amount_cents, destination, method, reference_number, status, invoice_id, trust_entry_id, source, refunded_cents, refund_state)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULL,$12,$13,$14,$15)
-ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, refunded_cents = EXCLUDED.refunded_cents, refund_state = EXCLUDED.refund_state, trust_entry_id = COALESCE(EXCLUDED.trust_entry_id, payments.trust_entry_id)`,
-		string(pay.ID), pay.CreatedAt.UnixMicro(), pay.UpdatedAt.UnixMicro(), string(pay.CreatedBy),
-		string(pay.ContactID), string(pay.MatterID), int64(pay.AmountCents), pay.Destination, pay.Method,
-		pay.ReferenceNumber, pay.Status, nullID(pay.TrustEntryID), pay.Source,
-		int64(pay.RefundedCents), pay.RefundState)
-	return err
+	return upsertCorePayment(ctx, audit.Conn(ctx, pg.pool), pay)
 }
 
 func nullID(id domain.ID) any {

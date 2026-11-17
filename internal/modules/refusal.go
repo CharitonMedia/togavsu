@@ -3,6 +3,7 @@ package modules
 import (
 	"bytes"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,9 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/modules/yamlsubset"
 )
+
+//go:embed core_items.txt
+var coreItemsFile string
 
 // Refusal kinds: which part of a package a refusal is about.
 const (
@@ -394,6 +398,8 @@ type Accepted struct {
 	// DELETE RESTRICT).
 	CoreRecords   []string `json:"core_records"`
 	CoreRelations []string `json:"core_relations"`
+	// CoreItems are the CORE-NN items this binary has built (CORE-36).
+	CoreItems []string `json:"core_items"`
 }
 
 // Accepts reports what this core accepts, from the same tables its checks use.
@@ -414,8 +420,22 @@ func Accepts() Accepted {
 	return Accepted{
 		ManifestSchema: "sha256:" + hex.EncodeToString(sum[:]), ManifestFields: fields,
 		Scopes: identity.Scopes(), ScopePatterns: []string{ViewScope("<module>", "<view>")}, ForbiddenScopes: forbidden,
-		CoreRecords: records, CoreRelations: relations,
+		CoreRecords: records, CoreRelations: relations, CoreItems: CoreItems(),
 	}
+}
+
+// CoreItems returns the built CORE-NN list shipped with this core (one per line in
+// core_items.txt). Blank lines and # comments are ignored.
+func CoreItems() []string {
+	var out []string
+	for _, line := range strings.Split(coreItemsFile, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 // ManifestFields lists every field path the manifest decoder reads, sorted, with [*]

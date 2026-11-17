@@ -110,7 +110,8 @@ func actorKind(p domain.Principal) string {
 	switch p.Source {
 	case domain.SourceSystem:
 		return "system"
-	case domain.SourceModule:
+	case domain.SourceModule, domain.SourceService:
+		// CORE-30: service-principal writes record the module as author.
 		return "module"
 	case domain.SourceAPIToken:
 		return "agent"
@@ -124,6 +125,13 @@ func actorKind(p domain.Principal) string {
 // tokenReason keeps the token id on the row the way audit.provenance does for identity,
 // so the shared audit_log has one convention: source api_token, reason "token=<id> ...".
 func tokenReason(p domain.Principal, reason string) string {
+	if p.Source == domain.SourceService && p.ModuleID != "" {
+		prefix := "module=" + p.ModuleID
+		if reason == "" {
+			return prefix
+		}
+		return prefix + " " + reason
+	}
 	if p.Source != domain.SourceAPIToken || p.TokenID.IsZero() {
 		return reason
 	}
@@ -134,6 +142,11 @@ func tokenReason(p domain.Principal, reason string) string {
 }
 
 func sourceLabel(p domain.Principal) string {
+	// CORE-01 / CORE-30: service-principal writes use source "service"; the module id
+	// stays in the reason via tokenReason / provenance.
+	if p.Source == domain.SourceService {
+		return string(domain.SourceService)
+	}
 	if p.Source == domain.SourceModule && p.ModuleID != "" {
 		return p.ModuleID
 	}

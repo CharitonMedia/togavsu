@@ -354,6 +354,47 @@ SETTINGS: list[dict] = [
     _s("modules.replace_time", "string", "modules_and_marketplace", "", "Module id that handles the time domain. Empty means the core."),
     _s("modules.replace_trust", "string", "modules_and_marketplace", "", "Module id that handles the trust domain. Empty means the core. A replacing module still raises the below-zero flag."),
     _s("modules.replace_calendar", "string", "modules_and_marketplace", "", "Module id that handles the calendar domain. Empty means the core."),
+    # CORE-30: one per-minute limit setting per wider service-call operation (default 120).
+    *[
+        _s(
+            f"modules.service_call_limit.{op}",
+            "integer",
+            "modules_and_marketplace",
+            120,
+            f"Service-principal calls to {op} allowed per minute per module. Over is 429. Default 120 (CORE-30).",
+            minimum=1,
+        )
+        for op in (
+            "createContact",
+            "getContact",
+            "listContact",
+            "createContactEmail",
+            "updateContactEmail",
+            "getContactEmail",
+            "listContactEmail",
+            "createContactPhone",
+            "updateContactPhone",
+            "getContactPhone",
+            "listContactPhone",
+            "createMatter",
+            "createMatterParty",
+            "getMatter",
+            "listMatter",
+            "runConflictCheck",
+            "getConflictCheck",
+            "createCalendarEvent",
+            "updateCalendarEvent",
+            "deleteCalendarEvent",
+            "listCalendarEvent",
+            "previewAvailableDates",
+            "createDeadline",
+            "updateDeadline",
+            "createNote",
+            "listMatterTimeline",
+            "listFileRenditions",
+            "downloadFileRendition",
+        )
+    ],
 ]
 
 

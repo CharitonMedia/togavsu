@@ -49,13 +49,14 @@ func TestCORE01ServicePrincipalCalls(t *testing.T) {
 		t.Fatalf("audit source %q, want service", source)
 	}
 
-	// Unmarked: matters:read is approved, but listMatter is delegated_viewer only.
-	if r := bot.do("GET", "/api/v1/matters", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+	// Unmarked: fee items stay outside service-call delegation (listMatter is CORE-30).
+	if r := bot.do("GET", "/api/v1/fee-items", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
 		t.Fatalf("unmarked service call: %d %v", r.code, r.json)
 	}
 	// A junk task-authorization header must not open an unmarked write (CORE-01 fail-closed).
-	junk := bot.do("POST", "/api/v1/matters", map[string]any{
-		"name": "Should Fail", "opened_on": "2026-01-01", "client_contact_id": "00000000-0000-4000-8000-000000000001",
+	// createMatter is CORE-30; fee-items stay outside service-call delegation.
+	junk := bot.do("POST", "/api/v1/fee-items", map[string]any{
+		"name": "Should Fail", "default_amount_cents": 100,
 	}, modules.TaskAuthorizationHeader, "junk.not.a.grant")
 	if junk.code != http.StatusForbidden || junk.json["code"] != "scope_denied" {
 		t.Fatalf("junk task auth on unmarked write: %d %v", junk.code, junk.json)

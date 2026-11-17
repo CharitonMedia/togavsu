@@ -170,17 +170,18 @@ func TestPGMailMatchAndFilingGrant(t *testing.T) {
 		t.Fatal("expected mail.filing_authorized event")
 	}
 
-	// Note without grant → scope_denied / forbidden; with grant → created.
-	if r := bot.do("POST", "/api/v1/notes", map[string]any{
-		"matter_id": open, "title": "Mail note", "body": "filed",
-	}); r.code != http.StatusForbidden && r.json["code"] != "scope_denied" {
-		t.Fatalf("note without grant: %d %s", r.code, r.body)
-	}
+	// CORE-30: createNote with notes:write is an ordinary service call (no grant needed).
+	// A presented filing grant still binds the note to that matter.
 	note := bot.do("POST", "/api/v1/notes", map[string]any{
 		"matter_id": open, "title": "Mail note", "body": "filed from mailbox",
 	}, modules.TaskAuthorizationHeader, auth)
 	if note.code != http.StatusCreated && note.code != http.StatusOK {
 		t.Fatalf("note with grant: %d %s", note.code, note.body)
+	}
+	if r := bot.do("POST", "/api/v1/notes", map[string]any{
+		"matter_id": open, "title": "Service note", "body": "core-30",
+	}); r.code != http.StatusCreated && r.code != http.StatusOK {
+		t.Fatalf("note without grant (CORE-30): %d %s", r.code, r.body)
 	}
 
 	// Wrong matter on grant → not_found.

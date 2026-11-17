@@ -90,6 +90,10 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 	if err := bstore.IndexRows(ctx); err != nil {
 		return nil, fmt.Errorf("core: billing index: %w", err)
 	}
+	// CORE-36: project billing_records into section-5 tables for module FKs.
+	if err := bstore.RebuildCoreRows(ctx); err != nil {
+		return nil, fmt.Errorf("core: billing core rows: %w", err)
+	}
 	bs, err := billing.New(billing.Deps{
 		Store: bstore, Practice: store, Walls: walls, Audit: aud, Settings: reg,
 		Trust: link, Mail: mail, Mirror: store, Receipts: fileLink, InvoiceFiles: fileLink, Custom: custom, Now: now,

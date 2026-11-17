@@ -23,16 +23,31 @@ func (h *Handler) contactsJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := h.Svc.ListContacts(r.Context(), p)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
 	q := r.URL.Query()
 	custom := customQuery(r)
 	kind := q.Get("kind")
 	tag := q.Get("tag")
 	query := strings.ToLower(q.Get("q"))
+	// CORE-30: service principals may list contacts by exact email or phone only.
+	emailExact := strings.TrimSpace(q.Get("email"))
+	phoneExact := strings.TrimSpace(q.Get("phone"))
+	serviceCall := (p.Source == domain.SourceService || p.Source == domain.SourceModule) && p.ModuleID != "" && p.UserID.IsZero()
+	if serviceCall {
+		hasEmail, hasPhone := emailExact != "", phoneExact != ""
+		if hasEmail == hasPhone {
+			writeErr(w, &domain.APIError{Code: "scope_denied", Message: "listContacts for a service call requires exactly one of email or phone"})
+			return
+		}
+		if kind != "" || tag != "" || query != "" || len(custom) > 0 {
+			writeErr(w, &domain.APIError{Code: "scope_denied", Message: "listContacts for a service call allows only email or phone exact match"})
+			return
+		}
+	}
+	rows, err := h.Svc.ListContacts(r.Context(), p)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	var out []map[string]any
 	for _, row := range rows {
 		if kind != "" && row.Kind != kind {
@@ -49,6 +64,30 @@ func (h *Handler) contactsJSON(w http.ResponseWriter, r *http.Request) {
 			for _, item := range h.Svc.db.Tags(row.ID) {
 				if strings.EqualFold(item.Tag, tag) {
 					found = true
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		if emailExact != "" {
+			found := false
+			for _, e := range h.Svc.db.Emails(row.ID) {
+				if e.Email == emailExact {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		if phoneExact != "" {
+			found := false
+			for _, ph := range h.Svc.db.Phones(row.ID) {
+				if ph.PhoneE164 == phoneExact {
+					found = true
+					break
 				}
 			}
 			if !found {

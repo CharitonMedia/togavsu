@@ -2,6 +2,7 @@ ai_call_log
 api_tokens
 audit_log
 billing_aging
+billing_core_rows_backfill
 billing_projection_versions
 billing_records
 billing_unbilled
