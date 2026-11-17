@@ -1,54 +1,54 @@
 # Desk fix: a marketplace you can browse and install from
 
 Patrick opened Admin > Modules and marketplace on his install and found nothing to install:
-alerts, "No modules installed", a file upload and the replaced-domains table. There is no
-catalog to browse, the core cannot reach any marketplace (the default address
+alerts, "No modules installed", a file upload and the replaced-domains table. A Marketplace
+card does exist (`web/templates/admin/admin.html`, `#marketplace`, filled by
+`internal/core/modules_admin.go`, installing through the `install-listing` action), but it
+sits at the bottom of the tab and shows listings only after a search, so it reads as empty.
+Behind it, the core cannot reach any marketplace (the default address
 `togavsu-marketplace` is a placeholder and plain http is refused off loopback), the
 marketplace upload refuses the kit's own signed package file, and listings ignore the
-manifest's price. This fix closes all four. Two lanes build it in parallel; their owned
+manifest's price. This fix closes all of these. Two lanes build it in parallel; their owned
 paths do not overlap.
 
 ## Lane A: the catalog in the core (desk-fix-marketplace-catalog)
 
-1. **Catalog section.** Admin > Modules and marketplace opens with a card headed
-   "Marketplace", above Marketplace alerts. It is server rendered (works without
-   JavaScript) and reads the configured marketplace through the existing client
-   (`internal/marketplace`, the same calls behind `GET /api/v1/marketplace/listings`).
-   - A search box (`q`, GET, keeps the tab) and the listings, one row or card each:
-     name, version, author, price, the permissions it asks for (scope plus its reason,
-     inside a closed `<details>` labelled "Permissions (N)"), and the operator's warning
-     when the listing is flagged. Pulled listings never show.
-   - Price: the listing's price text; when that is empty, the manifest's `price`; when
-     both are empty, "Free".
-   - Each listing has one button. Not installed: **Install**. Installed at the listed
-     version: a muted "Installed" with no button. Installed at another version:
-     **Update to X.Y.Z**, which runs the existing marketplace update path.
-   - **Install** posts (CSRF, admin only) to a new route under `ModulesActionPrefix`
-     that calls the existing marketplace install path (`source: marketplace`,
-     `listing_id`). On success the page returns to the Modules tab with the module in
-     Installed modules, where its permission approval form already shows. Every failure
-     is one plain sentence in an alert at the top of the card, naming the module by its
-     name, never a stack of error codes.
-   - When the marketplace address is the placeholder, not set, refused, or unreachable,
-     the card shows one plain sentence: "The marketplace isn't reachable at ADDRESS." plus
-     "Set Marketplace Address on the Settings page's Modules tab." with that as a link to
-     `/admin?tab=settings&...` (whatever the existing settings link to the Modules settings
-     tab is). Install from a file stays available below it.
+1. **Extend the existing Marketplace card; add no second card or route.** Move the
+   `#marketplace` card to the top of the Modules tab, above Marketplace alerts, and change it
+   in place. It stays server rendered and keeps using `m.x.Market.Listings` and the existing
+   `install-listing` action (`svc.InstallFromMarketplace`) and their tests.
+   - Show every listing when the search box is empty (browse), and the matches when `q` is
+     set. Pulled listings never show.
+   - Each listing: name, version, author, price, the operator's warning when flagged, and
+     the permissions it asks for inside a closed `<details>` labelled "Permissions (N)",
+     each scope with its reason where the listing carries one.
+   - Price: the listing's price text; when that is empty, the manifest's `price`; when both
+     are empty, "Free". Add the manifest price to what the core reads from a listing if it
+     is not already there.
+   - One button per listing. Not installed: **Install** (the existing form). Installed at
+     the listed version: a muted "Installed" and no button. Installed at another version:
+     **Update to X.Y.Z**, posting to the existing module update action with that version.
+   - Errors are one plain sentence in an alert at the top of the card, naming the module by
+     its name, never raw error text. `BrowseError` stops showing `err.Error()`.
+   - When the marketplace address is the placeholder, not set, refused or unreachable, the
+     card shows: "The marketplace isn't reachable at ADDRESS." and "Set Marketplace Address
+     in Settings, on the Modules tab." with that as a link to the settings page's Modules
+     tab. Install from a file stays available.
    - Phone width: add phone-width UI QC entries (Width 390) in
-     `internal/dashboard/compose/qc_pg_test.go` for the Modules tab with a catalog of three
-     listings; no horizontal overflow.
+     `internal/dashboard/compose/qc_pg_test.go` for the Modules tab with three listings; no
+     horizontal overflow.
 2. **Reaching a marketplace on the firm's own Docker network.** `marketplace.BaseURL`
    allows plain http on a loopback host and also on a single-label host name (no dot, not
    an IP address), which is a Docker service name on the install's own network such as
    `togavsu-marketplace`. Everything else still needs https. Tests both ways, and update the
    comment and the setting's help text ("Marketplace the firm checks: an https address, or
    http://NAME:PORT for a marketplace running beside Togavsu.").
-3. Change nothing else on the page. API and OpenAPI only if a new admin JSON route is
-   added; the existing `GET /api/v1/marketplace/listings` stays as it is.
-4. Tests: catalog rendering against an `httptest` marketplace (listings, price fallback,
-   flagged warning, installed and update states, unreachable message), the install route
-   (admin only, CSRF, success lands in Installed modules with permissions pending, a failure
-   shows the plain sentence), and `BaseURL`.
+3. Change nothing else on the page. `GET /api/v1/marketplace/listings` keeps its shape; if
+   it gains the manifest price field, update OpenAPI and the contract tests with it.
+4. Tests: extend the existing Modules tab and install-listing tests: browse with an empty
+   search, price fallback, flagged warning, installed and update states, the unreachable
+   message, a failed install showing the plain sentence, a successful install landing in
+   Installed modules with permissions pending, and `BaseURL`.
 
 ## Lane B: the marketplace takes the kit's files, and a publish command (desk-fix-marketplace-publish)
 
@@ -73,12 +73,20 @@ paths do not overlap.
 4. **A marketplace beside Togavsu in Docker.** Add a `togavsu-marketplace` service to
    `compose.yaml` under the compose profile `marketplace`, so a normal install does not run
    it and `docker compose --profile marketplace up -d` does. Image built from
-   `marketplace/Dockerfile`; state in a named volume; the operator token generated once by
-   the existing bootstrap secrets step into its own secret (at least 32 random bytes) and
-   mounted as `operator_token_file`; listens on 8090 on the internal network only, no
-   published port. Document in `deploy/` and `marketplace/README.md`: start it, publish
-   with `togavsu-module publish -market http://togavsu-marketplace:8090` (run on the same
-   network), and set Marketplace Address to `http://togavsu-marketplace:8090`.
+   `marketplace/Dockerfile`; state in a named volume `marketdata`; listens on 8090 on the
+   internal network only, no published port.
+   - The operator token: the existing bootstrap secrets step writes it once (at least 32
+     random bytes, never overwritten) to a new volume `marketsecrets`, which only the
+     bootstrap service and `togavsu-marketplace` mount. Never into `appsecrets` or any volume
+     the core, supervisor or caddy mount. Keep `scripts/ci/check-compose.py` passing, and
+     add a check there that no service but those two mounts `marketsecrets`.
+   - The config: a committed `deploy/marketplace/config.json` (`listen` 0.0.0.0:8090,
+     `data_dir` /data, `operator_token_file` /marketsecrets/operator_token,
+     `secure_cookies` false) bind-mounted read-only at
+     `/etc/togavsu-marketplace/config.json`, which `marketplace/cmd/marketplace` reads.
+   - Document in `deploy/` and `marketplace/README.md`: start it, publish with
+     `togavsu-module publish -market http://togavsu-marketplace:8090` (run on the same
+     network), and set Marketplace Address to `http://togavsu-marketplace:8090`.
 5. Update `marketplace/README.md`, `docs/modules/MODULE-KIT.md` (Submitting to the
    marketplace: the `jq` step goes away; `publish` is the one-command path) and mark the
    upload-body and price rows of `docs/modules/CONTRIBUTOR-GAPS.md` fixed.
