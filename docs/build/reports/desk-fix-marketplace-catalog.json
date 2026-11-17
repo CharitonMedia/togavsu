@@ -1,0 +1,41 @@
+{
+  "task_id": "desk-fix-marketplace-catalog",
+  "status": "pass",
+  "scope": "Desk fix Lane A: Admin Modules marketplace catalog (browse when search is empty, Install/Installed/Update states, plain errors, unreachable message, http://togavsu-marketplace without marketplace key trust). status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
+  "tested_revision": "8a57c88f6db29f8ded4f5d2c91d9f1cb221fb9fa",
+  "prd_sections": [
+    "10"
+  ],
+  "acceptance_ids": [],
+  "tests": [
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "seconds": 4
+    },
+    {
+      "command": "go test -count=1 -timeout 45m ./internal/...",
+      "exit_code": 0,
+      "seconds": 206
+    }
+  ],
+  "implemented": [
+    "Marketplace card moved to the top of Admin > Modules; empty search browses all non-pulled listings via the existing install-listing / update actions",
+    "Each listing shows name, version, author, signed-by key, PriceNote or Free, PRD 10.2 notice, flagged warning, Permissions (N) in a closed details, and Install / Installed / Update to X.Y.Z / Installed X.Y.Z (never a downgrade)",
+    "BrowseError and install failures are plain sentences; unreachable shows the address message and Settings Modules link",
+    "BaseURL allows plain http on loopback and togavsu-marketplace; over http://togavsu-marketplace marketplace keys are not fetched or trusted (local keys only); https and loopback unchanged",
+    "Card compose-http note, trusted-keys hint, marketplace_address help text, and PONYTAIL-DEBT marketplace ceiling 4",
+    "Phone-width QC entry (Width 390) for Modules with three listings; CSS prevents horizontal overflow; catalog and compose-http trust tests extended"
+  ],
+  "pending": [
+    "GitHub CI (Core tests, API contract tests) and Codex checkpoint on the controller-published head of claude/togavsu-desk-fix-marketplace-catalog-5ccf1f60 (this lane cannot push)",
+    "Lane B (desk-fix-marketplace-publish) owns marketplace upload/price default, togavsu-module publish, and compose marketplace service",
+    "TestUIVisualQC Modules phone entry is seeded and registered; full browser QC needs TOGAVSU_UI_QC_OUT and TOGAVSU_UI_QC_NODE_MODULES (skipped locally without them)",
+    "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
+  ],
+  "simplification": {
+    "net_lines": 402,
+    "ponytail_debt_sections": 68,
+    "note": "Added Marketplace ceiling 4 for plain-http compose host without key trust. fixedSite exemption for NewerVersion/versionParts. No second marketplace card or install route."
+  }
+}
