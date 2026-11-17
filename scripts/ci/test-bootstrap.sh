@@ -14,11 +14,11 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
-mkdir -p "$work/pgsecrets" "$work/appsecrets" "$work/adminsecrets" "$work/backupkey"
+mkdir -p "$work/pgsecrets" "$work/appsecrets" "$work/adminsecrets" "$work/backupkey" "$work/marketsecrets"
 # An earlier layout: the superuser URL and a set passphrase beside the core's secrets.
 echo "postgres://legacy" > "$work/appsecrets/admin_database_url"
 echo "legacy-phrase" > "$work/appsecrets/backup_passphrase"
-sed "s#/pgsecrets#$work/pgsecrets#g; s#/appsecrets#$work/appsecrets#g; s#/adminsecrets#$work/adminsecrets#g; s#/backupkey#$work/backupkey#g" \
+sed "s#/pgsecrets#$work/pgsecrets#g; s#/appsecrets#$work/appsecrets#g; s#/adminsecrets#$work/adminsecrets#g; s#/backupkey#$work/backupkey#g; s#/marketsecrets#$work/marketsecrets#g" \
   "$root/deploy/bootstrap/bootstrap-secrets.sh" > "$work/bootstrap.sh"
 sudo sh "$work/bootstrap.sh"
 sudo sh "$work/bootstrap.sh"
@@ -29,6 +29,21 @@ sudo test -s "$work/pgsecrets/postgres_password"
 sudo test -s "$work/appsecrets/supervisor_token"
 sudo test -s "$work/appsecrets/field_key"
 sudo test -s "$work/appsecrets/database_url"
+# Marketplace operator token: at least 32 bytes, not overwritten, root:65532 0640 / 0750.
+sudo test -s "$work/marketsecrets/operator_token"
+market1=$(sudo cat "$work/marketsecrets/operator_token")
+sudo python3 -c '
+import os, stat, sys
+path, raw = sys.argv[1], open(sys.argv[1], "rb").read().strip()
+if len(raw) < 32:
+    sys.exit("operator token is only %d bytes" % len(raw))
+st = os.stat(path)
+if st.st_uid != 0 or st.st_gid != 65532 or stat.S_IMODE(st.st_mode) != 0o640:
+    sys.exit("operator_token owner/mode %d:%d %o" % (st.st_uid, st.st_gid, stat.S_IMODE(st.st_mode)))
+dst = os.stat(os.path.dirname(path))
+if dst.st_uid != 0 or dst.st_gid != 65532 or stat.S_IMODE(dst.st_mode) != 0o750:
+    sys.exit("marketsecrets dir owner/mode %d:%d %o" % (dst.st_uid, dst.st_gid, stat.S_IMODE(dst.st_mode)))
+' "$work/marketsecrets/operator_token"
 # The legacy files moved out of the core's volume; the set passphrase was carried over.
 sudo test ! -e "$work/appsecrets/admin_database_url"
 sudo test ! -e "$work/appsecrets/backup_passphrase"
@@ -44,6 +59,7 @@ sudo sh "$work/bootstrap.sh"
 test "$pass1" = "$(sudo cat "$work/pgsecrets/postgres_password")"
 test "$app1" = "$(sudo cat "$work/pgsecrets/app_password")"
 test "$app1" != "$pass1"
+test "$market1" = "$(sudo cat "$work/marketsecrets/operator_token")"
 # The core logs in as the non-superuser togavsu_app; the superuser URL is only in the
 # admin volume (migrate and the supervisor mount it, a serving core does not).
 sudo grep -q "postgres://togavsu_app:${app1}@postgres:5432/togavsu" "$work/appsecrets/database_url"
@@ -90,10 +106,10 @@ test "$(sudo cat "$work/appsecrets/domain")" = "localhost"
 
 hexwork=$(mktemp -d)
 chmod 755 "$hexwork"
-mkdir -p "$hexwork/pgsecrets" "$hexwork/appsecrets" "$hexwork/adminsecrets" "$hexwork/backupkey"
+mkdir -p "$hexwork/pgsecrets" "$hexwork/appsecrets" "$hexwork/adminsecrets" "$hexwork/backupkey" "$hexwork/marketsecrets"
 python3 -c 'import sys; open(sys.argv[1], "w").write("11"*32 + "\n")' "$hexwork/appsecrets/field_key"
 before=$(python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$hexwork/appsecrets/field_key")
-sed "s#/pgsecrets#$hexwork/pgsecrets#g; s#/appsecrets#$hexwork/appsecrets#g; s#/adminsecrets#$hexwork/adminsecrets#g; s#/backupkey#$hexwork/backupkey#g" \
+sed "s#/pgsecrets#$hexwork/pgsecrets#g; s#/appsecrets#$hexwork/appsecrets#g; s#/adminsecrets#$hexwork/adminsecrets#g; s#/backupkey#$hexwork/backupkey#g; s#/marketsecrets#$hexwork/marketsecrets#g" \
   "$root/deploy/bootstrap/bootstrap-secrets.sh" > "$hexwork/bootstrap.sh"
 sudo sh "$hexwork/bootstrap.sh"
 after=$(sudo python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$hexwork/appsecrets/field_key")

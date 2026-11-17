@@ -9,7 +9,17 @@ docker build -f marketplace/Dockerfile -t togavsu-marketplace .
 # or: go run ./marketplace/cmd/marketplace -config marketplace/config.example.json
 ```
 
-Configuration is a JSON file (`config.example.json`); omitted fields keep the defaults in `fixed.json`. The operator token is read from `operator_token_file` (a Docker secret, at least 32 bytes), never from the config file or the environment. State lives in `data_dir`: `state.json` plus one file per package, named by its SHA-256.
+Beside a firm stack, Compose runs this service under the `marketplace` profile (off by
+default): `docker compose --profile marketplace up -d`. See `deploy/marketplace/README.md`.
+The operator token is written once by bootstrap into the `marketsecrets` volume; the
+committed `deploy/marketplace/config.json` is mounted read-only; state is in `marketdata`
+at `/var/lib/togavsu-marketplace`; listen is internal-only on 8090 (no published port).
+
+Configuration is a JSON file (`config.example.json` or `deploy/marketplace/config.json`);
+omitted fields keep the defaults in `fixed.json`. The operator token is read from
+`operator_token_file` (a Docker secret or the `marketsecrets` volume, at least 32 bytes),
+never from the config file or the environment. State lives in `data_dir`: `state.json`
+plus one file per package, named by its SHA-256.
 
 ## Signing
 
@@ -37,7 +47,7 @@ Authors (bearer token from `/v1/sessions`):
 | POST | `/v1/sessions` | `{email, password}` → `{token}` |
 | GET/POST | `/v1/authors/me/keys` | Register `{public_key_pem}`; the response has a `challenge` and the exact `proof_message`. |
 | POST | `/v1/authors/me/keys/{key_id}/verify` | `{signature}` of `proof_message` with the private key (`togavsu-module key -key <seed file> -prove <proof_message>`, or `modulekit.ProveKey`). Only verified keys sign uploads or are published. |
-| POST | `/v1/authors/me/packages` | `{package_base64, signature, key_id, price_note?}`: those fields of the kit's signed package file (`jq '{package_base64, signature, key_id}' <id>.signed.json`); its other fields are refused. The manifest's module id names the listing; the first author owns it; a listed version never changes. The listing's price is `price_note`, not the manifest's `price`. |
+| POST | `/v1/authors/me/packages` | The kit's whole signed package file (`package_base64`, `signature`, `key_id`, `digest`, `listing_id`, `manifest`, and any other field the kit writes) plus optional `price_note`. When `digest` is present it must match the package bytes (`digest_mismatch` otherwise). Unknown fields are refused. The old three-field body still works. The manifest's module id names the listing; the first author owns it; a listed version never changes. The listing's price is `price_note` when sent, otherwise the manifest's `price`. Prefer `togavsu-module publish`. |
 
 Operator (bearer operator token):
 
