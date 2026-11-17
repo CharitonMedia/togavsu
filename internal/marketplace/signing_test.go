@@ -136,18 +136,18 @@ func TestReadManifest(t *testing.T) {
 
 func TestBaseURL(t *testing.T) {
 	for addr, ok := range map[string]bool{
-		"https://marketplace.example.test":     true,
-		"https://marketplace.example.test/":    true,
-		"http://127.0.0.1:8090":                true,
-		"http://localhost:8090":                true,
-		"http://togavsu-marketplace:8090":      true,
-		"http://togavsu-marketplace":           true,
-		"http://marketplace.example.test":      false,
-		"http://other-single-label":            false,
-		"togavsu-marketplace":                  false,
-		"ftp://marketplace.example.test":       false,
-		"https://user:pw@marketplace.example":  false,
-		"":                                     false,
+		"https://marketplace.example.test":    true,
+		"https://marketplace.example.test/":   true,
+		"http://127.0.0.1:8090":               true,
+		"http://localhost:8090":               true,
+		"http://togavsu-marketplace:8090":     true,
+		"http://togavsu-marketplace":          true,
+		"http://marketplace.example.test":     false,
+		"http://other-single-label":           false,
+		"togavsu-marketplace":                 false,
+		"ftp://marketplace.example.test":      false,
+		"https://user:pw@marketplace.example": false,
+		"":                                    false,
 	} {
 		if _, err := BaseURL(addr); (err == nil) != ok {
 			t.Errorf("%q: %v", addr, err)
