@@ -72173,6 +72173,7 @@
           "security.totp_required.staff",
           "security.totp_required.accountant",
           "security.totp_required.client",
+          "security.password_optional",
           "security.idle_timeout_seconds",
           "security.failed_sign_in_limit",
           "security.lockout_seconds",
@@ -81850,6 +81851,15 @@
       "secret": false,
       "locked": false,
       "help": "Client two-factor required when true."
+    },
+    {
+      "key": "security.password_optional",
+      "type": "boolean",
+      "tab": "security",
+      "default": false,
+      "secret": false,
+      "locked": false,
+      "help": "Lets users sign in with their email alone. For test and demo installs only: anyone who knows an account's email can sign in. Turning it off does not sign out anyone already signed in; each sign-in without a password is in the audit log. Default off."
     },
     {
       "key": "security.idle_timeout_seconds",

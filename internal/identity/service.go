@@ -223,6 +223,11 @@ func (s *Service) flag(ctx context.Context, key string) (bool, error) {
 	return value == "true", nil
 }
 
+// PasswordOptional reports whether security.password_optional is on.
+func (s *Service) PasswordOptional(ctx context.Context) (bool, error) {
+	return s.flag(ctx, "security.password_optional")
+}
+
 // challengeTTL is the short lifetime of a pending auth token.
 // ponytail: ceiling: the token expires after security.lockout_length because that is the short duration in the registry. Upgrade path: add security.challenge_ttl and read it here. trigger: the registry defines security.challenge_ttl.
 func (s *Service) challengeTTL(ctx context.Context) (time.Duration, error) {
@@ -279,9 +284,9 @@ func (s *Service) failureLocked(ctx context.Context, entity string, id domain.ID
 	return false, nil
 }
 
-func (s *Service) noteSignIn(ctx context.Context, user domain.User, roles []domain.Role, outcome string) error {
+func (s *Service) noteSignIn(ctx context.Context, user domain.User, roles []domain.Role, outcome, reason string) error {
 	return s.record(ctx, principalOf(user, roles), audit.Change{
-		Entity: "user", EntityID: user.ID, Field: signInField, New: outcome,
+		Entity: "user", EntityID: user.ID, Field: signInField, New: outcome, Reason: reason,
 	})
 }
 
@@ -423,7 +428,7 @@ func (s *Service) rejectIfLocked(ctx context.Context, user domain.User) error {
 }
 
 func (s *Service) recordFailure(ctx context.Context, user domain.User, roles []domain.Role) error {
-	if err := s.noteSignIn(ctx, user, roles, "failed"); err != nil {
+	if err := s.noteSignIn(ctx, user, roles, "failed", ""); err != nil {
 		return err
 	}
 	locked, err := s.locked(ctx, user)
@@ -470,7 +475,7 @@ func (s *Service) revoke(ctx context.Context, row domain.Session, who domain.Pri
 	})
 }
 
-func (s *Service) openSession(ctx context.Context, user domain.User, roles []domain.Role) (LoginResult, error) {
+func (s *Service) openSession(ctx context.Context, user domain.User, roles []domain.Role, passwordSkipped bool) (LoginResult, error) {
 	raw, err := randomToken()
 	if err != nil {
 		return LoginResult{}, err
@@ -488,6 +493,10 @@ func (s *Service) openSession(ctx context.Context, user domain.User, roles []dom
 		Meta: meta, UserID: user.ID, TokenHash: sessionHash(raw),
 		ExpiresAt: exp, IdleExpiresAt: exp,
 	}
+	reason := ""
+	if passwordSkipped {
+		reason = "password_skipped: true"
+	}
 	var result LoginResult
 	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
 		if err := s.sessions.Insert(ctx, row); err != nil {
@@ -498,7 +507,7 @@ func (s *Service) openSession(ctx context.Context, user domain.User, roles []dom
 		}); err != nil {
 			return err
 		}
-		if err := s.noteSignIn(ctx, user, roles, "succeeded"); err != nil {
+		if err := s.noteSignIn(ctx, user, roles, "succeeded", reason); err != nil {
 			return err
 		}
 		result = LoginResult{
