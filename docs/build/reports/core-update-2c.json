@@ -1,0 +1,136 @@
+{
+  "task_id": "core-update-2c",
+  "status": "pass",
+  "tested_revision": "bf0b4abcef12602c7af6fab9f7cfc699a263244e",
+  "tests": [
+    {
+      "name": "modules package",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/modules/ -count=1 -timeout 300s",
+      "exit_code": 0
+    },
+    {
+      "name": "billing package",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/billing/ -count=1 -timeout 300s",
+      "exit_code": 0
+    },
+    {
+      "name": "settings package",
+      "command": "go test ./internal/settings/ -count=1",
+      "exit_code": 0
+    },
+    {
+      "name": "core package",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 20m",
+      "exit_code": 0
+    },
+    {
+      "name": "CORE-35/37 and CU2 focused",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_BATCH1_MODS=/tmp/batch1-mods go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE37|TestCORE35|TestCU207|TestCU208|TestCORE30ServiceCallsWalls|TestCORE31ContractCall|TestCORE32PublicPages|TestCORE2B'",
+      "exit_code": 0
+    },
+    {
+      "name": "API contract tests",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… sh scripts/ci/test-api.sh",
+      "exit_code": 0
+    },
+    {
+      "name": "Backup integration",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_TEST_DATABASE_URL_B=… sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0
+    },
+    {
+      "name": "Update load (AC-016 / CU2-08)",
+      "command": "sh scripts/ci/update-load.sh",
+      "exit_code": 0
+    },
+    {
+      "name": "Supervisor package",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/supervisor/ -count=1 -timeout 10m",
+      "exit_code": 0
+    }
+  ],
+  "passed_acceptance_ids": [
+    "CU2-01",
+    "CU2-02",
+    "CU2-03",
+    "CU2-04",
+    "CU2-05",
+    "CU2-06",
+    "CU2-07",
+    "CU2-08",
+    "IMP-01",
+    "IMP-02",
+    "IMP-03",
+    "IMP-04",
+    "IMP-05",
+    "IMP-06",
+    "IMP-07",
+    "IMP-08"
+  ],
+  "pending_acceptance_ids": [],
+  "phase_cases": [
+    {
+      "id": "api-mcp-scopes",
+      "status": "pass",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE35|TestCORE37|TestCORE2BCU201|TestCORE30ServiceCallRefused|TestContractRoutesFailClosed|TestBearerScopesMCPAndSettings' ; sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "acceptance_ids": ["CU2-01"]
+    },
+    {
+      "id": "service-call-walls",
+      "status": "pass",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE30ServiceCallsWalls'",
+      "exit_code": 0,
+      "acceptance_ids": ["CU2-02"]
+    },
+    {
+      "id": "contracts",
+      "status": "pass",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE31ContractCall'",
+      "exit_code": 0,
+      "acceptance_ids": ["CU2-03"]
+    },
+    {
+      "id": "public-pages",
+      "status": "pass",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE32PublicPages'",
+      "exit_code": 0,
+      "acceptance_ids": ["CU2-04"]
+    },
+    {
+      "id": "gap-rows-closed",
+      "status": "pass",
+      "command": "rg -n 'listing ignores|jq step|signed package file' docs/modules/CONTRIBUTOR-GAPS.md docs/modules/MODULE-KIT.md; TOGAVSU_TEST_DATABASE_URL=… go test ./internal/modules/ -count=1 -timeout 300s",
+      "exit_code": 0,
+      "acceptance_ids": ["CU2-05"]
+    },
+    {
+      "id": "billing-rows",
+      "status": "pass",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/billing/ -count=1 -timeout 300s",
+      "exit_code": 0,
+      "acceptance_ids": ["CU2-06"]
+    },
+    {
+      "id": "batch1-unchanged",
+      "status": "pass",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_BATCH1_MODS=/tmp/batch1-mods go test ./internal/core/ -count=1 -timeout 300s -run 'TestCU207Batch1ModulesUnchanged' -v",
+      "exit_code": 0,
+      "acceptance_ids": ["CU2-07"]
+    },
+    {
+      "id": "update-and-fresh-install",
+      "status": "pass",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 120s -run 'TestCU208FreshInstallNoModules' -v ; sh scripts/ci/update-load.sh",
+      "exit_code": 0,
+      "acceptance_ids": ["CU2-08"]
+    },
+    {
+      "id": "invoice-import",
+      "status": "pass",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE37' -v",
+      "exit_code": 0,
+      "acceptance_ids": ["IMP-01", "IMP-02", "IMP-03", "IMP-04", "IMP-05", "IMP-06", "IMP-07", "IMP-08"]
+    }
+  ]
+}
