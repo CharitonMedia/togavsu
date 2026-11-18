@@ -419,7 +419,7 @@ autosave forms.
 | --- | --- |
 | Definition model (tracks, screens, fields) | `Form`, `Track`, `Screen`, `Field`, `FieldType` (`AllFieldTypes`: the 16 types) |
 | Audiences | `AudienceStaff`, `AudienceClient`, `AudiencePublic`; `Field.VisibleTo`, `VisibleFields` |
-| Answers and "I don't know" | `Answers`, `Answer` (`Unknown`), `Address`, `Merge`, `MergeFormSubmit` (keeps masked on empty post; `ClearMaskedValue` clears), `ParseFormAnswers(form, values)` (schema-driven types for all 16 fields; explicit `name.__unknown=0` clears Unknown), `UnknownToggleJS` |
+| Answers and "I don't know" | `Answers`, `Answer` (`Unknown`), `Address`, `Merge`, `MergeFormSubmit` (keeps masked on empty post; `ClearMaskedValue` clears; repeating rows match by `RowIDKey`/`__row`, never by index), `ParseFormAnswers(form, values)` (schema-driven types for all 16 fields; explicit `name.__unknown=0` clears Unknown), `UnknownToggleJS`, `RepeatingJS` (mints/keeps `__row` on add/reindex) |
 | Conditions (`eq`, `neq`, `in`, `exists`, `notExists`, `gt`/`lt`/`gte`/`lte`, count ops on repeating groups) | `Condition`, `Op*`, `Eval` |
 | Validation | `Validate`, `ValidateScreen`, `Issues` |
 | HTMX renderer | `RenderScreen(w, screen, answers, audience, RenderOptions)` — one `hx-post` on the `<form>` (`hx-include="this"`); booleans emit hidden `false` |

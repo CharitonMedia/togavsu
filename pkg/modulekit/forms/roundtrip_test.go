@@ -285,9 +285,10 @@ func TestRepeatingAutosaveKeepsSiblingRows(t *testing.T) {
 			{ID: "age", Type: TypeNumber},
 		}},
 	}}}}}}
+	id0, id1 := "rt-row-0", "rt-row-1"
 	stored := Answers{"kids": {Value: []map[string]Answer{
-		{"name": {Value: "Ada"}, "age": {Value: float64(10)}},
-		{"name": {Value: "Bea"}, "age": {Value: float64(8)}},
+		{RowIDKey: {Value: id0}, "name": {Value: "Ada"}, "age": {Value: float64(10)}},
+		{RowIDKey: {Value: id1}, "name": {Value: "Bea"}, "age": {Value: float64(8)}},
 	}}}
 
 	var buf strings.Builder
@@ -302,6 +303,9 @@ func TestRepeatingAutosaveKeepsSiblingRows(t *testing.T) {
 	if !strings.Contains(html, `name="kids[0].name"`) || !strings.Contains(html, `name="kids[1].name"`) {
 		t.Fatalf("render missing both rows:\n%s", html)
 	}
+	if !strings.Contains(html, id0) || !strings.Contains(html, id1) {
+		t.Fatalf("render missing row ids:\n%s", html)
+	}
 
 	h := AutosaveHandlerForm(form, func(r *http.Request, patch AutosavePatch) (Answers, error) {
 		patch.Apply(&stored)
@@ -309,11 +313,13 @@ func TestRepeatingAutosaveKeepsSiblingRows(t *testing.T) {
 	})
 	// Whole form after editing kids[1].name only (browser still posts every control).
 	body := url.Values{
-		"kids[0].name": {"Ada"},
-		"kids[0].age":  {"10"},
-		"kids[1].name": {"Beatrice"},
-		"kids[1].age":  {"8"},
-		"csrf":         {"tok"},
+		"kids[0]." + RowIDKey: {id0},
+		"kids[0].name":        {"Ada"},
+		"kids[0].age":         {"10"},
+		"kids[1]." + RowIDKey: {id1},
+		"kids[1].name":        {"Beatrice"},
+		"kids[1].age":         {"8"},
+		"csrf":                {"tok"},
 	}.Encode()
 	req := httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

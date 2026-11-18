@@ -147,7 +147,16 @@ const OfflineQueueJS = `(function(){
 })();`
 
 // RepeatingJS wires Add/Remove for TypeRepeating groups rendered by RenderScreen.
+// Row identity lives in hidden inputs named "*.__row" (RowIDKey). reindex only
+// renumbers [N] in control names; it never changes __row values. Add mints a
+// fresh id so merge can tell new rows from kept ones after remove/reorder.
 const RepeatingJS = `(function(){
+  function newRowId(){
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, "");
+    var s = "";
+    for (var i=0;i<32;i++) s += Math.floor(Math.random()*16).toString(16);
+    return s;
+  }
   function reindex(container){
     var rows = container.querySelectorAll(":scope > fieldset.tv-repeat-row");
     for (var i=0;i<rows.length;i++){
@@ -156,9 +165,16 @@ const RepeatingJS = `(function(){
       for (var j=0;j<inputs.length;j++){
         var n = inputs[j].getAttribute("name");
         if (!n) continue;
+        // Keep the __row value; only rewrite the array index in the name.
         inputs[j].setAttribute("name", n.replace(/\[\d+\]/, "["+i+"]"));
         if (inputs[j].id) inputs[j].id = inputs[j].id.replace(/-\d+-/, "-"+i+"-");
       }
+    }
+  }
+  function assignRowId(root){
+    var nodes = root.querySelectorAll ? root.querySelectorAll("[data-tv-row-id]") : [];
+    for (var i=0;i<nodes.length;i++){
+      if (!nodes[i].value) nodes[i].value = newRowId();
     }
   }
   document.addEventListener("click", function(ev){
@@ -171,6 +187,7 @@ const RepeatingJS = `(function(){
       var tpl = wrap.querySelector("template.tv-repeat-template");
       if (!tpl) return;
       var node = tpl.content.cloneNode(true);
+      assignRowId(node);
       wrap.insertBefore(node, t);
       reindex(wrap);
       return;

@@ -60,6 +60,8 @@ func TestRenderScreenAudiencesAndHTMX(t *testing.T) {
 		`name="addr.line1"`,
 		`tv-readonly`,
 		`tv-repeat-row`,
+		`name="kids[0].` + RowIDKey + `"`,
+		`data-tv-row-id="1"`,
 		`name="kids[0].name"`,
 		`tv-repeat-add`,
 		`tv-repeat-remove`,

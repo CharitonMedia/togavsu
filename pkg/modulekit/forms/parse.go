@@ -27,6 +27,7 @@ const MaxRepeatingIndex = domain.FormsMaxRepeatingIndex
 // MergeFormSubmit keeps other screens' answers. TypeFile is never read from the
 // form post (upload endpoint only). Empty masked values are still parsed as ""
 // so MergeFormSubmit can keep sealed ciphertext at any nesting depth.
+// Repeating rows carry RowIDKey ("__row") for stable merge identity.
 func ParseFormAnswers(form Form, values map[string][]string) Answers {
 	return parsePostedAnswers(form, values)
 }
@@ -297,6 +298,11 @@ func parseRepeating(field Field, values map[string][]string, name string) []map[
 			}
 			rowVals[p.rest] = append([]string{}, p.vals...)
 		}
+		// Row identity is not a schema Field; lift it before typed parse.
+		if rid := lastValue(rowVals[RowIDKey]); rid != "" {
+			rows[i][RowIDKey] = Answer{Value: rid}
+		}
+		delete(rowVals, RowIDKey)
 		parsed := parsePostedAnswers(rowForm, rowVals)
 		for k, a := range parsed {
 			rows[i][k] = a

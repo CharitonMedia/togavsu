@@ -334,6 +334,16 @@ func renderRepeatRow(w io.Writer, field Field, name string, i int, row map[strin
 		return err
 	}
 	prefix := fmt.Sprintf("%s[%d].", name, i)
+	// Stable row id: assign on first render of a stored row; template rows stay
+	// empty so RepeatingJS can mint a fresh id on Add.
+	rowID := ""
+	if row != nil {
+		rowID = ensureRowID(row)
+	}
+	if _, err := fmt.Fprintf(w, `<input type="hidden" name="%s%s" value="%s" data-tv-row-id="1">`+"\n",
+		html.EscapeString(prefix), html.EscapeString(RowIDKey), html.EscapeString(rowID)); err != nil {
+		return err
+	}
 	ans := Answers(row)
 	for _, nested := range field.Fields {
 		if err := renderField(w, nested, ans.Get(nested.ID), opts, prefix); err != nil {

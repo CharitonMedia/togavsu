@@ -403,12 +403,17 @@ func TestParseFormAnswersRepeating(t *testing.T) {
 		{ID: "kids", Type: TypeRepeating, Fields: []Field{{ID: "name", Type: TypeText}}},
 	}}}}}}
 	got := ParseFormAnswers(form, map[string][]string{
-		"kids[0].name": {"Ada"},
-		"kids[1].name": {"Bea"},
+		"kids[0]." + RowIDKey: {"id-0"},
+		"kids[0].name":        {"Ada"},
+		"kids[1]." + RowIDKey: {"id-1"},
+		"kids[1].name":        {"Bea"},
 	})
 	rows := got.Get("kids").RowsValue()
 	if len(rows) != 2 || rows[0]["name"].StringValue() != "Ada" || rows[1]["name"].StringValue() != "Bea" {
 		t.Fatalf("repeating rows = %#v", got["kids"])
+	}
+	if rowIDOf(rows[0]) != "id-0" || rowIDOf(rows[1]) != "id-1" {
+		t.Fatalf("row ids = %#v", rows)
 	}
 }
 

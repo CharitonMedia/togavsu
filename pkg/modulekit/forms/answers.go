@@ -1,6 +1,10 @@
 package forms
 
-import "encoding/json"
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+)
 
 // Answer is one field's stored value. Unknown marks an "I don't know" response
 // (AllowUnknown on the field). Value shapes by type:
@@ -10,10 +14,42 @@ import "encoding/json"
 //	boolean: bool
 //	multi-select: []string
 //	address: Address
-//	repeating: []map[string]Answer (row maps keyed by nested field id)
+//	repeating: []map[string]Answer (row maps keyed by nested field id;
+//	each row also carries RowIDKey for stable identity across remove/reorder)
 type Answer struct {
 	Unknown bool `json:"unknown,omitempty"`
 	Value   any  `json:"value,omitempty"`
+}
+
+// RowIDKey is the hidden per-row identity field for TypeRepeating groups.
+// Rendered as name="<group>[N].__row"; merge matches stored rows by this id,
+// never by array position, so removing a row cannot shift masked/file values.
+const RowIDKey = "__row"
+
+// newRowID returns a random opaque row id (16 bytes, hex).
+func newRowID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
+
+func rowIDOf(row map[string]Answer) string {
+	if row == nil {
+		return ""
+	}
+	return row[RowIDKey].StringValue()
+}
+
+func ensureRowID(row map[string]Answer) string {
+	if row == nil {
+		return ""
+	}
+	if id := rowIDOf(row); id != "" {
+		return id
+	}
+	id := newRowID()
+	row[RowIDKey] = Answer{Value: id}
+	return id
 }
 
 // Answers maps field id → answer. Modules persist this (or an equivalent) in their
@@ -68,8 +104,10 @@ const ClearMaskedValue = "__clear__"
 // stored value when the posted string is empty or missing (RevealMasked=false renders
 // value=""; OfflineQueueJS omits empty masked controls) at any nesting depth, including
 // repeating rows. Post ClearMaskedValue to erase. Empty file posts keep the stored ref.
-// Repeating groups merge row-by-row and field-by-field so a sibling edit cannot drop
-// nested masked/file answers. Unknown still replaces. Other fields replace as Merge.
+// Repeating groups match posted rows to stored rows by RowIDKey (never by index) and
+// merge field-by-field so remove/reorder cannot shift nested masked/file answers onto
+// the wrong row. A posted row with an unknown or missing id is new (no carried
+// masked/file). Unknown still replaces. Other fields replace as Merge.
 func MergeFormSubmit(existing Answers, posted Answers, form Form) Answers {
 	out := Answers{}
 	for id, ans := range existing {
@@ -125,14 +163,29 @@ func mergeRepeatingRows(existing, posted []map[string]Answer, nested []Field) []
 	if posted == nil {
 		return nil
 	}
+	byID := make(map[string]map[string]Answer, len(existing))
+	for _, erow := range existing {
+		if id := rowIDOf(erow); id != "" {
+			byID[id] = erow
+		}
+	}
 	out := make([]map[string]Answer, len(posted))
 	for i, prow := range posted {
+		id := rowIDOf(prow)
 		var erow map[string]Answer
-		if i < len(existing) {
-			erow = existing[i]
+		// Match by stable row id only. Unknown/missing id → new row (no carry).
+		if id != "" {
+			erow = byID[id]
 		}
 		row := map[string]Answer{}
-		// Preserve nested masked/file values that the post omitted entirely.
+		if id != "" {
+			row[RowIDKey] = Answer{Value: id}
+		} else {
+			// Persist a fresh id so the next render/post can match.
+			row[RowIDKey] = Answer{Value: newRowID()}
+		}
+		// Preserve nested masked/file values that the post omitted entirely,
+		// but only when the posted row matched a stored row by id.
 		for _, f := range nested {
 			if f.Type != TypeMasked && f.Type != TypeFile && f.Type != TypeRepeating {
 				continue
@@ -147,22 +200,25 @@ func mergeRepeatingRows(existing, posted []map[string]Answer, nested []Field) []
 				row[f.ID] = cur
 			}
 		}
-		for id, pans := range prow {
+		for key, pans := range prow {
+			if key == RowIDKey {
+				continue
+			}
 			var f Field
 			for _, nf := range nested {
-				if nf.ID == id {
+				if nf.ID == key {
 					f = nf
 					break
 				}
 			}
 			var eans Answer
 			if erow != nil {
-				eans = erow[id]
+				eans = erow[key]
 			}
 			if f.ID != "" {
-				row[id] = mergePostedField(eans, pans, f)
+				row[key] = mergePostedField(eans, pans, f)
 			} else {
-				row[id] = pans
+				row[key] = pans
 			}
 		}
 		out[i] = row
