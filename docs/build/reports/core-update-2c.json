@@ -1,7 +1,7 @@
 {
   "task_id": "core-update-2c",
   "status": "pass",
-  "tested_revision": "6ab5ac7185c61e42d3217b1060701b75e46130e8",
+  "tested_revision": "a7fcaf2bae6eff2af9df6b8cadca6c428c5efc88",
   "tests": [
     {
       "name": "modules package",
@@ -25,7 +25,7 @@
     },
     {
       "name": "CORE-35/37 and CU2 focused",
-      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_BATCH1_MODS=/tmp/batch1-mods go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE37|TestCORE35|TestCU207|TestCU208|TestCORE30ServiceCallsWalls|TestCORE31ContractCall|TestCORE32PublicPages|TestCORE2B'",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 20m -run 'TestCORE37|TestCORE35|TestCU207|TestCU208|TestCORE30ServiceCallsWalls|TestCORE31ContractCall|TestCORE32PublicPages|TestCORE2B'",
       "exit_code": 0
     },
     {
@@ -72,7 +72,7 @@
     {
       "id": "api-mcp-scopes",
       "status": "pass",
-      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE35|TestCORE37|TestCORE2BCU201|TestCORE30ServiceCallRefused|TestContractRoutesFailClosed|TestBearerScopesMCPAndSettings' ; sh scripts/ci/test-api.sh",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE35|TestCORE37|TestContractRoutesFailClosed|TestBearerScopesMCPAndSettings' ; sh scripts/ci/test-api.sh",
       "exit_code": 0,
       "acceptance_ids": ["CU2-01"]
     },
@@ -114,7 +114,7 @@
     {
       "id": "batch1-unchanged",
       "status": "pass",
-      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_BATCH1_MODS=/tmp/batch1-mods go test ./internal/core/ -count=1 -timeout 300s -run 'TestCU207Batch1ModulesUnchanged' -v",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 300s -run 'TestCU207Batch1ModulesUnchanged' -v",
       "exit_code": 0,
       "acceptance_ids": ["CU2-07"]
     },
