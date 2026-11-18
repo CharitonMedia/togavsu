@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -165,6 +166,61 @@ func TestPasswordOptionalConfirmedTOTPStillNeedsCode(t *testing.T) {
 	got, err := b.svc.Login(ctx, "sam@example.test", "")
 	if err != nil || got.Status != statusTOTP || got.SessionToken != "" || got.TOTPToken == "" {
 		t.Fatalf("confirmed TOTP must get the code step: %+v %v", got, err)
+	}
+	b.clk.t = b.clk.t.Add(31 * time.Second)
+	done, err := b.svc.VerifyTOTP(ctx, got.TOTPToken, TOTPCode(decodeSecret(t, start.Secret), b.clk.Now()))
+	if err != nil || done.Status != statusAuthenticated || done.SessionToken == "" {
+		t.Fatalf("VerifyTOTP after skipped password: %+v %v", done, err)
+	}
+	if !signInSkippedPassword(t, b.log, done.User.ID) {
+		t.Fatal("successful sign-in after TOTP must record password_skipped")
+	}
+}
+
+func TestPasswordOptionalRefuseEnrollWhenSkipped(t *testing.T) {
+	ctx := context.Background()
+	b := newDefaultBox(t)
+	if _, err := b.svc.Setup(ctx, SetupInput{
+		FirmName: "North Firm", TimeZone: "America/Chicago", AdminName: "Ada Admin",
+		AdminEmail: "ada@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	adminLogin, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := b.svc.Authenticate(ctx, Presented{SessionToken: adminLogin.SessionToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.reg.Set(ctx, "security.password_optional", "true", admin.Principal); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.reg.Set(ctx, "security.totp_required.client", "true", admin.Principal); err != nil {
+		t.Fatal(err)
+	}
+	client, err := b.svc.CreateUser(ctx, admin, NewUser{
+		Name: "Cora Client", Email: "cora@example.test", Password: "correct-horse-battery",
+		Roles: []domain.Role{domain.RoleClient},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	roles, err := rolesOf(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := failedSignIns(t, b.log, client.ID)
+	got, err := b.svc.afterPassword(ctx, client, roles, true)
+	if codeOf(err) != domain.CodeUnauthenticated {
+		t.Fatalf("skipped password must not enroll: %+v %v", got, err)
+	}
+	if got.EnrollmentToken != "" || got.SessionToken != "" {
+		t.Fatalf("must not issue enrollment or session: %+v", got)
+	}
+	if failedSignIns(t, b.log, client.ID) != before+1 {
+		t.Fatal("must count as a failed sign-in")
 	}
 }
 

@@ -179,13 +179,21 @@ func (s *Service) afterPassword(ctx context.Context, user domain.User, roles []d
 		return LoginResult{}, err
 	}
 	if confirmed {
-		token, _, err := s.issueChallenge(ctx, user, purposeTOTP, "", "")
+		action := ""
+		if passwordSkipped {
+			action = passwordSkippedAction
+		}
+		token, _, err := s.issueChallenge(ctx, user, purposeTOTP, "", action)
 		if err != nil {
 			return LoginResult{}, err
 		}
 		return LoginResult{Status: statusTOTP, TOTPToken: token, User: user}, nil
 	}
 	if required {
+		// Re-check under the user lock: a pre-lock skip must never reach enrollment.
+		if passwordSkipped {
+			return LoginResult{}, s.recordFailure(ctx, user, roles)
+		}
 		token, _, err := s.issueChallenge(ctx, user, purposeEnroll, "", "")
 		if err != nil {
 			return LoginResult{}, err
@@ -267,7 +275,7 @@ func (s *Service) VerifyRecovery(ctx context.Context, totpToken, code string) (L
 // useChallenge spends the challenge once, then evaluates the code.
 // A second caller on the same token does not get a guess. The lock is checked again before a session opens.
 func (s *Service) useChallenge(ctx context.Context, token, purpose string, eval func(domain.User, []domain.Role) error) (LoginResult, error) {
-	_, sess, user, err := s.loadChallenge(ctx, token, purpose)
+	body, sess, user, err := s.loadChallenge(ctx, token, purpose)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -275,6 +283,7 @@ func (s *Service) useChallenge(ctx context.Context, token, purpose string, eval 
 	if err != nil {
 		return LoginResult{}, err
 	}
+	passwordSkipped := purpose == purposeTOTP && body.Action == passwordSkippedAction
 	var result LoginResult
 	err = s.withUser(ctx, user.ID, func() error {
 		if err := s.claimChallenge(ctx, sess, principalOf(user, roles)); err != nil {
@@ -293,7 +302,7 @@ func (s *Service) useChallenge(ctx context.Context, token, purpose string, eval 
 		if err := s.rejectIfLocked(ctx, user); err != nil {
 			return err
 		}
-		result, err = s.openSession(ctx, user, roles, false)
+		result, err = s.openSession(ctx, user, roles, passwordSkipped)
 		return err
 	})
 	if err != nil {
