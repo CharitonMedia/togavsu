@@ -1574,6 +1574,31 @@
         "API contract tests"
       ],
       "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install: his test install signs in with an email alone, but that switch exists only on the install's local copy, so every update drops it. The trusted PRD now records it (togavsu-core-prd.md section 5 and the 8.7 Security tab, added 2026-11-17 at Patrick's direction). Read docs/build/desk-fixes/password-optional.md and build it exactly as it says: the security.password_optional setting (Sign In Without a Password, Security tab, bool, default false, not a PRD default, the help text as written) in internal/settings and in the published settings contract (api/contract/settings.py and the SettingKey enum and catalog in api/openapi/v1/openapi.json); identity.Service.PasswordOptional; the Login change (off changes nothing; on lets a known active account skip the password, except that the password is still checked whenever the next step would be two-factor enrollment; unknown or inactive accounts, lockout accounting and the TOTP code step unchanged); the password_skipped field on the successful sign-in audit entry; the sign-in page's optional label and dropped required mark through one renderLogin helper; the label in docs/build/desk-fixes/settings-labels.md and internal/settings/labels_test.go; and every test the spec lists, including the enrollment failure path. Change nothing else. Run go vet ./... and go test ./internal/... and the API contract tests, and record the results and the tested SHA in docs/build/reports/desk-fix-password-optional.json."
+    },
+    {
+      "id": "desk-fix-ledger-seal-module-grants",
+      "wave": "desk-fix-5",
+      "phase": 8,
+      "depends_on": [],
+      "owned_paths": [
+        "internal/ledgerseal/",
+        "internal/db/",
+        "internal/core/",
+        "internal/modules/",
+        "tests/",
+        "docs/build/reports/desk-fix-ledger-seal-module-grants.json"
+      ],
+      "prd_sections": [
+        "5",
+        "6"
+      ],
+      "acceptance_ids": [],
+      "required_checks": [
+        "Core tests",
+        "Supervisor tests",
+        "Backup integration"
+      ],
+      "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install: once modules are installed, core migrate fails with 'seal ledgers: dependent privileges exist (SQLSTATE 2BP01)', so no core update can be applied. Read docs/build/desk-fixes/ledger-seal-module-grants.md and build it exactly as it says: in internal/ledgerseal Script, revoke only UPDATE, DELETE, TRUNCATE, TRIGGER and MAINTAIN and the grant option on SELECT and INSERT from the application role (and ALL from PUBLIC) instead of REVOKE ALL from the application role, never CASCADE, keeping the existing grants, writer-role lines and VerifySealed unchanged; and add the Postgres tests the spec lists (re-seal after the application role has passed REFERENCES (id) on core.trust_ledger to another role, ApplySealed of a migration naming trust_ledger after that, and installing a ledger-extending module then running the core migrate path twice). Change nothing else; do not touch internal/supervisor/ beyond what its existing tests need (they should need nothing). Run go vet ./... and go test ./internal/... and record the results and the tested SHA in docs/build/reports/desk-fix-ledger-seal-module-grants.json."
     }
   ],
   "max_repairs": 3
