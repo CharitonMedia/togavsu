@@ -36,20 +36,20 @@ const (
 
 // Module API update bounds (CORE-03 to CORE-07). Contract ceilings, not firm settings.
 const (
-	NotificationTitleMaxChars  = 200
-	ModuleMailSubjectMaxChars  = 200
-	ModuleMailTextMaxChars     = 20000
-	ModuleMailRecipientMax     = 20
-	ModuleSecretMaxPerModule   = 512
-	ModuleSecretMaxBytes       = 16 << 10
-	DirectoryIDsMax            = 100
-	SidebarDefaultOrder        = 1000
-	InboundWebhookMaxBytes     = 1048576
-	InboundWebhookRatePerMin   = 120
-	PublicPageMaxBytes         = 10 << 20
-	PublicPageRatePerMin       = 60
-	ContractCallMaxBytes       = 25 << 20
-	StaffBannerDefaultHeight   = 48
+	NotificationTitleMaxChars = 200
+	ModuleMailSubjectMaxChars = 200
+	ModuleMailTextMaxChars    = 20000
+	ModuleMailRecipientMax    = 20
+	ModuleSecretMaxPerModule  = 512
+	ModuleSecretMaxBytes      = 16 << 10
+	DirectoryIDsMax           = 100
+	SidebarDefaultOrder       = 1000
+	InboundWebhookMaxBytes    = 1048576
+	InboundWebhookRatePerMin  = 120
+	PublicPageMaxBytes        = 10 << 20
+	PublicPageRatePerMin      = 60
+	ContractCallMaxBytes      = 25 << 20
+	StaffBannerDefaultHeight  = 48
 	// FormsMaxRepeatingIndex is the highest accepted repeating-row index (0..N) in
 	// pkg/modulekit/forms ParseFormAnswers (CORE-33); larger forged indices are ignored.
 	FormsMaxRepeatingIndex     = 99

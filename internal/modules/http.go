@@ -125,6 +125,7 @@ func (h *Handler) Routes() http.Handler {
 // POST /api/v1/modules/{module_id}/context-tokens/verify on one ServeMux.
 func (h *Handler) ContractRoutes() http.Handler {
 	m := http.NewServeMux()
+	m.HandleFunc("GET /api/v1/modules/contracts/{contract}/providers", h.scoped("contracts:call", h.listContractProviders))
 	m.HandleFunc("POST /api/v1/modules/contracts/{contract}/events", h.write("contracts:provide", h.pushContractEvent))
 	m.HandleFunc("POST /api/v1/modules/contracts/{contract}/{operation}", h.write("contracts:call", h.callContract))
 	return m

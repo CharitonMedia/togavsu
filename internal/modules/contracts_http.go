@@ -11,6 +11,25 @@ func scopeDenied(scope string) error {
 	return &domain.APIError{Code: "scope_denied", Message: "this token lacks the " + scope + " scope"}
 }
 
+// listContractProviders is GET /api/v1/modules/contracts/{contract}/providers (CORE-31).
+// Returns provider module ids the caller is linked to — never addresses.
+func (h *Handler) listContractProviders(w http.ResponseWriter, r *http.Request, c Caller) {
+	if c.Bearer && !hasScope(c.Scopes, "contracts:call") {
+		writeErr(w, scopeDenied("contracts:call"))
+		return
+	}
+	if !c.Bearer || c.Principal.ModuleID == "" {
+		writeErr(w, domain.Forbidden("only a module token may list linked providers"))
+		return
+	}
+	list, err := h.Svc.ListLinkedProviders(r.Context(), c.Principal, r.PathValue("contract"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": list, "page": map[string]any{"limit": len(list) + 1, "next_cursor": nil}})
+}
+
 // callContract is POST /api/v1/modules/contracts/{contract}/{operation} (CORE-31).
 func (h *Handler) callContract(w http.ResponseWriter, r *http.Request, c Caller) {
 	if c.Bearer && !hasScope(c.Scopes, "contracts:call") {
@@ -41,7 +60,7 @@ func (h *Handler) callContract(w http.ResponseWriter, r *http.Request, c Caller)
 		return
 	}
 	status, header, resp, err := h.Svc.CallContract(r.Context(), c.Principal,
-		r.PathValue("contract"), r.PathValue("operation"), body, r.Header.Get(ContextHeader))
+		r.PathValue("contract"), r.PathValue("operation"), body, r.Header.Get(ContextHeader), r.Header.Get(ContractProviderHeader))
 	if err != nil {
 		writeErr(w, err)
 		return

@@ -296,6 +296,7 @@
     "listModuleAlert",
     "listModuleBanners",
     "listModuleContractLinks",
+    "listModuleContractProviders",
     "listModuleDeviceGrants",
     "listModuleHelpPages",
     "listModules",

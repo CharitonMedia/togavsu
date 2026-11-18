@@ -5287,6 +5287,33 @@ def _modules(api: Contract) -> None:
         error_codes=["not_found"],
     )
     api.add(
+        "get",
+        "/api/v1/modules/contracts/{contract}/providers",
+        operation_id="listModuleContractProviders",
+        summary="List linked providers for a contract",
+        description=(
+            "Returns provider module ids the calling consumer is linked to for the contract. "
+            "Ids only; never addresses (CORE-31)."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["contracts:call"],
+        response_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["data", "page"],
+            "properties": {
+                "data": {"type": "array", "items": {"type": "string"}},
+                "page": {"$ref": "#/components/schemas/Page"},
+            },
+        },
+        paginate=True,
+        writes=False,
+        error_codes=["scope_denied", "not_found", "forbidden"],
+        extra_access={"module_delegation": "service_principal"},
+    )
+    api.add(
         "post",
         "/api/v1/modules/contracts/{contract}/{operation}",
         operation_id="callModuleContract",
@@ -5294,8 +5321,9 @@ def _modules(api: Contract) -> None:
         description=(
             "The consumer module's bearer with contracts:call posts a body; the core proxies it to the "
             "admin-linked provider's declared path, HMAC-signed like events, carrying the caller's "
-            "context token when present. Neither module learns the other's address. "
-            "Unlinked contracts answer contract_unlinked (CORE-31)."
+            "context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects "
+            "a linked provider module id (never an address); omit it to use the earliest link. "
+            "Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31)."
         ),
         tag="Modules",
         features=["modules"],
@@ -5303,6 +5331,20 @@ def _modules(api: Contract) -> None:
         scopes=["contracts:call"],
         body_schema={"type": "object", "additionalProperties": True},
         response_schema={"type": "object", "additionalProperties": True},
+        extra_parameters=[
+            {
+                "name": "X-Togavsu-Contract-Provider",
+                "in": "header",
+                "required": False,
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 63,
+                    "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                },
+                "description": "Linked provider module id on a many-provider contract (CORE-31). Module id only; never an address.",
+            }
+        ],
         error_codes=["scope_denied", "contract_unlinked", "not_found", "payload_too_large", "forbidden"],
         extra_access={"module_delegation": "service_principal"},
     )

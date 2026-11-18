@@ -66478,11 +66478,165 @@
         ]
       }
     },
+    "/api/v1/modules/contracts/{contract}/providers": {
+      "get": {
+        "operationId": "listModuleContractProviders",
+        "summary": "List linked providers for a contract",
+        "description": "Returns provider module ids the calling consumer is linked to for the contract. Ids only; never addresses (CORE-31).",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [
+          {
+            "name": "contract",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)+$",
+              "description": "Named, versioned module service contract (CORE-31), such as phone.provider.v1."
+            },
+            "description": "Path parameter contract."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from page.next_cursor."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 50
+            },
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "page": {
+                      "$ref": "#/components/schemas/Page"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "modules"
+        ],
+        "x-togavsu-access": {
+          "roles": [],
+          "scopes": [
+            "contracts:call"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "service_principal",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "listModuleContractProviders",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "scope_denied",
+          "not_found",
+          "forbidden"
+        ]
+      }
+    },
     "/api/v1/modules/contracts/{contract}/{operation}": {
       "post": {
         "operationId": "callModuleContract",
         "summary": "Call a linked module contract operation",
-        "description": "The consumer module's bearer with contracts:call posts a body; the core proxies it to the admin-linked provider's declared path, HMAC-signed like events, carrying the caller's context token when present. Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31).",
+        "description": "The consumer module's bearer with contracts:call posts a body; the core proxies it to the admin-linked provider's declared path, HMAC-signed like events, carrying the caller's context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects a linked provider module id (never an address); omit it to use the earliest link. Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31).",
         "tags": [
           "Modules"
         ],
@@ -66518,6 +66672,18 @@
           },
           {
             "$ref": "#/components/parameters/csrfToken"
+          },
+          {
+            "name": "X-Togavsu-Contract-Provider",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 63,
+              "pattern": "^[a-z][a-z0-9-]{0,62}$"
+            },
+            "description": "Linked provider module id on a many-provider contract (CORE-31). Module id only; never an address."
           }
         ],
         "responses": {
@@ -66583,6 +66749,9 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "headers": [
+              "X-Togavsu-Contract-Provider"
+            ],
             "credentials": {
               "module_bearer": {
                 "header": "Authorization",
@@ -66608,6 +66777,7 @@
               "path",
               "query",
               "idempotency_key",
+              "headers",
               "body"
             ]
           }

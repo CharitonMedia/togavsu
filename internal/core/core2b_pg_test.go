@@ -275,20 +275,35 @@ func TestCORE32PublicPages(t *testing.T) {
 	}
 
 	bot := newClient(t, x.srv.URL)
-	bot.bearer = x.rt.Last("intake-mod").Secrets["togavsu_api_token"]
-	secret := x.rt.Last("intake-mod").Secrets["togavsu_webhook_secret"]
-	step, err := modules.IssueStepToken([]byte(secret), "intake-mod", 0, time.Now().UTC())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r := bot.do("GET", "/api/v1/matters", nil, modules.PublicStepHeader, step); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
-		t.Fatalf("listMatter outside public_operations: %d %s", r.code, r.body)
+	// Required public-page credential: core-signed step as Authorization bearer (CU2-04).
+	bot.bearer = lastStep
+	if r := bot.do("GET", "/api/v1/matters", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" || !strings.Contains(r.body, "public_operations") {
+		t.Fatalf("listMatter outside public_operations via public credential: %d %s", r.code, r.body)
 	}
 	// createContact is listed; may succeed or fail validation, but not scope_denied for the op itself.
 	if r := bot.do("POST", "/api/v1/contacts", map[string]any{
 		"display_name": "Public Person", "kind": "person",
-	}, modules.PublicStepHeader, step); r.json["code"] == "scope_denied" && strings.Contains(r.body, "public_operations") {
+	}); r.json["code"] == "scope_denied" && strings.Contains(r.body, "public_operations") {
 		t.Fatalf("createContact in public_operations denied: %s", r.body)
+	}
+	// Webhook-secret-forged step tokens are refused (core-only key).
+	secret := x.rt.Last("intake-mod").Secrets["togavsu_webhook_secret"]
+	forged, err := modules.IssueStepToken([]byte(secret), "intake-mod", 0, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot.bearer = forged
+	if r := bot.do("GET", "/api/v1/matters", nil); r.code != http.StatusUnauthorized && r.json["code"] != "unauthenticated" && r.json["code"] != "scope_denied" {
+		t.Fatalf("forged step token should be refused: %d %s", r.code, r.body)
+	}
+	// Permanent install token + forged step header also refuses the limited path.
+	bot.bearer = x.rt.Last("intake-mod").Secrets["togavsu_api_token"]
+	if r := bot.do("GET", "/api/v1/matters", nil, modules.PublicStepHeader, forged); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("forged step header with install token: %d %s", r.code, r.body)
+	}
+	// Core-issued step header with install token enforces public_operations.
+	if r := bot.do("GET", "/api/v1/matters", nil, modules.PublicStepHeader, lastStep); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("listMatter with core step header: %d %s", r.code, r.body)
 	}
 
 	// Fresh IP key: rate counters are per IP+module in-process; reset by using a distinct
@@ -514,8 +529,71 @@ func TestCORE31OneProviderUnlessEveryMany(t *testing.T) {
 	}
 }
 
-// TestCORE32PublicOperationsAdvisoryLabel: install view labels the step-header limit (Codex P2).
-func TestCORE32PublicOperationsAdvisoryLabel(t *testing.T) {
+// TestCORE31ManyProviderSelect: consumer can call the second many-provider via header (Codex P2).
+func TestCORE31ManyProviderSelect(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	const contract = "phone.provider.v1"
+	var hitA, hitB int
+	for _, id := range []string{"phone-zoom", "phone-google"} {
+		id := id
+		x.rt.Serve(id, func(m testkit.Module) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if id == "phone-zoom" {
+					hitA++
+				} else {
+					hitB++
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"provider":"` + id + `"}`))
+			})
+		})
+	}
+	for _, id := range []string{"phone-zoom", "phone-google"} {
+		pkg := x.build(func(f map[string][]byte) {
+			f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], id, id,
+				"  - scope: contracts:provide\n    reason: Provide.\n",
+				"provides:\n  - contract: "+contract+"\n    many: true\n    operations:\n      - name: echo\n        path: /echo\n")
+		})
+		if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+			t.Fatalf("install %s: %s", id, problem)
+		}
+		x.approveOnTab(id)
+	}
+	cons := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-cons", "Cons",
+			"  - scope: contracts:call\n    reason: Call.\n",
+			"consumes:\n  - contract: "+contract+"\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, cons); problem != "" {
+		t.Fatalf("install cons: %s", problem)
+	}
+	x.approveOnTab("phone-cons")
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-cons", "provider_id": "phone-zoom",
+	})
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-cons", "provider_id": "phone-google",
+	})
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = x.rt.Last("phone-cons").Secrets["togavsu_api_token"]
+	listed := bot.must(http.StatusOK, "GET", "/api/v1/modules/contracts/"+contract+"/providers", nil)
+	if !strings.Contains(listed.body, "phone-zoom") || !strings.Contains(listed.body, "phone-google") {
+		t.Fatalf("providers list: %s", listed.body)
+	}
+	r := bot.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{"n": 1},
+		modules.ContractProviderHeader, "phone-google")
+	if r.code != http.StatusOK || !strings.Contains(r.body, "phone-google") || hitB != 1 || hitA != 0 {
+		t.Fatalf("second provider call: code=%d body=%s hitA=%d hitB=%d", r.code, r.body, hitA, hitB)
+	}
+	if r := bot.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{},
+		modules.ContractProviderHeader, "not-linked"); r.code != http.StatusNotFound {
+		t.Fatalf("unknown provider selector: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE32PublicOperationsCredentialLabel: install view names the required public credential.
+func TestCORE32PublicOperationsCredentialLabel(t *testing.T) {
 	x := newExt(t)
 	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
 	x.rt.Serve("intake-label", func(m testkit.Module) http.Handler {
@@ -532,7 +610,84 @@ func TestCORE32PublicOperationsAdvisoryLabel(t *testing.T) {
 		t.Fatalf("install: %s", problem)
 	}
 	tab := x.admin.do("GET", "/admin?tab=modules", nil)
-	if tab.code != http.StatusOK || !strings.Contains(tab.body, "X-Togavsu-Public-Step") || !strings.Contains(tab.body, "advisory") {
-		t.Fatalf("install view must label public_operations as step-enforced/advisory: %d", tab.code)
+	if tab.code != http.StatusOK || !strings.Contains(tab.body, "X-Togavsu-Public-Step") || !strings.Contains(tab.body, "required core-signed public credential") {
+		t.Fatalf("install view must name required public credential: %d", tab.code)
+	}
+}
+
+// TestCORE32PublicPageSVGSandbox: non-HTML /p/ responses still get the opaque CSP sandbox (Codex P1).
+func TestCORE32PublicPageSVGSandbox(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	x.rt.Serve("svg-mod", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "image/svg+xml")
+			_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>document.cookie</script></svg>`))
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "svg-mod", "SVG",
+			"  - scope: public_pages:serve\n    reason: Public.\n",
+			"public_pages:\n  - path: /badge.svg\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("svg-mod")
+	anon := newClient(t, x.srv.URL)
+	req, err := http.NewRequest(http.MethodGet, x.srv.URL+"/p/svg-mod/badge.svg", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := anon.http.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	csp := res.Header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "sandbox") || strings.Contains(csp, "allow-same-origin") {
+		t.Fatalf("SVG /p/ response must be opaque sandboxed: csp=%q ctype=%q", csp, res.Header.Get("Content-Type"))
+	}
+}
+
+// TestCORE32OpaqueOriginCORS: Origin null preflight on /p/ is answered (Codex P1 CORE-33).
+func TestCORE32OpaqueOriginCORS(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	x.rt.Serve("cors-mod", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html>ok</html>"))
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "cors-mod", "CORS",
+			"  - scope: public_pages:serve\n    reason: Public.\n",
+			"public_pages:\n  - path: /form\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("cors-mod")
+	req, err := http.NewRequest(http.MethodOptions, x.srv.URL+"/p/cors-mod/form", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Origin", "null")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "x-csrf-token, hx-request")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("preflight status %d", res.StatusCode)
+	}
+	if res.Header.Get("Access-Control-Allow-Origin") != "null" {
+		t.Fatalf("ACAO = %q", res.Header.Get("Access-Control-Allow-Origin"))
+	}
+	if !strings.Contains(strings.ToLower(res.Header.Get("Access-Control-Allow-Headers")), "x-csrf-token") {
+		t.Fatalf("Allow-Headers = %q", res.Header.Get("Access-Control-Allow-Headers"))
 	}
 }

@@ -28,10 +28,54 @@ func TestEncryptDecryptMasked(t *testing.T) {
 	if plain != "900-00-0000" {
 		t.Fatalf("plain = %q", plain)
 	}
-	// Idempotent seal.
-	again, err := EncryptMasked(ctx, store, "forms/ssn", sealed)
-	if err != nil || again != sealed {
-		t.Fatalf("re-encrypt = %q %v", again, err)
+	// A typed CipherPrefix is still encrypted (sealed state comes from storage, not input).
+	typed := CipherPrefix + "not-really-sealed"
+	again, err := EncryptMasked(ctx, store, "forms/ssn", typed)
+	if err != nil || again == typed || !strings.HasPrefix(again, CipherPrefix) {
+		t.Fatalf("prefix-as-plaintext = %q %v", again, err)
+	}
+	out, err := DecryptMasked(ctx, store, "forms/ssn", again)
+	if err != nil || out != typed {
+		t.Fatalf("round-trip typed prefix: %q %v", out, err)
+	}
+}
+
+func TestSealAnswersSkipsAlreadySealed(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemorySecretStore()
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "ssn", Type: TypeMasked, SecretKey: "forms/ssn"},
+	}}}}}}
+	sealed, err := EncryptMasked(ctx, store, "forms/ssn", "900-00-0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	answers := Answers{"ssn": {Value: sealed}}
+	if err := SealAnswers(ctx, store, form, answers); err != nil {
+		t.Fatal(err)
+	}
+	if answers.Get("ssn").StringValue() != sealed {
+		t.Fatalf("already-sealed value changed: %#v", answers["ssn"])
+	}
+}
+
+func TestMergeFormSubmitKeepsMaskedOnEmpty(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "ssn", Type: TypeMasked, SecretKey: "k"},
+		{ID: "name", Type: TypeText},
+	}}}}}}
+	existing := Answers{"ssn": {Value: CipherPrefix + "abc"}, "name": {Value: "Avery"}}
+	posted := Answers{"ssn": {Value: ""}, "name": {Value: "Blake"}}
+	got := MergeFormSubmit(existing, posted, form)
+	if got.Get("ssn").StringValue() != CipherPrefix+"abc" {
+		t.Fatalf("empty masked post wiped ssn: %#v", got["ssn"])
+	}
+	if got.Get("name").StringValue() != "Blake" {
+		t.Fatalf("name = %#v", got["name"])
+	}
+	cleared := MergeFormSubmit(existing, Answers{"ssn": {Value: ClearMaskedValue}}, form)
+	if cleared.Get("ssn").StringValue() != "" {
+		t.Fatalf("clear marker: %#v", cleared["ssn"])
 	}
 }
 

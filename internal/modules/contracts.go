@@ -232,9 +232,24 @@ func (s *Service) refuseExtraProvider(ctx context.Context, contract, providerID 
 	return nil
 }
 
+// ContractProviderHeader selects a linked provider module id on a many-provider contract (CORE-31).
+const ContractProviderHeader = "X-Togavsu-Contract-Provider"
+
 // linkedProvider returns the provider id for a consumer on a contract, or empty when none.
-// When several providers are linked (all declared many), the earliest link (created_at, id) is used.
-func (s *Service) linkedProvider(ctx context.Context, contract, consumer string) (string, error) {
+// prefer, when set, must be one of the consumer's approved linked providers (module id only;
+// no address). When prefer is empty and several providers are linked, the earliest link
+// (created_at, id) is used.
+func (s *Service) linkedProvider(ctx context.Context, contract, consumer, prefer string) (string, error) {
+	prefer = strings.TrimSpace(prefer)
+	if prefer != "" {
+		var provider string
+		err := s.q(ctx).QueryRowContext(ctx, `SELECT provider_id FROM core.module_contract_links WHERE contract = $1 AND consumer_id = $2 AND provider_id = $3`,
+			contract, consumer, prefer).Scan(&provider)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", domain.NotFound("provider")
+		}
+		return provider, err
+	}
 	var provider string
 	err := s.q(ctx).QueryRowContext(ctx, `SELECT provider_id FROM core.module_contract_links WHERE contract = $1 AND consumer_id = $2 ORDER BY created_at ASC, id ASC LIMIT 1`,
 		contract, consumer).Scan(&provider)
@@ -244,9 +259,37 @@ func (s *Service) linkedProvider(ctx context.Context, contract, consumer string)
 	return provider, err
 }
 
+// ListLinkedProviders returns provider module ids linked for the calling consumer on contract.
+// Ids only — never addresses (CORE-31).
+func (s *Service) ListLinkedProviders(ctx context.Context, p domain.Principal, contract string) ([]string, error) {
+	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) {
+		return nil, domain.Forbidden("only a module token may list linked providers")
+	}
+	contract = strings.TrimSpace(contract)
+	if contract == "" {
+		return nil, domain.Invalid("contract", "contract is required")
+	}
+	rows, err := s.q(ctx).QueryContext(ctx, `SELECT provider_id FROM core.module_contract_links WHERE contract = $1 AND consumer_id = $2 ORDER BY created_at ASC, id ASC`,
+		contract, p.ModuleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // CallContract proxies a consumer's contract operation to the linked provider (CORE-31).
 // The response never includes the provider's address. The body is HMAC-signed like events.
-func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract, operation string, body []byte, contextToken string) (status int, header http.Header, respBody []byte, err error) {
+// providerID, when set, selects among many-provider links (X-Togavsu-Contract-Provider).
+func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract, operation string, body []byte, contextToken, providerID string) (status int, header http.Header, respBody []byte, err error) {
 	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) {
 		return 0, nil, nil, domain.Forbidden("only a module token may call a contract")
 	}
@@ -273,7 +316,7 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 	if !consumer.Manifest.ConsumesContract(contract) {
 		return 0, nil, nil, domain.Forbidden("module does not consume " + contract)
 	}
-	providerID, err := s.linkedProvider(ctx, contract, consumerID)
+	providerID, err = s.linkedProvider(ctx, contract, consumerID, providerID)
 	if err != nil {
 		return 0, nil, nil, err
 	}

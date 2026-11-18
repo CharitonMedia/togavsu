@@ -5,6 +5,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -103,6 +106,48 @@ func TestOfflineQueueJSPresent(t *testing.T) {
 	if !strings.Contains(OfflineQueueJS, "X-CSRF-Token") || !strings.Contains(OfflineQueueJS, "csrfToken") {
 		t.Fatal("OfflineQueueJS must carry X-CSRF-Token on enqueue and flush")
 	}
+	if !strings.Contains(OfflineQueueJS, "var mem") {
+		t.Fatal("OfflineQueueJS must keep a memory fallback when localStorage throws on opaque origin")
+	}
+}
+
+func TestAutosaveHandlerOpaqueCORS(t *testing.T) {
+	h := AutosaveHandler(func(*http.Request, AutosavePatch) (Answers, error) {
+		return Answers{}, nil
+	})
+	req := httptest.NewRequest(http.MethodOptions, "/autosave", nil)
+	req.Header.Set("Origin", "null")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "x-csrf-token,hx-request")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("preflight code = %d", rec.Code)
+	}
+	if rec.Header().Get("Access-Control-Allow-Origin") != "null" {
+		t.Fatalf("ACAO = %q", rec.Header().Get("Access-Control-Allow-Origin"))
+	}
+	if !strings.Contains(strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers")), "x-csrf-token") {
+		t.Fatalf("Allow-Headers = %q", rec.Header().Get("Access-Control-Allow-Headers"))
+	}
+}
+
+// TestOpaqueOriginOfflineQueueJS runs the Node behavioural check that localStorage
+// SecurityError (opaque CSP origin) still queues and flushes with the memory fallback.
+func TestOpaqueOriginOfflineQueueJS(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available for opaque-origin offline queue check")
+	}
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("no caller")
+	}
+	script := filepath.Join(filepath.Dir(file), "opaque_origin_test.js")
+	out, err := exec.Command(node, script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("opaque-origin offline queue: %v\n%s", err, out)
+	}
 }
 
 func TestAutosaveHandlerAcceptsFormURLEncoded(t *testing.T) {
@@ -149,9 +194,9 @@ func TestParseFormAnswersRepeating(t *testing.T) {
 
 func TestParseFormAnswersRejectsHugeRepeatingIndex(t *testing.T) {
 	got := ParseFormAnswers(map[string][]string{
-		"kids[0].name":           {"Ada"},
-		"kids[2000000000].name":  {"Boom"},
-		"kids[100].name":         {"TooHigh"}, // MaxRepeatingIndex is 99
+		"kids[0].name":          {"Ada"},
+		"kids[2000000000].name": {"Boom"},
+		"kids[100].name":        {"TooHigh"}, // MaxRepeatingIndex is 99
 	})
 	rows := got.Get("kids").RowsValue()
 	if len(rows) != 1 || rows[0]["name"].StringValue() != "Ada" {

@@ -19217,6 +19217,51 @@
       }
     },
     {
+      "name": "listModuleContractProviders",
+      "method": "GET",
+      "path": "/api/v1/modules/contracts/{contract}/providers",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "contracts:call"
+      ],
+      "roles": [],
+      "module_delegation": "service_principal",
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 50
+      },
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query"
+        ]
+      }
+    },
+    {
       "name": "callModuleContract",
       "method": "POST",
       "path": "/api/v1/modules/contracts/{contract}/{operation}",
@@ -19232,6 +19277,9 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "headers": [
+          "X-Togavsu-Contract-Provider"
+        ],
         "credentials": {
           "module_bearer": {
             "header": "Authorization",
@@ -19257,6 +19305,7 @@
           "path",
           "query",
           "idempotency_key",
+          "headers",
           "body"
         ]
       }

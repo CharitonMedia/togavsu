@@ -132,7 +132,7 @@
 {{if .Modules}}{{range .Modules}}<article class="module" id="module-{{.ID}}">
 <h3>{{.Name}} <span class="muted">{{.ID}} {{.Version}}</span> <span class="tag">{{.Status}}</span>{{if .Replaces}} <span class="tag">replaces {{.Replaces}}</span>{{end}}</h3>
 {{if .LastError}}<p class="error" role="alert">{{.LastError}}</p>{{end}}
-{{if or .PublicPages .PublicOperations}}<p class="muted" id="public-{{.ID}}">Public pages: {{if .PublicPages}}{{range $i, $p := .PublicPages}}{{if $i}}, {{end}}<code>{{$p}}</code>{{end}}{{else}}none{{end}}. Public operations (enforced when the module sends <code>X-Togavsu-Public-Step</code>; advisory for a bare module bearer — see docs/api/modules.md): {{if .PublicOperations}}{{range $i, $o := .PublicOperations}}{{if $i}}, {{end}}<code>{{$o}}</code>{{end}}{{else}}none{{end}}.</p>{{end}}
+{{if or .PublicPages .PublicOperations}}<p class="muted" id="public-{{.ID}}">Public pages: {{if .PublicPages}}{{range $i, $p := .PublicPages}}{{if $i}}, {{end}}<code>{{$p}}</code>{{end}}{{else}}none{{end}}. Public operations (required core-signed public credential as <code>Authorization: Bearer</code> or <code>X-Togavsu-Public-Step</code>; limited to these operations): {{if .PublicOperations}}{{range $i, $o := .PublicOperations}}{{if $i}}, {{end}}<code>{{$o}}</code>{{end}}{{else}}none{{end}}.</p>{{end}}
 {{if .Undecided}}<form method="post" action="/admin/modules/permissions" class="form-grid permissions"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}">
 <p>This module asks for these permissions. Declining a required one cancels the install.</p>
 {{range .Permissions}}{{if eq .Decision "pending"}}<fieldset><legend><code>{{.Scope}}</code>{{if .Required}} (required){{end}}</legend>

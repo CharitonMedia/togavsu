@@ -183,7 +183,18 @@ func (a *App) mcpCaller(r *http.Request) (domain.Principal, error) {
 		if !ok || strings.TrimSpace(token) == "" {
 			return domain.Principal{}, domain.Unauthenticated("authorization must be a bearer token")
 		}
-		c, err := a.Identity.Authenticate(r.Context(), identity.Presented{Bearer: strings.TrimSpace(token)})
+		bearer := strings.TrimSpace(token)
+		if modules.LooksLikePublicStep(bearer) && a.ext != nil && a.ext.Modules != nil {
+			moduleID, _, err := a.ext.Modules.AuthenticatePublicStep(r.Context(), bearer)
+			if err != nil {
+				return domain.Principal{}, err
+			}
+			if r.Header.Get(modules.PublicStepHeader) == "" {
+				r.Header.Set(modules.PublicStepHeader, bearer)
+			}
+			return domain.Principal{Source: domain.SourceModule, ModuleID: moduleID}, nil
+		}
+		c, err := a.Identity.Authenticate(r.Context(), identity.Presented{Bearer: bearer})
 		return c.Principal, err
 	}
 	return a.principal(r)

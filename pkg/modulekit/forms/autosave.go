@@ -16,8 +16,18 @@ import (
 // browser is online again. storageKey namespaces the queue per response.
 const OfflineQueueJS = `(function(){
   var KEY = window.TOGAVSU_FORMS_QUEUE_KEY || "togavsu-forms-offline-queue";
-  function load(){ try { return JSON.parse(localStorage.getItem(KEY)||"[]"); } catch(e){ return []; } }
-  function save(q){ localStorage.setItem(KEY, JSON.stringify(q)); }
+  // Opaque-origin CSP sandboxes (no allow-same-origin) throw on localStorage; keep a
+  // same-tab memory fallback so enqueue/flush still work on /p/ and /m/ pages.
+  var mem = [];
+  function load(){
+    try { return JSON.parse(localStorage.getItem(KEY)||"[]"); }
+    catch (e) { return mem.slice(); }
+  }
+  function save(q){
+    mem = q;
+    try { localStorage.setItem(KEY, JSON.stringify(q)); }
+    catch (e) { /* SecurityError on opaque origin — memory queue remains */ }
+  }
   function csrfToken(){
     var el = document.querySelector("input[name=csrf]");
     return el && el.value ? el.value : (window.TOGAVSU_PUBLIC_CSRF || "");
@@ -217,8 +227,16 @@ type AutosaveFunc func(r *http.Request, patch AutosavePatch) (Answers, error)
 // AutosaveHandler returns an http.Handler that decodes AutosavePatch JSON or
 // application/x-www-form-urlencoded (as the HTMX renderer emits), calls save,
 // and answers 204 (or 200 with the merged answers when ?echo=1).
+// Origin: null (CSP sandbox without allow-same-origin) gets CORS so HTMX preflight
+// and credentialed fetch from /p/ and /m/ pages succeed when the core proxy also
+// answers OPTIONS.
 func AutosaveHandler(save AutosaveFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		applyFormsOpaqueCORS(w, r)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if r.Method != http.MethodPost && r.Method != http.MethodPut && r.Method != http.MethodPatch {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -240,6 +258,17 @@ func AutosaveHandler(save AutosaveFunc) http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+func applyFormsOpaqueCORS(w http.ResponseWriter, r *http.Request) {
+	if !strings.EqualFold(strings.TrimSpace(r.Header.Get("Origin")), "null") {
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "null")
+	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-CSRF-Token, HX-Request, HX-Current-URL, HX-Trigger, HX-Trigger-Name, HX-Target, HX-Prompt, X-Togavsu-Forms-Offline")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, OPTIONS")
+	w.Header().Add("Vary", "Origin")
 }
 
 func decodeAutosaveRequest(r *http.Request) (AutosavePatch, error) {

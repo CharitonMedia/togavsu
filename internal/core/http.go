@@ -241,6 +241,35 @@ func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 			in.CSRF = r.FormValue("csrf")
 		}
 	}
+	// CORE-32: core-signed public-page credential as Authorization bearer. Limited to
+	// public_operations; modules receive it on each /p/ proxy as X-Togavsu-Public-Step.
+	if in.Bearer != "" && in.SessionToken == "" && modules.LooksLikePublicStep(in.Bearer) && a.ext != nil && a.ext.Modules != nil {
+		moduleID, scopes, err := a.ext.Modules.AuthenticatePublicStep(r.Context(), in.Bearer)
+		if err != nil {
+			return identity.Caller{}, shared(err)
+		}
+		if r.Header.Get(modules.PublicStepHeader) == "" {
+			r.Header.Set(modules.PublicStepHeader, in.Bearer)
+		}
+		c := identity.Caller{
+			Principal: domain.Principal{Source: domain.SourceModule, ModuleID: moduleID},
+			Scopes:    scopes,
+		}
+		if moduleRuntimeRoute(r, c.Principal) {
+			return c, nil
+		}
+		t, ok := a.toolFor(r.Method, r.URL.Path)
+		if !ok {
+			return identity.Caller{}, domain.Forbidden("this route is not available to tokens")
+		}
+		if entryTypeScoped[t.Name] {
+			return c, nil
+		}
+		if err := c.RequireScopes(t.Scopes...); err != nil {
+			return identity.Caller{}, shared(err)
+		}
+		return c, nil
+	}
 	c, err := a.Identity.Authenticate(r.Context(), in)
 	if err != nil {
 		return identity.Caller{}, shared(err)

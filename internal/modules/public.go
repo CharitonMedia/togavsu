@@ -177,6 +177,10 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.NotFound("page"))
 		return
 	}
+	// Opaque-origin HTMX/fetch preflight (CSP sandbox without allow-same-origin).
+	if answerOpaqueOriginCORS(w, r) {
+		return
+	}
 
 	maxBytes, err := h.Svc.intSetting(r.Context(), publicPageMaxBytesKey)
 	if err != nil {
@@ -256,7 +260,8 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	step, err := IssueStepToken(sec, moduleID, 30*time.Minute, h.Svc.now())
+	// Core-only key: modules cannot mint public step credentials (CORE-32).
+	step, err := IssueStepToken(h.Svc.PublicStepKey(), moduleID, 30*time.Minute, h.Svc.now())
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -289,12 +294,10 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			resp.Header.Del("Set-Cookie")
-			if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "text/html") {
-				// Opaque origin: never allow-same-origin (module script must not inherit
-				// the core host or staff session cookies). CSRF is a signed token passed
-				// as X-Togavsu-Public-CSRF for forms/HTMX.
-				resp.Header.Set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox")
-			}
+			// Always sandbox, including SVG/XML and empty Content-Type (sniffed as HTML).
+			// Same rule as /hooks/ and /m/ when strip != "": never allow-same-origin.
+			resp.Header.Set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox")
+			applyOpaqueOriginCORS(resp.Header, r)
 			return nil
 		},
 	}

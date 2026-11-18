@@ -982,6 +982,10 @@ EVENT_EXEMPTIONS = {
         "Mail address matching for the email module (CORE-26). Returns match results and an optional match_token; "
         "no activity-stream event is emitted on the match itself."
     ),
+    "listModuleContractProviders": (
+        "Lists linked provider module ids for the calling consumer on one contract (CORE-31). "
+        "Ids only; no activity-stream event."
+    ),
     "callModuleContract": (
         "Proxies a consumer contract call to a linked provider (CORE-31). "
         "Linking and unlinking emit module.contract_linked / module.contract_unlinked; the proxy itself emits none."

@@ -661,19 +661,22 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "internal/modules/public.go"):
 		// Public page rate window and Retry-After floor; rate/bytes are settings (CORE-32).
 		switch fn {
-		case "allow", "evict", "publicPage", "clientIP", "remoteHost", "proxyPeer", "submittedPublicCSRF", "publicCookieSecure":
+		case "allow", "evict", "publicPage", "clientIP", "remoteHost", "proxyPeer", "submittedPublicCSRF", "publicCookieSecure",
+			"isOpaqueOrigin", "applyOpaqueOriginCORS", "answerOpaqueOriginCORS", "LooksLikePublicStep", "AuthenticatePublicStep",
+			"RequirePublicOperation", "PublicStepKey":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/modules/steptoken.go"):
 		// Step-token default TTL and CSRF width (CORE-32); not firm settings.
 		switch fn {
-		case "IssueStepToken", "VerifyStepToken", "IssuePublicCSRF", "IssueSignedPublicCSRF", "CheckPublicCSRF", "CheckSignedPublicCSRF", "CheckPublicStep":
+		case "IssueStepToken", "VerifyStepToken", "IssuePublicCSRF", "IssueSignedPublicCSRF", "CheckPublicCSRF", "CheckSignedPublicCSRF", "CheckPublicStep",
+			"AuthenticatePublicStep", "RequirePublicOperation", "LooksLikePublicStep", "PublicStepKey":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/modules/contracts.go"):
 		// Contract proxy body floor uses modules.contract_call_max_bytes (CORE-31).
 		switch fn {
-		case "CallContract", "PushContractEvent", "LinkContract", "UnlinkContract", "linkedProvider", "refuseExtraProvider", "ListContractLinks", "auditContractCall":
+		case "CallContract", "PushContractEvent", "LinkContract", "UnlinkContract", "linkedProvider", "ListLinkedProviders", "refuseExtraProvider", "ListContractLinks", "auditContractCall":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/modules/contracts_http.go"):
@@ -770,7 +773,8 @@ func fixedSite(path, fn string) bool {
 		case "DecodeAutosave", "AutosaveHandler", "ParseFormAnswers", "decodeAutosaveRequest", "patchFromForm",
 			"splitRepeatingKey", "autosaveAttrs", "jsonStringEscape", "renderRepeatRow", "inValue", "compareValue",
 			"compareCount", "cmp", "cmpCount", "Eval", "validateField", "Validate", "ValidateScreen",
-			"KeyBytes", "EnsureKey", "LoadKey", "EncryptMasked", "DecryptMasked", "SealAnswers":
+			"KeyBytes", "EnsureKey", "LoadKey", "EncryptMasked", "DecryptMasked", "SealAnswers",
+			"MergeFormSubmit", "maskedFieldIDs", "applyFormsOpaqueCORS", "ClearMaskedValue":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/practice/service.go"):

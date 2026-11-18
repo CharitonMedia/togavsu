@@ -60,6 +60,61 @@ func (a *Answers) Merge(patch Answers) {
 	}
 }
 
+// ClearMaskedValue is the explicit form marker that clears a stored masked answer.
+// An empty posted masked value keeps the existing ciphertext (blank password inputs).
+const ClearMaskedValue = "__clear__"
+
+// MergeFormSubmit merges posted form answers into existing. Masked fields keep their
+// stored value when the posted string is empty (RevealMasked=false renders value="");
+// post ClearMaskedValue to erase. Unknown still replaces. Non-masked fields merge as Merge.
+func MergeFormSubmit(existing Answers, posted Answers, form Form) Answers {
+	out := Answers{}
+	for id, ans := range existing {
+		out[id] = ans
+	}
+	masked := maskedFieldIDs(form)
+	for id, ans := range posted {
+		if ans.Unknown {
+			ans.Value = nil
+			out[id] = ans
+			continue
+		}
+		if masked[id] {
+			s, _ := ans.Value.(string)
+			if s == "" {
+				continue
+			}
+			if s == ClearMaskedValue {
+				out[id] = Answer{Value: ""}
+				continue
+			}
+		}
+		out[id] = ans
+	}
+	return out
+}
+
+func maskedFieldIDs(form Form) map[string]bool {
+	out := map[string]bool{}
+	var walk func(fields []Field)
+	walk = func(fields []Field) {
+		for _, f := range fields {
+			if f.Type == TypeMasked {
+				out[f.ID] = true
+			}
+			if f.Type == TypeRepeating {
+				walk(f.Fields)
+			}
+		}
+	}
+	for _, track := range form.Tracks {
+		for _, screen := range track.Screens {
+			walk(screen.Fields)
+		}
+	}
+	return out
+}
+
 // StringValue returns a string answer, or "".
 func (ans Answer) StringValue() string {
 	if ans.Unknown || ans.Value == nil {

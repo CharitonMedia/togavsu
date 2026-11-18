@@ -288,47 +288,53 @@ func (s *Service) proxy(module, strip, token string) http.Handler {
 			http.Error(w, "module address is invalid", http.StatusBadGateway)
 		})
 	}
-	rp := &httputil.ReverseProxy{
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(target)
-			if strip != "" {
-				pr.Out.URL.Path = strings.TrimPrefix(pr.Out.URL.Path, strip)
-				if pr.Out.URL.Path == "" {
-					pr.Out.URL.Path = "/"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if answerOpaqueOriginCORS(w, r) {
+			return
+		}
+		rp := &httputil.ReverseProxy{
+			Rewrite: func(pr *httputil.ProxyRequest) {
+				pr.SetURL(target)
+				if strip != "" {
+					pr.Out.URL.Path = strings.TrimPrefix(pr.Out.URL.Path, strip)
+					if pr.Out.URL.Path == "" {
+						pr.Out.URL.Path = "/"
+					}
+					pr.Out.URL.RawPath = ""
 				}
-				pr.Out.URL.RawPath = ""
-			}
-			// CORE-36: forward an inbound context token through /m/ (and replacements).
-			inbound := pr.In.Header.Get(ContextHeader)
-			pr.Out.Header.Del("Cookie")
-			pr.Out.Header.Del("Authorization")
-			pr.Out.Header.Del(ContextHeader)
-			pr.Out.Header.Del("X-Csrf-Token")
-			switch {
-			case inbound != "":
-				pr.Out.Header.Set(ContextHeader, inbound)
-			case token != "":
-				pr.Out.Header.Set(ContextHeader, token)
-			}
-			pr.Out.Header.Set("X-Togavsu-Module", module)
-		},
-		ModifyResponse: func(resp *http.Response) error {
-			// A module can't set cookies on the core's domain, and a module page runs in an
-			// opaque origin even when opened outside its sandboxed frame, so its script
-			// can't use the viewer's core session.
-			resp.Header.Del("Set-Cookie")
-			if strip != "" || strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
-				// CORE-09: the header lists every capability a staff or client frame may
-				// need; the frame's own sandbox attribute is the tighter of the two.
-				// Neither ever includes allow-same-origin.
-				resp.Header.Add("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation")
-			}
-			return nil
-		},
-		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
-			log.Printf("modules: proxy to %s: %v", module, err)
-			http.Error(w, "module "+module+" is not answering", http.StatusBadGateway)
-		},
-	}
-	return rp
+				// CORE-36: forward an inbound context token through /m/ (and replacements).
+				inbound := pr.In.Header.Get(ContextHeader)
+				pr.Out.Header.Del("Cookie")
+				pr.Out.Header.Del("Authorization")
+				pr.Out.Header.Del(ContextHeader)
+				pr.Out.Header.Del("X-Csrf-Token")
+				switch {
+				case inbound != "":
+					pr.Out.Header.Set(ContextHeader, inbound)
+				case token != "":
+					pr.Out.Header.Set(ContextHeader, token)
+				}
+				pr.Out.Header.Set("X-Togavsu-Module", module)
+			},
+			ModifyResponse: func(resp *http.Response) error {
+				// A module can't set cookies on the core's domain, and a module page runs in an
+				// opaque origin even when opened outside its sandboxed frame, so its script
+				// can't use the viewer's core session.
+				resp.Header.Del("Set-Cookie")
+				if strip != "" || strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
+					// CORE-09: the header lists every capability a staff or client frame may
+					// need; the frame's own sandbox attribute is the tighter of the two.
+					// Neither ever includes allow-same-origin.
+					resp.Header.Add("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation")
+				}
+				applyOpaqueOriginCORS(resp.Header, r)
+				return nil
+			},
+			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
+				log.Printf("modules: proxy to %s: %v", module, err)
+				http.Error(w, "module "+module+" is not answering", http.StatusBadGateway)
+			},
+		}
+		rp.ServeHTTP(w, r)
+	})
 }

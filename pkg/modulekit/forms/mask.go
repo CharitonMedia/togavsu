@@ -74,12 +74,11 @@ func EnsureKey(ctx context.Context, store SecretStore, name string) ([]byte, err
 
 // EncryptMasked seals plaintext with AES-256-GCM. The key is loaded (or created)
 // from store under keyName. Returns CipherPrefix + base64(nonce||ciphertext).
+// A value that merely starts with CipherPrefix is still encrypted: sealed state is
+// decided from stored answers (see SealAnswers), never from user input shape.
 func EncryptMasked(ctx context.Context, store SecretStore, keyName, plaintext string) (string, error) {
 	if plaintext == "" {
 		return "", nil
-	}
-	if strings.HasPrefix(plaintext, CipherPrefix) {
-		return plaintext, nil
 	}
 	key, err := EnsureKey(ctx, store, keyName)
 	if err != nil {
@@ -157,6 +156,13 @@ func sealFields(ctx context.Context, store SecretStore, fields []Field, answers 
 				continue
 			}
 			plain := ans.StringValue()
+			// Already sealed under this key: leave alone. A typed CipherPrefix that does
+			// not decrypt is treated as plaintext and encrypted.
+			if strings.HasPrefix(plain, CipherPrefix) {
+				if _, err := DecryptMasked(ctx, store, f.SecretKey, plain); err == nil {
+					continue
+				}
+			}
 			sealed, err := EncryptMasked(ctx, store, f.SecretKey, plain)
 			if err != nil {
 				return err

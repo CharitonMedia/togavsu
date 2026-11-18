@@ -416,12 +416,12 @@ autosave forms.
 | --- | --- |
 | Definition model (tracks, screens, fields) | `Form`, `Track`, `Screen`, `Field`, `FieldType` (`AllFieldTypes`: the 16 types) |
 | Audiences | `AudienceStaff`, `AudienceClient`, `AudiencePublic`; `Field.VisibleTo`, `VisibleFields` |
-| Answers and "I don't know" | `Answers`, `Answer` (`Unknown`), `Address`, `Merge`, `ParseFormAnswers` |
+| Answers and "I don't know" | `Answers`, `Answer` (`Unknown`), `Address`, `Merge`, `MergeFormSubmit` (keeps masked on empty post; `ClearMaskedValue` clears), `ParseFormAnswers` |
 | Conditions (`eq`, `neq`, `in`, `exists`, `notExists`, `gt`/`lt`/`gte`/`lte`, count ops on repeating groups) | `Condition`, `Op*`, `Eval` |
 | Validation | `Validate`, `ValidateScreen`, `Issues` |
 | HTMX renderer | `RenderScreen(w, screen, answers, audience, RenderOptions)` |
-| Autosave + offline queue | `AutosaveHandler`, `AutosavePatch`, `DecodeAutosave`, `OfflineQueueJS` |
-| Masked fields | `SecretStore` (`PutSecret`/`GetSecret`), `EncryptMasked`, `DecryptMasked`, `SealAnswers`, `EnsureKey` / `LoadKey`; ciphertext in answers (`CipherPrefix`), AES-256 key name in the module secret store |
+| Autosave + offline queue | `AutosaveHandler` (CORS for `Origin: null`), `AutosavePatch`, `DecodeAutosave`, `OfflineQueueJS` (memory fallback when `localStorage` throws) |
+| Masked fields | `SecretStore` (`PutSecret`/`GetSecret`), `EncryptMasked`, `DecryptMasked`, `SealAnswers` (skips already-sealed under the field key), `EnsureKey` / `LoadKey`; ciphertext in answers (`CipherPrefix`), AES-256 key name in the module secret store |
 
 ```go
 import "github.com/CharitonMedia/togavsu/pkg/modulekit/forms"

@@ -34,8 +34,13 @@ type StepToken struct {
 	Nonce     string `json:"nonce"`
 }
 
+// PublicStepKey returns the core-only HMAC key for public-page step credentials (CORE-32).
+// Modules cannot derive this key; forged webhook-secret tokens are refused.
+func (s *Service) PublicStepKey() []byte { return s.subkey("public-step") }
+
 // IssueStepToken builds an HMAC step token for moduleID, valid for ttl (CORE-32).
-// secret is typically the module's webhook secret so the module can VerifyStepToken.
+// The public-page proxy signs with Service.PublicStepKey (core-only). The kit helper
+// still accepts a caller-supplied secret for local tests.
 func IssueStepToken(secret []byte, moduleID string, ttl time.Duration, now time.Time) (string, error) {
 	moduleID = strings.TrimSpace(moduleID)
 	if moduleID == "" || len(secret) == 0 {
@@ -179,26 +184,61 @@ func CheckSignedPublicCSRF(secret []byte, moduleID, cookie, submitted string, no
 	return nil
 }
 
-// CheckPublicStep verifies a public-page step token and that op is in public_operations (CORE-32).
-func (s *Service) CheckPublicStep(ctx context.Context, moduleID, token, op string) error {
+// LooksLikePublicStep reports a bearer that has the step-token shape (payload.hex-mac).
+func LooksLikePublicStep(token string) bool {
+	payload, sig, ok := strings.Cut(strings.TrimSpace(token), ".")
+	if !ok || payload == "" || len(sig) != 64 {
+		return false
+	}
+	for _, c := range sig {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return false
+		}
+	}
+	return true
+}
+
+// AuthenticatePublicStep verifies a core-signed public-page credential and returns the
+// module id plus its approved scopes. The credential is the required public-page
+// Authorization bearer for CORE-32 server calls (limited to public_operations).
+func (s *Service) AuthenticatePublicStep(ctx context.Context, token string) (moduleID string, scopes []string, err error) {
+	st, err := VerifyStepToken(s.PublicStepKey(), token, s.now())
+	if err != nil {
+		return "", nil, &domain.APIError{Code: "unauthenticated", Message: "invalid public step token"}
+	}
+	in, err := s.Installed(ctx, st.ModuleID)
+	if err != nil || !in.Enabled {
+		return "", nil, &domain.APIError{Code: "unauthenticated", Message: "invalid public step token"}
+	}
+	if !in.Approved["public_pages:serve"] {
+		return "", nil, &domain.APIError{Code: "scope_denied", Message: "module lacks the public_pages:serve scope"}
+	}
+	for scope, ok := range in.Approved {
+		if ok {
+			scopes = append(scopes, scope)
+		}
+	}
+	return st.ModuleID, scopes, nil
+}
+
+// RequirePublicOperation refuses op when it is not listed under public_operations (CORE-32).
+func (s *Service) RequirePublicOperation(ctx context.Context, moduleID, op string) error {
 	in, err := s.Installed(ctx, moduleID)
 	if err != nil {
 		return err
-	}
-	row, err := s.row(ctx, moduleID)
-	if err != nil {
-		return err
-	}
-	secret, err := s.open(row.WebhookSecret)
-	if err != nil {
-		return &domain.APIError{Code: "scope_denied", Message: "public step token could not be verified"}
-	}
-	st, err := VerifyStepToken([]byte(secret), token, s.now())
-	if err != nil || st.ModuleID != moduleID {
-		return &domain.APIError{Code: "scope_denied", Message: "invalid public step token"}
 	}
 	if !in.Manifest.AllowsPublicOperation(op) {
 		return &domain.APIError{Code: "scope_denied", Message: "operation " + op + " is not in public_operations"}
 	}
 	return nil
+}
+
+// CheckPublicStep verifies a core-signed public-page step token and that op is in
+// public_operations (CORE-32).
+func (s *Service) CheckPublicStep(ctx context.Context, moduleID, token, op string) error {
+	st, err := VerifyStepToken(s.PublicStepKey(), token, s.now())
+	if err != nil || st.ModuleID != moduleID {
+		return &domain.APIError{Code: "scope_denied", Message: "invalid public step token"}
+	}
+	return s.RequirePublicOperation(ctx, moduleID, op)
 }
