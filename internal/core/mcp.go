@@ -293,7 +293,7 @@ func (a *App) callTool(w http.ResponseWriter, r *http.Request, req rpcReq) {
 		rpcReply(w, req.ID, nil, &rpcErr{Code: -32602, Message: "invalid tool arguments"})
 		return
 	}
-	for _, h := range []string{"Authorization", "Cookie", "X-CSRF-Token", "Idempotency-Key", modules.TaskAuthorizationHeader, modules.ContextHeader} {
+	for _, h := range []string{"Authorization", "Cookie", "X-CSRF-Token", "Idempotency-Key", modules.TaskAuthorizationHeader, modules.ContextHeader, modules.PublicStepHeader} {
 		if v := r.Header.Get(h); v != "" {
 			inner.Header.Set(h, v)
 		}

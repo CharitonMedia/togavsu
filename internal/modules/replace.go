@@ -289,7 +289,12 @@ func (s *Service) proxy(module, strip, token string) http.Handler {
 		})
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if answerOpaqueOriginCORS(w, r) {
+		// Opaque-origin CORS only on /m/ (strip set). Replacement routes (strip == "")
+		// mint a viewer context token from the staff session cookie; answering
+		// Access-Control-Allow-Origin: null with credentials would let any sandboxed
+		// frame (other modules, banners, /p/) read those viewer-scoped responses.
+		allowOpaqueCORS := strip != ""
+		if allowOpaqueCORS && answerOpaqueOriginCORS(w, r) {
 			return
 		}
 		rp := &httputil.ReverseProxy{
@@ -327,7 +332,9 @@ func (s *Service) proxy(module, strip, token string) http.Handler {
 					// Neither ever includes allow-same-origin.
 					resp.Header.Add("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation")
 				}
-				applyOpaqueOriginCORS(resp.Header, r)
+				if allowOpaqueCORS {
+					applyOpaqueOriginCORS(resp.Header, r)
+				}
 				return nil
 			},
 			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {

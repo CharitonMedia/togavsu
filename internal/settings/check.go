@@ -770,11 +770,12 @@ func fixedSite(path, fn string) bool {
 	case strings.Contains(slash, "/pkg/modulekit/forms/"):
 		// CORE-33 forms kit: comparison ranks, AES key width, parse indexes; answers stay in the module.
 		switch fn {
-		case "DecodeAutosave", "AutosaveHandler", "ParseFormAnswers", "decodeAutosaveRequest", "patchFromForm",
+		case "DecodeAutosave", "AutosaveHandler", "AutosaveHandlerForm", "ParseFormAnswers", "decodeAutosaveRequest", "patchFromForm",
 			"splitRepeatingKey", "autosaveAttrs", "jsonStringEscape", "renderRepeatRow", "inValue", "compareValue",
 			"compareCount", "cmp", "cmpCount", "Eval", "validateField", "Validate", "ValidateScreen",
 			"KeyBytes", "EnsureKey", "LoadKey", "EncryptMasked", "DecryptMasked", "SealAnswers",
-			"MergeFormSubmit", "maskedFieldIDs", "applyFormsOpaqueCORS", "ClearMaskedValue":
+			"MergeFormSubmit", "maskedFieldIDs", "applyFormsOpaqueCORS", "ClearMaskedValue",
+			"CreateSecretIfAbsent":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/practice/service.go"):

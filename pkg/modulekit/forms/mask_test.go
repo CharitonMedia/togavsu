@@ -3,8 +3,13 @@ package forms
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
+	"io"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -175,4 +180,81 @@ func TestEnsureKeyCreatesOnlyWhenMissing(t *testing.T) {
 	if err != nil || !bytes.Equal(k1, k2) {
 		t.Fatalf("second EnsureKey regenerated key")
 	}
+}
+
+func TestEnsureKeyRaceDoesNotLoseSealedData(t *testing.T) {
+	ctx := context.Background()
+	// CreateIfAbsent path (MemorySecretStore): concurrent first-time creators share one key.
+	mem := NewMemorySecretStore()
+	const n = 16
+	var wg sync.WaitGroup
+	sealedMem := make([]string, n)
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			s, err := EncryptMasked(ctx, mem, "forms/ssn", "plain-"+strings.Repeat("x", i+1))
+			if err != nil {
+				t.Errorf("mem EncryptMasked %d: %v", i, err)
+				return
+			}
+			sealedMem[i] = s
+		}()
+	}
+	wg.Wait()
+	for i, s := range sealedMem {
+		want := "plain-" + strings.Repeat("x", i+1)
+		plain, err := DecryptMasked(ctx, mem, "forms/ssn", s)
+		if err != nil || plain != want {
+			t.Fatalf("mem decrypt %d: plain=%q err=%v", i, plain, err)
+		}
+	}
+
+	// Racing Put after seal: wrap GetSecret so the first DecryptMasked verify sees a
+	// replaced key; EncryptMasked must reseal under the winner and stay decryptable.
+	flip := &flipOnVerifyStore{inner: NewMemorySecretStore()}
+	sealed, err := EncryptMasked(ctx, flip, "forms/ssn", "900-00-0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !flip.flipped.Load() {
+		t.Fatal("expected verify-time key flip")
+	}
+	plain, err := DecryptMasked(ctx, flip.inner, "forms/ssn", sealed)
+	if err != nil || plain != "900-00-0000" {
+		t.Fatalf("after flip retry: plain=%q err=%v", plain, err)
+	}
+}
+
+// flipOnVerifyStore replaces the key on the first DecryptMasked LoadKey (verify),
+// simulating a concurrent EnsureKey Put that would otherwise lose the sealed value.
+type flipOnVerifyStore struct {
+	inner   *MemorySecretStore
+	gets    atomic.Int32
+	flipped atomic.Bool
+	flipMu  sync.Mutex
+}
+
+func (s *flipOnVerifyStore) PutSecret(ctx context.Context, name, value string) error {
+	return s.inner.PutSecret(ctx, name, value)
+}
+
+func (s *flipOnVerifyStore) CreateSecretIfAbsent(ctx context.Context, name, value string) (bool, error) {
+	return s.inner.CreateSecretIfAbsent(ctx, name, value)
+}
+
+func (s *flipOnVerifyStore) GetSecret(ctx context.Context, name string) (string, error) {
+	n := s.gets.Add(1)
+	// Gets: 1 = EnsureKey miss or load, 2 = EnsureKey re-read after create,
+	// 3 = first DecryptMasked verify → flip here, 4+ = retry path.
+	if n == 3 {
+		s.flipMu.Lock()
+		key := make([]byte, KeyBytes())
+		_, _ = io.ReadFull(rand.Reader, key)
+		_ = s.inner.PutSecret(ctx, name, base64.StdEncoding.EncodeToString(key))
+		s.flipped.Store(true)
+		s.flipMu.Unlock()
+	}
+	return s.inner.GetSecret(ctx, name)
 }

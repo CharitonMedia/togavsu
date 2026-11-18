@@ -235,7 +235,9 @@ func (h *Handler) scoped(scope string, fn handlerFunc) http.HandlerFunc {
 			writeErr(w, err)
 			return
 		}
-		if scope != "" && c.Bearer && !hasScope(c.Scopes, scope) {
+		// CORE-32: a public-page step credential is limited by public_operations in the
+		// core's moduleCaller (refusePublicStepOutsideOps), not by install scopes.
+		if scope != "" && c.Bearer && r.Header.Get(PublicStepHeader) == "" && !hasScope(c.Scopes, scope) {
 			writeErr(w, domain.Forbidden("this token lacks the "+scope+" scope"))
 			return
 		}

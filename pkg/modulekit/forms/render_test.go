@@ -62,10 +62,14 @@ func TestRenderScreenAudiencesAndHTMX(t *testing.T) {
 		`tv-repeat-remove`,
 		`tv-repeat-template`,
 		`type="password"`,
+		`data-autosave-masked="1"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("render missing %q in:\n%s", want, html)
 		}
+	}
+	if !strings.Contains(html, `hx-trigger="change delay:400ms"`) {
+		t.Fatalf("masked autosave must use change-only trigger:\n%s", html)
 	}
 	if !strings.Contains(RepeatingJS, "tv-repeat-add") {
 		t.Fatal("RepeatingJS missing add handler")

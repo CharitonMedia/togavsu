@@ -143,9 +143,14 @@ func (x *extensions) close() {
 // moduleCaller is the module routes' caller: the same memoized authentication as every
 // core route (session with CSRF on writes, or a bearer token held to the route's
 // contract scopes). The module handler applies a context token itself.
+// CORE-32: a public-page step credential is limited to public_operations here too
+// (contract calls, secrets, mail, and other module-handler routes never reach principal).
 func (a *App) moduleCaller(r *http.Request) (modules.Caller, error) {
 	c, err := a.caller(r)
 	if err != nil {
+		return modules.Caller{}, err
+	}
+	if err := a.refusePublicStepOutsideOps(r, c.Principal); err != nil {
 		return modules.Caller{}, err
 	}
 	return modules.Caller{Principal: c.Principal, Scopes: c.Scopes, Bearer: bearerOf(r) != ""}, nil

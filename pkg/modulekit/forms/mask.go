@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 )
 
 // CipherPrefix marks a masked-field answer value as AES-256-GCM ciphertext.
@@ -34,6 +35,15 @@ type SecretStore interface {
 	GetSecret(ctx context.Context, name string) (string, error)
 }
 
+// CreateIfAbsentStore is an optional SecretStore that creates a secret only when
+// missing. EnsureKey uses it so two first-time creators cannot overwrite each other.
+type CreateIfAbsentStore interface {
+	SecretStore
+	// CreateSecretIfAbsent stores value only when name is absent. created is true
+	// when this call wrote the value; false when name already existed.
+	CreateSecretIfAbsent(ctx context.Context, name, value string) (created bool, err error)
+}
+
 // LoadKey reads the AES-256 key for name from store (standard-base64 of 32 bytes).
 func LoadKey(ctx context.Context, store SecretStore, name string) ([]byte, error) {
 	if name == "" {
@@ -50,6 +60,10 @@ func LoadKey(ctx context.Context, store SecretStore, name string) ([]byte, error
 // Stored value is standard-base64 of 32 random bytes. Only ErrSecretNotFound (or a
 // wrapped equivalent) triggers key creation; transient store failures and malformed
 // values are returned so existing sealed answers stay decryptable.
+//
+// Creation uses CreateSecretIfAbsent when the store implements it; otherwise PutSecret
+// followed by a re-read so a racing creator's key wins. EncryptMasked verifies decrypt
+// under the stored key and retries when another writer replaced the key mid-seal.
 func EnsureKey(ctx context.Context, store SecretStore, name string) ([]byte, error) {
 	if name == "" {
 		return nil, ErrNoSecretKey
@@ -66,38 +80,59 @@ func EnsureKey(ctx context.Context, store SecretStore, name string) ([]byte, err
 		return nil, err
 	}
 	encoded := base64.StdEncoding.EncodeToString(key)
-	if err := store.PutSecret(ctx, name, encoded); err != nil {
+	if creator, ok := store.(CreateIfAbsentStore); ok {
+		if _, err := creator.CreateSecretIfAbsent(ctx, name, encoded); err != nil {
+			return nil, err
+		}
+	} else if err := store.PutSecret(ctx, name, encoded); err != nil {
 		return nil, err
 	}
-	return key, nil
+	// Always re-read: a concurrent creator may have won; seal with the stored key.
+	return LoadKey(ctx, store, name)
 }
 
 // EncryptMasked seals plaintext with AES-256-GCM. The key is loaded (or created)
 // from store under keyName. Returns CipherPrefix + base64(nonce||ciphertext).
 // A value that merely starts with CipherPrefix is still encrypted: sealed state is
 // decided from stored answers (see SealAnswers), never from user input shape.
+// Retries when a racing EnsureKey replaced the store key between create and seal.
 func EncryptMasked(ctx context.Context, store SecretStore, keyName, plaintext string) (string, error) {
 	if plaintext == "" {
 		return "", nil
 	}
-	key, err := EnsureKey(ctx, store, keyName)
-	if err != nil {
-		return "", err
+	var last error
+	for attempt := 0; attempt < 5; attempt++ {
+		key, err := EnsureKey(ctx, store, keyName)
+		if err != nil {
+			return "", err
+		}
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			return "", err
+		}
+		aead, err := cipher.NewGCM(block)
+		if err != nil {
+			return "", err
+		}
+		nonce := make([]byte, aead.NonceSize())
+		if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+			return "", err
+		}
+		sealed := aead.Seal(nonce, nonce, []byte(plaintext), nil)
+		out := CipherPrefix + base64.StdEncoding.EncodeToString(sealed)
+		// Confirm the ciphertext opens under the key currently in the store.
+		if plain, err := DecryptMasked(ctx, store, keyName, out); err == nil && plain == plaintext {
+			return out, nil
+		} else if err != nil {
+			last = err
+		} else {
+			last = ErrBadCipher
+		}
 	}
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return "", err
+	if last == nil {
+		last = ErrBadCipher
 	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-	nonce := make([]byte, aead.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-	sealed := aead.Seal(nonce, nonce, []byte(plaintext), nil)
-	return CipherPrefix + base64.StdEncoding.EncodeToString(sealed), nil
+	return "", last
 }
 
 // DecryptMasked opens a value produced by EncryptMasked.
@@ -196,8 +231,10 @@ func decodeKey(encoded string) ([]byte, error) {
 }
 
 // MemorySecretStore is an in-process SecretStore for tests and local fakes.
+// CreateSecretIfAbsent is create-if-absent so concurrent EnsureKey callers share one key.
 type MemorySecretStore struct {
-	m map[string]string
+	mu sync.Mutex
+	m  map[string]string
 }
 
 // NewMemorySecretStore returns an empty store.
@@ -207,6 +244,8 @@ func NewMemorySecretStore() *MemorySecretStore {
 
 // PutSecret implements SecretStore.
 func (s *MemorySecretStore) PutSecret(_ context.Context, name, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.m == nil {
 		s.m = map[string]string{}
 	}
@@ -214,8 +253,24 @@ func (s *MemorySecretStore) PutSecret(_ context.Context, name, value string) err
 	return nil
 }
 
+// CreateSecretIfAbsent implements CreateIfAbsentStore.
+func (s *MemorySecretStore) CreateSecretIfAbsent(_ context.Context, name, value string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.m == nil {
+		s.m = map[string]string{}
+	}
+	if _, ok := s.m[name]; ok {
+		return false, nil
+	}
+	s.m[name] = value
+	return true, nil
+}
+
 // GetSecret implements SecretStore.
 func (s *MemorySecretStore) GetSecret(_ context.Context, name string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	v, ok := s.m[name]
 	if !ok {
 		return "", ErrSecretNotFound

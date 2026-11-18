@@ -420,8 +420,8 @@ autosave forms.
 | Conditions (`eq`, `neq`, `in`, `exists`, `notExists`, `gt`/`lt`/`gte`/`lte`, count ops on repeating groups) | `Condition`, `Op*`, `Eval` |
 | Validation | `Validate`, `ValidateScreen`, `Issues` |
 | HTMX renderer | `RenderScreen(w, screen, answers, audience, RenderOptions)` |
-| Autosave + offline queue | `AutosaveHandler` (CORS for `Origin: null`), `AutosavePatch`, `DecodeAutosave`, `OfflineQueueJS` (memory fallback when `localStorage` throws) |
-| Masked fields | `SecretStore` (`PutSecret`/`GetSecret`), `EncryptMasked`, `DecryptMasked`, `SealAnswers` (skips already-sealed under the field key), `EnsureKey` / `LoadKey`; ciphertext in answers (`CipherPrefix`), AES-256 key name in the module secret store |
+| Autosave + offline queue | One field-level shape (field value + CSRF; masked untouched sends nothing): `AutosaveHandler` / `AutosaveHandlerForm` (CORS for `Origin: null`, empty masked keep stored), `AutosavePatch.Apply`, `DecodeAutosave`, `OfflineQueueJS` (memory fallback when `localStorage` throws; skips empty masked) |
+| Masked fields | `SecretStore` (`PutSecret`/`GetSecret`), optional `CreateIfAbsentStore`, `EncryptMasked`, `DecryptMasked`, `SealAnswers` (skips already-sealed under the field key), `EnsureKey` / `LoadKey` (create-if-absent or put+re-read); ciphertext in answers (`CipherPrefix`), AES-256 key name in the module secret store |
 
 ```go
 import "github.com/CharitonMedia/togavsu/pkg/modulekit/forms"
@@ -430,7 +430,7 @@ issues := forms.Validate(def, answers, forms.AudienceClient)
 _ = forms.RenderScreen(w, screen, answers, forms.AudiencePublic, forms.RenderOptions{
     AutosaveURL: "/m/intake/api/autosave",
 })
-mux.Handle("/m/intake/api/autosave", forms.AutosaveHandler(func(r *http.Request, p forms.AutosavePatch) (forms.Answers, error) {
+mux.Handle("/m/intake/api/autosave", forms.AutosaveHandlerForm(def, func(r *http.Request, p forms.AutosavePatch) (forms.Answers, error) {
     cur := load(r) // module-owned storage
     p.Apply(&cur)
     return cur, save(r, cur)

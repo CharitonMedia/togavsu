@@ -11,6 +11,23 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
+// Field-level autosave uses one wire shape for the HTMX renderer, OfflineQueueJS
+// replay, and AutosaveHandler (CORE-33):
+//
+//	Content-Type: application/x-www-form-urlencoded  (live HTMX)
+//	  body:    <field>=<value>&csrf=<token>
+//	           [optional <field>.__unknown=1]
+//	  headers: X-CSRF-Token: <token>
+//	           HX-Trigger-Name: <field>   (informational only; never overwrites)
+//
+//	Content-Type: application/json  (offline replay)
+//	  body:    {"offline":true,"answers":{"<field>":{"value":...}}}
+//	  headers: X-CSRF-Token: <token>
+//	           X-Togavsu-Forms-Offline: 1
+//
+// Masked rule: an untouched masked control sends nothing for that field. An empty
+// posted masked value never overwrites stored ciphertext; post ClearMaskedValue to erase.
+//
 // OfflineQueueJS is a small script modules embed beside the HTMX form. It queues
 // autosave PATCH bodies in localStorage while offline and flushes them when the
 // browser is online again. storageKey namespaces the queue per response.
@@ -65,10 +82,19 @@ const OfflineQueueJS = `(function(){
     save(keep);
   }
   document.addEventListener("htmx:configRequest", function(e){
+    var elt = e.detail && e.detail.elt;
     var xhr = e.detail && e.detail.xhr;
     var params = e.detail && e.detail.parameters;
     var headers = e.detail && e.detail.headers;
     if (!xhr || !params) return;
+    // Untouched masked field: empty value must not post (never overwrite sealed data).
+    if (elt && elt.getAttribute && elt.getAttribute("data-autosave-masked") === "1") {
+      var mv = elt.value;
+      if (mv == null || String(mv) === "") {
+        if (typeof e.preventDefault === "function") e.preventDefault();
+        return;
+      }
+    }
     try {
       var csrf = csrfToken();
       if (csrf) {
@@ -96,6 +122,7 @@ const OfflineQueueJS = `(function(){
     var url = elt.getAttribute("hx-post");
     if (!url) return;
     var field = elt.getAttribute("data-autosave-name") || "";
+    var masked = elt.getAttribute("data-autosave-masked") === "1";
     var rawBody = (xhr && xhr._togavsuBody) || "";
     var answers = {};
     if (rawBody) {
@@ -107,18 +134,25 @@ const OfflineQueueJS = `(function(){
         if (k === "csrf") return;
         if (k.slice(-10)===".__unknown") {
           answers[k.slice(0,-10)] = {unknown:true};
+        } else if (masked && k === field && !v) {
+          // omit empty masked — never overwrite sealed value on replay
         } else {
           answers[k] = {value:v};
         }
       });
     }
-    if (field && !answers[field]) {
+    if (field && !answers[field] && !masked) {
       var input = null;
       if (elt.name === field) input = elt;
       else if (elt.querySelector) input = elt.querySelector("[name='"+field+"']");
       if (input && input.value != null) answers[field] = {value: input.value};
     }
-    var body = JSON.stringify({offline:true, answers: answers, field: field});
+    if (masked && field && !answers[field]) {
+      // nothing to queue for an untouched masked field
+      return;
+    }
+    // One JSON shape: answers map only (no field+nil value that would wipe).
+    var body = JSON.stringify({offline:true, answers: answers});
     var hdrs = {"Content-Type":"application/json","X-Togavsu-Forms-Offline":"1"};
     var csrf = (xhr && xhr._togavsuCSRF) || csrfToken();
     if (csrf) hdrs["X-CSRF-Token"] = csrf;
@@ -168,13 +202,13 @@ const RepeatingJS = `(function(){
   });
 })();`
 
-// AutosavePatch is the JSON body modules accept on an autosave endpoint.
+// AutosavePatch is the decoded field-level autosave body (see package comment on OfflineQueueJS).
 type AutosavePatch struct {
-	// Answers is a partial answers map to merge.
+	// Answers is the partial answers map to merge (preferred path for HTMX and offline).
 	Answers Answers `json:"answers,omitempty"`
-	// Field is a single field id when the client sends one control.
+	// Field is a single field id for explicit JSON clients (not set from HX-Trigger-Name).
 	Field string `json:"field,omitempty"`
-	// Value is the single-field value (used with Field).
+	// Value is the single-field value (used with Field only when set).
 	Value any `json:"value,omitempty"`
 	// Unknown marks an "I don't know" toggle for Field.
 	Unknown *bool `json:"unknown,omitempty"`
@@ -182,27 +216,45 @@ type AutosavePatch struct {
 	Offline bool `json:"offline,omitempty"`
 	// Raw is retained for older offline queue payloads; preferred path uses Answers.
 	Raw any `json:"raw,omitempty"`
+
+	// form, when set by AutosaveHandlerForm, applies masked empty-preserve rules.
+	form Form
 }
 
-// Apply merges the patch into dst.
+// Apply merges the patch into dst using the one autosave shape:
+// Answers merge first (with masked preserve when form is set); Field overwrites only
+// when Value or Unknown is explicitly set.
 func (p AutosavePatch) Apply(dst *Answers) {
 	if len(p.Answers) > 0 {
-		dst.Merge(p.Answers)
+		if len(maskedFieldIDs(p.form)) > 0 {
+			*dst = MergeFormSubmit(*dst, p.Answers, p.form)
+		} else {
+			dst.Merge(p.Answers)
+		}
 	}
 	if p.Field == "" {
 		return
 	}
-	// Offline replay without a value and without Answers must not wipe the field.
-	if p.Offline && p.Unknown == nil && p.Value == nil && len(p.Answers) == 0 {
+	// No explicit value/unknown: ignore Field (covers HX-Trigger-Name leftovers and
+	// offline replays that only carry answers).
+	if p.Unknown == nil && p.Value == nil {
 		return
 	}
-	ans := Answer{}
 	if p.Unknown != nil && *p.Unknown {
-		ans.Unknown = true
-	} else {
-		ans.Value = p.Value
+		dst.Set(p.Field, Answer{Unknown: true})
+		return
 	}
-	dst.Set(p.Field, ans)
+	if maskedFieldIDs(p.form)[p.Field] {
+		s, _ := p.Value.(string)
+		if s == "" {
+			return
+		}
+		if s == ClearMaskedValue {
+			dst.Set(p.Field, Answer{Value: ""})
+			return
+		}
+	}
+	dst.Set(p.Field, Answer{Value: p.Value})
 }
 
 // DecodeAutosave reads a JSON AutosavePatch from r. Body is limited to maxBytes
@@ -224,13 +276,17 @@ func DecodeAutosave(r io.Reader, maxBytes int64) (AutosavePatch, error) {
 // The module owns storage; this only shapes the HTTP dance.
 type AutosaveFunc func(r *http.Request, patch AutosavePatch) (Answers, error)
 
-// AutosaveHandler returns an http.Handler that decodes AutosavePatch JSON or
-// application/x-www-form-urlencoded (as the HTMX renderer emits), calls save,
-// and answers 204 (or 200 with the merged answers when ?echo=1).
-// Origin: null (CSP sandbox without allow-same-origin) gets CORS so HTMX preflight
-// and credentialed fetch from /p/ and /m/ pages succeed when the core proxy also
-// answers OPTIONS.
+// AutosaveHandler returns an http.Handler that decodes the field-level autosave shape
+// (JSON or application/x-www-form-urlencoded), calls save, and answers 204 (or 200 with
+// the merged answers when ?echo=1). Origin: null gets CORS so HTMX from sandboxed /p/
+// and /m/ pages can complete. Prefer AutosaveHandlerForm when the form has masked fields.
 func AutosaveHandler(save AutosaveFunc) http.Handler {
+	return AutosaveHandlerForm(Form{}, save)
+}
+
+// AutosaveHandlerForm is AutosaveHandler with a form definition so empty masked posts
+// keep stored ciphertext (same rule as MergeFormSubmit).
+func AutosaveHandlerForm(form Form, save AutosaveFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		applyFormsOpaqueCORS(w, r)
 		if r.Method == http.MethodOptions {
@@ -246,9 +302,10 @@ func AutosaveHandler(save AutosaveFunc) http.Handler {
 			http.Error(w, "invalid autosave body", http.StatusBadRequest)
 			return
 		}
+		patch.form = form
 		answers, err := save(r, patch)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, "save failed", http.StatusBadRequest)
 			return
 		}
 		if strings.Contains(r.URL.RawQuery, "echo=1") {
@@ -282,7 +339,14 @@ func decodeAutosaveRequest(r *http.Request) (AutosavePatch, error) {
 		return AutosavePatch{}, io.ErrUnexpectedEOF
 	}
 	if strings.Contains(ct, "application/json") || (!strings.Contains(ct, "application/x-www-form-urlencoded") && !strings.Contains(ct, "multipart/form-data") && trimmed[0] == '{') {
-		return DecodeAutosave(strings.NewReader(trimmed), 0)
+		p, err := DecodeAutosave(strings.NewReader(trimmed), 0)
+		if err != nil {
+			return AutosavePatch{}, err
+		}
+		if r.Header.Get("X-Togavsu-Forms-Offline") == "1" {
+			p.Offline = true
+		}
+		return p, nil
 	}
 	vals, err := url.ParseQuery(trimmed)
 	if err != nil {
@@ -291,10 +355,15 @@ func decodeAutosaveRequest(r *http.Request) (AutosavePatch, error) {
 	return patchFromForm(r, vals), nil
 }
 
+// patchFromForm builds the one autosave shape from an HTMX form POST.
+// Answers come from the posted fields; HX-Trigger-Name is not copied into Field
+// (doing so with a nil Value erased the just-saved answer).
 func patchFromForm(r *http.Request, values url.Values) AutosavePatch {
 	answers := ParseFormAnswers(values)
-	field := strings.TrimSpace(r.Header.Get("HX-Trigger-Name"))
-	return AutosavePatch{Answers: answers, Field: field, Offline: r.Header.Get("X-Togavsu-Forms-Offline") == "1"}
+	return AutosavePatch{
+		Answers: answers,
+		Offline: r.Header.Get("X-Togavsu-Forms-Offline") == "1",
+	}
 }
 
 // ParseFormAnswers builds Answers from a standard form POST (application/x-www-form-urlencoded

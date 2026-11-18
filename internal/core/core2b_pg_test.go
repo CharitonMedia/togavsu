@@ -286,6 +286,13 @@ func TestCORE32PublicPages(t *testing.T) {
 	}); r.json["code"] == "scope_denied" && strings.Contains(r.body, "public_operations") {
 		t.Fatalf("createContact in public_operations denied: %s", r.body)
 	}
+	// Public step must not reach module runtime secrets (forms-kit AES key) or contract calls.
+	if r := bot.do("GET", "/api/v1/modules/intake-mod/secrets/forms%2Fssn", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" || !strings.Contains(r.body, "public_operations") {
+		t.Fatalf("getModuleSecret via public step: %d %s", r.code, r.body)
+	}
+	if r := bot.do("POST", "/api/v1/modules/contracts/phone.provider.v1/dial", map[string]any{}); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" || !strings.Contains(r.body, "public_operations") {
+		t.Fatalf("callModuleContract via public step: %d %s", r.code, r.body)
+	}
 	// Webhook-secret-forged step tokens are refused (core-only key).
 	secret := x.rt.Last("intake-mod").Secrets["togavsu_webhook_secret"]
 	forged, err := modules.IssueStepToken([]byte(secret), "intake-mod", 0, time.Now().UTC())

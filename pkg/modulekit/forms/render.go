@@ -89,7 +89,8 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 			return err
 		}
 	}
-	hx := autosaveAttrs(opts.AutosaveURL, name, opts.CSRFToken)
+	maskedAutosave := field.Type == TypeMasked && !opts.RevealMasked
+	hx := autosaveAttrs(opts.AutosaveURL, name, opts.CSRFToken, maskedAutosave)
 	unknownChecked := ""
 	if ans.Unknown {
 		unknownChecked = " checked"
@@ -307,14 +308,21 @@ func renderRepeatRow(w io.Writer, field Field, name string, i int, row map[strin
 	return nil
 }
 
-func autosaveAttrs(url, name, csrf string) string {
+func autosaveAttrs(url, name, csrf string, masked bool) string {
 	if url == "" {
 		return ""
 	}
-	// Include the form csrf input so public-page CheckPublicCSRF sees it; also set
-	// X-CSRF-Token for callers that read the header (and for offline queue parity).
-	attrs := fmt.Sprintf(` hx-post="%s" hx-trigger="change delay:400ms, blur" hx-include="closest .tv-field, [name=csrf]" hx-swap="none" data-autosave-name="%s"`,
-		html.EscapeString(url), html.EscapeString(name))
+	// One autosave shape: field value + csrf (hx-include), X-CSRF-Token header.
+	// Masked (unrevealed): change-only trigger so tabbing an empty control does not
+	// post; data-autosave-masked lets OfflineQueueJS skip empty posts.
+	trigger := `change delay:400ms, blur`
+	maskedAttr := ""
+	if masked {
+		trigger = `change delay:400ms`
+		maskedAttr = ` data-autosave-masked="1"`
+	}
+	attrs := fmt.Sprintf(` hx-post="%s" hx-trigger="%s" hx-include="closest .tv-field, [name=csrf]" hx-swap="none" data-autosave-name="%s"%s`,
+		html.EscapeString(url), trigger, html.EscapeString(name), maskedAttr)
 	if csrf != "" {
 		attrs += fmt.Sprintf(` hx-headers="%s"`, html.EscapeString(`{"X-CSRF-Token":"`+jsonStringEscape(csrf)+`"}`))
 	}
