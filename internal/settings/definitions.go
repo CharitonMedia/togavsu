@@ -54,6 +54,7 @@ var definitions = []Definition{
 	{Key: "billing.late_interest_enabled", Kind: KindBool, Default: "false", Tab: TabBilling, Help: "Late interest is off unless this is turned on.", PRD: true},
 	{Key: "billing.late_interest_annual_percent", Kind: KindInt, Default: "0", Min: 0, Max: 100, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Annual late-interest percent used when late interest is on."},
 	{Key: "billing.invoice_number_format", Kind: KindString, Tab: TabBilling, Help: "Invoice number format."},
+	{Key: "billing.invoice_number_start", Kind: KindInt, Default: "0", Min: 0, HasMin: true, Tab: TabBilling, Help: "Opening invoice import refuses a historical number at or above this value. 0 disables the floor. Default 0."},
 	{Key: "billing.default_client_message", Kind: KindString, Tab: TabBilling, Help: "Default client message on invoices."},
 	{Key: "billing.activity_types", Kind: KindJSON, Default: "[]", Tab: TabBilling, Help: "Activity types offered on time entries."},
 	{Key: "billing.expense_types", Kind: KindJSON, Default: "[]", Tab: TabBilling, Help: "Expense types offered on expenses."},

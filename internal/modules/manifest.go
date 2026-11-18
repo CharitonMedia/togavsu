@@ -22,7 +22,7 @@ type Manifest struct {
 	Author          string             `json:"author"`
 	Homepage        string             `json:"homepage"`
 	License         string             `json:"license"`
-	Price           string             `json:"price"`
+	Price           ManifestPrice      `json:"price"`
 	Container       Container          `json:"container"`
 	Permissions     []Permission       `json:"permissions"`
 	Widgets         []Widget           `json:"widgets"`
@@ -371,6 +371,9 @@ func (m Manifest) validate(report func(error) bool) {
 		},
 		func() bool {
 			return (m.Container.Port > zero && m.Container.Port <= limits().MaxPort) || ok(invalid("container.port", "container port is required"))
+		},
+		func() bool {
+			return m.Price.validate() == nil || ok(m.Price.validate())
 		},
 	}
 	for _, c := range checks {

@@ -805,7 +805,17 @@ func (h *Handler) send(w http.ResponseWriter, r *http.Request, p domain.Principa
 }
 
 func (h *Handler) pdf(w http.ResponseWriter, r *http.Request, p domain.Principal) {
-	pdf, inv, err := h.Svc.InvoicePDF(r.Context(), p, domain.ID(r.PathValue("invoice_id")))
+	inv, err := h.Svc.Invoice(r.Context(), p, domain.ID(r.PathValue("invoice_id")))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	// CORE-37: document of record replaces a rendered invoice for opening imports.
+	if inv.Imported && !inv.DocumentOfRecordFileID.IsZero() {
+		http.Redirect(w, r, "/api/v1/files/"+string(inv.DocumentOfRecordFileID), http.StatusSeeOther)
+		return
+	}
+	pdf, inv, err := h.Svc.InvoicePDF(r.Context(), p, inv.ID)
 	if err != nil {
 		writeErr(w, err)
 		return

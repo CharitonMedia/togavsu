@@ -2010,16 +2010,50 @@ def _billing(api: Contract) -> None:
             "A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. "
             "A different body with that key is idempotency_conflict and writes nothing. "
             "A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. "
-            "A client projection keeps only InvoiceClient fields, on JSON and on a later read. Staff fields are not returned."
+            "A client projection keeps only InvoiceClient fields, on JSON and on a later read. Staff fields are not returned. "
+            "Opening imports (source form/csv/api) also emit invoice.imported, set imported true, and may skip rows already present by external_ref. "
+            "preview=true validates without writing."
         ),
         tag="Billing",
         features=["invoices", "bulk"],
         roles=STAFF,
         scopes=["invoices:write"],
-        body_schema=_batch("InvoiceWrite"),
-        response_schema=_batch_result("Invoice"),
+        body_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["items"],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"$ref": "#/components/schemas/InvoiceWrite"},
+                },
+                "preview": {
+                    "type": "boolean",
+                    "description": "When true, validate only and return per-row results (CORE-37 CSV preview).",
+                },
+            },
+        },
+        response_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["data"],
+            "properties": {
+                "data": {"type": "array", "items": {"$ref": "#/components/schemas/Invoice"}},
+                "skipped": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Already-imported external_ref rows (response only).",
+                },
+                "results": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Per-row preview results when preview=true.",
+                },
+            },
+        },
         success="201",
-        events=["invoice.created"],
+        events=["invoice.created", "invoice.imported"],
         error_codes=["batch_rejected", "validation_failed", "not_found", "idempotency_conflict", "forbidden", "scope_denied"],
         replaceable="time",
         extra_access={

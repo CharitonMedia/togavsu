@@ -63,3 +63,11 @@ Manifest `public_pages` are served at `/p/{id}/…` with no sign-in under `modul
 ## Staff banner slot (CORE-34)
 
 Manifest `staff_banner` reserves a fixed-height sandboxed frame above every staff page. Scope `banner:show`. Admin order is `modules.staff_banner_order` (`PUT /api/v1/modules/banner-order`, `GET /api/v1/modules/banners`, and the Modules tab form). Height is set with the iframe `height` attribute and stepped `.staff-banner-h-N` classes in `web/static/app.css` (staff CSP is `style-src 'self'`; no inline `style` attributes). The frame bridge accepts `togavsu:banner.show` / `togavsu:banner.hide` only from that module's banner iframe on the same origin.
+
+## Manifest price (CORE-35)
+
+The manifest `price` field accepts the legacy string or a structured value `{amount_cents, currency, interval, note}` (`interval` is `month` or `year`). The core stores it on the module record, returns it on `Module` (`price`, `price_display`), and shows `price_display` on the install screen. The core never charges, checks or enforces a price. Marketplace listings take the same field at upload (see CORE-CHANGES-2 §17.1).
+
+## Opening invoice import (CORE-37)
+
+Migration import (core PRD 8.22 / CORE-CHANGES-2 §6): the admin **Migration import** tab writes opening balances through the existing `bulkInvoice` operation (`POST /api/v1/invoices:bulk`, also on `/mcp`). Each `InvoiceWrite` item may carry `source` (`form`, `csv` or `api`), `external_ref` (unique per firm; a re-run skips already-imported rows) and `document_of_record_file_id`. Opening imports land as `sent` with one adjustment line `Balance forward as of [date]`, `imported: true`, optional amount-paid as one `other` payment marked imported, and emit `invoice.imported` (and `invoice.created`). Numbers at or above `billing.invoice_number_start`, duplicates, non-positive amounts and missing matters are refused with a named reason and write nothing. The client portal, statements and matter billing tab show the document of record for an imported invoice.

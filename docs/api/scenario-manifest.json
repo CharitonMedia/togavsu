@@ -873,7 +873,7 @@
       "assertion_statements": [
         "self.assertEqual(operation[\"x-togavsu-mcp\"][\"parity\"], \"required\")",
         "self.assertEqual(operation[\"x-togavsu-mcp\"][\"tool\"], \"bulkInvoice\")",
-        "self.assertEqual(operation[\"x-togavsu-events\"], [\"invoice.created\"])",
+        "self.assertEqual(operation[\"x-togavsu-events\"], [\"invoice.created\", \"invoice.imported\"])",
         "self.assertEqual(operation[\"x-togavsu-access\"][\"reconciliation\"], \"exact_cents\")",
         "self.assertEqual(operation[\"x-togavsu-access\"][\"batch_authorization\"], \"all_or_nothing\")",
         "self.assertEqual(len(store[\"invoices\"]), 1)",

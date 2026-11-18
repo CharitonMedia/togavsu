@@ -217,9 +217,11 @@ type modRow struct {
 	// DataQuietSince is when the schema last stopped changing; 0 while the module can
 	// write to it (see migration 1001).
 	DataQuietSince int64
+	// Price columns store the manifest price (CORE-35); the core never charges them.
+	Price ManifestPrice
 }
 
-const modCols = `id, name, version, status, enabled, source, package_id, pending_package_id, token_id, token_secret, webhook_secret, db_role, db_password, schema_state, last_error, created_by, created_at, data_quiet_since`
+const modCols = `id, name, version, status, enabled, source, package_id, pending_package_id, token_id, token_secret, webhook_secret, db_role, db_password, schema_state, last_error, created_by, created_at, data_quiet_since, price_amount_cents, price_currency, price_interval, price_note`
 
 func (s *Service) q(ctx context.Context) audit.Querier { return audit.Conn(ctx, s.d.DB) }
 
@@ -227,7 +229,8 @@ func scanMod(sc interface{ Scan(...any) error }) (modRow, error) {
 	var r modRow
 	var enabled int
 	err := sc.Scan(&r.ID, &r.Name, &r.Version, &r.Status, &enabled, &r.Source, &r.PackageID, &r.PendingPackageID, &r.TokenID,
-		&r.TokenSecret, &r.WebhookSecret, &r.DBRole, &r.DBPassword, &r.SchemaState, &r.LastError, &r.CreatedBy, &r.CreatedAt, &r.DataQuietSince)
+		&r.TokenSecret, &r.WebhookSecret, &r.DBRole, &r.DBPassword, &r.SchemaState, &r.LastError, &r.CreatedBy, &r.CreatedAt, &r.DataQuietSince,
+		&r.Price.AmountCents, &r.Price.Currency, &r.Price.Interval, &r.Price.Note)
 	r.Enabled = enabled == one
 	return r, err
 }
@@ -249,13 +252,17 @@ func b2i(b bool) int {
 
 func (s *Service) saveRow(ctx context.Context, r modRow) error {
 	at := s.now().UnixMicro()
-	_, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.modules (`+modCols+`, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+	price := r.Price.normalize()
+	_, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.modules (`+modCols+`, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, version = EXCLUDED.version, status = EXCLUDED.status, enabled = EXCLUDED.enabled,
 source = EXCLUDED.source, package_id = EXCLUDED.package_id, pending_package_id = EXCLUDED.pending_package_id, token_id = EXCLUDED.token_id,
 token_secret = EXCLUDED.token_secret, webhook_secret = EXCLUDED.webhook_secret, db_role = EXCLUDED.db_role, db_password = EXCLUDED.db_password,
-schema_state = EXCLUDED.schema_state, last_error = EXCLUDED.last_error, data_quiet_since = EXCLUDED.data_quiet_since, updated_at = EXCLUDED.updated_at`,
+schema_state = EXCLUDED.schema_state, last_error = EXCLUDED.last_error, data_quiet_since = EXCLUDED.data_quiet_since,
+price_amount_cents = EXCLUDED.price_amount_cents, price_currency = EXCLUDED.price_currency, price_interval = EXCLUDED.price_interval,
+price_note = EXCLUDED.price_note, updated_at = EXCLUDED.updated_at`,
 		r.ID, r.Name, r.Version, r.Status, b2i(r.Enabled), r.Source, r.PackageID, r.PendingPackageID, r.TokenID, r.TokenSecret,
-		r.WebhookSecret, r.DBRole, r.DBPassword, r.SchemaState, r.LastError, r.CreatedBy, r.CreatedAt, r.DataQuietSince, at)
+		r.WebhookSecret, r.DBRole, r.DBPassword, r.SchemaState, r.LastError, r.CreatedBy, r.CreatedAt, r.DataQuietSince,
+		price.AmountCents, price.Currency, price.Interval, price.Note, at)
 	return err
 }
 
@@ -407,6 +414,10 @@ type View struct {
 	Permissions []PermissionView `json:"permissions"`
 	Replaces    *string          `json:"replaces"`
 	Status      string           `json:"status"`
+	// Price is the manifest price shown on the install screen (CORE-35). Never charged.
+	Price ManifestPrice `json:"price,omitempty"`
+	// PriceDisplay is the human text of Price for the admin install screen.
+	PriceDisplay string `json:"price_display,omitempty"`
 	// PublicPages are manifest public_pages paths (CORE-32), shown at install.
 	PublicPages []string `json:"public_pages,omitempty"`
 	// PublicOperations are manifest public_operations (CORE-32), shown at install.
@@ -421,7 +432,8 @@ func (s *Service) view(ctx context.Context, r modRow) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	v := View{ID: r.ID, Name: r.Name, Version: r.Version, Enabled: r.Enabled, Permissions: perms, Status: r.Status, LastError: r.LastError}
+	v := View{ID: r.ID, Name: r.Name, Version: r.Version, Enabled: r.Enabled, Permissions: perms, Status: r.Status, LastError: r.LastError,
+		Price: r.Price, PriceDisplay: r.Price.Display()}
 	if r.PackageID != "" {
 		pkg, err := s.loadPackage(ctx, r.PackageID)
 		if err != nil {
@@ -430,6 +442,10 @@ func (s *Service) view(ctx context.Context, r modRow) (View, error) {
 		if pkg.Manifest.Replaces != "" {
 			rep := pkg.Manifest.Replaces
 			v.Replaces = &rep
+		}
+		if !pkg.Manifest.Price.empty() {
+			v.Price = pkg.Manifest.Price
+			v.PriceDisplay = pkg.Manifest.Price.Display()
 		}
 		for _, pg := range pkg.Manifest.PublicPages {
 			path := strings.TrimSpace(pg.Path)
@@ -632,7 +648,7 @@ func (s *Service) install(ctx context.Context, p domain.Principal, v marketplace
 			}
 		}
 		r := modRow{ID: m.ID, Name: m.Name, Version: m.Version, Status: StatusAwaiting, Source: source, PackageID: pid,
-			SchemaState: "none", CreatedBy: string(p.UserID), CreatedAt: s.now().UnixMicro()}
+			SchemaState: "none", CreatedBy: string(p.UserID), CreatedAt: s.now().UnixMicro(), Price: m.Price}
 		if existing.ID != "" {
 			r.SchemaState, r.DBRole, r.DataQuietSince = existing.SchemaState, existing.DBRole, existing.DataQuietSince
 		}
@@ -1328,7 +1344,7 @@ func (s *Service) applyUpdate(ctx context.Context, p domain.Principal, r modRow,
 			}
 		}()
 	}
-	r.Version, r.Name, r.PackageID, r.PendingPackageID, r.LastError = pkg.Manifest.Version, pkg.Manifest.Name, pid, "", ""
+	r.Version, r.Name, r.PackageID, r.PendingPackageID, r.LastError, r.Price = pkg.Manifest.Version, pkg.Manifest.Name, pid, "", "", pkg.Manifest.Price
 	if err := s.commit(ctx, func(ctx context.Context) error {
 		if err := s.saveRow(ctx, r); err != nil {
 			return err

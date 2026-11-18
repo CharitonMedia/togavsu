@@ -11,10 +11,12 @@ import (
 // InvoiceImport is one invoice an importer writes through bulkInvoice. Every amount is
 // integer cents and must reconcile: subtotal is the sum of the lines, total is subtotal
 // plus adjustment and interest, and balance due is total less amount paid and write-off.
+// Source, ExternalRef and DocumentOfRecordFileID are CORE-37 opening-import fields.
 type InvoiceImport struct {
 	MatterID         domain.ID
 	Number           string
 	IssuedOn         string
+	DueOn            string
 	Status           string
 	Lines            []LineInput
 	SubtotalCents    domain.Cents
@@ -31,6 +33,29 @@ type InvoiceImport struct {
 	DisputeNotes     string
 	ClientMessage    string
 	InternalNotes    string
+	// Source is form, csv or api for opening invoice import (CORE-37). Empty keeps the
+	// legacy bulk importer behaviour.
+	Source string
+	// ExternalRef is unique per firm; a second run skips the row as already imported.
+	ExternalRef string
+	// DocumentOfRecordFileID is the original invoice PDF shown instead of a render.
+	DocumentOfRecordFileID domain.ID
+}
+
+// ImportSourceForm, ImportSourceCSV and ImportSourceAPI are InvoiceImport.Source values.
+const (
+	ImportSourceForm = "form"
+	ImportSourceCSV  = "csv"
+	ImportSourceAPI  = "api"
+)
+
+// OpeningImport reports whether this item uses CORE-37 opening-invoice semantics.
+func (in InvoiceImport) OpeningImport() bool {
+	switch in.Source {
+	case ImportSourceForm, ImportSourceCSV, ImportSourceAPI:
+		return true
+	}
+	return false
 }
 
 // ImportScopes are the token scopes item needs beyond the route's invoices:write: a sent,
@@ -68,28 +93,41 @@ func (s *Service) authorizeImport(ctx context.Context, p domain.Principal, in In
 
 // BulkInvoices writes imported invoices in one transaction. Every item is authorized first,
 // then validated and reconciled; one failure writes nothing. A committed batch emits
-// invoice.created once per item. Time and expense lines that name their source bill that row
-// (a void invoice leaves it unbilled).
+// invoice.created once per item (and invoice.imported for CORE-37 opening imports). Time
+// and expense lines that name their source bill that row (a void invoice leaves it unbilled).
+// Already-imported external_ref rows are skipped and reported; they do not fail the batch.
 func (s *Service) BulkInvoices(ctx context.Context, p domain.Principal, items []InvoiceImport) ([]Invoice, error) {
+	rows, skipped, err := s.BulkInvoicesDetailed(ctx, p, items)
+	_ = skipped
+	return rows, err
+}
+
+// BulkInvoicesDetailed is BulkInvoices plus the skipped external_ref rows (CORE-37).
+func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, items []InvoiceImport) ([]Invoice, []BulkInvoiceResult, error) {
 	if len(items) == 0 {
-		return nil, domain.Invalid("items", "at least one item is required")
+		return nil, nil, domain.Invalid("items", "at least one item is required")
 	}
 	if s.overBulkMax(ctx, len(items)) {
-		return nil, domain.Invalid("items", "batch is larger than api.bulk_batch_max")
+		return nil, nil, domain.Invalid("items", "batch is larger than api.bulk_batch_max")
 	}
 	for _, in := range items {
 		if in.MatterID.IsZero() {
-			return nil, domain.Invalid("items/matter_id", "is required")
+			return nil, nil, domain.Invalid("items/matter_id", "is required")
 		}
 		if err := s.authorizeImport(ctx, p, in); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if _, err := s.matter(ctx, in.MatterID); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
+	existingRefs, err := s.existingExternalRefs(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
 	var out []Invoice
-	err := s.write(ctx, p, func(t *txn) error {
+	var skipped []BulkInvoiceResult
+	err = s.write(ctx, p, func(t *txn) error {
 		heads, err := invoiceHeads(t.ctx, s.d.Store, Where{})
 		if err != nil {
 			return err
@@ -99,19 +137,34 @@ func (s *Service) BulkInvoices(ctx context.Context, p domain.Principal, items []
 			numbers[h.Number] = true
 		}
 		sources := map[domain.ID]bool{}
+		seenRefs := map[string]bool{}
 		for i, in := range items {
+			if in.OpeningImport() {
+				ref := strings.TrimSpace(in.ExternalRef)
+				if ref != "" && (existingRefs[ref] || seenRefs[ref]) {
+					skipped = append(skipped, BulkInvoiceResult{Index: i, Skipped: true, ExternalRef: ref, SkipReason: "already imported by external_ref"})
+					continue
+				}
+				if err := s.checkOpeningImport(t.ctx, in, i, numbers, existingRefs, seenRefs, false); err != nil {
+					return batchRejected(err)
+				}
+			}
 			inv, err := s.importOne(t, in, i, numbers, sources)
 			if err != nil {
 				return batchRejected(err)
+			}
+			if ref := strings.TrimSpace(in.ExternalRef); ref != "" {
+				seenRefs[ref] = true
+				existingRefs[ref] = true
 			}
 			out = append(out, inv)
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return out, nil
+	return out, skipped, nil
 }
 
 // batchRejected is how one item's validation or reconciliation failure reaches the
@@ -215,7 +268,20 @@ func (s *Service) importOne(t *txn, in InvoiceImport, i int, numbers map[string]
 	inv.AdjustmentReason, inv.WriteOffReason, inv.VoidReason = strings.TrimSpace(in.AdjustmentReason), strings.TrimSpace(in.WriteOffReason), strings.TrimSpace(in.VoidReason)
 	inv.DisputeStatus, inv.DisputeNotes = in.DisputeStatus, in.DisputeNotes
 	inv.ClientMessage, inv.InternalNotes = in.ClientMessage, in.InternalNotes
-	inv.DueOn = addDays(in.IssuedOn, s.settingInt(t.ctx, "billing.payment_terms_days"))
+	if due := strings.TrimSpace(in.DueOn); due != "" {
+		if _, err := parseDate(field("due_on"), due); err != nil {
+			return Invoice{}, err
+		}
+		inv.DueOn = due
+	} else {
+		inv.DueOn = addDays(in.IssuedOn, s.settingInt(t.ctx, "billing.payment_terms_days"))
+	}
+	if in.OpeningImport() {
+		inv.Imported = true
+		inv.ImportSource = in.Source
+		inv.ExternalRef = strings.TrimSpace(in.ExternalRef)
+		inv.DocumentOfRecordFileID = in.DocumentOfRecordFileID
+	}
 	now := s.now()
 	if in.Status != StatusDraft {
 		inv.ApprovedAt, inv.ApprovedBy = &now, actor(t.p)
@@ -243,13 +309,55 @@ func (s *Service) importOne(t *txn, in InvoiceImport, i int, numbers map[string]
 			}
 		}
 	}
+	paid := inv.AmountPaidCents
+	if in.OpeningImport() && positive(int64(paid)) {
+		// Amounts stay on the invoice; the imported payment records them without re-applying.
+		inv.AmountPaidCents = paid
+	}
 	if err := t.putInvoice(inv); err != nil {
 		return Invoice{}, err
+	}
+	if in.OpeningImport() && positive(int64(paid)) {
+		if err := s.postImportedPayment(t, inv, paid); err != nil {
+			return Invoice{}, err
+		}
 	}
 	if err := t.created("invoice", inv.ID, inv, "imported"); err != nil {
 		return Invoice{}, err
 	}
-	return inv, t.event("invoice.created", "invoice", inv.ID, m.ID, "Invoice "+number+" imported", false)
+	if err := t.event("invoice.created", "invoice", inv.ID, m.ID, "Invoice "+number+" imported", false); err != nil {
+		return Invoice{}, err
+	}
+	if in.OpeningImport() {
+		return inv, t.event("invoice.imported", "invoice", inv.ID, m.ID, "Opening invoice "+number+" imported", true)
+	}
+	return inv, nil
+}
+
+// postImportedPayment records the amount-paid-to-date as one method=other payment marked
+// imported, without moving money or re-applying cents already on the invoice (CORE-37).
+func (s *Service) postImportedPayment(t *txn, inv Invoice, amount domain.Cents) error {
+	clients := s.clientParties(inv.MatterID)
+	if len(clients) == 0 {
+		return domain.Invalid("matter_id", "matter has no client party for the imported payment")
+	}
+	meta, err := s.meta(t.p)
+	if err != nil {
+		return err
+	}
+	row := Payment{ReceivedOn: inv.IssuedOn, Imported: true}
+	row.Payment = domain.Payment{
+		Meta: meta, ContactID: clients[0], MatterID: inv.MatterID, AmountCents: amount,
+		Destination: DestOperating, Method: "other", ReferenceNumber: "imported:" + inv.Number,
+		Status: PayCompleted, InvoiceID: inv.ID, Source: "import",
+	}
+	if err := t.put(kindPayment, row.ID, row); err != nil {
+		return err
+	}
+	if err := t.created("payment", row.ID, row, "imported"); err != nil {
+		return err
+	}
+	return t.event("payment.created", "payment", row.ID, inv.MatterID, "Imported payment "+money(amount)+" on "+inv.Number, false)
 }
 
 // importLine checks one imported line. Its amount is the importer's, in exact cents. A time

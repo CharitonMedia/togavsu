@@ -30,6 +30,8 @@ type Handler struct {
 	Audit func(r *http.Request, p domain.Principal, limit int) ([]AuditRow, error)
 	// Modules backs the Modules and marketplace tab; nil shows its settings only.
 	Modules ModulesAdmin
+	// Migration backs the Migration import tab (CORE-37); nil hides the forms.
+	Migration MigrationAdmin
 	// Banners returns CORE-34 staff banner HTML for the shell; nil skips the slot.
 	Banners func(ctx context.Context) (template.HTML, error)
 	// AICalls returns the AI call log panel on the AI and inference tab for p (rendered
@@ -111,6 +113,7 @@ func (h *Handler) Routes() *http.ServeMux {
 	api("GET /api/v1/problem-reports/{problem_report_id}", h.problemJSON)
 	h.pageRoutes(m)
 	h.modulesRoutes(m)
+	h.migrationRoutes(m)
 	return m
 }
 

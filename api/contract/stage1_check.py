@@ -443,6 +443,11 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json"],
                 "change": "putModuleSecret accepts If-None-Match: * for create-if-absent (409 conflict when the name exists) so forms EnsureKey / HTTPSecretStore cannot race-overwrite a sealed AES key (CORE-33).",
             },
+            {
+                "id": "core-update-2c-price-invoice-import",
+                "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json", "docs/api/coverage.md"],
+                "change": "CORE-35 adds Module.price / price_display. CORE-37 extends bulkInvoice with preview, invoice.imported, and Invoice/InvoiceClient/InvoiceWrite opening-import fields (source, external_ref, document_of_record_file_id, imported).",
+            },
         ],
         "intentional_corrections": [
             {

@@ -892,6 +892,18 @@ SCHEMAS = _register(
                 "paid_at": _null(_dt()),
                 "client_message": {"type": "string"},
                 "internal_notes": {"type": "string", "description": "Staff only. Absent from InvoiceClient."},
+                "imported": {"type": "boolean", "description": "Opening-invoice import marker (CORE-37)."},
+                "import_source": {
+                    "type": "string",
+                    "enum": ["form", "csv", "api"],
+                    "description": "How the opening invoice was imported.",
+                },
+                "external_ref": {"type": "string", "description": "Firm-unique import key; re-runs skip matching rows."},
+                "document_of_record_file_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Original invoice PDF shown instead of a render (CORE-37).",
+                },
                 "included": _ref("Included"),
             },
             ["matter_id", "number", "issued_on", "status", "lines", "subtotal_cents", "adjustment_cents", "interest_cents", "total_cents", "amount_paid_cents", "balance_due_cents", "write_off_cents"],
@@ -914,6 +926,12 @@ SCHEMAS = _register(
                 "sent_at": _null(_dt()),
                 "paid_at": _null(_dt()),
                 "client_message": {"type": "string"},
+                "imported": {"type": "boolean", "description": "Opening-invoice import marker (CORE-37)."},
+                "document_of_record_file_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Original invoice PDF shown instead of a render (CORE-37).",
+                },
             },
             ["id", "matter_id", "number", "issued_on", "status", "lines", "subtotal_cents", "adjustment_cents", "interest_cents", "total_cents", "amount_paid_cents", "balance_due_cents"],
             "The client allowlist for invoice JSON, CSV, and MCP. A field that is not here is not returned, including a field added to the staff invoice later.",
@@ -969,6 +987,23 @@ SCHEMAS = _register(
                 "dispute_notes": {"type": "string"},
                 "client_message": {"type": "string"},
                 "internal_notes": {"type": "string", "description": "Staff invoice only. Omitted from a client projection."},
+                "imported": {"type": "boolean", "description": "Opening-invoice import marker (CORE-37)."},
+                "import_source": {
+                    "type": "string",
+                    "enum": ["form", "csv", "api"],
+                    "description": "How the opening invoice was imported.",
+                },
+                "external_ref": {"type": "string", "description": "Firm-unique import key; re-runs skip matching rows."},
+                "document_of_record_file_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Original invoice PDF shown instead of a render (CORE-37).",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": ["form", "csv", "api"],
+                    "description": "Opening import channel (CORE-37). Alias of import_source on write.",
+                },
             },
             [
                 "matter_id",
@@ -984,7 +1019,7 @@ SCHEMAS = _register(
                 "balance_due_cents",
                 "write_off_cents",
             ],
-            "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile.",
+            "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Opening imports may set source, external_ref and document_of_record_file_id (CORE-37).",
         ),
         "InvoiceDraftRequest": {
             "description": (
@@ -3015,6 +3050,24 @@ SCHEMAS = _register(
                 "permissions": _arr(_obj({"scope": {"type": "string"}, "required": {"type": "boolean"}, "approved": {"type": "boolean"}}, ["scope", "required", "approved"])),
                 "replaces": _null(_enum(["time", "trust", "calendar"])),
                 "status": _enum(["awaiting_approval", "installed", "disabled", "uninstalling"]),
+                "price": {
+                    "description": "Manifest price (CORE-35): legacy string form is price_display only; structured form uses amount_cents, currency, interval, note. The core never charges it.",
+                    "oneOf": [
+                        {"type": "string"},
+                        _obj(
+                            {
+                                "amount_cents": _cents(),
+                                "currency": {"type": "string", "minLength": 3, "maxLength": 3},
+                                "interval": _enum(["month", "year"]),
+                                "note": {"type": "string"},
+                            },
+                        ),
+                    ],
+                },
+                "price_display": {
+                    "type": "string",
+                    "description": "Human-readable price shown on the install screen (CORE-35).",
+                },
             },
             ["id", "name", "version", "enabled", "permissions", "status"],
             "An installed module.",

@@ -118,58 +118,65 @@ func linesView(lines []Line) []lineJSON {
 
 type invoiceJSON struct {
 	metaJSON
-	MatterID         domain.ID  `json:"matter_id"`
-	Number           string     `json:"number"`
-	IssuedOn         string     `json:"issued_on"`
-	Status           string     `json:"status"`
-	Lines            []lineJSON `json:"lines"`
-	SubtotalCents    int64      `json:"subtotal_cents"`
-	AdjustmentCents  int64      `json:"adjustment_cents"`
-	AdjustmentReason string     `json:"adjustment_reason"`
-	InterestCents    int64      `json:"interest_cents"`
-	TotalCents       int64      `json:"total_cents"`
-	AmountPaidCents  int64      `json:"amount_paid_cents"`
-	BalanceDueCents  int64      `json:"balance_due_cents"`
-	WriteOffCents    int64      `json:"write_off_cents"`
-	WriteOffReason   string     `json:"write_off_reason"`
-	VoidReason       string     `json:"void_reason"`
-	DisputeStatus    string     `json:"dispute_status"`
-	DisputeNotes     string     `json:"dispute_notes"`
-	SentAt           *string    `json:"sent_at"`
-	PaidAt           *string    `json:"paid_at"`
-	ClientMessage    string     `json:"client_message"`
-	InternalNotes    string     `json:"internal_notes"`
+	MatterID               domain.ID  `json:"matter_id"`
+	Number                 string     `json:"number"`
+	IssuedOn               string     `json:"issued_on"`
+	Status                 string     `json:"status"`
+	Lines                  []lineJSON `json:"lines"`
+	SubtotalCents          int64      `json:"subtotal_cents"`
+	AdjustmentCents        int64      `json:"adjustment_cents"`
+	AdjustmentReason       string     `json:"adjustment_reason"`
+	InterestCents          int64      `json:"interest_cents"`
+	TotalCents             int64      `json:"total_cents"`
+	AmountPaidCents        int64      `json:"amount_paid_cents"`
+	BalanceDueCents        int64      `json:"balance_due_cents"`
+	WriteOffCents          int64      `json:"write_off_cents"`
+	WriteOffReason         string     `json:"write_off_reason"`
+	VoidReason             string     `json:"void_reason"`
+	DisputeStatus          string     `json:"dispute_status"`
+	DisputeNotes           string     `json:"dispute_notes"`
+	SentAt                 *string    `json:"sent_at"`
+	PaidAt                 *string    `json:"paid_at"`
+	ClientMessage          string     `json:"client_message"`
+	InternalNotes          string     `json:"internal_notes"`
+	Imported               bool       `json:"imported,omitempty"`
+	ImportSource           string     `json:"import_source,omitempty"`
+	ExternalRef            string     `json:"external_ref,omitempty"`
+	DocumentOfRecordFileID *domain.ID `json:"document_of_record_file_id,omitempty"`
 }
 
 // invoiceClientJSON is the client allowlist (InvoiceClient). Nothing else reaches a client.
 type invoiceClientJSON struct {
-	ID              domain.ID  `json:"id"`
-	MatterID        domain.ID  `json:"matter_id"`
-	Number          string     `json:"number"`
-	IssuedOn        string     `json:"issued_on"`
-	Status          string     `json:"status"`
-	Lines           []lineJSON `json:"lines"`
-	SubtotalCents   int64      `json:"subtotal_cents"`
-	AdjustmentCents int64      `json:"adjustment_cents"`
-	InterestCents   int64      `json:"interest_cents"`
-	TotalCents      int64      `json:"total_cents"`
-	AmountPaidCents int64      `json:"amount_paid_cents"`
-	BalanceDueCents int64      `json:"balance_due_cents"`
-	SentAt          *string    `json:"sent_at"`
-	PaidAt          *string    `json:"paid_at"`
-	ClientMessage   string     `json:"client_message"`
+	ID                     domain.ID  `json:"id"`
+	MatterID               domain.ID  `json:"matter_id"`
+	Number                 string     `json:"number"`
+	IssuedOn               string     `json:"issued_on"`
+	Status                 string     `json:"status"`
+	Lines                  []lineJSON `json:"lines"`
+	SubtotalCents          int64      `json:"subtotal_cents"`
+	AdjustmentCents        int64      `json:"adjustment_cents"`
+	InterestCents          int64      `json:"interest_cents"`
+	TotalCents             int64      `json:"total_cents"`
+	AmountPaidCents        int64      `json:"amount_paid_cents"`
+	BalanceDueCents        int64      `json:"balance_due_cents"`
+	SentAt                 *string    `json:"sent_at"`
+	PaidAt                 *string    `json:"paid_at"`
+	ClientMessage          string     `json:"client_message"`
+	Imported               bool       `json:"imported,omitempty"`
+	DocumentOfRecordFileID *domain.ID `json:"document_of_record_file_id,omitempty"`
 }
 
 func invoiceView(i Invoice, client bool) any {
+	dor := idOrNil(i.DocumentOfRecordFileID)
 	if client {
 		return invoiceClientJSON{i.ID, i.MatterID, i.Number, i.IssuedOn, i.Status, linesView(i.Lines), int64(i.SubtotalCents),
 			int64(i.AdjustmentCents), int64(i.InterestCents), int64(i.TotalCents), int64(i.AmountPaidCents),
-			int64(i.BalanceDueCents), microOrNil(i.SentAt), microOrNil(i.PaidAt), i.ClientMessage}
+			int64(i.BalanceDueCents), microOrNil(i.SentAt), microOrNil(i.PaidAt), i.ClientMessage, i.Imported, dor}
 	}
 	return invoiceJSON{metaOf(i.Meta), i.MatterID, i.Number, i.IssuedOn, i.Status, linesView(i.Lines), int64(i.SubtotalCents),
 		int64(i.AdjustmentCents), i.AdjustmentReason, int64(i.InterestCents), int64(i.TotalCents), int64(i.AmountPaidCents),
 		int64(i.BalanceDueCents), int64(i.WriteOffCents), i.WriteOffReason, i.VoidReason, i.DisputeStatus, i.DisputeNotes,
-		microOrNil(i.SentAt), microOrNil(i.PaidAt), i.ClientMessage, i.InternalNotes}
+		microOrNil(i.SentAt), microOrNil(i.PaidAt), i.ClientMessage, i.InternalNotes, i.Imported, i.ImportSource, i.ExternalRef, dor}
 }
 
 type paymentJSON struct {

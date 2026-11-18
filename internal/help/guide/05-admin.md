@@ -86,6 +86,10 @@ Nightly backup time (default 1:00 a.m.), local retention (default 30 days), dest
 <!-- tab: agents_api | path: /admin?tab=agents_api | where: Administrative > Agents and API | keywords: api tokens, scopes, webhooks, llms.txt -->
 API tokens and scopes: the list shows every token with the user it acts as, its scopes and whether it is revoked. Issue a token by naming it, choosing the user it acts as and ticking its scopes; the token is shown once, on the page right after you issue it, and never again. Scopes can't go beyond your role or the user's. Revoke stops a token on its next request. Also here: webhook retries (default 8 over 24 hours) and llms.txt (show or hide the firm name; the firm paragraph).
 
+## Migration import {#admin-migration}
+<!-- tab: migration | path: /admin?tab=migration | where: Administrative > Migration import | keywords: opening invoices, balance forward, CSV import, external_ref -->
+Opening invoice import for firms moving onto Togavsu: enter one client's open balance as a sent invoice with a Balance forward line, or upload a CSV for preview and one-transaction write. Historical numbers stay out of the normal invoice sequence. Set billing.invoice_number_start on Time and billing so imports at or above that floor are refused.
+
 ## System {#admin-system}
 <!-- tab: system | path: /admin?tab=system | where: Administrative > System | keywords: seat count, audit log, problem reports -->
 The active seat count, the audit log viewer and the problem reports users sent with Report a problem.

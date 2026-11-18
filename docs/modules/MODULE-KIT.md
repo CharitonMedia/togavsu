@@ -389,11 +389,10 @@ SIG=$(togavsu-module key -key signing.key -prove "$(jq -r .proof_message key.jso
 curl -s -X POST $M/v1/authors/me/keys/$(jq -r .key_id key.json)/verify -H "Authorization: Bearer $T" \
   -d "$(jq -n --arg s "$SIG" '{signature: $s}')"
 
-# 3. Upload the signed package: three fields of the signed package file (the endpoint
-#    refuses its other fields). Add "price_note" to set the listing's price text; the
-#    manifest's price is not read.
-jq '{package_base64, signature, key_id}' documents.signed.json \
-  | curl -s -X POST $M/v1/authors/me/packages -H "Authorization: Bearer $T" -d @-
+# 3. Upload the signed package file as the body unchanged. The listing price comes from
+#    the manifest's price (string or structured {amount_cents, currency, interval, note}).
+curl -s -X POST $M/v1/authors/me/packages -H "Authorization: Bearer $T" \
+  -H "Content-Type: application/json" --data-binary @documents.signed.json
 
 # 4. The listing, and the package exactly as a firm's core will fetch it.
 curl -s $M/v1/listings/documents

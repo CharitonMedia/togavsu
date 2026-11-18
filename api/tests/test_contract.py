@@ -2191,7 +2191,7 @@ class ContractTest(unittest.TestCase):
         operation = _operation(self.spec, "bulkInvoice")
         self.assertEqual(operation["x-togavsu-mcp"]["parity"], "required")
         self.assertEqual(operation["x-togavsu-mcp"]["tool"], "bulkInvoice")
-        self.assertEqual(operation["x-togavsu-events"], ["invoice.created"])
+        self.assertEqual(operation["x-togavsu-events"], ["invoice.created", "invoice.imported"])
         self.assertEqual(operation["x-togavsu-access"]["reconciliation"], "exact_cents")
         self.assertEqual(operation["x-togavsu-access"]["batch_authorization"], "all_or_nothing")
         matter = "018f1a00-7b3c-7d4e-8a11-111111111111"

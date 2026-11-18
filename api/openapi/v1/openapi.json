@@ -27163,7 +27163,9 @@
             "balance_due_cents",
             "sent_at",
             "paid_at",
-            "client_message"
+            "client_message",
+            "imported",
+            "document_of_record_file_id"
           ],
           "client_csv_columns": [
             "id",
@@ -27180,7 +27182,9 @@
             "balance_due_cents",
             "sent_at",
             "paid_at",
-            "client_message"
+            "client_message",
+            "imported",
+            "document_of_record_file_id"
           ],
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
@@ -27347,7 +27351,9 @@
             "balance_due_cents",
             "sent_at",
             "paid_at",
-            "client_message"
+            "client_message",
+            "imported",
+            "document_of_record_file_id"
           ]
         },
         "x-togavsu-events": [],
@@ -27930,7 +27936,7 @@
       "post": {
         "operationId": "bulkInvoice",
         "summary": "Create invoices in one batch",
-        "description": "Importer write for invoice records. A draft uses the same role and invoices:write scope as createInvoiceDrafts. sent and viewed use sendInvoice. void uses voidInvoice. A write-off uses writeOffInvoice. Amount paid uses createPayment. paid also uses sendInvoice, so staff cannot mark an invoice paid. One item the caller cannot perform rejects the whole batch before any row is written. Validates every item, reconciles integer cents, and checks each matter wall. One validation, reconciliation, role, scope, or wall failure writes nothing. A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. A different body with that key is idempotency_conflict and writes nothing. A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. A client projection keeps only InvoiceClient fields, on JSON and on a later read. Staff fields are not returned.",
+        "description": "Importer write for invoice records. A draft uses the same role and invoices:write scope as createInvoiceDrafts. sent and viewed use sendInvoice. void uses voidInvoice. A write-off uses writeOffInvoice. Amount paid uses createPayment. paid also uses sendInvoice, so staff cannot mark an invoice paid. One item the caller cannot perform rejects the whole batch before any row is written. Validates every item, reconciles integer cents, and checks each matter wall. One validation, reconciliation, role, scope, or wall failure writes nothing. A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. A different body with that key is idempotency_conflict and writes nothing. A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. A client projection keeps only InvoiceClient fields, on JSON and on a later read. Staff fields are not returned. Opening imports (source form/csv/api) also emit invoice.imported, set imported true, and may skip rows already present by external_ref. preview=true validates without writing.",
         "tags": [
           "Billing"
         ],
@@ -27964,6 +27970,20 @@
                       "items": {
                         "$ref": "#/components/schemas/Invoice"
                       }
+                    },
+                    "skipped": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Already-imported external_ref rows (response only)."
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Per-row preview results when preview=true."
                     }
                   }
                 }
@@ -28108,11 +28128,14 @@
             "balance_due_cents",
             "sent_at",
             "paid_at",
-            "client_message"
+            "client_message",
+            "imported",
+            "document_of_record_file_id"
           ]
         },
         "x-togavsu-events": [
-          "invoice.created"
+          "invoice.created",
+          "invoice.imported"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -28184,6 +28207,10 @@
                     "items": {
                       "$ref": "#/components/schemas/InvoiceWrite"
                     }
+                  },
+                  "preview": {
+                    "type": "boolean",
+                    "description": "When true, validate only and return per-row results (CORE-37 CSV preview)."
                   }
                 }
               }
@@ -72230,6 +72257,28 @@
             "type": "string",
             "description": "Staff only. Absent from InvoiceClient."
           },
+          "imported": {
+            "type": "boolean",
+            "description": "Opening-invoice import marker (CORE-37)."
+          },
+          "import_source": {
+            "type": "string",
+            "enum": [
+              "form",
+              "csv",
+              "api"
+            ],
+            "description": "How the opening invoice was imported."
+          },
+          "external_ref": {
+            "type": "string",
+            "description": "Firm-unique import key; re-runs skip matching rows."
+          },
+          "document_of_record_file_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Original invoice PDF shown instead of a render (CORE-37)."
+          },
           "included": {
             "$ref": "#/components/schemas/Included"
           }
@@ -72344,6 +72393,15 @@
           },
           "client_message": {
             "type": "string"
+          },
+          "imported": {
+            "type": "boolean",
+            "description": "Opening-invoice import marker (CORE-37)."
+          },
+          "document_of_record_file_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Original invoice PDF shown instead of a render (CORE-37)."
           }
         },
         "required": [
@@ -72543,6 +72601,37 @@
           "internal_notes": {
             "type": "string",
             "description": "Staff invoice only. Omitted from a client projection."
+          },
+          "imported": {
+            "type": "boolean",
+            "description": "Opening-invoice import marker (CORE-37)."
+          },
+          "import_source": {
+            "type": "string",
+            "enum": [
+              "form",
+              "csv",
+              "api"
+            ],
+            "description": "How the opening invoice was imported."
+          },
+          "external_ref": {
+            "type": "string",
+            "description": "Firm-unique import key; re-runs skip matching rows."
+          },
+          "document_of_record_file_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Original invoice PDF shown instead of a render (CORE-37)."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "form",
+              "csv",
+              "api"
+            ],
+            "description": "Opening import channel (CORE-37). Alias of import_source on write."
           }
         },
         "required": [
@@ -72559,7 +72648,7 @@
           "balance_due_cents",
           "write_off_cents"
         ],
-        "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile."
+        "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Opening imports may set source, external_ref and document_of_record_file_id (CORE-37)."
       },
       "InvoiceDraftRequest": {
         "description": "Drafts unbilled time and expenses for one matter, a list of matters, or a date range. A flat-fee matter bills the fee. Exactly one selector is set: matter_id, or matter_ids, or from_date with to_date. A date range does not require a matter id. The server drafts only matters the caller is allowed to bill.",
@@ -81612,6 +81701,44 @@
               "disabled",
               "uninstalling"
             ]
+          },
+          "price": {
+            "description": "Manifest price (CORE-35): legacy string form is price_display only; structured form uses amount_cents, currency, interval, note. The core never charges it.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "amount_cents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Integer cents, zero or greater."
+                  },
+                  "currency": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 3
+                  },
+                  "interval": {
+                    "type": "string",
+                    "enum": [
+                      "month",
+                      "year"
+                    ]
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "price_display": {
+            "type": "string",
+            "description": "Human-readable price shown on the install screen (CORE-35)."
           }
         },
         "required": [
@@ -86527,9 +86654,40 @@
           "internal_notes": {
             "type": "string",
             "description": "Staff invoice only. Omitted from a client projection."
+          },
+          "imported": {
+            "type": "boolean",
+            "description": "Opening-invoice import marker (CORE-37)."
+          },
+          "import_source": {
+            "type": "string",
+            "enum": [
+              "form",
+              "csv",
+              "api"
+            ],
+            "description": "How the opening invoice was imported."
+          },
+          "external_ref": {
+            "type": "string",
+            "description": "Firm-unique import key; re-runs skip matching rows."
+          },
+          "document_of_record_file_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Original invoice PDF shown instead of a render (CORE-37)."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "form",
+              "csv",
+              "api"
+            ],
+            "description": "Opening import channel (CORE-37). Alias of import_source on write."
           }
         },
-        "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Patch: every field is optional."
+        "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Opening imports may set source, external_ref and document_of_record_file_id (CORE-37). Patch: every field is optional."
       },
       "PaymentWritePatch": {
         "description": "Records a payment. destination trust requires trust_account_id of an active authorized firm account. destination operating omits trust_account_id. internal_transfer is reserved for apply-trust. Patch: every field is optional.",
@@ -89374,6 +89532,9 @@
       "invoices:read"
     ],
     "invoice.created": [
+      "invoices:read"
+    ],
+    "invoice.imported": [
       "invoices:read"
     ],
     "invoice.approved": [

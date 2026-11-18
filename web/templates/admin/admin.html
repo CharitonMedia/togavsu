@@ -133,6 +133,7 @@
 <h3>{{.Name}} <span class="muted">{{.ID}} {{.Version}}</span> <span class="tag">{{.Status}}</span>{{if .Replaces}} <span class="tag">replaces {{.Replaces}}</span>{{end}}</h3>
 {{if .LastError}}<p class="error" role="alert">{{.LastError}}</p>{{end}}
 {{if or .PublicPages .PublicOperations}}<p class="muted" id="public-{{.ID}}">Public pages: {{if .PublicPages}}{{range $i, $p := .PublicPages}}{{if $i}}, {{end}}<code>{{$p}}</code>{{end}}{{else}}none{{end}}. Public operations (required core-signed public credential as <code>Authorization: Bearer</code> or <code>X-Togavsu-Public-Step</code>; limited to these operations): {{if .PublicOperations}}{{range $i, $o := .PublicOperations}}{{if $i}}, {{end}}<code>{{$o}}</code>{{end}}{{else}}none{{end}}.</p>{{end}}
+{{if .PriceDisplay}}<p class="muted" id="price-{{.ID}}">Listed price (provider information only; Togavsu never charges it): {{.PriceDisplay}}</p>{{end}}
 {{if .Undecided}}<form method="post" action="/admin/modules/permissions" class="form-grid permissions"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}">
 <p>This module asks for these permissions. Declining a required one cancels the install.</p>
 {{range .Permissions}}{{if eq .Decision "pending"}}<fieldset><legend><code>{{.Scope}}</code>{{if .Required}} (required){{end}}</legend>
@@ -220,6 +221,37 @@
 </section>
 {{end}}{{end}}
 
+{{if eq .Tab "migration"}}
+<section class="card" id="opening-invoices"><h2>Opening invoices</h2>
+<p class="muted">Bring each client's open balance in as a sent invoice with one Balance forward line. Historical numbers stay out of the normal sequence. Set <code>billing.invoice_number_start</code> on Time and billing so numbers at or above that floor are refused.</p>
+<form method="post" action="/admin/migration/opening-invoice" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label for="oi-matter">Matter id</label><input id="oi-matter" name="matter_id" required placeholder="uuid">
+<label for="oi-number">Historical invoice number</label><input id="oi-number" name="number" required>
+<label for="oi-issued">Invoice date</label><input id="oi-issued" name="issued_on" type="date" required>
+<label for="oi-due">Due date (optional)</label><input id="oi-due" name="due_on" type="date">
+<label for="oi-amount">Amount due</label><input id="oi-amount" name="amount_due" inputmode="decimal" required placeholder="0.00">
+<label for="oi-paid">Amount paid to date (optional)</label><input id="oi-paid" name="amount_paid" inputmode="decimal" placeholder="0.00">
+<label for="oi-msg">Message (optional)</label><input id="oi-msg" name="message" size="40">
+<label for="oi-dor">Document of record file id (optional)</label><input id="oi-dor" name="document_of_record_file_id" placeholder="uuid">
+<label for="oi-ref">External ref (optional)</label><input id="oi-ref" name="external_ref">
+<div><button type="submit">Import opening invoice</button></div>
+</form>
+</section>
+<section class="card" id="opening-csv"><h2>CSV upload</h2>
+<p class="muted">Columns: matter_id, number, issued_on, amount_due, due_on, message, contact_email, document_file_name, amount_paid, external_ref. Preview every row before anything is written; the whole file commits in one transaction or not at all.</p>
+<form method="post" action="/admin/migration/opening-csv" enctype="multipart/form-data" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label for="oi-csv">CSV file</label><input id="oi-csv" type="file" name="csv" accept=".csv,text/csv" required>
+<label class="check"><input type="checkbox" name="commit" value="1"> Commit after preview (leave unchecked to preview only)</label>
+<div><button type="submit">Upload CSV</button></div>
+</form>
+{{if .MigrationPreview}}<div class="scroll" id="csv-preview"><h3>Preview</h3>
+<table><thead><tr><th>Row</th><th>Result</th></tr></thead><tbody>
+{{range .MigrationPreview}}<tr{{if not .OK}} class="warn"{{end}}><td>{{.Index}}</td><td>{{if .Skipped}}Already imported ({{.ExternalRef}}){{else if .OK}}OK{{else}}{{.Error}}{{end}}</td></tr>{{end}}
+</tbody></table></div>{{end}}
+{{if .MigrationNotice}}<p class="notice" role="status">{{.MigrationNotice}}</p>{{end}}
+</section>
+{{end}}
+
 {{if .Settings}}
 <section class="card settings"><h2>Settings</h2>
 <table class="settings-table"><thead><tr><th>Setting</th><th>Current value</th><th>Default</th><th></th></tr></thead><tbody>
@@ -239,7 +271,7 @@
   <td>{{if not .Locked}}<form method="post" action="/admin/settings/{{.Key}}/reset"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Page.Tab}}"><button type="submit">Reset to default</button></form>{{end}}</td>
 </tr>{{end}}</tbody></table>
 </section>
-{{else if not (or (eq .Tab "help") (eq .Tab "users_roles") (eq .Tab "system") (eq .Tab "home_screen") (eq .Tab "appearance") (eq .Tab "modules"))}}<p class="hint">This tab has no settings in this core yet.</p>
+{{else if not (or (eq .Tab "help") (eq .Tab "users_roles") (eq .Tab "system") (eq .Tab "home_screen") (eq .Tab "appearance") (eq .Tab "modules") (eq .Tab "migration"))}}<p class="hint">This tab has no settings in this core yet.</p>
 {{end}}
 
 {{if eq .Tab "ai"}}{{with .AICalls}}
