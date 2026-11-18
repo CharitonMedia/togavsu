@@ -1,7 +1,7 @@
 {
   "task_id": "core-update-2c",
   "status": "pass",
-  "tested_revision": "bf0b4abcef12602c7af6fab9f7cfc699a263244e",
+  "tested_revision": "6ab5ac7185c61e42d3217b1060701b75e46130e8",
   "tests": [
     {
       "name": "modules package",
