@@ -1557,18 +1557,23 @@
         "internal/identity/",
         "internal/core/",
         "internal/settings/",
+        "api/contract/",
+        "api/openapi/v1/",
+        "tests/",
         "docs/build/desk-fixes/settings-labels.md",
         "docs/build/reports/desk-fix-password-optional.json"
       ],
       "prd_sections": [
+        "5",
         "8.7"
       ],
       "acceptance_ids": [],
       "required_checks": [
         "Core tests",
-        "Core settings checks"
+        "Core settings checks",
+        "API contract tests"
       ],
-      "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install: his test install signs in with an email alone, but that switch exists only on the install's local copy, so every update drops it. Read docs/build/desk-fixes/password-optional.md and build it exactly as it says: the security.password_optional setting (Sign In Without a Password, Security tab, bool, default false, not PRD, the help text as written), identity.Service.PasswordOptional, the Login change (off changes nothing; on lets a known active account in whatever the password box holds; unknown or inactive accounts, lockout accounting and two-factor unchanged), the sign-in page's optional label and dropped required mark through one renderLogin helper, the label in docs/build/desk-fixes/settings-labels.md and internal/settings/labels_test.go, and the tests the spec lists. Change nothing else. Run go vet ./... and go test ./internal/... and record the results and the tested SHA in docs/build/reports/desk-fix-password-optional.json."
+      "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install: his test install signs in with an email alone, but that switch exists only on the install's local copy, so every update drops it. The trusted PRD now records it (togavsu-core-prd.md section 5 and the 8.7 Security tab, added 2026-11-17 at Patrick's direction). Read docs/build/desk-fixes/password-optional.md and build it exactly as it says: the security.password_optional setting (Sign In Without a Password, Security tab, bool, default false, not a PRD default, the help text as written) in internal/settings and in the published settings contract (api/contract/settings.py and the SettingKey enum and catalog in api/openapi/v1/openapi.json); identity.Service.PasswordOptional; the Login change (off changes nothing; on lets a known active account skip the password, except that the password is still checked whenever the next step would be two-factor enrollment; unknown or inactive accounts, lockout accounting and the TOTP code step unchanged); the password_skipped field on the successful sign-in audit entry; the sign-in page's optional label and dropped required mark through one renderLogin helper; the label in docs/build/desk-fixes/settings-labels.md and internal/settings/labels_test.go; and every test the spec lists, including the enrollment failure path. Change nothing else. Run go vet ./... and go test ./internal/... and the API contract tests, and record the results and the tested SHA in docs/build/reports/desk-fix-password-optional.json."
     }
   ],
   "max_repairs": 3
