@@ -770,13 +770,16 @@ func fixedSite(path, fn string) bool {
 	case strings.Contains(slash, "/pkg/modulekit/forms/"):
 		// CORE-33 forms kit: comparison ranks, AES key width, parse indexes; answers stay in the module.
 		switch fn {
-		case "DecodeAutosave", "AutosaveHandler", "AutosaveHandlerForm", "ParseFormAnswers", "decodeAutosaveRequest", "patchFromForm",
-			"splitRepeatingKey", "autosaveAttrs", "jsonStringEscape", "renderRepeatRow", "inValue", "compareValue",
+		case "DecodeAutosave", "AutosaveHandler", "AutosaveHandlerForm", "ParseFormAnswers", "parsePostedAnswers",
+			"parseFieldInto", "parseRepeating", "parseNumberAnswer", "parseDateAnswer", "parseAddress", "parseBool",
+			"decodeAutosaveRequest", "patchFromForm", "formFields", "formAutosaveAttrs",
+			"splitRepeatingKey", "jsonStringEscape", "renderRepeatRow", "inValue", "compareValue",
 			"compareCount", "cmp", "cmpCount", "Eval", "validateField", "Validate", "ValidateScreen",
 			"KeyBytes", "EnsureKey", "LoadKey", "EncryptMasked", "DecryptMasked", "SealAnswers",
 			"MergeFormSubmit", "maskedFieldIDs", "applyFormsOpaqueCORS", "ClearMaskedValue",
 			"CreateSecretIfAbsent", "PutSecret", "GetSecret", "PutSecretIfAbsent", "secretURL", "secretAPIError",
-			"isConflict", "authorize", "put", "client", "disabledIfUnknown":
+			"isConflict", "authorize", "put", "client", "disabledIfUnknown", "lastValue", "keyPosted",
+			"unknownPosted", "addressPosted", "repeatingPosted", "applyUnknownClear":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/practice/service.go"):

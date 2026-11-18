@@ -9,13 +9,13 @@ import (
 
 // RenderOptions controls HTMX wiring and error display for RenderScreen.
 type RenderOptions struct {
-	// AutosaveURL, when set, adds hx-post / hx-trigger on each editable control.
+	// AutosaveURL, when set, puts one hx-post on the form (whole-form include).
 	AutosaveURL string
-	// FormAction is the full-submit action; empty omits the wrapping <form>.
+	// FormAction is the full-submit action; empty with AutosaveURL still wraps a <form>.
 	FormAction string
 	// FormMethod defaults to POST.
 	FormMethod string
-	// CSRFToken is written into a hidden input when FormAction is set.
+	// CSRFToken is written into a hidden input when a form is rendered.
 	CSRFToken string
 	// Errors maps field id → message shown beside the control.
 	Errors map[string]string
@@ -32,9 +32,15 @@ func RenderScreen(w io.Writer, screen Screen, answers Answers, audience Audience
 	if method == "" {
 		method = "POST"
 	}
-	if opts.FormAction != "" {
-		if _, err := fmt.Fprintf(w, `<form class="tv-form" method="%s" action="%s" data-audience="%s">`+"\n",
-			html.EscapeString(method), html.EscapeString(opts.FormAction), html.EscapeString(string(audience))); err != nil {
+	useForm := opts.FormAction != "" || opts.AutosaveURL != ""
+	if useForm {
+		action := opts.FormAction
+		if action == "" {
+			action = "#"
+		}
+		if _, err := fmt.Fprintf(w, `<form class="tv-form" method="%s" action="%s" data-audience="%s"%s>`+"\n",
+			html.EscapeString(method), html.EscapeString(action), html.EscapeString(string(audience)),
+			formAutosaveAttrs(opts)); err != nil {
 			return err
 		}
 	} else {
@@ -42,7 +48,7 @@ func RenderScreen(w io.Writer, screen Screen, answers Answers, audience Audience
 			return err
 		}
 	}
-	// CSRF hidden input for full submit and for HTMX autosave hx-include / offline queue.
+	// CSRF hidden input for full submit and for HTMX whole-form autosave / offline queue.
 	if opts.CSRFToken != "" {
 		if _, err := fmt.Fprintf(w, `<input type="hidden" name="csrf" value="%s">`+"\n", html.EscapeString(opts.CSRFToken)); err != nil {
 			return err
@@ -58,7 +64,7 @@ func RenderScreen(w io.Writer, screen Screen, answers Answers, audience Audience
 			return err
 		}
 	}
-	if opts.FormAction != "" {
+	if useForm {
 		_, err := io.WriteString(w, "</form>\n")
 		return err
 	}
@@ -89,8 +95,10 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 			return err
 		}
 	}
-	maskedAutosave := field.Type == TypeMasked && !opts.RevealMasked
-	hx := autosaveAttrs(opts.AutosaveURL, name, opts.CSRFToken, maskedAutosave)
+	maskedAttr := ""
+	if field.Type == TypeMasked && !opts.RevealMasked {
+		maskedAttr = ` data-autosave-masked="1"`
+	}
 	unknownChecked := ""
 	if ans.Unknown {
 		unknownChecked = " checked"
@@ -112,13 +120,13 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 			val = ""
 			if _, err := fmt.Fprintf(w, `<input type="%s" id="%s" name="%s" placeholder="%s"%s%s autocomplete="off">`+"\n",
 				inputType, html.EscapeString(id), html.EscapeString(name),
-				html.EscapeString(field.Placeholder), hx, disabledIfUnknown(ans)); err != nil {
+				html.EscapeString(field.Placeholder), maskedAttr, disabledIfUnknown(ans)); err != nil {
 				return err
 			}
 		} else {
 			if _, err := fmt.Fprintf(w, `<input type="%s" id="%s" name="%s" value="%s" placeholder="%s"%s%s>`+"\n",
 				inputType, html.EscapeString(id), html.EscapeString(name),
-				html.EscapeString(val), html.EscapeString(field.Placeholder), hx, disabledIfUnknown(ans)); err != nil {
+				html.EscapeString(val), html.EscapeString(field.Placeholder), maskedAttr, disabledIfUnknown(ans)); err != nil {
 				return err
 			}
 		}
@@ -127,19 +135,19 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 		if n, ok := ans.FloatValue(); ok {
 			val = fmt.Sprintf("%v", n)
 		}
-		if _, err := fmt.Fprintf(w, `<input type="number" id="%s" name="%s" value="%s"%s%s>`+"\n",
-			html.EscapeString(id), html.EscapeString(name), html.EscapeString(val), hx, disabledIfUnknown(ans)); err != nil {
+		if _, err := fmt.Fprintf(w, `<input type="number" id="%s" name="%s" value="%s"%s>`+"\n",
+			html.EscapeString(id), html.EscapeString(name), html.EscapeString(val), disabledIfUnknown(ans)); err != nil {
 			return err
 		}
 	case TypeTextarea:
-		if _, err := fmt.Fprintf(w, `<textarea id="%s" name="%s" placeholder="%s"%s%s>%s</textarea>`+"\n",
+		if _, err := fmt.Fprintf(w, `<textarea id="%s" name="%s" placeholder="%s"%s>%s</textarea>`+"\n",
 			html.EscapeString(id), html.EscapeString(name), html.EscapeString(field.Placeholder),
-			hx, disabledIfUnknown(ans), html.EscapeString(ans.StringValue())); err != nil {
+			disabledIfUnknown(ans), html.EscapeString(ans.StringValue())); err != nil {
 			return err
 		}
 	case TypeSelect:
-		if _, err := fmt.Fprintf(w, `<select id="%s" name="%s"%s%s>`+"\n",
-			html.EscapeString(id), html.EscapeString(name), hx, disabledIfUnknown(ans)); err != nil {
+		if _, err := fmt.Fprintf(w, `<select id="%s" name="%s"%s>`+"\n",
+			html.EscapeString(id), html.EscapeString(name), disabledIfUnknown(ans)); err != nil {
 			return err
 		}
 		_, _ = io.WriteString(w, `<option value=""></option>`+"\n")
@@ -160,8 +168,8 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 		}
 		_, _ = io.WriteString(w, "</select>\n")
 	case TypeMultiSelect:
-		if _, err := fmt.Fprintf(w, `<select id="%s" name="%s" multiple%s%s>`+"\n",
-			html.EscapeString(id), html.EscapeString(name), hx, disabledIfUnknown(ans)); err != nil {
+		if _, err := fmt.Fprintf(w, `<select id="%s" name="%s" multiple%s>`+"\n",
+			html.EscapeString(id), html.EscapeString(name), disabledIfUnknown(ans)); err != nil {
 			return err
 		}
 		selected := map[string]bool{}
@@ -188,8 +196,12 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 		if ans.BoolValue() {
 			checked = " checked"
 		}
-		if _, err := fmt.Fprintf(w, `<input type="checkbox" id="%s" name="%s" value="true"%s%s%s>`+"\n",
-			html.EscapeString(id), html.EscapeString(name), checked, hx, disabledIfUnknown(ans)); err != nil {
+		// Hidden false so an unchecked box still posts false (HTML omits unchecked checkboxes).
+		if _, err := fmt.Fprintf(w, `<input type="hidden" name="%s" value="false">`+"\n", html.EscapeString(name)); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, `<input type="checkbox" id="%s" name="%s" value="true"%s%s>`+"\n",
+			html.EscapeString(id), html.EscapeString(name), checked, disabledIfUnknown(ans)); err != nil {
 			return err
 		}
 	case TypeRadio:
@@ -203,9 +215,9 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 			if label == "" {
 				label = opt.Value
 			}
-			if _, err := fmt.Fprintf(w, `<label class="tv-radio"><input type="radio" id="%s" name="%s" value="%s"%s%s%s> %s</label>`+"\n",
+			if _, err := fmt.Fprintf(w, `<label class="tv-radio"><input type="radio" id="%s" name="%s" value="%s"%s%s> %s</label>`+"\n",
 				html.EscapeString(oid), html.EscapeString(name), html.EscapeString(opt.Value),
-				checked, hx, disabledIfUnknown(ans), html.EscapeString(label)); err != nil {
+				checked, disabledIfUnknown(ans), html.EscapeString(label)); err != nil {
 				return err
 			}
 		}
@@ -224,8 +236,8 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 			if _, err := fmt.Fprintf(w, `<label for="%s">%s</label>`+"\n", html.EscapeString(pid), html.EscapeString(part.label)); err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(w, `<input type="text" id="%s" name="%s" value="%s"%s%s>`+"\n",
-				html.EscapeString(pid), html.EscapeString(pname), html.EscapeString(part.val), hx, disabledIfUnknown(ans)); err != nil {
+			if _, err := fmt.Fprintf(w, `<input type="text" id="%s" name="%s" value="%s"%s>`+"\n",
+				html.EscapeString(pid), html.EscapeString(pname), html.EscapeString(part.val), disabledIfUnknown(ans)); err != nil {
 				return err
 			}
 		}
@@ -279,8 +291,8 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 		if _, err := fmt.Fprintf(w, `<input type="hidden" name="%s.__unknown" value="0">`+"\n", html.EscapeString(name)); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(w, `<label class="tv-unknown"><input type="checkbox" name="%s.__unknown" value="1"%s%s> I don't know</label>`+"\n",
-			html.EscapeString(name), unknownChecked, hx); err != nil {
+		if _, err := fmt.Fprintf(w, `<label class="tv-unknown"><input type="checkbox" name="%s.__unknown" value="1"%s> I don't know</label>`+"\n",
+			html.EscapeString(name), unknownChecked); err != nil {
 			return err
 		}
 	}
@@ -313,23 +325,15 @@ func renderRepeatRow(w io.Writer, field Field, name string, i int, row map[strin
 	return nil
 }
 
-func autosaveAttrs(url, name, csrf string, masked bool) string {
-	if url == "" {
+// formAutosaveAttrs puts one whole-form hx-post on the <form> (CORE-33 redesign).
+func formAutosaveAttrs(opts RenderOptions) string {
+	if opts.AutosaveURL == "" {
 		return ""
 	}
-	// One autosave shape: field value + csrf (hx-include), X-CSRF-Token header.
-	// Masked (unrevealed): change-only trigger so tabbing an empty control does not
-	// post; data-autosave-masked lets OfflineQueueJS skip empty posts.
-	trigger := `change delay:400ms, blur`
-	maskedAttr := ""
-	if masked {
-		trigger = `change delay:400ms`
-		maskedAttr = ` data-autosave-masked="1"`
-	}
-	attrs := fmt.Sprintf(` hx-post="%s" hx-trigger="%s" hx-include="closest .tv-field, [name=csrf]" hx-swap="none" data-autosave-name="%s"%s`,
-		html.EscapeString(url), trigger, html.EscapeString(name), maskedAttr)
-	if csrf != "" {
-		attrs += fmt.Sprintf(` hx-headers="%s"`, html.EscapeString(`{"X-CSRF-Token":"`+jsonStringEscape(csrf)+`"}`))
+	attrs := fmt.Sprintf(` hx-post="%s" hx-trigger="change delay:400ms, input delay:400ms" hx-include="this" hx-swap="none"`,
+		html.EscapeString(opts.AutosaveURL))
+	if opts.CSRFToken != "" {
+		attrs += fmt.Sprintf(` hx-headers="%s"`, html.EscapeString(`{"X-CSRF-Token":"`+jsonStringEscape(opts.CSRFToken)+`"}`))
 	}
 	return attrs
 }
@@ -354,8 +358,8 @@ func disabledIfUnknown(ans Answer) string {
 }
 
 // UnknownToggleJS re-enables field controls when the "I don't know" checkbox is
-// unchecked (disabled inputs are left out of form posts and hx-include). Modules
-// embed this beside the rendered form, like OfflineQueueJS / RepeatingJS.
+// unchecked (disabled inputs are left out of form posts). Modules embed this
+// beside the rendered form, like OfflineQueueJS / RepeatingJS.
 const UnknownToggleJS = `(function(){
   function setDisabled(field, on){
     if (!field) return;

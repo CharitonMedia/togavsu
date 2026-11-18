@@ -415,6 +415,12 @@ func TestCORE34StaffBanner(t *testing.T) {
 		}
 		t.Fatalf("shell missing banner: %d %s", home.code, snip)
 	}
+	if strings.Contains(home.body, `style="height:`) || strings.Contains(home.body, `style="width:100%;height:`) {
+		t.Fatalf("banner must not use inline styles (staff CSP style-src self): %s", home.body)
+	}
+	if !strings.Contains(home.body, `height="40"`) || !strings.Contains(home.body, "staff-banner-h-40") {
+		t.Fatalf("banner must expose CSP-safe height: missing height=40 / staff-banner-h-40")
+	}
 	bridge := x.admin.do("GET", "/ui/static/banner-bridge.js", nil)
 	if bridge.code != http.StatusOK || !strings.Contains(bridge.body, "fromBanner") || !strings.Contains(bridge.body, "ev.source") {
 		t.Fatalf("banner-bridge missing source match: %d", bridge.code)
@@ -634,9 +640,9 @@ func TestCORE32PublicAutosaveCSRF(t *testing.T) {
 			case r.URL.Path == "/form" && r.Method == http.MethodGet:
 				csrf := r.Header.Get(modules.PublicCSRFPassHeader)
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				_, _ = w.Write([]byte(`<html><body><form class="tv-form" method="POST" action="/p/intake-auto/form">` +
+				_, _ = w.Write([]byte(`<html><body><form class="tv-form" method="POST" action="/p/intake-auto/form" hx-post="/p/intake-auto/autosave" hx-include="this" hx-headers='{"X-CSRF-Token":"` + csrf + `"}'>` +
 					`<input type="hidden" name="csrf" value="` + csrf + `">` +
-					`<input name="name" value="" hx-post="/p/intake-auto/autosave" hx-include="closest .tv-field, [name=csrf]" hx-headers='{"X-CSRF-Token":"` + csrf + `"}'>` +
+					`<input name="name" value="">` +
 					`</form></body></html>`))
 			case r.URL.Path == "/autosave" && r.Method == http.MethodPost:
 				lastAutosaveCSRF = r.Header.Get(modules.PublicCSRFHeader)

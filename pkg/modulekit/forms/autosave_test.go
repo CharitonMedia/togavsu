@@ -68,7 +68,13 @@ func TestAutosaveHandler(t *testing.T) {
 }
 
 func TestParseFormAnswers(t *testing.T) {
-	got := ParseFormAnswers(map[string][]string{
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "name", Type: TypeText, AllowUnknown: true},
+		{ID: "addr", Type: TypeAddress},
+		{ID: "tags", Type: TypeMultiSelect, Options: []Option{{Value: "x"}, {Value: "y"}}},
+		{ID: "ok", Type: TypeBoolean},
+	}}}}}}
+	got := ParseFormAnswers(form, map[string][]string{
 		"name":           {"Avery"},
 		"name.__unknown": {"1"},
 		"addr.line1":     {"1 Main"},
@@ -117,7 +123,7 @@ func TestClearUnknownThenSaveValue(t *testing.T) {
 
 	stored := Answers{"name": {Unknown: true}}
 	// Uncheck: HTMX includes hidden 0 (checkbox omitted).
-	clear := ParseFormAnswers(map[string][]string{
+	clear := ParseFormAnswers(form, map[string][]string{
 		"name.__unknown": {"0"},
 		"csrf":           {"tok"},
 	})
@@ -126,7 +132,7 @@ func TestClearUnknownThenSaveValue(t *testing.T) {
 		t.Fatalf("explicit 0 must clear Unknown: %#v", stored["name"])
 	}
 	// Save a real value after clearing.
-	save := ParseFormAnswers(map[string][]string{
+	save := ParseFormAnswers(form, map[string][]string{
 		"name":           {"Avery"},
 		"name.__unknown": {"0"},
 		"csrf":           {"tok"},
@@ -136,7 +142,7 @@ func TestClearUnknownThenSaveValue(t *testing.T) {
 		t.Fatalf("after clear+save: %#v", stored["name"])
 	}
 	// Checked again: hidden 0 then checkbox 1 → last wins.
-	idk := ParseFormAnswers(map[string][]string{
+	idk := ParseFormAnswers(form, map[string][]string{
 		"name.__unknown": {"0", "1"},
 	})
 	if !idk.Get("name").Unknown {
@@ -152,7 +158,7 @@ func TestClearUnknownThenSaveValueMasked(t *testing.T) {
 	}}}}}}
 	cipher := CipherPrefix + "kept-cipher"
 	stored := Answers{"ssn": {Unknown: true, Value: cipher}}
-	clear := ParseFormAnswers(map[string][]string{
+	clear := ParseFormAnswers(form, map[string][]string{
 		"ssn.__unknown": {"0"},
 		"ssn":           {""},
 		"csrf":          {"tok"},
@@ -164,7 +170,7 @@ func TestClearUnknownThenSaveValueMasked(t *testing.T) {
 	if stored.Get("ssn").StringValue() != cipher {
 		t.Fatalf("empty masked clear must keep ciphertext: %#v", stored["ssn"])
 	}
-	save := ParseFormAnswers(map[string][]string{
+	save := ParseFormAnswers(form, map[string][]string{
 		"ssn":           {"123-45-6789"},
 		"ssn.__unknown": {"0"},
 		"csrf":          {"tok"},
@@ -190,8 +196,11 @@ func TestOfflineQueueJSPresent(t *testing.T) {
 	if !strings.Contains(OfflineQueueJS, "_togavsuBody") || !strings.Contains(OfflineQueueJS, "htmx:configRequest") {
 		t.Fatal("OfflineQueueJS must capture the HTMX body for replay")
 	}
-	if !strings.Contains(OfflineQueueJS, `"answers"`) && !strings.Contains(OfflineQueueJS, "answers:") {
-		t.Fatal("OfflineQueueJS must enqueue answers, not a nil raw value")
+	if !strings.Contains(OfflineQueueJS, "application/x-www-form-urlencoded") {
+		t.Fatal("OfflineQueueJS must replay the whole-form urlencoded body")
+	}
+	if !strings.Contains(OfflineQueueJS, "data-autosave-masked") {
+		t.Fatal("OfflineQueueJS must strip empty masked fields from whole-form posts")
 	}
 	if !strings.Contains(OfflineQueueJS, "X-CSRF-Token") || !strings.Contains(OfflineQueueJS, "csrfToken") {
 		t.Fatal("OfflineQueueJS must carry X-CSRF-Token on enqueue and flush")
@@ -241,8 +250,12 @@ func TestOpaqueOriginOfflineQueueJS(t *testing.T) {
 }
 
 func TestAutosaveHandlerAcceptsFormURLEncoded(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "name", Type: TypeText},
+		{ID: "email", Type: TypeEmail},
+	}}}}}}
 	var stored Answers
-	h := AutosaveHandler(func(r *http.Request, patch AutosavePatch) (Answers, error) {
+	h := AutosaveHandlerForm(form, func(r *http.Request, patch AutosavePatch) (Answers, error) {
 		patch.Apply(&stored)
 		return stored, nil
 	})
@@ -310,8 +323,9 @@ func TestAutosaveHXTriggerNameDoesNotErase(t *testing.T) {
 }
 
 // TestAutosaveEndToEndHTMXShape renders a form and posts exactly what HTMX would
-// send (headers included) for a normal field, an untouched masked field, and an
-// offline replay; checks stored answers after each.
+// send for whole-form autosave (headers included) for a normal field, an
+// untouched masked field (omitted from body), and an offline form-urlencoded
+// replay; checks stored answers after each.
 func TestAutosaveEndToEndHTMXShape(t *testing.T) {
 	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
 		{ID: "name", Type: TypeText, Label: "Name"},
@@ -329,10 +343,10 @@ func TestAutosaveEndToEndHTMXShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := buf.String()
-	if !strings.Contains(html, `hx-post="/autosave"`) || !strings.Contains(html, `data-autosave-name="name"`) {
-		t.Fatalf("render missing autosave attrs: %s", html)
+	if !strings.Contains(html, `hx-post="/autosave"`) || !strings.Contains(html, `hx-include="this"`) {
+		t.Fatalf("render missing whole-form autosave attrs: %s", html)
 	}
-	if !strings.Contains(html, `data-autosave-masked="1"`) || !strings.Contains(html, `data-autosave-name="ssn"`) {
+	if !strings.Contains(html, `data-autosave-masked="1"`) {
 		t.Fatalf("masked field must carry data-autosave-masked: %s", html)
 	}
 	if strings.Contains(html, `name="ssn" value="`) {
@@ -344,11 +358,10 @@ func TestAutosaveEndToEndHTMXShape(t *testing.T) {
 		return stored, nil
 	})
 
-	// 1) Normal field: form body + HX-Trigger-Name + X-CSRF-Token (HTMX shape).
+	// 1) Whole form: name changed; empty masked omitted (OfflineQueueJS / configRequest strip).
 	req := httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("name=Avery&csrf=csrf-tok"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
-	req.Header.Set("HX-Trigger-Name", "name")
 	req.Header.Set("X-CSRF-Token", "csrf-tok")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -359,11 +372,10 @@ func TestAutosaveEndToEndHTMXShape(t *testing.T) {
 		t.Fatalf("normal field save must not touch ssn: %#v", stored["ssn"])
 	}
 
-	// 2) Untouched masked: empty ssn= as blur would post — must keep sealed value.
-	req = httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("ssn=&csrf=csrf-tok"))
+	// 2) Whole form with empty masked posted — MergeFormSubmit keeps sealed value.
+	req = httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("name=Avery&ssn=&csrf=csrf-tok"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
-	req.Header.Set("HX-Trigger-Name", "ssn")
 	req.Header.Set("X-CSRF-Token", "csrf-tok")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -371,10 +383,9 @@ func TestAutosaveEndToEndHTMXShape(t *testing.T) {
 		t.Fatalf("empty masked wiped ssn: code=%d stored=%#v", rec.Code, stored)
 	}
 
-	// 3) Offline replay JSON shape (answers only, offline flag).
-	req = httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader(
-		`{"offline":true,"answers":{"name":{"value":"Blake"}}}`))
-	req.Header.Set("Content-Type", "application/json")
+	// 3) Offline replay: same whole-form urlencoded shape.
+	req = httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("name=Blake&csrf=csrf-tok"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("X-Togavsu-Forms-Offline", "1")
 	req.Header.Set("X-CSRF-Token", "csrf-tok")
 	rec = httptest.NewRecorder()
@@ -388,7 +399,10 @@ func TestAutosaveEndToEndHTMXShape(t *testing.T) {
 }
 
 func TestParseFormAnswersRepeating(t *testing.T) {
-	got := ParseFormAnswers(map[string][]string{
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "kids", Type: TypeRepeating, Fields: []Field{{ID: "name", Type: TypeText}}},
+	}}}}}}
+	got := ParseFormAnswers(form, map[string][]string{
 		"kids[0].name": {"Ada"},
 		"kids[1].name": {"Bea"},
 	})
@@ -399,7 +413,10 @@ func TestParseFormAnswersRepeating(t *testing.T) {
 }
 
 func TestParseFormAnswersRejectsHugeRepeatingIndex(t *testing.T) {
-	got := ParseFormAnswers(map[string][]string{
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "kids", Type: TypeRepeating, Fields: []Field{{ID: "name", Type: TypeText}}},
+	}}}}}}
+	got := ParseFormAnswers(form, map[string][]string{
 		"kids[0].name":          {"Ada"},
 		"kids[2000000000].name": {"Boom"},
 		"kids[100].name":        {"TooHigh"}, // MaxRepeatingIndex is 99
@@ -411,9 +428,10 @@ func TestParseFormAnswersRejectsHugeRepeatingIndex(t *testing.T) {
 }
 
 func TestRendererToAutosaveHandler(t *testing.T) {
-	screen := Screen{Fields: []Field{
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
 		{ID: "name", Type: TypeText, Label: "Name"},
-	}}
+	}}}}}}
+	screen := form.Tracks[0].Screens[0]
 	var buf strings.Builder
 	if err := RenderScreen(&buf, screen, Answers{}, AudiencePublic, RenderOptions{
 		AutosaveURL: "/autosave",
@@ -427,7 +445,7 @@ func TestRendererToAutosaveHandler(t *testing.T) {
 		t.Fatalf("render: %s", html)
 	}
 	var stored Answers
-	h := AutosaveHandler(func(r *http.Request, patch AutosavePatch) (Answers, error) {
+	h := AutosaveHandlerForm(form, func(r *http.Request, patch AutosavePatch) (Answers, error) {
 		patch.Apply(&stored)
 		return stored, nil
 	})

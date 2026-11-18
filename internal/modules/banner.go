@@ -100,6 +100,8 @@ func (s *Service) SetStaffBannerOrder(ctx context.Context, p domain.Principal, o
 }
 
 // BannerHTML returns the sandboxed iframe markup for staff banners (CORE-34).
+// Height uses the iframe height attribute plus .staff-banner-frame in app.css
+// (staff CSP is style-src 'self'; no inline style attributes).
 func BannerHTML(banners []StaffBannerView) template.HTML {
 	if len(banners) == 0 {
 		return ""
@@ -111,11 +113,12 @@ func BannerHTML(banners []StaffBannerView) template.HTML {
 		if h <= 0 {
 			h = domain.StaffBannerDefaultHeight
 		}
-		b.WriteString(`<div class="staff-banner" data-module="` + html.EscapeString(bn.ModuleID) + `" style="height:` + strconv.Itoa(h) + `px" hidden>`)
+		hs := strconv.Itoa(h)
+		b.WriteString(`<div class="staff-banner staff-banner-h-` + hs + `" data-module="` + html.EscapeString(bn.ModuleID) + `" data-height="` + hs + `" hidden>`)
 		// Same-origin URL (/m/...) under the staff sandbox list; show/hide via postMessage bridge.
 		b.WriteString(`<iframe class="staff-banner-frame" title="` + html.EscapeString(bn.ModuleID) + ` banner" src="` + html.EscapeString(bn.Src) +
 			`" sandbox="` + staffFrameSandbox + `" referrerpolicy="no-referrer" data-module="` + html.EscapeString(bn.ModuleID) +
-			`" style="width:100%;height:` + strconv.Itoa(h) + `px;border:0"></iframe>`)
+			`" width="100%" height="` + hs + `"></iframe>`)
 		b.WriteString(`</div>`)
 	}
 	b.WriteString(`</div>`)

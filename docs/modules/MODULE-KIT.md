@@ -419,11 +419,11 @@ autosave forms.
 | --- | --- |
 | Definition model (tracks, screens, fields) | `Form`, `Track`, `Screen`, `Field`, `FieldType` (`AllFieldTypes`: the 16 types) |
 | Audiences | `AudienceStaff`, `AudienceClient`, `AudiencePublic`; `Field.VisibleTo`, `VisibleFields` |
-| Answers and "I don't know" | `Answers`, `Answer` (`Unknown`), `Address`, `Merge`, `MergeFormSubmit` (keeps masked on empty post; `ClearMaskedValue` clears), `ParseFormAnswers` (explicit `name.__unknown=0` clears Unknown), `UnknownToggleJS` |
+| Answers and "I don't know" | `Answers`, `Answer` (`Unknown`), `Address`, `Merge`, `MergeFormSubmit` (keeps masked on empty post; `ClearMaskedValue` clears), `ParseFormAnswers(form, values)` (schema-driven types for all 16 fields; explicit `name.__unknown=0` clears Unknown), `UnknownToggleJS` |
 | Conditions (`eq`, `neq`, `in`, `exists`, `notExists`, `gt`/`lt`/`gte`/`lte`, count ops on repeating groups) | `Condition`, `Op*`, `Eval` |
 | Validation | `Validate`, `ValidateScreen`, `Issues` |
-| HTMX renderer | `RenderScreen(w, screen, answers, audience, RenderOptions)` |
-| Autosave + offline queue | One field-level shape (field value + CSRF; masked untouched sends nothing): `AutosaveHandler` / `AutosaveHandlerForm` (CORS for `Origin: null`, empty masked keep stored), `AutosavePatch.Apply`, `DecodeAutosave`, `OfflineQueueJS` (memory fallback when `localStorage` throws; skips empty masked) |
+| HTMX renderer | `RenderScreen(w, screen, answers, audience, RenderOptions)` — one `hx-post` on the `<form>` (`hx-include="this"`); booleans emit hidden `false` |
+| Autosave + offline queue | Whole-form shape (every control + CSRF; masked untouched stripped): `AutosaveHandler` / `AutosaveHandlerForm` (CORS for `Origin: null`, typed `ParseFormAnswers`, empty masked keep stored), `AutosavePatch.Apply`, `DecodeAutosave`, `OfflineQueueJS` (memory fallback when `localStorage` throws; strips empty masked; replays urlencoded) |
 | Masked fields | `SecretStore` (`PutSecret`/`GetSecret`), optional `CreateIfAbsentStore`, `HTTPSecretStore` (core PUT with `If-None-Match: *`), `EncryptMasked`, `DecryptMasked`, `SealAnswers` (skips already-sealed under the field key), `EnsureKey` / `LoadKey` (create-if-absent or put+re-read); ciphertext in answers (`CipherPrefix`), AES-256 key name in the module secret store |
 
 ```go

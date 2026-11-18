@@ -48,7 +48,8 @@ func TestRenderScreenAudiencesAndHTMX(t *testing.T) {
 		`data-audience="public"`,
 		`hx-post="/m/intake/api/autosave"`,
 		`name="csrf" value="tok"`,
-		`hx-include="closest .tv-field, [name=csrf]"`,
+		`hx-include="this"`,
+		`hx-trigger="change delay:400ms, input delay:400ms"`,
 		`X-CSRF-Token`,
 		`I don't know`,
 		`name="name.__unknown" value="0"`,
@@ -65,13 +66,14 @@ func TestRenderScreenAudiencesAndHTMX(t *testing.T) {
 		`tv-repeat-template`,
 		`type="password"`,
 		`data-autosave-masked="1"`,
+		`name="ok" value="false"`,
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("render missing %q in:\n%s", want, html)
 		}
 	}
-	if !strings.Contains(html, `hx-trigger="change delay:400ms"`) {
-		t.Fatalf("masked autosave must use change-only trigger:\n%s", html)
+	if strings.Contains(html, `hx-include="closest .tv-field`) {
+		t.Fatalf("must not use per-field hx-include:\n%s", html)
 	}
 	if !strings.Contains(RepeatingJS, "tv-repeat-add") {
 		t.Fatal("RepeatingJS missing add handler")
