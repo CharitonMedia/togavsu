@@ -357,7 +357,10 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 	}
 	resp, err := s.d.HTTP.Do(req)
 	if err != nil {
-		_ = s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, 0, "provider_unreachable")
+		// Fail closed: every proxied attempt is audited (CORE-CHANGES-2 §4.1).
+		if aerr := s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, 0, "provider_unreachable"); aerr != nil {
+			return 0, nil, nil, aerr
+		}
 		return 0, nil, nil, domain.Conflict("provider did not answer")
 	}
 	defer resp.Body.Close()
@@ -366,7 +369,9 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 		return 0, nil, nil, err
 	}
 	if len(respBody) > maxBytes {
-		_ = s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, resp.StatusCode, "response_too_large")
+		if aerr := s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, resp.StatusCode, "response_too_large"); aerr != nil {
+			return 0, nil, nil, aerr
+		}
 		return 0, nil, nil, &domain.APIError{Code: "payload_too_large", Message: "provider response exceeds modules.contract_call_max_bytes"}
 	}
 	// Strip any address-bearing headers so the consumer never learns the provider URL.
@@ -376,7 +381,10 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 			outHeader.Set(k, v)
 		}
 	}
-	_ = s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, resp.StatusCode, "ok")
+	// Fail closed: never return the provider response without an audit row.
+	if err := s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, resp.StatusCode, "ok"); err != nil {
+		return 0, nil, nil, err
+	}
 	return resp.StatusCode, outHeader, respBody, nil
 }
 
