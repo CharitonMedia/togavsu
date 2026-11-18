@@ -49,6 +49,13 @@ SETTINGS: list[dict] = [
     _s("security.totp_required.staff", "boolean", "security", False, "Staff two-factor required when true."),
     _s("security.totp_required.accountant", "boolean", "security", False, "Accountant two-factor required when true."),
     _s("security.totp_required.client", "boolean", "security", False, "Client two-factor required when true."),
+    _s(
+        "security.password_optional",
+        "boolean",
+        "security",
+        False,
+        "Lets users sign in with their email alone. For test and demo installs only: anyone who knows an account's email can sign in. Turning it off does not sign out anyone already signed in; each sign-in without a password is in the audit log. Default off.",
+    ),
     _s("security.idle_timeout_seconds", "integer", "security", 12 * 60 * 60, "Longest idle time before sign-out.", minimum=60),
     _s("security.failed_sign_in_limit", "integer", "security", 5, "Failed sign-ins before lockout.", minimum=1),
     _s("security.lockout_seconds", "integer", "security", 15 * 60, "Lockout length after repeated failed sign-ins.", minimum=1),

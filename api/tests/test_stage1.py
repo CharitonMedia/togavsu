@@ -350,6 +350,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 "ai-call-log-filters",
                 "settings-plain-labels",
                 "settings-case-number-examples",
+                "settings-password-optional",
             },
         )
 

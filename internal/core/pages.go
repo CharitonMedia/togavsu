@@ -61,7 +61,7 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 {{define "login"}}{{template "top" .}}
 <form class="card" method="post" action="/login">
 <p><label>Email<br><input name="email" type="email" required value="{{.Form.email}}" autocomplete="username"></label></p>
-<p><label>Password<br><input name="password" type="password" required autocomplete="current-password"></label></p>
+<p><label>{{if .PasswordOptional}}Password (optional on this install){{else}}Password{{end}}<br><input name="password" type="password"{{if not .PasswordOptional}} required{{end}} autocomplete="current-password"></label></p>
 <p><button type="submit">Sign in</button></p></form>
 {{template "bottom" .}}{{end}}
 
@@ -107,17 +107,18 @@ func tabLabel(tab string) string {
 }
 
 type view struct {
-	Title    string
-	Error    string
-	Nav      bool
-	CSRF     string
-	Form     map[string]string
-	Enroll   identity.Enrollment
-	Codes    []string
-	Token    string
-	Tabs     []string
-	Tab      string
-	Settings []coreSettingRow
+	Title            string
+	Error            string
+	Nav              bool
+	CSRF             string
+	Form             map[string]string
+	Enroll           identity.Enrollment
+	Codes            []string
+	Token            string
+	Tabs             []string
+	Tab              string
+	Settings         []coreSettingRow
+	PasswordOptional bool
 }
 
 func render(w http.ResponseWriter, code int, name string, v view) {
@@ -177,7 +178,7 @@ func (a *App) confirmPost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		e, serr := a.Identity.StartEnrollment(r.Context(), token)
 		if serr != nil {
-			render(w, status(err), "login", view{Title: "Sign in", Error: message(err), Form: map[string]string{}})
+			a.renderLogin(w, r, status(err), message(err), map[string]string{})
 			return
 		}
 		render(w, status(err), "enroll", view{Title: "Turn on two-factor sign-in", Error: message(err), Enroll: e})
@@ -187,15 +188,26 @@ func (a *App) confirmPost(w http.ResponseWriter, r *http.Request) {
 	render(w, http.StatusOK, "recovery", view{Title: "Recovery codes", Codes: res.RecoveryCodes})
 }
 
+func (a *App) renderLogin(w http.ResponseWriter, r *http.Request, code int, errText string, form map[string]string) {
+	if form == nil {
+		form = map[string]string{}
+	}
+	v := view{Title: "Sign in", Error: errText, Form: form}
+	if on, err := a.Identity.PasswordOptional(r.Context()); err == nil {
+		v.PasswordOptional = on
+	}
+	render(w, code, "login", v)
+}
+
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	render(w, http.StatusOK, "login", view{Title: "Sign in", Form: map[string]string{}})
+	a.renderLogin(w, r, http.StatusOK, "", map[string]string{})
 }
 
 func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	res, err := a.Identity.Login(r.Context(), email, r.FormValue("password"))
 	if err != nil {
-		render(w, status(err), "login", view{Title: "Sign in", Error: message(err), Form: map[string]string{"email": email}})
+		a.renderLogin(w, r, status(err), message(err), map[string]string{"email": email})
 		return
 	}
 	a.loginStep(w, r, res)
@@ -211,12 +223,12 @@ func (a *App) loginStep(w http.ResponseWriter, r *http.Request, res identity.Log
 	case res.EnrollmentToken != "":
 		e, err := a.Identity.StartEnrollment(r.Context(), res.EnrollmentToken)
 		if err != nil {
-			render(w, status(err), "login", view{Title: "Sign in", Error: message(err), Form: map[string]string{}})
+			a.renderLogin(w, r, status(err), message(err), map[string]string{})
 			return
 		}
 		render(w, http.StatusOK, "enroll", view{Title: "Turn on two-factor sign-in", Enroll: e})
 	default:
-		render(w, http.StatusUnauthorized, "login", view{Title: "Sign in", Error: "Sign in did not complete.", Form: map[string]string{}})
+		a.renderLogin(w, r, http.StatusUnauthorized, "Sign in did not complete.", map[string]string{})
 	}
 }
 

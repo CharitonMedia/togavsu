@@ -79,7 +79,7 @@
     "runtime_fixtures": 52
   },
   "artifacts": {
-    "api/openapi/v1/openapi.json": "97d1d1e065b9dad0d16a3a99587365476a9933f79f247be9fc7824595eb0ff49",
+    "api/openapi/v1/openapi.json": "77473c0abd37358d5f945bb374b9fcbf3245956630cc27b4c0e1202688790302",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
     "api/openapi/v1/mcp-tools.json": "1f9bb12f7881a9fde925166a6a380a1a519148b718dba32c614aeca766e9ed34",
     "docs/api/coverage.md": "dd8b086c8a2c0b8a09ecaa74a24ef4c91b8d0c1c11639bb76fe2bb2c4525c8f9"
@@ -201,6 +201,13 @@
         "api/openapi/v1/openapi.json"
       ],
       "change": "SettingKey and x-togavsu-settings add practice.case_number_examples (Case Number Formats, practice tab, JSON list default [\"23AR-CV00825\"]). The MCP catalog and coverage do not inline the settings catalog, so their bytes stay the same."
+    },
+    {
+      "id": "settings-password-optional",
+      "files": [
+        "api/openapi/v1/openapi.json"
+      ],
+      "change": "SettingKey and x-togavsu-settings add security.password_optional (Sign In Without a Password, security tab, boolean default false). The MCP catalog and coverage do not inline the settings catalog, so their bytes stay the same."
     }
   ],
   "intentional_corrections": [

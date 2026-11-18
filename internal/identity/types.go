@@ -20,6 +20,8 @@ const (
 	purposeReauth   = "reauth"
 	cookieName      = "togavsu_session"
 	signInField     = "sign_in"
+	// passwordSkippedAction marks a purposeTOTP challenge issued after a skipped password check.
+	passwordSkippedAction = "password_skipped"
 )
 
 // LoginResult is the password or second-factor outcome. SessionToken is set only
