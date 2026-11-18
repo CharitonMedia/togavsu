@@ -245,12 +245,19 @@ func (p AutosavePatch) Apply(dst *Answers) {
 		return
 	}
 	if p.Unknown != nil && !*p.Unknown && p.Value == nil {
-		dst.Set(p.Field, Answer{Unknown: false})
+		cur := dst.Get(p.Field)
+		cur.Unknown = false
+		dst.Set(p.Field, cur)
 		return
 	}
 	if maskedFieldIDs(p.form)[p.Field] {
 		s, _ := p.Value.(string)
 		if s == "" {
+			cur := dst.Get(p.Field)
+			if p.Unknown != nil && !*p.Unknown {
+				cur.Unknown = false
+			}
+			dst.Set(p.Field, cur)
 			return
 		}
 		if s == ClearMaskedValue {

@@ -82,6 +82,11 @@ func MergeFormSubmit(existing Answers, posted Answers, form Form) Answers {
 		if masked[id] {
 			s, _ := ans.Value.(string)
 			if s == "" {
+				// Empty masked post never overwrites ciphertext, but still clears Unknown
+				// when the client posts Unknown=false (uncheck "I don't know").
+				cur := out[id]
+				cur.Unknown = false
+				out[id] = cur
 				continue
 			}
 			if s == ClearMaskedValue {

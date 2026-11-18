@@ -290,6 +290,10 @@ var (
 // its own permissions or read provider keys (PRD 8.7: modules never hold keys).
 var forbiddenScopes = map[string]bool{"tokens:write": true, "modules:write": true, "ai:admin": true}
 
+// reservedContractOperations collide with fixed CORE-31 routes under
+// /api/v1/modules/contracts/{contract}/… (events push, providers list).
+var reservedContractOperations = map[string]bool{"events": true, "providers": true}
+
 // coreRecords maps an extendable core record to its table in schema core.
 var coreRecords = map[string]string{
 	"matter": "matters", "contact": "contacts", "user": "users", "invoice": "invoices",
@@ -525,6 +529,12 @@ func (m Manifest) validateContracts(ok func(error) bool) bool {
 		ops := map[string]bool{}
 		for j, op := range c.Operations {
 			of := fmt.Sprintf("%s.operations[%d]", f, j)
+			if reservedContractOperations[op.Name] {
+				if !ok(invalid(of+".name", "operation names events and providers are reserved for core contract routes")) {
+					return false
+				}
+				continue
+			}
 			if !slug.MatchString(op.Name) || ops[op.Name] {
 				if !ok(invalid(of+".name", "operation names are unique slugs")) {
 					return false

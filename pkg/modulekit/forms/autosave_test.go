@@ -144,6 +144,45 @@ func TestClearUnknownThenSaveValue(t *testing.T) {
 	}
 }
 
+// TestClearUnknownThenSaveValueMasked: unchecking "I don't know" on a masked field
+// must clear Unknown while keeping stored ciphertext (Codex P2).
+func TestClearUnknownThenSaveValueMasked(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "ssn", Type: TypeMasked, AllowUnknown: true, SecretKey: "forms/ssn"},
+	}}}}}}
+	cipher := CipherPrefix + "kept-cipher"
+	stored := Answers{"ssn": {Unknown: true, Value: cipher}}
+	clear := ParseFormAnswers(map[string][]string{
+		"ssn.__unknown": {"0"},
+		"ssn":           {""},
+		"csrf":          {"tok"},
+	})
+	stored = MergeFormSubmit(stored, clear, form)
+	if stored.Get("ssn").Unknown {
+		t.Fatalf("explicit 0 must clear Unknown on masked: %#v", stored["ssn"])
+	}
+	if stored.Get("ssn").StringValue() != cipher {
+		t.Fatalf("empty masked clear must keep ciphertext: %#v", stored["ssn"])
+	}
+	save := ParseFormAnswers(map[string][]string{
+		"ssn":           {"123-45-6789"},
+		"ssn.__unknown": {"0"},
+		"csrf":          {"tok"},
+	})
+	stored = MergeFormSubmit(stored, save, form)
+	if stored.Get("ssn").Unknown || stored.Get("ssn").StringValue() != "123-45-6789" {
+		t.Fatalf("after clear+save masked: %#v", stored["ssn"])
+	}
+
+	// Field-level autosave path (AutosavePatch.Apply) must match.
+	again := Answers{"ssn": {Unknown: true, Value: cipher}}
+	unk := false
+	AutosavePatch{form: form, Field: "ssn", Unknown: &unk, Value: ""}.Apply(&again)
+	if again.Get("ssn").Unknown || again.Get("ssn").StringValue() != cipher {
+		t.Fatalf("AutosavePatch clear unknown masked: %#v", again["ssn"])
+	}
+}
+
 func TestOfflineQueueJSPresent(t *testing.T) {
 	if !strings.Contains(OfflineQueueJS, "localStorage") || !strings.Contains(OfflineQueueJS, "TogavsuFormsOffline") {
 		t.Fatal("OfflineQueueJS missing expected pieces")

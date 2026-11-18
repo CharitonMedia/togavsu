@@ -177,6 +177,23 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.NotFound("page"))
 		return
 	}
+
+	// Rate before body read and before OPTIONS preflight (CORE-32 abuse protection).
+	rate, err := h.Svc.intSetting(r.Context(), publicPageRateKey)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if rate <= 0 {
+		rate = domain.PublicPageRatePerMin
+	}
+	ip := clientIP(r)
+	if wait, ok := h.Svc.publicHits().allow(ip+"/"+moduleID, rate, h.Svc.now(), time.Minute); !ok {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())))
+		writeErr(w, domain.RateLimited())
+		return
+	}
+
 	// Opaque-origin HTMX/fetch preflight (CSP sandbox without allow-same-origin).
 	if answerOpaqueOriginCORS(w, r) {
 		return
@@ -201,21 +218,6 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeErr(w, domain.Invalid("body", "could not read the request body"))
-		return
-	}
-
-	rate, err := h.Svc.intSetting(r.Context(), publicPageRateKey)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	if rate <= 0 {
-		rate = domain.PublicPageRatePerMin
-	}
-	ip := clientIP(r)
-	if wait, ok := h.Svc.publicHits().allow(ip+"/"+moduleID, rate, h.Svc.now(), time.Minute); !ok {
-		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())))
-		writeErr(w, domain.RateLimited())
 		return
 	}
 

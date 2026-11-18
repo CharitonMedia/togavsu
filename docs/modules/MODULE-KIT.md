@@ -8,7 +8,10 @@ through three public surfaces:
   plus CORE-31/32 helpers (`IssueStepToken` / `VerifyStepToken`, signed public CSRF
   `IssueSignedPublicCSRF` / `CheckSignedPublicCSRF`, `PublicCSRFPassHeader` /
   `X-Togavsu-Public-CSRF` on proxied public pages, `SignWebhook` / `VerifyWebhook` —
-  contract calls use the same HMAC as events).
+  contract calls use the same HMAC as events). Provided contract operation names
+  `events` and `providers` are reserved (they collide with the core's
+  `POST …/contracts/{contract}/events` and `GET …/providers` routes) and fail
+  `ParseManifest` / `Check`.
 - `cmd/togavsu-module`: the same checks, packaging and verification as a command.
 - `pkg/modulekit/forms`: CORE-33 form definitions, validation, HTMX rendering and autosave
   (JSON or form-urlencoded with CSRF on autosave/offline), repeating add/remove

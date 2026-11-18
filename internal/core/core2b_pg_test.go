@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -324,7 +325,50 @@ func TestCORE32PublicPages(t *testing.T) {
 	if r := anon2.do("GET", "/p/intake-mod/intake", nil, "X-Forwarded-For", "203.0.113.50"); r.code != http.StatusTooManyRequests {
 		t.Fatalf("rate limited want 429 got %d %s", r.code, r.body)
 	}
+
+	// Over-limit large body: call the mux directly so req.Body is our counter (Codex P2).
+	// Burn the per-IP budget first, then POST a claimed 2 MiB body that must not be read.
+	burn := httptest.NewRequest(http.MethodGet, "/p/intake-mod/intake", nil)
+	burn.RemoteAddr = "203.0.113.51:9"
+	burnRec := httptest.NewRecorder()
+	x.app.Handler().ServeHTTP(burnRec, burn)
+	if burnRec.Code != http.StatusOK {
+		t.Fatalf("burn rate for large-body check: %d %s", burnRec.Code, burnRec.Body.String())
+	}
+	unread := &unreadBody{}
+	req := httptest.NewRequest(http.MethodPost, "/p/intake-mod/intake", unread)
+	req.RemoteAddr = "203.0.113.51:9"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.ContentLength = 2 << 20
+	rec := httptest.NewRecorder()
+	x.app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("over-limit large body want 429 got %d %s", rec.Code, rec.Body.String())
+	}
+	if unread.reads > 0 {
+		t.Fatalf("rate-limited public page read the body (%d reads); must refuse before ReadAll", unread.reads)
+	}
+	// OPTIONS preflight is also rate-limited before the CORS answer.
+	opt := httptest.NewRequest(http.MethodOptions, "/p/intake-mod/intake", nil)
+	opt.RemoteAddr = "203.0.113.51:9"
+	opt.Header.Set("Origin", "null")
+	opt.Header.Set("Access-Control-Request-Method", "POST")
+	optRec := httptest.NewRecorder()
+	x.app.Handler().ServeHTTP(optRec, opt)
+	if optRec.Code != http.StatusTooManyRequests {
+		t.Fatalf("over-limit OPTIONS want 429 got %d %s", optRec.Code, optRec.Body.String())
+	}
 }
+
+// unreadBody counts Read calls — proves public-page rate checks run before ReadAll.
+type unreadBody struct{ reads int }
+
+func (u *unreadBody) Read(p []byte) (int, error) {
+	u.reads++
+	return 0, io.ErrUnexpectedEOF
+}
+
+func (u *unreadBody) Close() error { return nil }
 
 // TestCORE34StaffBanner covers banner listing and shell slot (CU2-01).
 func TestCORE34StaffBanner(t *testing.T) {
@@ -420,6 +464,161 @@ func TestCORE2BOpenAPIAndMCP(t *testing.T) {
 		"body": map[string]any{},
 	}); !strings.Contains(r.body, "scope_denied") {
 		t.Fatalf("mcp call without scope: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE2BCU201ScopeDenied: every CORE-31/32/34 operation refuses without its scope
+// over REST and /mcp; unapproved public_pages:serve and banner:show also deny (CU2-01 / Codex P2).
+func TestCORE2BCU201ScopeDenied(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	const contract = "phone.provider.v1"
+
+	x.rt.Serve("phone-provider", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		})
+	})
+	x.rt.Serve("phone-consumer", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`ok`))
+		})
+	})
+	x.rt.Serve("pub-denied", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("should-not-serve"))
+		})
+	})
+	x.rt.Serve("banner-denied", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("banner"))
+		})
+	})
+
+	prov := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-provider", "Phone Provider",
+			"  - scope: contracts:provide\n    reason: Provide contract.\n",
+			"provides:\n  - contract: "+contract+"\n    operations:\n      - name: echo\n        path: /contracts/echo\n")
+	})
+	cons := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-consumer", "Phone Consumer",
+			"  - scope: contracts:call\n    reason: Call contract.\n",
+			"consumes:\n  - contract: "+contract+"\n")
+	})
+	pub := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "pub-denied", "Pub Denied",
+			"  - scope: public_pages:serve\n    reason: Public.\n    required: false\n",
+			"public_pages:\n  - path: /form\n")
+	})
+	ban := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "banner-denied", "Banner Denied",
+			"  - scope: banner:show\n    reason: Banner.\n    required: false\n",
+			"staff_banner:\n  path: /banner\n  height: 40\n")
+	})
+	for _, pkg := range [][]byte{prov, cons, pub, ban} {
+		if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+			t.Fatalf("install: %s", problem)
+		}
+	}
+	x.approveOnTab("phone-provider")
+	x.approveOnTab("phone-consumer")
+	// Decline public_pages:serve and banner:show.
+	for _, mod := range []string{"pub-denied", "banner-denied"} {
+		v, err := x.app.Modules.Get(context.Background(), x.adminP(), mod)
+		if err != nil {
+			t.Fatal(err)
+		}
+		form := url.Values{"module_id": {mod}}
+		for _, perm := range v.Permissions {
+			if perm.Decision != "pending" {
+				continue
+			}
+			if perm.Scope == "public_pages:serve" || perm.Scope == "banner:show" {
+				form.Set("scope:"+perm.Scope, "decline")
+				continue
+			}
+			form.Set("scope:"+perm.Scope, "approve")
+		}
+		if _, problem := x.tabForm(x.admin, "permissions", form, nil); problem != "" {
+			t.Fatalf("decline scopes on %s: %s", mod, problem)
+		}
+	}
+
+	noscope := newClient(t, x.srv.URL)
+	tok := x.admin.must(http.StatusCreated, "POST", "/api/v1/api-tokens", map[string]any{
+		"name": "core2b-cu201-noscope", "scopes": []string{"matters:read"},
+	})
+	noscope.bearer = str(t, tok.json, "secret")
+
+	denyREST := func(method, path string, body any) {
+		t.Helper()
+		r := noscope.do(method, path, body)
+		if r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+			t.Fatalf("%s %s without scope: %d %s", method, path, r.code, r.body)
+		}
+	}
+	denyMCP := func(name string, args map[string]any) {
+		t.Helper()
+		r := mcpCall(noscope, name, args)
+		if !strings.Contains(r.body, "scope_denied") {
+			t.Fatalf("mcp %s without scope: %d %s", name, r.code, r.body)
+		}
+	}
+
+	denyREST("GET", "/api/v1/modules/contract-links", nil)
+	denyMCP("listModuleContractLinks", map[string]any{})
+	denyREST("POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-consumer", "provider_id": "phone-provider",
+	})
+	denyMCP("createModuleContractLink", map[string]any{
+		"body": map[string]any{"contract": contract, "consumer_id": "phone-consumer", "provider_id": "phone-provider"},
+	})
+	denyREST("DELETE", "/api/v1/modules/contract-links/00000000-0000-4000-8000-000000000001", nil)
+	denyMCP("deleteModuleContractLink", map[string]any{
+		"path": map[string]any{"link_id": "00000000-0000-4000-8000-000000000001"},
+	})
+	denyREST("GET", "/api/v1/modules/banners", nil)
+	denyMCP("listModuleBanners", map[string]any{})
+	denyREST("PUT", "/api/v1/modules/banner-order", map[string]any{"order": []string{"banner-denied"}})
+	denyMCP("putModuleBannerOrder", map[string]any{
+		"body": map[string]any{"order": []string{"banner-denied"}},
+	})
+
+	// Module tokens: consumer lacks contracts:provide; provider lacks contracts:call.
+	consumer := newClient(t, x.srv.URL)
+	consumer.bearer = x.rt.Last("phone-consumer").Secrets["togavsu_api_token"]
+	if r := consumer.do("POST", "/api/v1/modules/contracts/"+contract+"/events", map[string]any{
+		"action": "ring", "payload": map[string]any{},
+	}); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("push event without contracts:provide: %d %s", r.code, r.body)
+	}
+	if r := mcpCall(consumer, "pushModuleContractEvent", map[string]any{
+		"path": map[string]any{"contract": contract},
+		"body": map[string]any{"action": "ring", "payload": map[string]any{}},
+	}); !strings.Contains(r.body, "scope_denied") {
+		t.Fatalf("mcp push without contracts:provide: %d %s", r.code, r.body)
+	}
+	provider := newClient(t, x.srv.URL)
+	provider.bearer = x.rt.Last("phone-provider").Secrets["togavsu_api_token"]
+	if r := provider.do("GET", "/api/v1/modules/contracts/"+contract+"/providers", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("list providers without contracts:call: %d %s", r.code, r.body)
+	}
+	if r := mcpCall(provider, "listModuleContractProviders", map[string]any{
+		"path": map[string]any{"contract": contract},
+	}); !strings.Contains(r.body, "scope_denied") {
+		t.Fatalf("mcp list providers without contracts:call: %d %s", r.code, r.body)
+	}
+
+	anon := newClient(t, x.srv.URL)
+	if r := anon.do("GET", "/p/pub-denied/form", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("public page without public_pages:serve: %d %s", r.code, r.body)
+	}
+	list := x.admin.must(http.StatusOK, "GET", "/api/v1/modules/banners", nil)
+	if strings.Contains(list.body, "banner-denied") {
+		t.Fatalf("ListStaffBanners included unapproved banner: %s", list.body)
+	}
+	if r := x.admin.do("GET", "/modules/banner-denied/banner", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("bannerPage without banner:show: %d %s", r.code, r.body)
 	}
 }
 
