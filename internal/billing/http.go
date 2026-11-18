@@ -812,7 +812,12 @@ func (h *Handler) pdf(w http.ResponseWriter, r *http.Request, p domain.Principal
 	}
 	// CORE-37: document of record replaces a rendered invoice for opening imports.
 	if inv.Imported && !inv.DocumentOfRecordFileID.IsZero() {
-		http.Redirect(w, r, "/api/v1/files/"+string(inv.DocumentOfRecordFileID), http.StatusSeeOther)
+		path, err := h.Svc.DocumentOfRecordURL(r.Context(), p, inv)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		http.Redirect(w, r, path, http.StatusSeeOther)
 		return
 	}
 	pdf, inv, err := h.Svc.InvoicePDF(r.Context(), p, inv.ID)

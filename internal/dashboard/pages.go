@@ -1043,17 +1043,8 @@ type adminView struct {
 	HelpPath         string
 	Modules          any
 	AICalls          any
-	MigrationPreview []migrationPreviewRow
+	MigrationPreview []MigrationPreviewRow
 	MigrationNotice  string
-}
-
-// migrationPreviewRow is one CSV preview line on the Migration import tab.
-type migrationPreviewRow struct {
-	Index       int
-	OK          bool
-	Error       string
-	Skipped     bool
-	ExternalRef string
 }
 
 func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Principal) (string, string, any, error) {
@@ -1127,7 +1118,7 @@ func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Pri
 				if notice, _ := mp["notice"].(string); notice != "" {
 					v.MigrationNotice = notice
 				}
-				if rows, ok := mp["preview"].([]migrationPreviewRow); ok {
+				if rows, ok := mp["preview"].([]MigrationPreviewRow); ok {
 					v.MigrationPreview = rows
 				}
 			}

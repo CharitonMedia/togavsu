@@ -2,8 +2,11 @@ package billing
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -40,6 +43,10 @@ type InvoiceImport struct {
 	ExternalRef string
 	// DocumentOfRecordFileID is the original invoice PDF shown instead of a render.
 	DocumentOfRecordFileID domain.ID
+	// ContactEmail is the CSV contact email; when set it must match a client on the matter.
+	ContactEmail string
+	// DocumentFileName is the CSV original PDF name; resolved to DocumentOfRecordFileID.
+	DocumentFileName string
 }
 
 // ImportSourceForm, ImportSourceCSV and ImportSourceAPI are InvoiceImport.Source values.
@@ -110,7 +117,8 @@ func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, 
 	if s.overBulkMax(ctx, len(items)) {
 		return nil, nil, domain.Invalid("items", "batch is larger than api.bulk_batch_max")
 	}
-	for _, in := range items {
+	resolved := make([]InvoiceImport, len(items))
+	for i, in := range items {
 		if in.MatterID.IsZero() {
 			return nil, nil, domain.Invalid("items/matter_id", "is required")
 		}
@@ -120,14 +128,24 @@ func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, 
 		if _, err := s.matter(ctx, in.MatterID); err != nil {
 			return nil, nil, err
 		}
-	}
-	existingRefs, err := s.existingExternalRefs(ctx)
-	if err != nil {
-		return nil, nil, err
+		if in.OpeningImport() {
+			got, err := s.resolveOpeningFiles(ctx, p, in, i)
+			if err != nil {
+				return nil, nil, err
+			}
+			in = got
+		}
+		resolved[i] = in
 	}
 	var out []Invoice
 	var skipped []BulkInvoiceResult
-	err = s.write(ctx, p, func(t *txn) error {
+	err := s.write(ctx, p, func(t *txn) error {
+		// Read refs inside the write transaction so a concurrent commit is visible under
+		// stronger isolation; unique-violation on dual-write still maps to a named refusal.
+		existingRefs, err := s.existingExternalRefs(t.ctx)
+		if err != nil {
+			return err
+		}
 		heads, err := invoiceHeads(t.ctx, s.d.Store, Where{})
 		if err != nil {
 			return err
@@ -138,7 +156,7 @@ func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, 
 		}
 		sources := map[domain.ID]bool{}
 		seenRefs := map[string]bool{}
-		for i, in := range items {
+		for i, in := range resolved {
 			if in.OpeningImport() {
 				ref := strings.TrimSpace(in.ExternalRef)
 				if ref != "" && (existingRefs[ref] || seenRefs[ref]) {
@@ -151,6 +169,9 @@ func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, 
 			}
 			inv, err := s.importOne(t, in, i, numbers, sources)
 			if err != nil {
+				if ref := strings.TrimSpace(in.ExternalRef); ref != "" && isExternalRefUnique(err) {
+					return batchRejected(domain.Invalid(fmt.Sprintf("items/%d/external_ref", i), "already imported by external_ref"))
+				}
 				return batchRejected(err)
 			}
 			if ref := strings.TrimSpace(in.ExternalRef); ref != "" {
@@ -165,6 +186,11 @@ func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, 
 		return nil, nil, err
 	}
 	return out, skipped, nil
+}
+
+func isExternalRefUnique(err error) bool {
+	var pg *pgconn.PgError
+	return errors.As(err, &pg) && pg.Code == "23505" && strings.Contains(pg.ConstraintName, "external_ref")
 }
 
 // batchRejected is how one item's validation or reconciliation failure reaches the
@@ -281,6 +307,11 @@ func (s *Service) importOne(t *txn, in InvoiceImport, i int, numbers map[string]
 		inv.ImportSource = in.Source
 		inv.ExternalRef = strings.TrimSpace(in.ExternalRef)
 		inv.DocumentOfRecordFileID = in.DocumentOfRecordFileID
+		if !inv.DocumentOfRecordFileID.IsZero() {
+			if err := s.attachDocumentOfRecord(t.ctx, t.p, inv.MatterID, inv.DocumentOfRecordFileID, field("document_of_record_file_id"), true); err != nil {
+				return Invoice{}, err
+			}
+		}
 	}
 	now := s.now()
 	if in.Status != StatusDraft {

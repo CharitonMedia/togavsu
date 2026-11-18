@@ -2,7 +2,7 @@
 {{with .Invoice}}
 <p class="meta"><a href="/practice/matters/{{.MatterID}}">{{.MatterNum}} {{.MatterName}}</a> · Issued {{.IssuedOn}} · Due {{.DueOn}} ·
 <span class="tag tag-{{.Status}}">{{.Status}}{{if and (eq .Status "draft") .Approved}} · approved{{end}}{{if .Imported}} · Imported{{end}}</span>
-{{if and .Imported .DocumentOfRecordFileID}}· <a href="/api/v1/files/{{.DocumentOfRecordFileID}}">Document of record</a>
+{{if and .Imported .DocumentOfRecordFileID}}· <a href="/billing/invoices/{{.ID}}/pdf">Document of record</a>
 {{else}}· <a href="/billing/invoices/{{.ID}}/pdf">Download PDF</a>{{end}}</p>
 <div class="scroll"><table>
 <thead><tr><th>Line</th><th>Kind</th><th class="num">Amount</th></tr></thead>

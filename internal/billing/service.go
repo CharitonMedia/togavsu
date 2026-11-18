@@ -164,6 +164,20 @@ type InvoiceFiles interface {
 	SaveInvoicePDF(ctx context.Context, by domain.ID, inv Invoice, fileID domain.ID, pdf []byte) (domain.ID, error)
 }
 
+// DocumentOfRecordFiles validates, shares and resolves original invoice PDFs for opening
+// import (CORE-37). FileLink provides it over the files service.
+type DocumentOfRecordFiles interface {
+	// CheckDocumentOfRecord refuses a missing, trashed, wrong-matter, unreadable or
+	// attorney-only file with a named reason.
+	CheckDocumentOfRecord(ctx context.Context, p domain.Principal, matter, fileID domain.ID) error
+	// ShareDocumentOfRecord marks the file shared with the client so the portal can read it.
+	ShareDocumentOfRecord(ctx context.Context, p domain.Principal, fileID domain.ID) error
+	// DocumentDownloadPath is the versioned download URL the client and staff follow.
+	DocumentDownloadPath(ctx context.Context, p domain.Principal, fileID domain.ID) (string, error)
+	// ResolveMatterFileName finds the unique untrashed file on matter with that name.
+	ResolveMatterFileName(ctx context.Context, p domain.Principal, matter domain.ID, name string) (domain.ID, error)
+}
+
 // Deps wires a Service. Store, Practice, Walls and Audit are required.
 type Deps struct {
 	Store    Store

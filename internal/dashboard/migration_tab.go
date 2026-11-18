@@ -7,6 +7,15 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
+// MigrationPreviewRow is one CSV preview line on the Migration import tab (CORE-37).
+type MigrationPreviewRow struct {
+	Index       int
+	OK          bool
+	Error       string
+	Skipped     bool
+	ExternalRef string
+}
+
 // MigrationAdmin backs the Migration import admin tab (CORE-37 / PRD 8.22).
 type MigrationAdmin interface {
 	// Panel is optional preview/notice data for the tab.

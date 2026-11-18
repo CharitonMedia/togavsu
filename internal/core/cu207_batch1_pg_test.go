@@ -29,25 +29,37 @@ func TestCU207Batch1ModulesUnchanged(t *testing.T) {
 	x := newExt(t)
 	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
 
+	// Batch 1 modules (and matter-clock): Deploy uses a stub HTTP handler so the lane can
+	// run without each module's container image. Package bytes, manifests and migrations
+	// come from public main (or the core sample for matter-clock). "Run" hits /m/{id}/
+	// through the core proxy so the frame path stays live on this core revision.
+	x.rt.Default = func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok:" + m.ID))
+		})
+	}
+
+	runSurface := func(id string) {
+		t.Helper()
+		mustInstalled(t, x, id)
+		ct := x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/"+id+"/context-tokens", map[string]any{})
+		if strings.TrimSpace(str(t, ct.json, "token")) == "" {
+			t.Fatalf("%s context token empty: %s", id, ct.body)
+		}
+		frame := x.admin.do("GET", "/m/"+id+"/", nil)
+		if frame.code != http.StatusOK || !strings.Contains(frame.body, "ok:"+id) {
+			t.Fatalf("%s /m/ surface: %d %s", id, frame.code, frame.body)
+		}
+	}
+
 	// matter-clock from the core example package (reference; no separate public repo).
 	if _, problem := x.tabForm(x.admin, "install", nil, x.build(nil)); problem != "" {
 		t.Fatalf("matter-clock install: %s", problem)
 	}
 	x.approveOnTab("matter-clock")
-	mustInstalled(t, x, "matter-clock")
-	tok := x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/matter-clock/context-tokens", map[string]any{})
-	if strings.TrimSpace(str(t, tok.json, "token")) == "" {
-		t.Fatalf("matter-clock context token empty: %s", tok.body)
-	}
+	runSurface("matter-clock")
 	uninstallKeep(t, x, "matter-clock")
-
-	// Batch 1 modules: stub HTTP so Deploy succeeds; migrations and package bytes are theirs.
-	x.rt.Default = func(m testkit.Module) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(m.ID))
-		})
-	}
 
 	for _, id := range batch1ModuleRepos {
 		pkgDir := filepath.Join(root, "togavsu-"+id, "package")
@@ -67,11 +79,7 @@ func TestCU207Batch1ModulesUnchanged(t *testing.T) {
 			t.Fatalf("%s install tab=%q api=%d %s", id, problem, r.code, r.body)
 		}
 		x.approveOnTab(id)
-		mustInstalled(t, x, id)
-		ct := x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/"+id+"/context-tokens", map[string]any{})
-		if strings.TrimSpace(str(t, ct.json, "token")) == "" {
-			t.Fatalf("%s context token empty: %s", id, ct.body)
-		}
+		runSurface(id)
 		uninstallKeep(t, x, id)
 	}
 }

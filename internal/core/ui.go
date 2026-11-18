@@ -157,7 +157,7 @@ func MountUI(ctx context.Context, app *App, opt UIOptions) (*UI, error) {
 		Audit: app.Audit, WallSvc: app.Practice, Profiles: dashboard.PG{DB: app.Pool}, Now: now,
 	}
 	u.Accounts = dh.Accounts
-	dh.Migration = migrationAdmin{app: app}
+	dh.Migration = &migrationAdmin{app: app}
 	if app.ext != nil {
 		dh.Modules = modulesAdmin{x: app.ext}
 		dh.AICalls = func(r *http.Request, p domain.Principal) (any, error) {

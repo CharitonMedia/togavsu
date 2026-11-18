@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/files"
@@ -26,11 +27,91 @@ func NewFileLink(svc *files.Service) (*FileLink, error) {
 }
 
 var (
-	_ Receipts     = (*FileLink)(nil)
-	_ InvoiceFiles = (*FileLink)(nil)
-	_ SignedCopies = (*FileLink)(nil)
-	_ MatterFiles  = (*FileLink)(nil)
+	_ Receipts              = (*FileLink)(nil)
+	_ InvoiceFiles          = (*FileLink)(nil)
+	_ DocumentOfRecordFiles = (*FileLink)(nil)
+	_ SignedCopies          = (*FileLink)(nil)
+	_ MatterFiles           = (*FileLink)(nil)
 )
+
+// CheckDocumentOfRecord implements DocumentOfRecordFiles.
+func (l *FileLink) CheckDocumentOfRecord(ctx context.Context, p domain.Principal, matter, fileID domain.ID) error {
+	if fileID.IsZero() {
+		return domain.Invalid("document_of_record_file_id", "is required")
+	}
+	f, err := l.Svc.Get(ctx, p, fileID)
+	if err != nil {
+		return domain.Invalid("document_of_record_file_id", "file is missing or not readable")
+	}
+	if f.TrashedAt != nil {
+		return domain.Invalid("document_of_record_file_id", "file is trashed")
+	}
+	if f.MatterID == nil || *f.MatterID != matter {
+		return domain.Invalid("document_of_record_file_id", "file is not on the invoice's matter")
+	}
+	if f.AttorneyOnly {
+		return domain.Invalid("document_of_record_file_id", "an attorney-only file cannot be a document of record")
+	}
+	return nil
+}
+
+// ShareDocumentOfRecord implements DocumentOfRecordFiles.
+func (l *FileLink) ShareDocumentOfRecord(ctx context.Context, p domain.Principal, fileID domain.ID) error {
+	f, err := l.Svc.Get(ctx, p, fileID)
+	if err != nil {
+		return domain.Invalid("document_of_record_file_id", "file is missing or not readable")
+	}
+	if f.SharedWithClient {
+		return nil
+	}
+	yes := true
+	_, err = l.Svc.UpdateMetadata(ctx, p, fileID, files.Metadata{SharedWithClient: &yes})
+	if err != nil {
+		return domain.Invalid("document_of_record_file_id", "could not share the file with the client")
+	}
+	return nil
+}
+
+// DocumentDownloadPath implements DocumentOfRecordFiles.
+func (l *FileLink) DocumentDownloadPath(ctx context.Context, p domain.Principal, fileID domain.ID) (string, error) {
+	f, err := l.Svc.Get(ctx, p, fileID)
+	if err != nil {
+		return "", err
+	}
+	if f.CurrentVersionID == nil || f.CurrentVersionID.IsZero() {
+		return "", domain.NotFound("file version")
+	}
+	return "/api/v1/files/" + string(fileID) + "/versions/" + string(*f.CurrentVersionID) + "/download", nil
+}
+
+// ResolveMatterFileName implements DocumentOfRecordFiles.
+func (l *FileLink) ResolveMatterFileName(ctx context.Context, p domain.Principal, matter domain.ID, name string) (domain.ID, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", domain.Invalid("document_file_name", "is required")
+	}
+	rows, _, err := l.Svc.List(ctx, p, files.ListQuery{MatterID: matter})
+	if err != nil {
+		return "", err
+	}
+	var match domain.ID
+	for _, f := range rows {
+		if f.TrashedAt != nil {
+			continue
+		}
+		if f.Name != name {
+			continue
+		}
+		if !match.IsZero() {
+			return "", domain.Invalid("document_file_name", "file name "+name+" matches more than one file on the matter")
+		}
+		match = f.ID
+	}
+	if match.IsZero() {
+		return "", domain.Invalid("document_file_name", "no file named "+name+" on the matter")
+	}
+	return match, nil
+}
 
 // CheckMatterFile implements SignedCopies: fileID is an untrashed file on matter that p
 // may read. Anything else answers not found.

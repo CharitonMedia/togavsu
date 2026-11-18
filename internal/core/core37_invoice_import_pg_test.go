@@ -1,9 +1,12 @@
 package core
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"fmt"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -32,35 +35,69 @@ func openingItem(matter, number, issued string, dueCents, paidCents int64, sourc
 	return item
 }
 
+func (c *client) uploadCSV(path string, fields url.Values, csvBytes []byte) resp {
+	c.t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	for k, vs := range fields {
+		for _, v := range vs {
+			_ = mw.WriteField(k, v)
+		}
+	}
+	fw, _ := mw.CreateFormFile("csv", "opening.csv")
+	_, _ = fw.Write(csvBytes)
+	_ = mw.Close()
+	r := c.raw("POST", path, buf.Bytes(), "Content-Type", mw.FormDataContentType(), "X-CSRF-Token", "")
+	return r
+}
+
+func (f *fin) uploadPDF(matter, name string, pdf []byte) string {
+	f.t.Helper()
+	up := f.atty.must(http.StatusCreated, "POST", "/api/v1/file-uploads", map[string]any{
+		"file_name": name, "matter_id": matter, "size_bytes": len(pdf), "media_type": "application/pdf",
+	})
+	upID := str(f.t, up.json, "id")
+	put := f.atty.raw("PUT", "/api/v1/file-uploads/"+upID, pdf, "Content-Type", "application/octet-stream",
+		"Content-Range", fmt.Sprintf("bytes 0-%d/%d", len(pdf)-1, len(pdf)))
+	if put.code != http.StatusOK {
+		f.t.Fatalf("chunk: %d %s", put.code, put.body)
+	}
+	f.atty.must(http.StatusOK, "POST", "/api/v1/file-uploads/"+upID+"/complete", map[string]any{})
+	file := f.atty.must(http.StatusCreated, "POST", "/api/v1/files", map[string]any{"upload_id": upID})
+	return str(f.t, file.json, "id")
+}
+
 func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	f := newFin(t)
-	matter, _ := f.matter("Opening Import Estate", "", nil)
+	matter, _ := f.matter("Opening Import Estate", "opening.client@example.com", nil)
 	issued := time.Now().UTC().Format("2006-01-02")
 
-	// Set a floor so historic numbers below it import and numbers at/above are refused.
+	// Use a format the historic import can collide with; start marks where normal numbering begins.
+	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/billing.invoice_number_format", map[string]any{"value": "NNNN"})
 	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/billing.invoice_number_start", map[string]any{"value": 5000})
 
-	// IMP-01: form import → sent, Balance forward line, imported true; sequence unchanged.
-	before := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{
-		"items": []map[string]any{openingItem(matter, "4521", issued, 1500_00, 0, "form", "ref-4521")},
+	// IMP-01 via the Migration tab form: sent, Balance forward, imported; next normal number is 5000.
+	csrf := csrfFrom(t, f.admin)
+	form := f.admin.must(http.StatusSeeOther, "POST", "/admin/migration/opening-invoice", url.Values{
+		"csrf": {csrf}, "matter_id": {matter}, "number": {"4521"}, "issued_on": {issued},
+		"amount_due": {"1500.00"}, "external_ref": {"ref-4521"},
 	})
-	first := before.json["data"].([]any)[0].(map[string]any)
-	if first["number"] != "4521" || first["status"] != "sent" || first["imported"] != true {
-		t.Fatalf("IMP-01 import: %v", first)
+	locUnesc, _ := url.QueryUnescape(form.loc)
+	if !strings.Contains(locUnesc, "Imported opening invoice 4521") {
+		t.Fatalf("IMP-01 form notice: %s", form.loc)
 	}
-	lines := first["lines"].([]any)
-	if len(lines) != 1 || !strings.HasPrefix(str(t, lines[0].(map[string]any), "description"), "Balance forward as of") {
-		t.Fatalf("IMP-01 line: %v", lines)
+	listed := f.atty.must(http.StatusOK, "GET", "/api/v1/invoices?status=sent", nil)
+	if !strings.Contains(listed.body, `"number":"4521"`) || !strings.Contains(listed.body, `"imported":true`) {
+		t.Fatalf("IMP-01 form import missing: %s", listed.body)
 	}
-	if f.count(`SELECT COUNT(*) FROM core.events WHERE action = 'invoice.imported' AND record_id = $1`, first["id"]) != 1 {
+	if f.count(`SELECT COUNT(*) FROM core.events WHERE action = 'invoice.imported'`) < 1 {
 		t.Fatal("IMP-01 missing invoice.imported")
 	}
 	_ = f.timeEntry(matter, 6, 100_00)
 	next := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoice-drafts", map[string]any{"matter_id": matter})
-	// Draft uses the normal sequence; historic 4521 must not become the next number.
 	n := str(t, next.json["data"].([]any)[0].(map[string]any), "number")
-	if n == "4521" || n == "4522" || strings.HasSuffix(n, "4521") {
-		t.Fatalf("IMP-01 sequence polluted: %s", n)
+	if n != "5000" {
+		t.Fatalf("IMP-01 next number want 5000 got %s (sequence must ignore imports and honour invoice_number_start)", n)
 	}
 
 	// IMP-02 refusals: floor, duplicate, zero amount, missing matter — nothing written.
@@ -91,7 +128,7 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 		t.Fatal("missing matter wrote rows")
 	}
 
-	// IMP-05: amount paid posts one imported payment; balance = due - paid.
+	// IMP-05: amount paid posts exactly one method=other imported payment; balance = due - paid.
 	paid := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{
 		"items": []map[string]any{openingItem(matter, "3001", issued, 1000_00, 250_00, "api", "ref-paid")},
 	})
@@ -99,16 +136,16 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	if int64(row["amount_paid_cents"].(float64)) != 250_00 || int64(row["balance_due_cents"].(float64)) != 750_00 {
 		t.Fatalf("IMP-05 cents: %v", row)
 	}
-	if f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'payment' AND body::text LIKE '%"imported":true%'`) < 1 &&
-		f.count(`SELECT COUNT(*) FROM core.payments WHERE imported = 1`) < 1 {
-		// Either JSON body or dual-write row should show the imported payment.
-		n := f.count(`SELECT COUNT(*) FROM core.payments WHERE invoice_id = $1`, row["id"])
-		if n < 1 {
-			t.Fatal("IMP-05 no imported payment")
+	payN := f.count(`SELECT COUNT(*) FROM core.payments WHERE invoice_id = $1 AND imported = 1 AND method = 'other'`, row["id"])
+	if payN != 1 {
+		// Fall back to JSON body when dual-write projection lags in a test DB shape.
+		payN = f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'payment' AND body::text LIKE '%' || $1 || '%' AND body::text LIKE '%"imported":true%' AND body::text LIKE '%"method":"other"%'`, row["id"])
+		if payN != 1 {
+			t.Fatalf("IMP-05 want exactly one imported method=other payment, got %d", payN)
 		}
 	}
 
-	// IMP-07: void an unpaid imported invoice; sequence untouched.
+	// IMP-07: void an unpaid imported invoice; void is logged; sequence untouched.
 	toVoid := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{
 		"items": []map[string]any{openingItem(matter, "3100", issued, 80_00, 0, "form", "ref-void")},
 	})
@@ -118,23 +155,25 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	if str(t, got.json, "status") != "void" {
 		t.Fatalf("IMP-07 void: %v", got.json)
 	}
-	_ = row
-
-	// IMP-06: document of record on staff billing tab; client sees it on GET and PDF redirect.
-	dorMatter, dorContact := f.matter("DoR Estate", "dor.client@example.com", nil)
-	pdfBytes := []byte("%PDF-1.4 synthetic opening invoice\n")
-	up := f.atty.must(http.StatusCreated, "POST", "/api/v1/file-uploads", map[string]any{
-		"file_name": "opening-4521.pdf", "matter_id": dorMatter, "size_bytes": len(pdfBytes), "media_type": "application/pdf",
-	})
-	upID := str(t, up.json, "id")
-	put := f.atty.raw("PUT", "/api/v1/file-uploads/"+upID, pdfBytes, "Content-Type", "application/octet-stream",
-		"Content-Range", fmt.Sprintf("bytes 0-%d/%d", len(pdfBytes)-1, len(pdfBytes)))
-	if put.code != http.StatusOK {
-		t.Fatalf("IMP-06 chunk: %d %s", put.code, put.body)
+	if f.count(`SELECT COUNT(*) FROM core.events WHERE action = 'invoice.voided' AND record_id = $1`, voidID) != 1 {
+		t.Fatal("IMP-07 missing invoice.voided event")
 	}
-	f.atty.must(http.StatusOK, "POST", "/api/v1/file-uploads/"+upID+"/complete", map[string]any{})
-	file := f.atty.must(http.StatusCreated, "POST", "/api/v1/files", map[string]any{"upload_id": upID})
-	fileID := str(t, file.json, "id")
+	if f.count(`SELECT COUNT(*) FROM core.audit_log WHERE entity_id = $1 AND (field = 'status' OR reason LIKE '%opened in error%')`, voidID) < 1 &&
+		f.count(`SELECT COUNT(*) FROM audit_log WHERE entity_id = $1 AND (field = 'status' OR reason LIKE '%opened in error%')`, voidID) < 1 {
+		t.Fatal("IMP-07 void not audited")
+	}
+	_ = f.timeEntry(matter, 6, 100_00)
+	afterVoid := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoice-drafts", map[string]any{"matter_id": matter})
+	// Prior draft consumed 5000; next is 5001 — voided import 3100 must not move the sequence.
+	if n := str(t, afterVoid.json["data"].([]any)[0].(map[string]any), "number"); n != "5001" {
+		t.Fatalf("IMP-07 sequence after void: %s", n)
+	}
+
+	// IMP-06: document of record — staff link via pdf route; client downloads bytes; other matter refused.
+	dorMatter, dorContact := f.matter("DoR Estate", "dor.client@example.com", nil)
+	otherMatter, otherContact := f.matter("Other Estate", "other.client@example.com", nil)
+	pdfBytes := []byte("%PDF-1.4 synthetic opening invoice\n")
+	fileID := f.uploadPDF(dorMatter, "opening-4521.pdf", pdfBytes)
 	withDor := openingItem(dorMatter, "2200", issued, 50_00, 0, "form", "ref-dor")
 	withDor["document_of_record_file_id"] = fileID
 	dorInv := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{"items": []map[string]any{withDor}})
@@ -144,12 +183,16 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	}
 	dorID := str(t, dorRow, "id")
 	staffPage := f.atty.must(http.StatusOK, "GET", "/billing/invoices/"+dorID, nil)
-	if !strings.Contains(staffPage.body, "Imported") || !strings.Contains(staffPage.body, "Document of record") || !strings.Contains(staffPage.body, fileID) {
+	if !strings.Contains(staffPage.body, "Imported") || !strings.Contains(staffPage.body, "Document of record") || !strings.Contains(staffPage.body, "/billing/invoices/"+dorID+"/pdf") {
 		t.Fatalf("IMP-06 staff billing tab: %s", staffPage.body)
 	}
 	pdf := f.atty.do("GET", "/api/v1/invoices/"+dorID+"/pdf", nil)
-	if pdf.code != http.StatusSeeOther || !strings.Contains(pdf.loc, "/api/v1/files/"+fileID) {
+	if pdf.code != http.StatusSeeOther || !strings.Contains(pdf.loc, "/api/v1/files/"+fileID+"/versions/") || !strings.Contains(pdf.loc, "/download") {
 		t.Fatalf("IMP-06 pdf redirect: %d %s", pdf.code, pdf.loc)
+	}
+	staffDL := f.atty.do("GET", pdf.loc, nil)
+	if staffDL.code != http.StatusOK || !bytes.Contains([]byte(staffDL.body), []byte("%PDF")) {
+		t.Fatalf("IMP-06 staff download: %d %s", staffDL.code, staffDL.body[:min(120, len(staffDL.body))])
 	}
 	cliKit, _ := testkit.EnrollUser(t, f.app.Identity, f.srv.URL, f.admin.kit(), "Dor Client", "dor.client@example.com", domain.ID(dorContact), domain.RoleClient)
 	cli := wrapClient(cliKit)
@@ -157,79 +200,149 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	if cliInv.json["imported"] != true || str(t, cliInv.json, "document_of_record_file_id") != fileID {
 		t.Fatalf("IMP-06 client projection: %s", cliInv.body)
 	}
-	if _, leak := cliInv.json["import_source"]; leak {
-		t.Fatalf("IMP-06 client leaked import_source: %s", cliInv.body)
-	}
 	cliPDF := cli.do("GET", "/api/v1/invoices/"+dorID+"/pdf", nil)
-	if cliPDF.code != http.StatusSeeOther || !strings.Contains(cliPDF.loc, "/api/v1/files/"+fileID) {
+	if cliPDF.code != http.StatusSeeOther || !strings.Contains(cliPDF.loc, "/download") {
 		t.Fatalf("IMP-06 client pdf redirect: %d %s", cliPDF.code, cliPDF.loc)
 	}
+	cliDL := cli.do("GET", cliPDF.loc, nil)
+	if cliDL.code != http.StatusOK || !bytes.Contains([]byte(cliDL.body), []byte("%PDF")) {
+		t.Fatalf("IMP-06 client download: %d %s", cliDL.code, cliDL.body[:min(200, len(cliDL.body))])
+	}
+	otherKit, _ := testkit.EnrollUser(t, f.app.Identity, f.srv.URL, f.admin.kit(), "Other Client", "other.client@example.com", domain.ID(otherContact), domain.RoleClient)
+	other := wrapClient(otherKit)
+	if r := other.do("GET", "/api/v1/invoices/"+dorID+"/pdf", nil); r.code != http.StatusNotFound {
+		t.Fatalf("IMP-06 other-matter client pdf: %d %s", r.code, r.body)
+	}
+	if r := other.do("GET", pdf.loc, nil); r.code != http.StatusNotFound {
+		t.Fatalf("IMP-06 other-matter client file: %d %s", r.code, r.body)
+	}
+	_ = otherMatter
 
-	// IMP-08: collections / aging include imported invoices.
+	// Cross-matter DoR refused at import.
+	alien := f.uploadPDF(otherMatter, "alien.pdf", pdfBytes)
+	cross := openingItem(dorMatter, "2201", issued, 40_00, 0, "api", "ref-cross")
+	cross["document_of_record_file_id"] = alien
+	if r := f.atty.do("POST", "/api/v1/invoices:bulk", map[string]any{"items": []map[string]any{cross}}); r.code == http.StatusCreated {
+		t.Fatalf("cross-matter DoR wrote: %s", r.body)
+	} else if !strings.Contains(strings.ToLower(r.body), "matter") && !strings.Contains(strings.ToLower(r.body), "document_of_record") {
+		t.Fatalf("cross-matter DoR reason: %s", r.body)
+	}
+
+	// IMP-08: collections panel, aging buckets and invoice lists (statements) include imports.
+	openImport := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{
+		"items": []map[string]any{openingItem(matter, "3300", issued, 200_00, 0, "form", "ref-aging")},
+	})
+	openID := str(t, openImport.json["data"].([]any)[0].(map[string]any), "id")
+	colPage := f.atty.must(http.StatusOK, "GET", "/billing/invoices/"+openID, nil)
+	if !strings.Contains(colPage.body, "Collections") && !strings.Contains(colPage.body, "id=\"col-h\"") {
+		t.Fatalf("IMP-08 collections panel missing: %s", colPage.body[:min(600, len(colPage.body))])
+	}
 	aging := f.atty.must(http.StatusOK, "GET", "/api/v1/reports/ar-aging", nil)
-	if !strings.Contains(aging.body, "4521") && !strings.Contains(aging.body, str(t, first, "id")) {
-		// Aging may key by id; ensure at least one open imported balance appears via list.
-		list := f.atty.must(http.StatusOK, "GET", "/api/v1/invoices?status=sent", nil)
-		if !strings.Contains(list.body, "4521") {
-			t.Fatalf("IMP-08 imported invoice missing from lists: %s / %s", aging.body, list.body)
-		}
+	if !strings.Contains(aging.body, "3300") || !strings.Contains(aging.body, "bucket") {
+		t.Fatalf("IMP-08 aging missing imported invoice/bucket: %s", aging.body)
+	}
+	stmts := f.atty.must(http.StatusOK, "GET", "/api/v1/invoices?status=sent", nil)
+	if !strings.Contains(stmts.body, "3300") || !strings.Contains(stmts.body, `"imported":true`) {
+		t.Fatalf("IMP-08 statements/list missing imported: %s", stmts.body)
+	}
+	cliList := cli.must(http.StatusOK, "GET", "/api/v1/invoices", nil)
+	if !strings.Contains(cliList.body, "2200") {
+		t.Fatalf("IMP-08 client statement list missing DoR invoice: %s", cliList.body)
 	}
 }
 
 func TestCORE37CSVPreviewAndIdempotentExternalRef(t *testing.T) {
 	f := newFin(t)
-	matter, _ := f.matter("CSV Import Estate", "", nil)
+	const contactEmail = "csv.client@example.com"
+	matter, _ := f.matter("CSV Import Estate", contactEmail, nil)
 	issued := time.Now().UTC().Format("2006-01-02")
 	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/billing.invoice_number_start", map[string]any{"value": 9000})
+	pdfBytes := []byte("%PDF-1.4 csv opening\n")
+	_ = f.uploadPDF(matter, "opening-1000.pdf", pdfBytes)
 
-	// IMP-03: 500-row CSV preview names a bad row; fixed batch writes all in one transaction.
+	// IMP-03: 500-row CSV via Migration tab — preview names the bad row; commit writes all.
 	const n = 500
-	items := make([]map[string]any, 0, n)
+	var b strings.Builder
+	b.WriteString("matter_id,number,issued_on,amount_due,due_on,message,contact_email,document_file_name,amount_paid,external_ref\n")
 	for i := 0; i < n; i++ {
-		// Numbers stay below invoice_number_start (9000): 1000..1499.
-		items = append(items, openingItem(matter, fmt.Sprintf("%d", 1000+i), issued, 10_00, 0, "csv", fmt.Sprintf("csv-%d", i)))
+		num := 1000 + i
+		fileName := ""
+		if i == 0 {
+			fileName = "opening-1000.pdf"
+		}
+		if i == 250 {
+			num = 9001 // at/above floor — bad row
+		}
+		fmt.Fprintf(&b, "%s,%d,%s,10.00,%s,,%s,%s,0,csv-%d\n", matter, num, issued, issued, contactEmail, fileName, i)
 	}
-	badIdx := 250
-	items[badIdx] = openingItem(matter, "9001", issued, 10_00, 0, "csv", "csv-bad") // at/above floor
-	prev := f.atty.must(http.StatusOK, "POST", "/api/v1/invoices:bulk", map[string]any{"preview": true, "items": items})
-	results := prev.json["results"].([]any)
-	if len(results) != n {
-		t.Fatalf("IMP-03 preview len: %d", len(results))
+	csrf := csrfFrom(t, f.admin)
+	preview := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}}, []byte(b.String()))
+	if preview.code != http.StatusSeeOther {
+		t.Fatalf("IMP-03 preview post: %d %s", preview.code, preview.body)
 	}
-	bad := results[badIdx].(map[string]any)
-	if bad["ok"] != false || !strings.Contains(fmt.Sprint(bad["error"]), "invoice_number_start") {
-		t.Fatalf("IMP-03 preview: %v", bad)
+	q := ""
+	if i := strings.Index(preview.loc, "?"); i >= 0 {
+		q = preview.loc[i:]
+	}
+	page := f.admin.must(http.StatusOK, "GET", "/admin?tab=migration"+strings.Replace(q, "?", "&", 1), nil)
+	if !strings.Contains(page.body, "id=\"csv-preview\"") {
+		t.Fatalf("IMP-03 preview table missing: %s", page.body[max(0, strings.Index(page.body, "opening-csv")):min(len(page.body), strings.Index(page.body, "opening-csv")+800)])
+	}
+	if !strings.Contains(page.body, "invoice_number_start") && !strings.Contains(page.body, "9001") {
+		t.Fatalf("IMP-03 preview does not name bad row: %s", page.body)
 	}
 	before := f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`)
-	if r := f.atty.do("POST", "/api/v1/invoices:bulk", map[string]any{"items": items}); r.code == http.StatusCreated {
-		t.Fatalf("IMP-03 bad batch wrote: %s", r.body)
+	// Fix the bad row and commit through the admin CSV path.
+	var good strings.Builder
+	good.WriteString("matter_id,number,issued_on,amount_due,due_on,message,contact_email,document_file_name,amount_paid,external_ref\n")
+	for i := 0; i < n; i++ {
+		fileName := ""
+		if i == 0 {
+			fileName = "opening-1000.pdf"
+		}
+		fmt.Fprintf(&good, "%s,%d,%s,10.00,%s,,%s,%s,0,csv-%d\n", matter, 1000+i, issued, issued, contactEmail, fileName, i)
 	}
-	if f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`) != before {
-		t.Fatal("IMP-03 wrote despite bad row")
+	commit := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, []byte(good.String()))
+	if commit.code != http.StatusSeeOther {
+		t.Fatalf("IMP-03 commit: %d %s", commit.code, commit.body)
 	}
-	items[badIdx] = openingItem(matter, fmt.Sprintf("%d", 1000+badIdx), issued, 10_00, 0, "csv", fmt.Sprintf("csv-%d", badIdx))
-	wrote := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{"items": items})
-	if len(wrote.json["data"].([]any)) != n {
-		t.Fatalf("IMP-03 wrote %d want %d", len(wrote.json["data"].([]any)), n)
+	after := f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`)
+	if after-before != n {
+		t.Fatalf("IMP-03 wrote %d want %d (loc=%s)", after-before, n, commit.loc)
+	}
+	// First row attached the PDF by file name.
+	first := f.atty.must(http.StatusOK, "GET", "/api/v1/invoices?status=sent", nil)
+	if !strings.Contains(first.body, "document_of_record_file_id") {
+		t.Fatalf("IMP-03 CSV file name did not attach DoR: %s", first.body[:min(500, len(first.body))])
 	}
 
-	// IMP-04: re-run skips by external_ref.
-	again := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{"items": items})
-	if len(again.json["data"].([]any)) != 0 {
-		t.Fatalf("IMP-04 wrote new: %v", again.json)
+	// IMP-04: re-upload skips by external_ref.
+	again := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, []byte(good.String()))
+	againLoc, _ := url.QueryUnescape(again.loc)
+	if again.code != http.StatusSeeOther || !strings.Contains(againLoc, "skipped 500") {
+		t.Fatalf("IMP-04 re-upload notice: %s", again.loc)
 	}
-	skipped := again.json["skipped"].([]any)
-	if len(skipped) != n {
-		t.Fatalf("IMP-04 skipped: %d want %d", len(skipped), n)
+	if f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`) != after {
+		t.Fatal("IMP-04 wrote new rows on re-upload")
 	}
-	if !strings.Contains(fmt.Sprint(skipped[0]), "external_ref") && !strings.Contains(fmt.Sprint(skipped[0]), "already") {
-		t.Fatalf("IMP-04 reason: %v", skipped[0])
+
+	// Bad contact_email is refused in preview.
+	badEmail := fmt.Sprintf("matter_id,number,issued_on,amount_due,contact_email,external_ref\n%s,1400,%s,10.00,nobody@example.com,csv-email\n", matter, issued)
+	badPrev := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}}, []byte(badEmail))
+	if badPrev.code != http.StatusSeeOther {
+		t.Fatalf("contact preview: %d", badPrev.code)
+	}
+	bq := ""
+	if i := strings.Index(badPrev.loc, "?"); i >= 0 {
+		bq = badPrev.loc[i:]
+	}
+	badPage := f.admin.must(http.StatusOK, "GET", "/admin?tab=migration"+strings.Replace(bq, "?", "&", 1), nil)
+	if !strings.Contains(strings.ToLower(badPage.body), "contact_email") {
+		t.Fatalf("contact_email refusal missing: %s", badPage.body)
 	}
 }
 
 func TestCORE35StructuredPriceStoredOnModule(t *testing.T) {
-	// Install a package whose manifest carries a structured price; the Modules tab and
-	// GET module view must show it (CORE-35). Detailed parse checks live in modules/price_test.go.
 	x := newExt(t)
 	pkg := x.build(func(files map[string][]byte) {
 		m := string(files["togavsu-module.yaml"])

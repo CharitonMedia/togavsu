@@ -233,12 +233,14 @@
 <label for="oi-paid">Amount paid to date (optional)</label><input id="oi-paid" name="amount_paid" inputmode="decimal" placeholder="0.00">
 <label for="oi-msg">Message (optional)</label><input id="oi-msg" name="message" size="40">
 <label for="oi-dor">Document of record file id (optional)</label><input id="oi-dor" name="document_of_record_file_id" placeholder="uuid">
+<label for="oi-dor-name">Document of record file name (optional)</label><input id="oi-dor-name" name="document_file_name" placeholder="opening-4521.pdf">
+<label for="oi-contact">Contact email (optional)</label><input id="oi-contact" name="contact_email" type="email">
 <label for="oi-ref">External ref (optional)</label><input id="oi-ref" name="external_ref">
 <div><button type="submit">Import opening invoice</button></div>
 </form>
 </section>
 <section class="card" id="opening-csv"><h2>CSV upload</h2>
-<p class="muted">Columns: matter_id, number, issued_on, amount_due, due_on, message, contact_email, document_file_name, amount_paid, external_ref. Preview every row before anything is written; the whole file commits in one transaction or not at all.</p>
+<p class="muted">Columns: matter_id, number, issued_on, amount_due, due_on, message, contact_email, document_file_name, amount_paid, external_ref. Preview every row before anything is written; the whole file commits in one transaction or not at all. File names resolve to matter uploads; contact email must match a client on the matter.</p>
 <form method="post" action="/admin/migration/opening-csv" enctype="multipart/form-data" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
 <label for="oi-csv">CSV file</label><input id="oi-csv" type="file" name="csv" accept=".csv,text/csv" required>
 <label class="check"><input type="checkbox" name="commit" value="1"> Commit after preview (leave unchecked to preview only)</label>

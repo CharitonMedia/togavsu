@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/CharitonMedia/togavsu/internal/billing"
 	"github.com/CharitonMedia/togavsu/internal/dashboard"
@@ -13,18 +14,35 @@ import (
 )
 
 // migrationAdmin is the Migration import tab over the billing service (CORE-37).
-type migrationAdmin struct{ app *App }
+type migrationAdmin struct {
+	app *App
 
-func (m migrationAdmin) Panel(r *http.Request, p domain.Principal) (any, error) {
-	_ = p
+	mu       sync.Mutex
+	previews map[domain.ID][]dashboard.MigrationPreviewRow
+}
+
+func (m *migrationAdmin) ensure() {
+	if m.previews == nil {
+		m.previews = map[domain.ID][]dashboard.MigrationPreviewRow{}
+	}
+}
+
+func (m *migrationAdmin) Panel(r *http.Request, p domain.Principal) (any, error) {
 	out := map[string]any{}
 	if n := r.URL.Query().Get("notice"); n != "" {
 		out["notice"] = n
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.ensure()
+	if rows := m.previews[p.UserID]; len(rows) > 0 {
+		out["preview"] = rows
+		delete(m.previews, p.UserID)
+	}
 	return out, nil
 }
 
-func (m migrationAdmin) Act(r *http.Request, p domain.Principal, action string) (string, error) {
+func (m *migrationAdmin) Act(r *http.Request, p domain.Principal, action string) (string, error) {
 	if m.app == nil || m.app.Billing == nil {
 		return "", domain.NotFound("billing")
 	}
@@ -38,7 +56,7 @@ func (m migrationAdmin) Act(r *http.Request, p domain.Principal, action string) 
 	}
 }
 
-func (m migrationAdmin) oneForm(r *http.Request, p domain.Principal) (string, error) {
+func (m *migrationAdmin) oneForm(r *http.Request, p domain.Principal) (string, error) {
 	matter := domain.ID(strings.TrimSpace(r.FormValue("matter_id")))
 	number := strings.TrimSpace(r.FormValue("number"))
 	issued := strings.TrimSpace(r.FormValue("issued_on"))
@@ -46,6 +64,7 @@ func (m migrationAdmin) oneForm(r *http.Request, p domain.Principal) (string, er
 	msg := strings.TrimSpace(r.FormValue("message"))
 	ref := strings.TrimSpace(r.FormValue("external_ref"))
 	dor := domain.ID(strings.TrimSpace(r.FormValue("document_of_record_file_id")))
+	fileName := strings.TrimSpace(r.FormValue("document_file_name"))
 	amountDue, err := parseMoneyForm(r.FormValue("amount_due"))
 	if err != nil {
 		return "", domain.Invalid("amount_due", err.Error())
@@ -55,6 +74,8 @@ func (m migrationAdmin) oneForm(r *http.Request, p domain.Principal) (string, er
 		return "", domain.Invalid("amount_paid", err.Error())
 	}
 	item := billing.OpeningInvoiceItem(matter, number, issued, due, amountDue, amountPaid, msg, billing.ImportSourceForm, ref, dor)
+	item.DocumentFileName = fileName
+	item.ContactEmail = strings.TrimSpace(r.FormValue("contact_email"))
 	rows, skipped, err := m.app.Billing.BulkInvoicesDetailed(r.Context(), p, []billing.InvoiceImport{item})
 	if err != nil {
 		return "", err
@@ -68,7 +89,7 @@ func (m migrationAdmin) oneForm(r *http.Request, p domain.Principal) (string, er
 	return "Imported opening invoice " + rows[0].Number + ".", nil
 }
 
-func (m migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error) {
+func (m *migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error) {
 	f, _, err := r.FormFile("csv")
 	if err != nil {
 		return "", domain.Invalid("csv", "a CSV file is required")
@@ -84,19 +105,28 @@ func (m migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error)
 		if err != nil {
 			return "", err
 		}
+		preview := make([]dashboard.MigrationPreviewRow, 0, len(results))
 		var bad []string
 		ok := int(0)
 		for _, res := range results {
+			row := dashboard.MigrationPreviewRow{
+				Index: res.Index + 1, OK: res.PreviewOK, Error: res.PreviewError,
+				Skipped: res.Skipped, ExternalRef: res.ExternalRef,
+			}
 			if res.Skipped {
+				row.OK = true
 				ok++
-				continue
-			}
-			if res.PreviewOK {
+			} else if res.PreviewOK {
 				ok++
-				continue
+			} else {
+				bad = append(bad, "row "+strconv.Itoa(res.Index+1)+": "+res.PreviewError)
 			}
-			bad = append(bad, "row "+strconv.Itoa(res.Index+1)+": "+res.PreviewError)
+			preview = append(preview, row)
 		}
+		m.mu.Lock()
+		m.ensure()
+		m.previews[p.UserID] = preview
+		m.mu.Unlock()
 		if len(bad) > 0 {
 			return "Preview: " + strconv.Itoa(ok) + " ok, " + strconv.Itoa(len(bad)) + " refused. " + strings.Join(bad, "; "), nil
 		}
@@ -167,10 +197,13 @@ func parseOpeningCSV(r io.Reader) ([]billing.InvoiceImport, error) {
 		if ref == "" {
 			ref = col(row, "number") + "|" + col(row, "matter_id") + "|" + col(row, "issued_on")
 		}
-		out = append(out, billing.OpeningInvoiceItem(
+		item := billing.OpeningInvoiceItem(
 			domain.ID(col(row, "matter_id")), col(row, "number"), col(row, "issued_on"), col(row, "due_on"),
 			amountDue, amountPaid, col(row, "message"), billing.ImportSourceCSV, ref, domain.ID(col(row, "document_of_record_file_id")),
-		))
+		)
+		item.ContactEmail = col(row, "contact_email")
+		item.DocumentFileName = col(row, "document_file_name")
+		out = append(out, item)
 	}
 	if len(out) == 0 {
 		return nil, domain.Invalid("csv", "no data rows")
@@ -178,4 +211,4 @@ func parseOpeningCSV(r io.Reader) ([]billing.InvoiceImport, error) {
 	return out, nil
 }
 
-var _ dashboard.MigrationAdmin = migrationAdmin{}
+var _ dashboard.MigrationAdmin = (*migrationAdmin)(nil)

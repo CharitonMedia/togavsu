@@ -246,6 +246,8 @@ func (s *Service) settle(inv *Invoice) {
 var nRun = regexp.MustCompile(`N{2,}`)
 
 // nextNumber renders the firm invoice number format for the issue year with the next sequence.
+// Opening imports never touch the sequence: imported invoices are ignored, and when
+// billing.invoice_number_start is set the next number is at least that floor (CORE-37).
 func (s *Service) nextNumber(ctx context.Context, issuedOn string) (string, error) {
 	format := strings.TrimSpace(s.setting(ctx, "billing.invoice_number_format"))
 	if format == "" {
@@ -271,12 +273,18 @@ func (s *Service) nextNumber(ctx context.Context, issuedOn string) (string, erro
 	}
 	var high int
 	for _, r := range rows {
+		if r.Imported {
+			continue
+		}
 		if !strings.HasPrefix(r.Number, prefix) || !strings.HasSuffix(r.Number, suffix) || len(r.Number) < len(prefix)+len(suffix) {
 			continue
 		}
 		if n, err := strconv.Atoi(r.Number[len(prefix) : len(r.Number)-len(suffix)]); err == nil && n > high {
 			high = n
 		}
+	}
+	if start := s.settingInt(ctx, "billing.invoice_number_start"); positive(int64(start)) && high < start-1 {
+		high = start - 1
 	}
 	return fmt.Sprintf("%s%0*d%s", prefix, width, high+1, suffix), nil
 }
