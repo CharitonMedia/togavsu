@@ -118,6 +118,9 @@ func (s *Service) previewOne(ctx context.Context, p domain.Principal, in Invoice
 		if err := s.checkOpeningImport(ctx, in, i, numbers, existingRefs, seenRefs, true); err != nil {
 			return err
 		}
+	} else if err := s.validateImportCommitSide(ctx, in, i); err != nil {
+		// Non-opening bulk rows still share commit-side date/recompute checks in preview.
+		return err
 	}
 	number := strings.TrimSpace(in.Number)
 	if number == "" {
@@ -126,6 +129,104 @@ func (s *Service) previewOne(ctx context.Context, p domain.Principal, in Invoice
 	if numbers[number] && !(in.OpeningImport() && existingRefs[strings.TrimSpace(in.ExternalRef)]) {
 		return domain.Invalid(fmt.Sprintf("items/%d/number", i), "invoice number "+number+" is already used")
 	}
+	return nil
+}
+
+// validateImportCommitSide runs every check importOne and postImportedPayment apply
+// before write that BulkInvoicesPreview must also apply, so a preview that says OK never
+// fails at commit (IMP-03 / CORE-CHANGES-2 §6.3): parseDate on issued_on and due_on, the
+// recompute and reconciliation of subtotal/total/balance, status/balance rules, and the
+// "matter has no client party" refusal when amount_paid is above zero.
+func (s *Service) validateImportCommitSide(ctx context.Context, in InvoiceImport, i int) error {
+	field := func(name string) string { return fmt.Sprintf("items/%d/%s", i, name) }
+	if _, err := parseDate(field("issued_on"), in.IssuedOn); err != nil {
+		return err
+	}
+	if due := strings.TrimSpace(in.DueOn); due != "" {
+		if _, err := parseDate(field("due_on"), due); err != nil {
+			return err
+		}
+	}
+	switch in.Status {
+	case StatusDraft, StatusSent, StatusViewed, StatusPaid, StatusVoid:
+	default:
+		return domain.Invalid(field("status"), "must be draft, sent, viewed, paid or void")
+	}
+	for name, v := range map[string]domain.Cents{"interest_cents": in.InterestCents, "amount_paid_cents": in.AmountPaidCents, "write_off_cents": in.WriteOffCents} {
+		if negative(int64(v)) {
+			return domain.Invalid(field(name), "cannot be negative")
+		}
+	}
+	if len(in.Lines) == 0 {
+		return domain.Invalid(field("lines"), "an invoice needs at least one line")
+	}
+	inv := Invoice{}
+	for j, li := range in.Lines {
+		lineField := fmt.Sprintf("items/%d/lines/%d", i, j)
+		if li.AmountCents == nil {
+			return domain.Invalid(lineField+"/amount_cents", "is required")
+		}
+		line := Line{Kind: li.Kind, SourceID: li.SourceID, Description: strings.TrimSpace(li.Description), FeeItemID: li.FeeItemID, AmountCents: *li.AmountCents}
+		if line.Description == "" {
+			return domain.Invalid(lineField+"/description", "is required")
+		}
+		if line.Kind != LineAdjustment && negative(int64(line.AmountCents)) {
+			return domain.Invalid(lineField+"/amount_cents", "only an adjustment line may be negative")
+		}
+		inv.Lines = append(inv.Lines, line)
+	}
+	inv.AdjustmentCents, inv.InterestCents = in.AdjustmentCents, in.InterestCents
+	inv.AmountPaidCents, inv.WriteOffCents = in.AmountPaidCents, in.WriteOffCents
+	if err := recompute(&inv); err != nil {
+		return err
+	}
+	if in.Status == StatusVoid {
+		if positive(int64(in.AmountPaidCents)) {
+			return domain.Invalid(field("amount_paid_cents"), "a void invoice carries no payment")
+		}
+		inv.BalanceDueCents = noCents
+		if strings.TrimSpace(in.VoidReason) == "" {
+			return domain.Invalid(field("void_reason"), "is required on a void invoice")
+		}
+	}
+	for _, c := range []struct {
+		name        string
+		given, want domain.Cents
+	}{
+		{"subtotal_cents", in.SubtotalCents, inv.SubtotalCents}, {"total_cents", in.TotalCents, inv.TotalCents},
+		{"balance_due_cents", in.BalanceDueCents, inv.BalanceDueCents},
+	} {
+		if c.given != c.want {
+			return domain.Invalid(field(c.name), "does not reconcile: the lines and amounts give "+money(c.want))
+		}
+	}
+	balance := int64(inv.BalanceDueCents)
+	switch in.Status {
+	case StatusDraft:
+		if positive(int64(in.AmountPaidCents)) || positive(int64(in.WriteOffCents)) {
+			return domain.Invalid(field("status"), "a draft has no payment or write-off")
+		}
+	case StatusSent, StatusViewed:
+		if !positive(balance) {
+			return domain.Invalid(field("status"), "a sent or viewed invoice has a balance due; with none it is paid")
+		}
+	case StatusPaid:
+		if !isZero(balance) {
+			return domain.Invalid(field("status"), "a paid invoice has no balance due")
+		}
+	}
+	if in.Status != StatusDraft && negative(int64(inv.TotalCents)) {
+		return domain.Invalid(field("total_cents"), "an invoice total cannot be negative")
+	}
+	if positive(int64(in.WriteOffCents)) && strings.TrimSpace(in.WriteOffReason) == "" {
+		return domain.Invalid(field("write_off_reason"), "is required with a write-off")
+	}
+	if in.OpeningImport() && positive(int64(in.AmountPaidCents)) {
+		if len(s.clientParties(in.MatterID)) == 0 {
+			return domain.Invalid(field("matter_id"), "matter has no client party for the imported payment")
+		}
+	}
+	_ = ctx
 	return nil
 }
 
@@ -199,12 +300,16 @@ func (s *Service) checkOpeningImport(ctx context.Context, in InvoiceImport, i in
 	if ref != "" && (existingRefs[ref] || seenRefs[ref]) {
 		return nil // skip path; caller marks skipped
 	}
-	// Floor before duplicate so IMP-02 names invoice_number_start even when a normal
-	// invoice already occupies that number.
-	if start := s.settingInt(ctx, "billing.invoice_number_start"); positive(int64(start)) {
-		if n, ok := parseImportNumber(number); ok && n >= start {
-			return domain.Invalid(field("number"), fmt.Sprintf("invoice number %s is at or above invoice_number_start (%d)", number, start))
-		}
+	// Floor before duplicate so IMP-02 names the floor even when a normal invoice already
+	// occupies that number. billing.invoice_number_start=0 does not disable the floor:
+	// it falls back to the lowest non-imported invoice number, or refuses until the admin
+	// sets "Invoice numbering starts at".
+	floor, floorLabel, err := s.openingImportFloor(ctx)
+	if err != nil {
+		return domain.Invalid(field("number"), err.Error())
+	}
+	if n, ok := parseImportNumber(number); ok && n >= floor {
+		return domain.Invalid(field("number"), fmt.Sprintf("invoice number %s is at or above %s (%d)", number, floorLabel, floor))
 	}
 	if numbers[number] {
 		return domain.Invalid(field("number"), "invoice number "+number+" is already used")
@@ -225,8 +330,46 @@ func (s *Service) checkOpeningImport(ctx context.Context, in InvoiceImport, i in
 	if err := s.checkContactEmail(ctx, in, field("contact_email")); err != nil {
 		return err
 	}
+	// Preview and commit share the same commit-side checks (IMP-03): dates, recompute /
+	// reconciliation and the imported-payment client-party refusal.
+	if err := s.validateImportCommitSide(ctx, in, i); err != nil {
+		return err
+	}
 	_ = preview
 	return nil
+}
+
+// openingImportFloor is the lowest historical number an opening import may use (exclusive
+// upper bound: imports must be strictly below it). When billing.invoice_number_start is
+// set above zero, that value is the floor. When it is 0 or unset, the floor is the lowest
+// non-imported invoice number already in the practice; with no normal invoices yet the
+// import is refused so the admin sets the setting first (CORE-37 / IMP-02).
+func (s *Service) openingImportFloor(ctx context.Context) (floor int, label string, err error) {
+	if start := s.settingInt(ctx, "billing.invoice_number_start"); positive(int64(start)) {
+		return start, "invoice_number_start", nil
+	}
+	rows, err := invoiceHeads(ctx, s.d.Store, Where{})
+	if err != nil {
+		return int(0), "", err
+	}
+	found := false
+	lowest := int(0)
+	for _, r := range rows {
+		if r.Imported {
+			continue
+		}
+		n, ok := parseImportNumber(r.Number)
+		if !ok {
+			continue
+		}
+		if !found || n < lowest {
+			lowest, found = n, true
+		}
+	}
+	if !found {
+		return int(0), "", fmt.Errorf(`set "Invoice numbering starts at" on the admin page first`)
+	}
+	return lowest, "the lowest normal invoice number", nil
 }
 
 func (s *Service) checkContactEmail(_ context.Context, in InvoiceImport, field string) error {

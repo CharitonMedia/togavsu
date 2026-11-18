@@ -255,37 +255,57 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	}
 }
 
-// TestCORE37DefaultStartSkipsImportedNumber: with billing.invoice_number_start left at the
-// default 0, an opening import of a mid-sequence number must not be reused by later drafts.
-func TestCORE37DefaultStartSkipsImportedNumber(t *testing.T) {
+// TestCORE37DefaultStartFloor: with billing.invoice_number_start left at default 0,
+// opening import refuses until a normal invoice exists (or the setting is set); when
+// normal invoices exist the floor is the lowest of them; an import at that floor is
+// refused; a later normal invoice never reuses an imported number (IMP-02 / IMP-01).
+func TestCORE37DefaultStartFloor(t *testing.T) {
 	f := newFin(t)
 	matter, _ := f.matter("Default Start Import", "default.start@example.com", nil)
 	issued := time.Now().UTC().Format("2006-01-02")
 	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/billing.invoice_number_format", map[string]any{"value": "NNNN"})
-	// Leave invoice_number_start at default 0.
-	imp := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{
+	// Leave invoice_number_start at default 0. With no normal invoices, refuse.
+	refuse := f.atty.do("POST", "/api/v1/invoices:bulk", map[string]any{
 		"items": []map[string]any{openingItem(matter, "0007", issued, 100_00, 0, "api", "ref-default-7")},
 	})
+	if refuse.code == http.StatusCreated {
+		t.Fatalf("default start with no normal invoices must refuse: %s", refuse.body)
+	}
+	if !strings.Contains(strings.ToLower(refuse.body), "invoice numbering starts at") {
+		t.Fatalf("want admin setting message, got %s", refuse.body)
+	}
+	// Seed one normal invoice at 0100, then clear the start setting so the derived
+	// floor is the lowest non-imported number (100).
+	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/billing.invoice_number_start", map[string]any{"value": 100})
+	_ = f.timeEntry(matter, 6, 100_00)
+	seed := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoice-drafts", map[string]any{"matter_id": matter})
+	if n := str(t, seed.json["data"].([]any)[0].(map[string]any), "number"); n != "0100" {
+		t.Fatalf("seed draft want 0100 got %s", n)
+	}
+	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/billing.invoice_number_start", map[string]any{"value": 0})
+	// Import at the floor (0100) is refused.
+	atFloor := f.atty.do("POST", "/api/v1/invoices:bulk", map[string]any{
+		"items": []map[string]any{openingItem(matter, "0100", issued, 100_00, 0, "api", "ref-at-floor")},
+	})
+	if atFloor.code == http.StatusCreated || !strings.Contains(strings.ToLower(atFloor.body), "0100") {
+		t.Fatalf("import at floor must refuse naming the number: %d %s", atFloor.code, atFloor.body)
+	}
+	// Import below the floor succeeds.
+	imp := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{
+		"items": []map[string]any{openingItem(matter, "0050", issued, 100_00, 0, "api", "ref-below-floor")},
+	})
 	if !strings.Contains(imp.body, `"imported":true`) {
-		t.Fatalf("import missing: %s", imp.body)
+		t.Fatalf("import below floor missing: %s", imp.body)
 	}
-	// Seed normal drafts 0001–0006 so the next candidate would be 0007 without the skip.
-	for i := 1; i <= 6; i++ {
-		_ = f.timeEntry(matter, 6, 100_00)
-		d := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoice-drafts", map[string]any{"matter_id": matter})
-		want := fmt.Sprintf("%04d", i)
-		if n := str(t, d.json["data"].([]any)[0].(map[string]any), "number"); n != want {
-			t.Fatalf("draft %d want %s got %s", i, want, n)
-		}
-	}
+	// Next normal number continues from high-water 0100 → 0101, never reusing 0050.
 	_ = f.timeEntry(matter, 6, 100_00)
 	next := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoice-drafts", map[string]any{"matter_id": matter})
-	if n := str(t, next.json["data"].([]any)[0].(map[string]any), "number"); n != "0008" {
-		t.Fatalf("default-start next after import 0007 want 0008 got %s", n)
+	if n := str(t, next.json["data"].([]any)[0].(map[string]any), "number"); n != "0101" {
+		t.Fatalf("next after import 0050 want 0101 got %s", n)
 	}
 	listed := f.atty.must(http.StatusOK, "GET", "/api/v1/invoices", nil)
-	if strings.Count(listed.body, `"number":"0007"`) != 1 {
-		t.Fatalf("duplicate 0007 appeared: %s", listed.body[:min(800, len(listed.body))])
+	if strings.Count(listed.body, `"number":"0050"`) != 1 {
+		t.Fatalf("duplicate 0050 appeared: %s", listed.body[:min(800, len(listed.body))])
 	}
 }
 
@@ -416,6 +436,80 @@ func TestCORE37CSVPreviewAndIdempotentExternalRef(t *testing.T) {
 	badPage := f.admin.must(http.StatusOK, "GET", "/admin?tab=migration"+strings.Replace(bq, "?", "&", 1), nil)
 	if !strings.Contains(strings.ToLower(badPage.body), "contact_email") {
 		t.Fatalf("contact_email refusal missing: %s", badPage.body)
+	}
+}
+
+// TestCORE37PreviewMatchesCommitSideChecks: BulkInvoicesPreview runs the same
+// parseDate / recompute / client-party checks as commit, so a preview that says OK
+// never fails at write (IMP-03).
+func TestCORE37PreviewMatchesCommitSideChecks(t *testing.T) {
+	f := newFin(t)
+	matter, _ := f.matter("Preview Commit Side", "preview.commit@example.com", nil)
+	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/billing.invoice_number_start", map[string]any{"value": 9000})
+	csrf := csrfFrom(t, f.admin)
+
+	previewNames := func(csv string, wantSubstrings ...string) {
+		t.Helper()
+		prev := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}}, []byte(csv))
+		if prev.code != http.StatusSeeOther {
+			t.Fatalf("preview status: %d %s", prev.code, prev.body)
+		}
+		q := ""
+		if i := strings.Index(prev.loc, "?"); i >= 0 {
+			q = prev.loc[i:]
+		}
+		page := f.admin.must(http.StatusOK, "GET", "/admin?tab=migration"+strings.Replace(q, "?", "&", 1), nil)
+		body := strings.ToLower(page.body)
+		if strings.Contains(body, "all ") && strings.Contains(body, "rows look good") {
+			t.Fatalf("preview reported all good: %s", page.body)
+		}
+		for _, want := range wantSubstrings {
+			if !strings.Contains(body, strings.ToLower(want)) {
+				t.Fatalf("preview missing %q: %s", want, page.body)
+			}
+		}
+	}
+
+	// Bad issued_on date — previously only failed at commit.
+	previewNames(fmt.Sprintf(
+		"matter_id,number,issued_on,amount_due,due_on,external_ref\n%s,1500,2026-13-40,10.00,2026-01-15,ref-bad-date\n", matter),
+		"issued_on", "date")
+	// amount_paid greater than amount_due — OpeningInvoiceItem zeros balance; recompute refuses.
+	previewNames(fmt.Sprintf(
+		"matter_id,number,issued_on,amount_due,amount_paid,external_ref\n%s,1501,2026-01-15,10.00,20.00,ref-overpay\n", matter),
+		"reconcile")
+	// amount_paid on a matter with no client party.
+	lonely := f.admin.must(http.StatusCreated, "POST", "/api/v1/matters", map[string]any{
+		"name": "No Client Party", "practice_area_id": f.area, "responsible_attorney_id": f.attyID,
+		"billing_type": "hourly",
+	})
+	lonelyID := str(t, lonely.json, "id")
+	previewNames(fmt.Sprintf(
+		"matter_id,number,issued_on,amount_due,amount_paid,external_ref\n%s,1502,2026-01-15,10.00,5.00,ref-no-client\n", lonelyID),
+		"client party")
+
+	// Clean file: preview OK then commit OK (same bytes).
+	good := fmt.Sprintf(
+		"matter_id,number,issued_on,amount_due,due_on,amount_paid,external_ref\n%s,1600,2026-01-15,10.00,2026-02-01,0,ref-clean-preview\n", matter)
+	goodPrev := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}}, []byte(good))
+	if goodPrev.code != http.StatusSeeOther {
+		t.Fatalf("good preview: %d %s", goodPrev.code, goodPrev.body)
+	}
+	gq := ""
+	if i := strings.Index(goodPrev.loc, "?"); i >= 0 {
+		gq = goodPrev.loc[i:]
+	}
+	goodPage := f.admin.must(http.StatusOK, "GET", "/admin?tab=migration"+strings.Replace(gq, "?", "&", 1), nil)
+	if !strings.Contains(strings.ToLower(goodPage.body), "look good") {
+		t.Fatalf("good preview not clean: %s", goodPage.body)
+	}
+	before := f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`)
+	commit := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, []byte(good))
+	if commit.code != http.StatusSeeOther {
+		t.Fatalf("good commit: %d %s", commit.code, commit.body)
+	}
+	if f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`) != before+1 {
+		t.Fatalf("good preview/commit wrote wrong count")
 	}
 }
 

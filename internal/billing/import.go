@@ -214,21 +214,9 @@ func (s *Service) importOne(t *txn, in InvoiceImport, i int, numbers map[string]
 		return Invoice{}, domain.Invalid(field("number"), "invoice number "+number+" is already used")
 	}
 	numbers[number] = true
-	if _, err := parseDate(field("issued_on"), in.IssuedOn); err != nil {
+	// Shared with BulkInvoicesPreview so a preview that says OK never fails here (IMP-03).
+	if err := s.validateImportCommitSide(t.ctx, in, i); err != nil {
 		return Invoice{}, err
-	}
-	switch in.Status {
-	case StatusDraft, StatusSent, StatusViewed, StatusPaid, StatusVoid:
-	default:
-		return Invoice{}, domain.Invalid(field("status"), "must be draft, sent, viewed, paid or void")
-	}
-	for name, v := range map[string]domain.Cents{"interest_cents": in.InterestCents, "amount_paid_cents": in.AmountPaidCents, "write_off_cents": in.WriteOffCents} {
-		if negative(int64(v)) {
-			return Invoice{}, domain.Invalid(field(name), "cannot be negative")
-		}
-	}
-	if len(in.Lines) == 0 {
-		return Invoice{}, domain.Invalid(field("lines"), "an invoice needs at least one line")
 	}
 	inv := Invoice{MatterName: m.Name, MatterNum: m.Number}
 	for j, li := range in.Lines {
@@ -244,46 +232,8 @@ func (s *Service) importOne(t *txn, in InvoiceImport, i int, numbers map[string]
 		return Invoice{}, err
 	}
 	if in.Status == StatusVoid {
-		// Voiding releases the balance, as voidInvoice does; a void invoice carries no payment.
-		if positive(int64(in.AmountPaidCents)) {
-			return Invoice{}, domain.Invalid(field("amount_paid_cents"), "a void invoice carries no payment")
-		}
+		// Voiding releases the balance, as voidInvoice does; validated above.
 		inv.BalanceDueCents = noCents
-		if strings.TrimSpace(in.VoidReason) == "" {
-			return Invoice{}, domain.Invalid(field("void_reason"), "is required on a void invoice")
-		}
-	}
-	for _, c := range []struct {
-		name        string
-		given, want domain.Cents
-	}{
-		{"subtotal_cents", in.SubtotalCents, inv.SubtotalCents}, {"total_cents", in.TotalCents, inv.TotalCents},
-		{"balance_due_cents", in.BalanceDueCents, inv.BalanceDueCents},
-	} {
-		if c.given != c.want {
-			return Invoice{}, domain.Invalid(field(c.name), "does not reconcile: the lines and amounts give "+money(c.want))
-		}
-	}
-	balance := int64(inv.BalanceDueCents)
-	switch in.Status {
-	case StatusDraft:
-		if positive(int64(in.AmountPaidCents)) || positive(int64(in.WriteOffCents)) {
-			return Invoice{}, domain.Invalid(field("status"), "a draft has no payment or write-off")
-		}
-	case StatusSent, StatusViewed:
-		if !positive(balance) {
-			return Invoice{}, domain.Invalid(field("status"), "a sent or viewed invoice has a balance due; with none it is paid")
-		}
-	case StatusPaid:
-		if !isZero(balance) {
-			return Invoice{}, domain.Invalid(field("status"), "a paid invoice has no balance due")
-		}
-	}
-	if in.Status != StatusDraft && negative(int64(inv.TotalCents)) {
-		return Invoice{}, domain.Invalid(field("total_cents"), "an invoice total cannot be negative")
-	}
-	if positive(int64(in.WriteOffCents)) && strings.TrimSpace(in.WriteOffReason) == "" {
-		return Invoice{}, domain.Invalid(field("write_off_reason"), "is required with a write-off")
 	}
 	meta, err := s.meta(t.p)
 	if err != nil {
@@ -295,9 +245,6 @@ func (s *Service) importOne(t *txn, in InvoiceImport, i int, numbers map[string]
 	inv.DisputeStatus, inv.DisputeNotes = in.DisputeStatus, in.DisputeNotes
 	inv.ClientMessage, inv.InternalNotes = in.ClientMessage, in.InternalNotes
 	if due := strings.TrimSpace(in.DueOn); due != "" {
-		if _, err := parseDate(field("due_on"), due); err != nil {
-			return Invoice{}, err
-		}
 		inv.DueOn = due
 	} else {
 		inv.DueOn = addDays(in.IssuedOn, s.settingInt(t.ctx, "billing.payment_terms_days"))

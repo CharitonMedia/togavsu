@@ -88,7 +88,7 @@ API tokens and scopes: the list shows every token with the user it acts as, its 
 
 ## Migration import {#admin-migration}
 <!-- tab: migration | path: /admin?tab=migration | where: Administrative > Migration import | keywords: opening invoices, balance forward, CSV import, external_ref -->
-Opening invoice import for firms moving onto Togavsu: enter one client's open balance as a sent invoice with a Balance forward line, or upload a CSV for preview and one-transaction write. Historical numbers stay out of the normal invoice sequence. Set billing.invoice_number_start on Time and billing so imports at or above that floor are refused.
+Opening invoice import for firms moving onto Togavsu: enter one client's open balance as a sent invoice with a Balance forward line, or upload a CSV for preview and one-transaction write. Historical numbers stay out of the normal invoice sequence. Set billing.invoice_number_start on Time and billing so imports at or above that floor are refused. When that setting is still 0, the floor is the lowest normal invoice number already in the practice; with no normal invoices yet, set the value before importing.
 
 ## System {#admin-system}
 <!-- tab: system | path: /admin?tab=system | where: Administrative > System | keywords: seat count, audit log, problem reports -->
