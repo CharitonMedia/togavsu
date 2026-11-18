@@ -50,6 +50,9 @@ const (
 	PublicPageRatePerMin       = 60
 	ContractCallMaxBytes       = 25 << 20
 	StaffBannerDefaultHeight   = 48
+	// FormsMaxRepeatingIndex is the highest accepted repeating-row index (0..N) in
+	// pkg/modulekit/forms ParseFormAnswers (CORE-33); larger forged indices are ignored.
+	FormsMaxRepeatingIndex     = 99
 	ClientAccessDaysAfterClose = 14
 	MailMatchListMax           = 50
 	ArchiveZipPathMaxBytes     = 255

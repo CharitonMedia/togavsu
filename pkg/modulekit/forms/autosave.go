@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
 // OfflineQueueJS is a small script modules embed beside the HTMX form. It queues
@@ -362,7 +364,7 @@ func ParseFormAnswers(values map[string][]string) Answers {
 // MaxRepeatingIndex is the highest accepted repeating-row index in a form POST
 // (0..MaxRepeatingIndex inclusive). Larger indices are ignored so an anonymous
 // public-page POST cannot force a multi-gigabyte allocation.
-const MaxRepeatingIndex = 99
+const MaxRepeatingIndex = domain.FormsMaxRepeatingIndex
 
 // splitRepeatingKey parses "kids[0].name" into id, index, rest.
 func splitRepeatingKey(key string) (id string, idx int, rest string, ok bool) {

@@ -60,7 +60,7 @@ Manifest `public_pages` are served at `/p/{id}/…` with no sign-in under `modul
 
 ## Forms kit (CORE-33)
 
-`pkg/modulekit/forms` is the public form definition, validation, HTMX renderer, autosave/offline queue, "I don't know" answers, and masked-field encryption through the module secret store. Answers stay in the calling module's schema. Autosave accepts JSON or the `application/x-www-form-urlencoded` bodies the HTMX renderer emits; HTMX autosave includes the form `csrf` field and `X-CSRF-Token`, and `OfflineQueueJS` replays with the same header. Repeating-row indices above `MaxRepeatingIndex` (99) are ignored. `EnsureKey` creates a key only on `ErrSecretNotFound`.
+`pkg/modulekit/forms` is the public form definition, validation, HTMX renderer, autosave/offline queue, "I don't know" answers, and masked-field encryption through the module secret store. Answers stay in the calling module's schema. Autosave accepts JSON or the `application/x-www-form-urlencoded` bodies the HTMX renderer emits; HTMX autosave includes the form `csrf` field and `X-CSRF-Token`, and `OfflineQueueJS` replays with the same header. Repeating-row indices above `MaxRepeatingIndex` (`domain.FormsMaxRepeatingIndex`) are ignored. `EnsureKey` creates a key only on `ErrSecretNotFound`.
 
 ## Staff banner slot (CORE-34)
 
