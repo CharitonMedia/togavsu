@@ -59,7 +59,9 @@ GRANT USAGE ON SCHEMA core TO ` + w + `;
   IF EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
              WHERE n.nspname = 'core' AND c.relname = '` + t + `' AND c.relkind IN ('r', 'p')) THEN
     ALTER TABLE ` + q + ` OWNER TO ` + Owner + `;
-    REVOKE ALL ON TABLE ` + q + ` FROM PUBLIC, ` + a + `;
+    REVOKE ALL ON TABLE ` + q + ` FROM PUBLIC;
+    REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER, MAINTAIN ON TABLE ` + q + ` FROM ` + a + `;
+    REVOKE GRANT OPTION FOR SELECT, INSERT ON TABLE ` + q + ` FROM ` + a + `;
     GRANT SELECT, INSERT ON TABLE ` + q + ` TO ` + a + `;
     GRANT REFERENCES (id) ON TABLE ` + q + ` TO ` + a + ` WITH GRANT OPTION;
 `)
