@@ -144,6 +144,10 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 			t.Fatalf("IMP-05 want exactly one imported method=other payment, got %d", payN)
 		}
 	}
+	pays := f.atty.must(http.StatusOK, "GET", "/api/v1/payments?matter_id="+matter, nil)
+	if !strings.Contains(pays.body, `"imported":true`) || !strings.Contains(pays.body, `"method":"other"`) {
+		t.Fatalf("IMP-05 Payment JSON must expose imported: %s", pays.body[:min(600, len(pays.body))])
+	}
 
 	// IMP-07: void an unpaid imported invoice; void is logged; sequence untouched.
 	toVoid := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{
@@ -251,6 +255,40 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	}
 }
 
+// TestCORE37DefaultStartSkipsImportedNumber: with billing.invoice_number_start left at the
+// default 0, an opening import of a mid-sequence number must not be reused by later drafts.
+func TestCORE37DefaultStartSkipsImportedNumber(t *testing.T) {
+	f := newFin(t)
+	matter, _ := f.matter("Default Start Import", "default.start@example.com", nil)
+	issued := time.Now().UTC().Format("2006-01-02")
+	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/billing.invoice_number_format", map[string]any{"value": "NNNN"})
+	// Leave invoice_number_start at default 0.
+	imp := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{
+		"items": []map[string]any{openingItem(matter, "0007", issued, 100_00, 0, "api", "ref-default-7")},
+	})
+	if !strings.Contains(imp.body, `"imported":true`) {
+		t.Fatalf("import missing: %s", imp.body)
+	}
+	// Seed normal drafts 0001–0006 so the next candidate would be 0007 without the skip.
+	for i := 1; i <= 6; i++ {
+		_ = f.timeEntry(matter, 6, 100_00)
+		d := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoice-drafts", map[string]any{"matter_id": matter})
+		want := fmt.Sprintf("%04d", i)
+		if n := str(t, d.json["data"].([]any)[0].(map[string]any), "number"); n != want {
+			t.Fatalf("draft %d want %s got %s", i, want, n)
+		}
+	}
+	_ = f.timeEntry(matter, 6, 100_00)
+	next := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoice-drafts", map[string]any{"matter_id": matter})
+	if n := str(t, next.json["data"].([]any)[0].(map[string]any), "number"); n != "0008" {
+		t.Fatalf("default-start next after import 0007 want 0008 got %s", n)
+	}
+	listed := f.atty.must(http.StatusOK, "GET", "/api/v1/invoices", nil)
+	if strings.Count(listed.body, `"number":"0007"`) != 1 {
+		t.Fatalf("duplicate 0007 appeared: %s", listed.body[:min(800, len(listed.body))])
+	}
+}
+
 func TestCORE37CSVPreviewAndIdempotentExternalRef(t *testing.T) {
 	f := newFin(t)
 	const contactEmail = "csv.client@example.com"
@@ -260,7 +298,8 @@ func TestCORE37CSVPreviewAndIdempotentExternalRef(t *testing.T) {
 	pdfBytes := []byte("%PDF-1.4 csv opening\n")
 	_ = f.uploadPDF(matter, "opening-1000.pdf", pdfBytes)
 
-	// IMP-03: 500-row CSV via Migration tab — preview names the bad row; commit writes all.
+	// IMP-03: 500-row CSV via Migration tab — preview names the bad row; a commit of that
+	// bad file writes nothing; with the row fixed, all 500 land in one transaction.
 	const n = 500
 	var b strings.Builder
 	b.WriteString("matter_id,number,issued_on,amount_due,due_on,message,contact_email,document_file_name,amount_paid,external_ref\n")
@@ -275,8 +314,22 @@ func TestCORE37CSVPreviewAndIdempotentExternalRef(t *testing.T) {
 		}
 		fmt.Fprintf(&b, "%s,%d,%s,10.00,%s,,%s,%s,0,csv-%d\n", matter, num, issued, issued, contactEmail, fileName, i)
 	}
+	badCSV := []byte(b.String())
 	csrf := csrfFrom(t, f.admin)
-	preview := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}}, []byte(b.String()))
+	// First-pass Commit without a matching preview is refused (§6.3).
+	blind := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, badCSV)
+	if blind.code != http.StatusSeeOther && blind.code != http.StatusUnprocessableEntity && blind.code != http.StatusBadRequest {
+		t.Fatalf("blind commit status: %d %s", blind.code, blind.body)
+	}
+	if blind.code == http.StatusSeeOther {
+		bloc, _ := url.QueryUnescape(blind.loc)
+		if !strings.Contains(strings.ToLower(bloc), "preview") {
+			t.Fatalf("blind commit must require preview: %s", blind.loc)
+		}
+	} else if !strings.Contains(strings.ToLower(blind.body), "preview") {
+		t.Fatalf("blind commit must name preview: %s", blind.body)
+	}
+	preview := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}}, badCSV)
 	if preview.code != http.StatusSeeOther {
 		t.Fatalf("IMP-03 preview post: %d %s", preview.code, preview.body)
 	}
@@ -291,8 +344,23 @@ func TestCORE37CSVPreviewAndIdempotentExternalRef(t *testing.T) {
 	if !strings.Contains(page.body, "invoice_number_start") && !strings.Contains(page.body, "9001") {
 		t.Fatalf("IMP-03 preview does not name bad row: %s", page.body)
 	}
-	before := f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`)
-	// Fix the bad row and commit through the admin CSV path.
+	invBefore := f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`)
+	payBefore := f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'payment'`)
+	shareBefore := f.count(`SELECT COUNT(*) FROM core.files WHERE shared_with_client = 1`)
+	// Commit of the same bad file must write nothing (preview already matched).
+	badCommit := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, badCSV)
+	if badCommit.code == http.StatusSeeOther {
+		bloc, _ := url.QueryUnescape(badCommit.loc)
+		if strings.Contains(bloc, "Wrote ") && !strings.Contains(bloc, "Wrote 0") {
+			t.Fatalf("IMP-03 bad commit wrote rows: %s", badCommit.loc)
+		}
+	}
+	if f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`) != invBefore ||
+		f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'payment'`) != payBefore ||
+		f.count(`SELECT COUNT(*) FROM core.files WHERE shared_with_client = 1`) != shareBefore {
+		t.Fatalf("IMP-03 bad commit must write nothing (invoices/payments/shares)")
+	}
+	// Fix the bad row: preview then commit through the admin CSV path.
 	var good strings.Builder
 	good.WriteString("matter_id,number,issued_on,amount_due,due_on,message,contact_email,document_file_name,amount_paid,external_ref\n")
 	for i := 0; i < n; i++ {
@@ -302,13 +370,18 @@ func TestCORE37CSVPreviewAndIdempotentExternalRef(t *testing.T) {
 		}
 		fmt.Fprintf(&good, "%s,%d,%s,10.00,%s,,%s,%s,0,csv-%d\n", matter, 1000+i, issued, issued, contactEmail, fileName, i)
 	}
-	commit := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, []byte(good.String()))
+	goodCSV := []byte(good.String())
+	goodPrev := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}}, goodCSV)
+	if goodPrev.code != http.StatusSeeOther {
+		t.Fatalf("IMP-03 good preview: %d %s", goodPrev.code, goodPrev.body)
+	}
+	commit := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, goodCSV)
 	if commit.code != http.StatusSeeOther {
 		t.Fatalf("IMP-03 commit: %d %s", commit.code, commit.body)
 	}
 	after := f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`)
-	if after-before != n {
-		t.Fatalf("IMP-03 wrote %d want %d (loc=%s)", after-before, n, commit.loc)
+	if after-invBefore != n {
+		t.Fatalf("IMP-03 wrote %d want %d (loc=%s)", after-invBefore, n, commit.loc)
 	}
 	// First row attached the PDF by file name.
 	first := f.atty.must(http.StatusOK, "GET", "/api/v1/invoices?status=sent", nil)
@@ -316,8 +389,12 @@ func TestCORE37CSVPreviewAndIdempotentExternalRef(t *testing.T) {
 		t.Fatalf("IMP-03 CSV file name did not attach DoR: %s", first.body[:min(500, len(first.body))])
 	}
 
-	// IMP-04: re-upload skips by external_ref.
-	again := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, []byte(good.String()))
+	// IMP-04: re-upload skips by external_ref (preview then commit of the same bytes).
+	againPrev := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}}, goodCSV)
+	if againPrev.code != http.StatusSeeOther {
+		t.Fatalf("IMP-04 preview: %d %s", againPrev.code, againPrev.body)
+	}
+	again := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, goodCSV)
 	againLoc, _ := url.QueryUnescape(again.loc)
 	if again.code != http.StatusSeeOther || !strings.Contains(againLoc, "skipped 500") {
 		t.Fatalf("IMP-04 re-upload notice: %s", again.loc)

@@ -1,7 +1,9 @@
 package core
 
 import (
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"strconv"
@@ -17,13 +19,17 @@ import (
 type migrationAdmin struct {
 	app *App
 
-	mu       sync.Mutex
-	previews map[domain.ID][]dashboard.MigrationPreviewRow
+	mu          sync.Mutex
+	previews    map[domain.ID][]dashboard.MigrationPreviewRow
+	previewHash map[domain.ID]string
 }
 
 func (m *migrationAdmin) ensure() {
 	if m.previews == nil {
 		m.previews = map[domain.ID][]dashboard.MigrationPreviewRow{}
+	}
+	if m.previewHash == nil {
+		m.previewHash = map[domain.ID]string{}
 	}
 }
 
@@ -95,7 +101,13 @@ func (m *migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error
 		return "", domain.Invalid("csv", "a CSV file is required")
 	}
 	defer f.Close()
-	items, err := parseOpeningCSV(f)
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return "", domain.Invalid("csv", "could not read file")
+	}
+	sum := sha256.Sum256(raw)
+	hash := hex.EncodeToString(sum[:])
+	items, err := parseOpeningCSV(strings.NewReader(string(raw)))
 	if err != nil {
 		return "", err
 	}
@@ -126,16 +138,30 @@ func (m *migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error
 		m.mu.Lock()
 		m.ensure()
 		m.previews[p.UserID] = preview
+		m.previewHash[p.UserID] = hash
 		m.mu.Unlock()
 		if len(bad) > 0 {
 			return "Preview: " + strconv.Itoa(ok) + " ok, " + strconv.Itoa(len(bad)) + " refused. " + strings.Join(bad, "; "), nil
 		}
 		return "Preview: all " + strconv.Itoa(len(results)) + " rows look good. Check Commit and upload again to write.", nil
 	}
+	// §6.3: the upload shows every row's result before anything is written. Refuse a
+	// first-pass Commit so an admin cannot write without a matching preview.
+	m.mu.Lock()
+	m.ensure()
+	seen := m.previewHash[p.UserID] == hash
+	m.mu.Unlock()
+	if !seen {
+		return "", domain.Invalid("commit", "preview this CSV first (upload without Commit checked)")
+	}
 	rows, skipped, err := m.app.Billing.BulkInvoicesDetailed(r.Context(), p, items)
 	if err != nil {
 		return "", err
 	}
+	m.mu.Lock()
+	delete(m.previewHash, p.UserID)
+	delete(m.previews, p.UserID)
+	m.mu.Unlock()
 	return "Wrote " + strconv.Itoa(len(rows)) + " invoices; skipped " + strconv.Itoa(len(skipped)) + " already imported.", nil
 }
 

@@ -246,8 +246,10 @@ func (s *Service) settle(inv *Invoice) {
 var nRun = regexp.MustCompile(`N{2,}`)
 
 // nextNumber renders the firm invoice number format for the issue year with the next sequence.
-// Opening imports never touch the sequence: imported invoices are ignored, and when
-// billing.invoice_number_start is set the next number is at least that floor (CORE-37).
+// Opening imports never advance the high-water mark: only non-imported invoices and
+// billing.invoice_number_start set the floor. The candidate is then walked past any number
+// already taken (imported included) so a default start of 0 cannot reuse an imported
+// historical number (CORE-37 / IMP-01).
 func (s *Service) nextNumber(ctx context.Context, issuedOn string) (string, error) {
 	format := strings.TrimSpace(s.setting(ctx, "billing.invoice_number_format"))
 	if format == "" {
@@ -271,8 +273,10 @@ func (s *Service) nextNumber(ctx context.Context, issuedOn string) (string, erro
 	if err != nil {
 		return "", err
 	}
+	taken := map[string]bool{}
 	var high int
 	for _, r := range rows {
+		taken[r.Number] = true
 		if r.Imported {
 			continue
 		}
@@ -286,7 +290,12 @@ func (s *Service) nextNumber(ctx context.Context, issuedOn string) (string, erro
 	if start := s.settingInt(ctx, "billing.invoice_number_start"); positive(int64(start)) && high < start-1 {
 		high = start - 1
 	}
-	return fmt.Sprintf("%s%0*d%s", prefix, width, high+1, suffix), nil
+	for n := high + 1; ; n++ {
+		candidate := fmt.Sprintf("%s%0*d%s", prefix, width, n, suffix)
+		if !taken[candidate] {
+			return candidate, nil
+		}
+	}
 }
 
 func hours(minutes int64) string { return string(appendHours(nil, minutes)) }

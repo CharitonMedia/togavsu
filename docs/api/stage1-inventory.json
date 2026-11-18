@@ -79,7 +79,7 @@
     "runtime_fixtures": 52
   },
   "artifacts": {
-    "api/openapi/v1/openapi.json": "90b3f9752d4089c8e0e23d2a60ddb5b6df558f8cb66b509123feb8c3679b99b7",
+    "api/openapi/v1/openapi.json": "1f1a0f8e8d919c1c819aea9df4add144c5ea2b3ce21dcbfd11b6013162766325",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
     "api/openapi/v1/mcp-tools.json": "b1fe9ccb487a44f1d493740791029db52dc391052f8ca79946e5202ab839e4a6",
     "docs/api/coverage.md": "67e94f67c9be2ecb505973a59de08187ec49130b8a9c06a1eb47a9c4be52d020"
@@ -212,7 +212,7 @@
         "api/openapi/v1/mcp-tools.json",
         "docs/api/coverage.md"
       ],
-      "change": "CORE-35 adds Module.price / price_display. CORE-37 extends bulkInvoice with preview, invoice.imported, and Invoice/InvoiceClient/InvoiceWrite opening-import fields (source, external_ref, document_of_record_file_id, imported)."
+      "change": "CORE-35 adds Module.price / price_display. CORE-37 extends bulkInvoice with preview (200), invoice.imported, Invoice/InvoiceClient imported fields, InvoiceWrite source/external_ref/document_of_record_file_id/due_on, and Payment.imported."
     }
   ],
   "intentional_corrections": [

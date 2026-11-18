@@ -727,6 +727,24 @@ func TestInvoiceNumberFormat(t *testing.T) {
 	}
 }
 
+// TestNextNumberSkipsImportedTaken: default invoice_number_start=0 must not reuse an
+// imported historical number, and importing alone must not advance the sequence (IMP-01).
+func TestNextNumberSkipsImportedTaken(t *testing.T) {
+	f := newFx(t)
+	f.st.Put(f.ctx, kindInvoice, string(f.id()), Invoice{Invoice: domain.Invoice{Number: "INV-2026-0007"}, Imported: true})
+	n, err := f.svc.nextNumber(f.ctx, "2026-06-15")
+	if err != nil || n != "INV-2026-0001" {
+		t.Fatalf("import alone must leave sequence at 0001, got %s (%v)", n, err)
+	}
+	for _, num := range []string{"INV-2026-0001", "INV-2026-0002", "INV-2026-0003", "INV-2026-0004", "INV-2026-0005", "INV-2026-0006"} {
+		f.st.Put(f.ctx, kindInvoice, string(f.id()), Invoice{Invoice: domain.Invoice{Number: num}})
+	}
+	n, err = f.svc.nextNumber(f.ctx, "2026-06-15")
+	if err != nil || n != "INV-2026-0008" {
+		t.Fatalf("must skip taken imported 0007, got %s (%v)", n, err)
+	}
+}
+
 func TestClientSeesOnlySentInvoicesAndMarksViewed(t *testing.T) {
 	f := newFx(t)
 	m, contact := f.matter("Portal", "hourly", 0, 0)

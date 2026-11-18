@@ -195,6 +195,7 @@ type paymentJSON struct {
 	RefundedCents          int64      `json:"refunded_cents"`
 	RefundState            string     `json:"refund_state"`
 	ReplenishmentRequestID *domain.ID `json:"replenishment_request_id"`
+	Imported               bool       `json:"imported,omitempty"`
 }
 
 func paymentView(p Payment) paymentJSON {
@@ -208,7 +209,7 @@ func paymentView(p Payment) paymentJSON {
 	}
 	return paymentJSON{metaOf(p.Meta), p.ContactID, p.MatterID, int64(p.AmountCents), p.Destination, p.Method, p.ReferenceNumber,
 		p.Status, idOrNil(p.InvoiceID), idOrNil(acct), idOrNil(p.TrustEntryID), p.Source,
-		int64(p.RefundedCents), state, idOrNil(p.ReplenishmentRequestID)}
+		int64(p.RefundedCents), state, idOrNil(p.ReplenishmentRequestID), p.Imported}
 }
 
 type feeItemJSON struct {

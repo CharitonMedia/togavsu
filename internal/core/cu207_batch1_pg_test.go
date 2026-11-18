@@ -21,6 +21,10 @@ var batch1ModuleRepos = []string{
 // TestCU207Batch1ModulesUnchanged installs, runs and uninstalls matter-clock and the five
 // batch 1 modules built from their public repositories at main (read-only), with no change
 // to their packages (CU2-07 / CORE-CHANGES-2 §4.4).
+//
+// Honesty bound: Deploy replaces each module with a stub HTTP handler. This proves package
+// bytes/manifests/migrations install and uninstall on this core, and that /m/{id}/ proxies
+// through the frame. It does not execute the modules' real handlers or container images.
 func TestCU207Batch1ModulesUnchanged(t *testing.T) {
 	if os.Getenv("TOGAVSU_TEST_DATABASE_URL") == "" {
 		t.Skip("TOGAVSU_TEST_DATABASE_URL unset")

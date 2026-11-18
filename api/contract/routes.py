@@ -2045,17 +2045,45 @@ def _billing(api: Contract) -> None:
                     "items": {"type": "object"},
                     "description": "Already-imported external_ref rows (response only).",
                 },
-                "results": {
-                    "type": "array",
-                    "items": {"type": "object"},
-                    "description": "Per-row preview results when preview=true.",
-                },
             },
         },
         success="201",
         events=["invoice.created", "invoice.imported"],
         error_codes=["batch_rejected", "validation_failed", "not_found", "idempotency_conflict", "forbidden", "scope_denied"],
         replaceable="time",
+        extra_responses={
+            "200": {
+                "description": "Preview only: per-row validation results; nothing written (preview=true).",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["preview", "results"],
+                            "properties": {
+                                "preview": {"type": "boolean", "const": True},
+                                "results": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "required": ["index", "ok"],
+                                        "properties": {
+                                            "index": {"type": "integer"},
+                                            "ok": {"type": "boolean"},
+                                            "error": {"type": "string"},
+                                            "skipped": {"type": "boolean"},
+                                            "external_ref": {"type": "string"},
+                                            "reason": {"type": "string"},
+                                        },
+                                    },
+                                },
+                            },
+                        }
+                    }
+                },
+            }
+        },
         extra_access={
             **WALL,
             "admin_bypasses_wall": False,

@@ -446,7 +446,7 @@ def write_stage1_documents() -> None:
             {
                 "id": "core-update-2c-price-invoice-import",
                 "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json", "docs/api/coverage.md"],
-                "change": "CORE-35 adds Module.price / price_display. CORE-37 extends bulkInvoice with preview, invoice.imported, and Invoice/InvoiceClient/InvoiceWrite opening-import fields (source, external_ref, document_of_record_file_id, imported).",
+                "change": "CORE-35 adds Module.price / price_display. CORE-37 extends bulkInvoice with preview (200), invoice.imported, Invoice/InvoiceClient imported fields, InvoiceWrite source/external_ref/document_of_record_file_id/due_on, and Payment.imported.",
             },
         ],
         "intentional_corrections": [

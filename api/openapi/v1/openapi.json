@@ -27977,13 +27977,6 @@
                         "type": "object"
                       },
                       "description": "Already-imported external_ref rows (response only)."
-                    },
-                    "results": {
-                      "type": "array",
-                      "items": {
-                        "type": "object"
-                      },
-                      "description": "Per-row preview results when preview=true."
                     }
                   }
                 }
@@ -28010,6 +28003,58 @@
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
+          },
+          "200": {
+            "description": "Preview only: per-row validation results; nothing written (preview=true).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "preview",
+                    "results"
+                  ],
+                  "properties": {
+                    "preview": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "index",
+                          "ok"
+                        ],
+                        "properties": {
+                          "index": {
+                            "type": "integer"
+                          },
+                          "ok": {
+                            "type": "boolean"
+                          },
+                          "error": {
+                            "type": "string"
+                          },
+                          "skipped": {
+                            "type": "boolean"
+                          },
+                          "external_ref": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "x-togavsu-features": [
@@ -72533,6 +72578,11 @@
             "format": "date",
             "description": "Calendar date."
           },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "description": "Optional due date on opening and historic imports (CORE-37)."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -72602,19 +72652,6 @@
             "type": "string",
             "description": "Staff invoice only. Omitted from a client projection."
           },
-          "imported": {
-            "type": "boolean",
-            "description": "Opening-invoice import marker (CORE-37)."
-          },
-          "import_source": {
-            "type": "string",
-            "enum": [
-              "form",
-              "csv",
-              "api"
-            ],
-            "description": "How the opening invoice was imported."
-          },
           "external_ref": {
             "type": "string",
             "description": "Firm-unique import key; re-runs skip matching rows."
@@ -72631,7 +72668,7 @@
               "csv",
               "api"
             ],
-            "description": "Opening import channel (CORE-37). Alias of import_source on write."
+            "description": "Opening import channel (CORE-37). The core sets imported and import_source from this; do not send those response-only fields on write."
           }
         },
         "required": [
@@ -72648,7 +72685,7 @@
           "balance_due_cents",
           "write_off_cents"
         ],
-        "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Opening imports may set source, external_ref and document_of_record_file_id (CORE-37)."
+        "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Opening imports may set source, external_ref, document_of_record_file_id and due_on (CORE-37)."
       },
       "InvoiceDraftRequest": {
         "description": "Drafts unbilled time and expenses for one matter, a list of matters, or a date range. A flat-fee matter bills the fee. Exactly one selector is set: matter_id, or matter_ids, or from_date with to_date. A date range does not require a matter id. The server drafts only matters the caller is allowed to bill.",
@@ -72921,6 +72958,10 @@
               }
             ]
           },
+          "imported": {
+            "type": "boolean",
+            "description": "True when this is the amount-paid-to-date payment from an opening invoice import: method other, no money moved (CORE-37)."
+          },
           "included": {
             "$ref": "#/components/schemas/Included"
           }
@@ -72941,7 +72982,7 @@
           "refunded_cents",
           "refund_state"
         ],
-        "description": "A payment. Amount, destination, and trust account do not change after create. A correction is a reversal. Refunds update refunded_cents and refund_state only."
+        "description": "A payment. Amount, destination, and trust account do not change after create. A correction is a reversal. Refunds update refunded_cents and refund_state only. Opening-import amount-paid posts set imported true."
       },
       "PaymentWrite": {
         "description": "Records a payment. destination trust requires trust_account_id of an active authorized firm account. destination operating omits trust_account_id. internal_transfer is reserved for apply-trust.",
@@ -86586,6 +86627,11 @@
             "format": "date",
             "description": "Calendar date."
           },
+          "due_on": {
+            "type": "string",
+            "format": "date",
+            "description": "Optional due date on opening and historic imports (CORE-37)."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -86655,19 +86701,6 @@
             "type": "string",
             "description": "Staff invoice only. Omitted from a client projection."
           },
-          "imported": {
-            "type": "boolean",
-            "description": "Opening-invoice import marker (CORE-37)."
-          },
-          "import_source": {
-            "type": "string",
-            "enum": [
-              "form",
-              "csv",
-              "api"
-            ],
-            "description": "How the opening invoice was imported."
-          },
           "external_ref": {
             "type": "string",
             "description": "Firm-unique import key; re-runs skip matching rows."
@@ -86684,10 +86717,10 @@
               "csv",
               "api"
             ],
-            "description": "Opening import channel (CORE-37). Alias of import_source on write."
+            "description": "Opening import channel (CORE-37). The core sets imported and import_source from this; do not send those response-only fields on write."
           }
         },
-        "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Opening imports may set source, external_ref and document_of_record_file_id (CORE-37). Patch: every field is optional."
+        "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Opening imports may set source, external_ref, document_of_record_file_id and due_on (CORE-37). Patch: every field is optional."
       },
       "PaymentWritePatch": {
         "description": "Records a payment. destination trust requires trust_account_id of an active authorized firm account. destination operating omits trust_account_id. internal_transfer is reserved for apply-trust. Patch: every field is optional.",

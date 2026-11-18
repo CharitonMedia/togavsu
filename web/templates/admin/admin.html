@@ -243,7 +243,7 @@
 <p class="muted">Columns: matter_id, number, issued_on, amount_due, due_on, message, contact_email, document_file_name, amount_paid, external_ref. Preview every row before anything is written; the whole file commits in one transaction or not at all. File names resolve to matter uploads; contact email must match a client on the matter.</p>
 <form method="post" action="/admin/migration/opening-csv" enctype="multipart/form-data" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
 <label for="oi-csv">CSV file</label><input id="oi-csv" type="file" name="csv" accept=".csv,text/csv" required>
-<label class="check"><input type="checkbox" name="commit" value="1"> Commit after preview (leave unchecked to preview only)</label>
+<label class="check"><input type="checkbox" name="commit" value="1"> Commit after preview (must preview this exact file first; leave unchecked to preview only)</label>
 <div><button type="submit">Upload CSV</button></div>
 </form>
 {{if .MigrationPreview}}<div class="scroll" id="csv-preview"><h3>Preview</h3>

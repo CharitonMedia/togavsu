@@ -971,6 +971,7 @@ SCHEMAS = _register(
                 "matter_id": _uuid(),
                 "number": {"type": "string", "minLength": 1},
                 "issued_on": _date(),
+                "due_on": _date("Optional due date on opening and historic imports (CORE-37)."),
                 "status": _INVOICE_STATUS,
                 "lines": _arr(_ref("InvoiceLine")),
                 "subtotal_cents": _signed_cents(),
@@ -987,12 +988,6 @@ SCHEMAS = _register(
                 "dispute_notes": {"type": "string"},
                 "client_message": {"type": "string"},
                 "internal_notes": {"type": "string", "description": "Staff invoice only. Omitted from a client projection."},
-                "imported": {"type": "boolean", "description": "Opening-invoice import marker (CORE-37)."},
-                "import_source": {
-                    "type": "string",
-                    "enum": ["form", "csv", "api"],
-                    "description": "How the opening invoice was imported.",
-                },
                 "external_ref": {"type": "string", "description": "Firm-unique import key; re-runs skip matching rows."},
                 "document_of_record_file_id": {
                     "type": "string",
@@ -1002,7 +997,7 @@ SCHEMAS = _register(
                 "source": {
                     "type": "string",
                     "enum": ["form", "csv", "api"],
-                    "description": "Opening import channel (CORE-37). Alias of import_source on write.",
+                    "description": "Opening import channel (CORE-37). The core sets imported and import_source from this; do not send those response-only fields on write.",
                 },
             },
             [
@@ -1019,7 +1014,7 @@ SCHEMAS = _register(
                 "balance_due_cents",
                 "write_off_cents",
             ],
-            "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Opening imports may set source, external_ref and document_of_record_file_id (CORE-37).",
+            "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Opening imports may set source, external_ref, document_of_record_file_id and due_on (CORE-37).",
         ),
         "InvoiceDraftRequest": {
             "description": (
@@ -1073,10 +1068,14 @@ SCHEMAS = _register(
                 "refunded_cents": _cents("Sum of pending and completed refunds. Read-only."),
                 "refund_state": _enum(["none", "partial", "full"], "Read-only aggregate. Payment status stays completed."),
                 "replenishment_request_id": _null(_uuid("Optional active replenishment this trust payment satisfies.")),
+                "imported": {
+                    "type": "boolean",
+                    "description": "True when this is the amount-paid-to-date payment from an opening invoice import: method other, no money moved (CORE-37).",
+                },
                 "included": _ref("Included"),
             },
             ["contact_id", "matter_id", "amount_cents", "destination", "method", "status", "source", "trust_account_id", "refunded_cents", "refund_state"],
-            "A payment. Amount, destination, and trust account do not change after create. A correction is a reversal. Refunds update refunded_cents and refund_state only.",
+            "A payment. Amount, destination, and trust account do not change after create. A correction is a reversal. Refunds update refunded_cents and refund_state only. Opening-import amount-paid posts set imported true.",
         ),
         "PaymentWrite": {
             "description": "Records a payment. destination trust requires trust_account_id of an active authorized firm account. destination operating omits trust_account_id. internal_transfer is reserved for apply-trust.",
