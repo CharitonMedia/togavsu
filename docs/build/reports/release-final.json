@@ -1,0 +1,490 @@
+{
+  "task_id": "release-final",
+  "status": "pending",
+  "tested_revision": "10150bf9979f28c6a680d3ab4b95255e5a5e3f2a",
+  "exit_code": 1,
+  "command": "sh scripts/ci/full-acceptance.sh",
+  "tests": [
+    {
+      "id": "compose-first-run",
+      "command": "sh scripts/ci/test-compose-first-run.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 78.5
+    },
+    {
+      "id": "desktop-install",
+      "command": "sh scripts/release/desktop-install.sh",
+      "exit_code": 3,
+      "status": "fail",
+      "seconds": 0.1,
+      "problems": [
+        "the check reported PENDING"
+      ]
+    },
+    {
+      "id": "api-contract",
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 63.8
+    },
+    {
+      "id": "go-release-api",
+      "command": "go test -count=1 -run '^(TestReleaseIdentityRoutes|TestReleaseSystemNotificationsAndMail|TestReleasePracticeBulk|TestContractRoutesFailClosed|TestReleaseAccountantWritesNothing|TestReleaseWallHidesMatterEverywhere|TestReleaseFeeAgreements|TestBackupsAreAdminOnlyAuditedAndOnMCP|TestBackupCreateAuditsIntentBeforeTheSupervisor|TestAdminUserPatchInitialsAndNullClears|TestMeProfileFileID|TestReleaseEveryDomainWriteIsAudited|TestReleaseUpdatesRoutes)$' ./internal/core/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 18.7
+    },
+    {
+      "id": "all-operations-mounted",
+      "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 3.1
+    },
+    {
+      "id": "go-identity-access",
+      "command": "go test -count=1 -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestAuditLogKeepsWallAndRedaction|TestApplicationRoleCannotChangeAuditRows|TestAC004AccountantReadOnly|TestLedgersSealedForApplicationRole)$' ./internal/core/ ./internal/practice/ ./internal/audit/ ./internal/billing/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 7.7
+    },
+    {
+      "id": "go-practice-records",
+      "command": "go test -count=1 -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI|TestEveryMatterFieldIsAuditedBeforeWrite)$' ./internal/core/ ./internal/practice/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 2.7
+    },
+    {
+      "id": "go-finance",
+      "command": "go test -count=1 -run '^(TestFinanceInvoiceWorkflows|TestFinanceTrustInvariants|TestFinancePermissions|TestFinanceTrustNotices|TestFinanceCrossDomainTransfers|TestAC008InvoiceLifecycle|TestAC009UnpaidInvoiceWarnsOnClose|TestAC026FlatFeeReadyToApply|TestReleaseZeroFeeStaysOutOfARAging)$' ./internal/core/ ./internal/billing/ ./internal/trust/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 9.7
+    },
+    {
+      "id": "go-documents",
+      "command": "go test -count=1 -run '^(TestDocumentsCalendarDeadlines|TestDocumentsStorageVersionsMoves|TestDocumentsDocTenderCorpus|TestDocumentsDocTenderTokensAndMCP|TestAC027AvailableDates|TestAC011UpcomingDeadlinesClickThrough)$' ./internal/core/ ./internal/calendar/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 55.9
+    },
+    {
+      "id": "go-ui",
+      "command": "go test -count=1 -run '^(TestUIHomeLayouts|TestUIWidgetClickThrough|TestUISidebar|TestUISearch|TestUINotifications|TestUIHelp|TestUIAppearanceAndLLMs|TestUIAdminSettings)$' ./internal/dashboard/compose/ && go test -count=1 -run '^(TestEveryScreenAndAdminTabHasAGuideTopic|TestHelpIconTopicForEachScreenPath)$' ./internal/dashboard/ && go test -count=1 -run '^TestExtensionsUIModules$' ./internal/core/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 27.1
+    },
+    {
+      "id": "go-modules",
+      "command": "go test -count=1 -run '^(TestExtensionsModuleLifecycle|TestReleaseModuleUpdatesViewsAndRollback)$' ./internal/core/ && go test -count=1 -run '^TestSupervisorClientMatchesSupervisorAPI$' ./internal/modules/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 6.3
+    },
+    {
+      "id": "module-container",
+      "command": "sh scripts/ci/test-module-container.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 31.8
+    },
+    {
+      "id": "module-stack",
+      "command": "sh scripts/ci/test-module-stack.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 46.3
+    },
+    {
+      "id": "go-marketplace",
+      "command": "go test -count=1 -run '^TestExtensionsMarketplaceAlerts$' ./internal/core/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 2.4
+    },
+    {
+      "id": "update-load",
+      "command": "sh scripts/ci/update-load.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 110.7
+    },
+    {
+      "id": "supervisor-suite",
+      "command": "sh scripts/ci/test-supervisor.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 463.2
+    },
+    {
+      "id": "perf-p95",
+      "command": "sh scripts/ci/test-perf.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 645.3
+    },
+    {
+      "id": "backup-e2e",
+      "command": "sh scripts/ci/test-backup-e2e.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 87.3
+    },
+    {
+      "id": "backup-integration",
+      "command": "sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 53.2
+    },
+    {
+      "id": "go-ai",
+      "command": "go test -count=1 -run '^(TestExtensionsAIMediation|TestAC052LabelingModelAndNoLocalEndpoint)$' ./internal/core/ ./internal/doctender/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 3.5
+    },
+    {
+      "id": "go-settings-seed",
+      "command": "go test -count=1 -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 2.7
+    },
+    {
+      "id": "ui-qc",
+      "command": "sh scripts/ci/ui-qc.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 138.7
+    },
+    {
+      "id": "debt-audit",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 0.1
+    },
+    {
+      "id": "go-lawcraft",
+      "command": "go test -count=1 -run '^(TestDocumentsLawCraftEditor)$' ./internal/core/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 2.6
+    },
+    {
+      "id": "core-image-cases",
+      "command": "sh scripts/ci/test-core-image-cases.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 340.9
+    },
+    {
+      "id": "go-doctender",
+      "command": "go test -count=1 -run '^TestAC0(4[3-9]|5[0-2])' ./internal/doctender/ ./internal/core/",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 12.6
+    },
+    {
+      "id": "release-signature",
+      "command": "sh scripts/release/verify-release.sh",
+      "exit_code": 3,
+      "status": "fail",
+      "seconds": 0.0,
+      "problems": [
+        "the check reported PENDING"
+      ]
+    },
+    {
+      "id": "core-suite",
+      "command": "sh scripts/ci/test-core.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 842.7
+    },
+    {
+      "id": "qa-harness",
+      "command": "docker build -q -t togavsu-qa:local scripts/ci/qa-image >/dev/null && docker run --rm -v \"$PWD:/src\" -w /src togavsu-qa:local sh scripts/ci/test-qa.sh",
+      "exit_code": 0,
+      "status": "pass",
+      "seconds": 44.3
+    }
+  ],
+  "phase_cases": [
+    {
+      "id": "full-acceptance",
+      "acceptance_ids": [
+        "AC-001",
+        "AC-002",
+        "AC-003",
+        "AC-004",
+        "AC-005",
+        "AC-006",
+        "AC-007",
+        "AC-008",
+        "AC-009",
+        "AC-010",
+        "AC-011",
+        "AC-012",
+        "AC-013",
+        "AC-014",
+        "AC-015",
+        "AC-016",
+        "AC-017",
+        "AC-018",
+        "AC-019",
+        "AC-020",
+        "AC-021",
+        "AC-022",
+        "AC-023",
+        "AC-024",
+        "AC-025",
+        "AC-026",
+        "AC-027",
+        "AC-028",
+        "AC-029",
+        "AC-030",
+        "AC-031",
+        "AC-032",
+        "AC-033",
+        "AC-034",
+        "AC-035",
+        "AC-036",
+        "AC-037",
+        "AC-038",
+        "AC-039",
+        "AC-040",
+        "AC-041",
+        "AC-042",
+        "AC-043",
+        "AC-044",
+        "AC-045",
+        "AC-046",
+        "AC-047",
+        "AC-048",
+        "AC-049",
+        "AC-050",
+        "AC-051",
+        "AC-052"
+      ],
+      "status": "fail",
+      "command": "sh scripts/ci/full-acceptance.sh",
+      "exit_code": 1,
+      "revision": "10150bf9979f28c6a680d3ab4b95255e5a5e3f2a",
+      "passed_acceptance_ids": [
+        "AC-002",
+        "AC-003",
+        "AC-004",
+        "AC-005",
+        "AC-006",
+        "AC-007",
+        "AC-008",
+        "AC-009",
+        "AC-010",
+        "AC-011",
+        "AC-012",
+        "AC-013",
+        "AC-014",
+        "AC-015",
+        "AC-016",
+        "AC-017",
+        "AC-018",
+        "AC-019",
+        "AC-020",
+        "AC-021",
+        "AC-022",
+        "AC-023",
+        "AC-024",
+        "AC-025",
+        "AC-026",
+        "AC-027",
+        "AC-028",
+        "AC-029",
+        "AC-030",
+        "AC-031",
+        "AC-032",
+        "AC-033",
+        "AC-034",
+        "AC-035",
+        "AC-036",
+        "AC-037",
+        "AC-038",
+        "AC-039",
+        "AC-040",
+        "AC-042",
+        "AC-043",
+        "AC-044",
+        "AC-045",
+        "AC-046",
+        "AC-047",
+        "AC-048",
+        "AC-049",
+        "AC-050",
+        "AC-051",
+        "AC-052"
+      ],
+      "pending_acceptance_ids": [
+        "AC-001",
+        "AC-041"
+      ]
+    },
+    {
+      "id": "desktop-install",
+      "acceptance_ids": [
+        "AC-001"
+      ],
+      "status": "fail",
+      "command": "TOGAVSU_ACCEPTANCE_IDS=AC-001 sh scripts/ci/full-acceptance.sh",
+      "exit_code": 1,
+      "revision": "10150bf9979f28c6a680d3ab4b95255e5a5e3f2a",
+      "passed_acceptance_ids": [],
+      "pending_acceptance_ids": [
+        "AC-001"
+      ]
+    },
+    {
+      "id": "signed-images-updater-load",
+      "acceptance_ids": [
+        "AC-013",
+        "AC-016"
+      ],
+      "status": "pass",
+      "command": "TOGAVSU_ACCEPTANCE_IDS=AC-013,AC-016 sh scripts/ci/full-acceptance.sh",
+      "exit_code": 0,
+      "revision": "10150bf9979f28c6a680d3ab4b95255e5a5e3f2a",
+      "passed_acceptance_ids": [
+        "AC-013",
+        "AC-016"
+      ],
+      "pending_acceptance_ids": []
+    },
+    {
+      "id": "backup-restore",
+      "acceptance_ids": [
+        "AC-018",
+        "AC-040"
+      ],
+      "status": "pass",
+      "command": "TOGAVSU_ACCEPTANCE_IDS=AC-018,AC-040 sh scripts/ci/full-acceptance.sh",
+      "exit_code": 0,
+      "revision": "10150bf9979f28c6a680d3ab4b95255e5a5e3f2a",
+      "passed_acceptance_ids": [
+        "AC-018",
+        "AC-040"
+      ],
+      "pending_acceptance_ids": []
+    }
+  ],
+  "passed_acceptance_ids": [
+    "AC-002",
+    "AC-003",
+    "AC-004",
+    "AC-005",
+    "AC-006",
+    "AC-007",
+    "AC-008",
+    "AC-009",
+    "AC-010",
+    "AC-011",
+    "AC-012",
+    "AC-013",
+    "AC-014",
+    "AC-015",
+    "AC-016",
+    "AC-017",
+    "AC-018",
+    "AC-019",
+    "AC-020",
+    "AC-021",
+    "AC-022",
+    "AC-023",
+    "AC-024",
+    "AC-025",
+    "AC-026",
+    "AC-027",
+    "AC-028",
+    "AC-029",
+    "AC-030",
+    "AC-031",
+    "AC-032",
+    "AC-033",
+    "AC-034",
+    "AC-035",
+    "AC-036",
+    "AC-037",
+    "AC-038",
+    "AC-039",
+    "AC-040",
+    "AC-042",
+    "AC-043",
+    "AC-044",
+    "AC-045",
+    "AC-046",
+    "AC-047",
+    "AC-048",
+    "AC-049",
+    "AC-050",
+    "AC-051",
+    "AC-052"
+  ],
+  "pending_acceptance_ids": [
+    "AC-001",
+    "AC-041"
+  ],
+  "pending_reasons": {
+    "AC-001": [
+      "desktop-install fail"
+    ],
+    "AC-041": [
+      "gap: external: 'opens in Word with no repair prompt' needs Microsoft Word; CheckDOCX is a package-rules check."
+    ]
+  },
+  "release_gates": {
+    "signed-release": "pending",
+    "docker-desktop": "pending",
+    "product-suites": "pass"
+  },
+  "environment": "GitHub-hosted lane runner, 4 vCPU, 15 GB, Ubuntu 26.04 with Docker Engine 29.4.2 (not Docker Desktop); two Postgres 17 containers on 5432 and 5433 with synthetic data only; host Postgres 18 pg_dump/psql as TOGAVSU_PG_DUMP/TOGAVSU_PSQL; wordcraft-cli and the browser editor taken from the togavsu-core:local image that scripts/ci/full-acceptance.sh built",
+  "pending_external": {
+    "AC-001": "Needs a clean Docker Desktop install on Windows and on macOS: sh scripts/release/desktop-install.sh refuses any other engine and printed PENDING here (engine 'Ubuntu 26.04.1 LTS'). The Linux Compose first run (compose-first-run) passed. No operator evidence was attached to this run or the four before it.",
+    "AC-041": "The evidence map's gap 'opens in Word with no repair prompt' needs Microsoft Word on the integration lead's machine. Every executed AC-041 check passed (go-lawcraft, core-image-cases). The gap stays until a reviewed change to docs/release/acceptance-evidence.json records the Word result. No operator evidence was attached to this run or the four before it.",
+    "signed-release": "verify-release.sh printed PENDING: 10150bf carries no release tag. The release key is off GitHub by design, so a lane cannot sign, tag or publish. Nothing was signed or published.",
+    "docker-desktop": "Same check as AC-001."
+  },
+  "proposed_shared_changes": "PR body 'Proposed CI change': let Product CI's Full acceptance job see the release tag and cosign, and land docs/release/proposed-ci/release.yml as .github/workflows/release.yml. Without both, the signed-release gate cannot pass in CI even after signing.",
+  "changes": [
+    "scripts/release/write_report.py: --task ID writes the assignment's report_path. For a full_acceptance assignment, the phase that covers all assigned ids must be the full run, the report carries release_gates, and the status is pending unless every gate passed",
+    "tests/test_full_acceptance.py: FinalReleaseReport (5 tests)",
+    "docs/release/README.md: the release-final report and what the integration lead must still supply",
+    "docs/release/simplification-audit.md: release-final audit",
+    "docs/release/proposed-ci/product-ci.yml (Codex P1): the live Product CI plus a v* tag trigger, fetch-depth 0 and fetch-tags on the Full acceptance checkout, and a pinned cosign install with COSIGN_BIN, ready for the integration lead to copy over .github/workflows/product-ci.yml (a lane may not edit .github/)",
+    "tests/test_release_ci.py: 11 tests; the proposal must equal the live workflow plus exactly those lines and share release.yml's cosign pin, and the real verify-release.sh is run against fake cosign and docker (PENDING untagged; pass on a git tag through COSIGN_BIN; fail on unsigned image, missing cosign, missing key, different shipped key)",
+    "docs/release/README.md: the proposed product-ci.yml and step 1 of Cutting the release",
+    "Third Codex round (head 281970a): no code change. The findings name the same external evidence. This round reran the full run and every subset phase case at 281970a, whose code is the same as ab78702 (git diff ab78702 281970a touches only this report).",
+    "Fourth Codex round (head 10150bf): no code change. The findings name the same external evidence again. This round reran the full run and every subset phase case at 10150bf, whose code is the same as ab78702 and 281970a (git diff ab78702 10150bf touches only this report)."
+  ],
+  "simplification": {
+    "net_lines": "ab78702 vs a3f4035: +1130 / -20 across 7 files; this round +527 / -1 across 3 files (306 is the proposed workflow copy, 212 tests)",
+    "debt_count": 67,
+    "ponytail_markers": 108
+  },
+  "perf_p95_this_run": "overall 14200 requests: p50 50.1 ms, p95 158.4 ms, max 357.8 ms (TOGAVSU_PERF_N default 200)",
+  "earlier_runs": [
+    "Exploratory full run at a3f40353d2faaf7a72a04e4d1560d49b5cd40a4b (main after release-perf), before any change on this branch: the same result, 50 passed, AC-001 and AC-041 pending, product-suites gate pass, signed-release and docker-desktop pending. No regression was found, so no product code changed.",
+    "Full run at 515fdd5a859760570c0cddb7b65301f6b693a2f5 (the revision Codex reviewed via 567ae1f): the same result, 50 passed, AC-001 and AC-041 pending, product-suites pass, signed-release and docker-desktop pending.",
+    "Full run at ab78702faee8a5426cbe62a18bd04b828aec01a8 (the code Codex reviewed via 281970a): the same result, 50 passed, AC-001 and AC-041 pending, product-suites pass, signed-release and docker-desktop pending.",
+    "Full run at 281970a28d4f271e33f18a6976c3e387accecdd9 (the code Codex reviewed via 10150bf): the same result, 50 passed, AC-001 and AC-041 pending, product-suites pass, signed-release and docker-desktop pending; perf p95 147.2 ms."
+  ],
+  "codex_findings": {
+    "round": "base a3f40353d2faaf7a72a04e4d1560d49b5cd40a4b, head 10150bf9979f28c6a680d3ab4b95255e5a5e3f2a",
+    "P0 status pending; AC-001 and AC-041 pending": "Still open; a lane cannot resolve it. It needs the integration lead's clean Docker Desktop installs on Windows and macOS, plus the Word open-without-repair result recorded by a reviewed change to docs/release/acceptance-evidence.json. No operator evidence came with this dispatch, origin/main is still a3f4035, and no v* tag exists. The full run at 10150bf gives the same result, so the report stays pending. Marking either criterion passed would claim unexecuted acceptance.",
+    "P0 full-acceptance and desktop-install phase cases fail": "Still open, for the same reason. Both were rerun at 10150bf and are recorded exactly as they ran: desktop-install.sh exits 3 (PENDING) on any engine that is not Docker Desktop, and the full run exits 1 while AC-001, AC-041 or a gate is pending. signed-images-updater-load and backup-restore were rerun at 10150bf and pass with exit 0.",
+    "P0 signed-release gate pending": "Still open; a lane cannot resolve it. The release key is off GitHub by design and the lane token is read-only. verify-release.sh exits 3 because 10150bf has no release tag. No tag, signature or publication was made.",
+    "P1 live product-ci.yml / release.yml unchanged": "Still open; it needs the control PR. The controller rejects any lane commit under .github/. The exact change is docs/release/proposed-ci/product-ci.yml and proposed-ci/release.yml, pinned by tests/test_release_ci.py (25 tests with test_full_acceptance, all OK at 10150bf), and quoted in the PR body under Proposed CI change. The integration lead's reviewed control PR must land it."
+  }
+}
