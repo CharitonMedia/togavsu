@@ -16,7 +16,7 @@ import (
 // Client errors. A caller maps them to API errors; none of them means a module is unsafe.
 var (
 	// ErrNotConfigured: modules.marketplace_address is not an https URL (or http on a
-	// loopback host).
+	// loopback host or the compose service name togavsu-marketplace).
 	ErrNotConfigured = errors.New("marketplace address is not configured")
 	// ErrUnavailable: the marketplace could not be reached or answered with nonsense.
 	ErrUnavailable = errors.New("unavailable")
@@ -27,6 +27,11 @@ var (
 	ErrYanked = errors.New("yanked")
 )
 
+// ComposeMarketplaceHost is the Docker Compose service name for a marketplace that runs
+// beside Togavsu. Plain http to this host is allowed for listings and packages; it does
+// not confer trust of marketplace-published keys (see TrustsMarketplaceKeys).
+const ComposeMarketplaceHost = "togavsu-marketplace"
+
 // Client reads the marketplace's read API. Address is called on every request so a
 // change to modules.marketplace_address applies on the next one, with no restart.
 type Client struct {
@@ -35,7 +40,8 @@ type Client struct {
 }
 
 // BaseURL validates addr. The marketplace is reached over https; plain http is allowed
-// only on a loopback host (a firm testing a local marketplace).
+// on a loopback host (a firm testing a local marketplace) and on the compose service
+// name togavsu-marketplace. Every other host needs https.
 func BaseURL(addr string) (*url.URL, error) {
 	u, err := url.Parse(strings.TrimSpace(addr))
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
@@ -44,8 +50,7 @@ func BaseURL(addr string) (*url.URL, error) {
 	switch u.Scheme {
 	case "https":
 	case "http":
-		ip := net.ParseIP(u.Hostname())
-		if u.Hostname() != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		if !httpHostAllowed(u.Hostname()) {
 			return nil, ErrNotConfigured
 		}
 	default:
@@ -53,6 +58,42 @@ func BaseURL(addr string) (*url.URL, error) {
 	}
 	u.Path = strings.TrimSuffix(u.Path, "/")
 	return u, nil
+}
+
+// httpHostAllowed reports whether plain http may reach host.
+//
+// ponytail: ceiling: plain http only for loopback and togavsu-marketplace; a name on
+// the firm's Docker network can still be answered by something else, so that name
+// confers reach but not key trust (see TrustsMarketplaceKeys). Upgrade path: require
+// https for every non-loopback marketplace. trigger: any marketplace reached across a
+// network the firm does not control.
+func httpHostAllowed(host string) bool {
+	if host == "localhost" || host == ComposeMarketplaceHost {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// TrustsMarketplaceKeys reports whether marketplace-published signing keys may be
+// fetched and used to verify installs for addr. Only plain http to togavsu-marketplace
+// loses that trust (only trusted local keys verify there). Every other address keeps
+// today's behavior: https and loopback fetch and trust keys, and an empty, placeholder
+// or refused address keeps and trusts the last cached keys.
+//
+// ponytail: ceiling: over http://togavsu-marketplace listings, packages and alerts are
+// unauthenticated and marketplace-published keys are never fetched or trusted (only
+// trusted local keys verify an install). Upgrade path: require https (and key trust)
+// for every non-loopback marketplace. trigger: any marketplace reached across a
+// network the firm does not control.
+func TrustsMarketplaceKeys(addr string) bool {
+	return !IsComposeMarketplaceHTTP(addr)
+}
+
+// IsComposeMarketplaceHTTP reports whether addr is plain http to togavsu-marketplace.
+func IsComposeMarketplaceHTTP(addr string) bool {
+	u, err := BaseURL(addr)
+	return err == nil && u.Scheme == "http" && u.Hostname() == ComposeMarketplaceHost
 }
 
 func (c *Client) do(ctx context.Context, path string, q url.Values, dst any) error {

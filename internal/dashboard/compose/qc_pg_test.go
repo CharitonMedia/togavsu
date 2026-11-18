@@ -1,8 +1,13 @@
 package compose
 
 import (
+	"bytes"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"os/exec"
@@ -13,7 +18,9 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/dashboard"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/practice"
+	service "github.com/CharitonMedia/togavsu/marketplace"
 )
 
 type qcPage struct {
@@ -147,6 +154,9 @@ func TestUIVisualQC(t *testing.T) {
 		add(qcPage{Name: "settings-" + tab + "-phone", Role: "admin", Path: "/admin?tab=" + tab, Width: 390, Height: 844, Full: true})
 		add(qcPage{Name: "settings-" + tab + "-phone-advanced", Role: "admin", Path: "/admin?tab=" + tab + "&advanced=1", Width: 390, Height: 844, Full: true})
 	}
+	// Desk-fix marketplace catalog: Modules tab at phone width with three listings.
+	seedMarketplaceListings(t, e)
+	add(qcPage{Name: "modules-marketplace-phone", Role: "admin", Path: "/admin?tab=modules", Width: 390, Height: 844, Full: true})
 	add(qcPage{Name: "09-collapsed-sidebar", Role: "staff", Path: "/", Action: "collapse"})
 	add(qcPage{Name: "10-deadlines-click-through", Role: "staff", Path: "/calendar/deadlines?from_date=" + today + "&to_date=" + time.Now().AddDate(0, 0, 7).Format("2006-01-02") + "&status=open&include_overdue=true"})
 	add(qcPage{Name: "01-home", Role: "accountant", Path: "/", Full: true})
@@ -177,4 +187,68 @@ func twoDigits(n int) string {
 		return "0" + string(rune('0'+n))
 	}
 	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}
+
+// seedMarketplaceListings publishes three synthetic listings and points the firm at that
+// in-process marketplace so the Modules tab QC page has a browsable catalog.
+func seedMarketplaceListings(t *testing.T, e *env) {
+	t.Helper()
+	cfg := service.Defaults()
+	cfg.SecureCookies = false
+	m, err := service.Open(t.TempDir(), cfg.AuthorSession(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := service.NewServer(m, cfg, "synthetic-operator-token-0123456789abcdef", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	market := httptest.NewServer(srv.Handler())
+	t.Cleanup(market.Close)
+	call := func(method, path, token string, body any) []byte {
+		t.Helper()
+		raw, _ := json.Marshal(body)
+		req, _ := http.NewRequest(method, market.URL+path, bytes.NewReader(raw))
+		req.Header.Set("Content-Type", "application/json")
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		if res.StatusCode >= 300 {
+			t.Fatalf("%s %s: %d %s", method, path, res.StatusCode, b)
+		}
+		return b
+	}
+	call("POST", "/v1/authors", "", map[string]any{"name": "QC Author", "email": "qc-author@example.test", "password": "synthetic author password"})
+	var tok struct{ Token string }
+	_ = json.Unmarshal(call("POST", "/v1/sessions", "", map[string]any{"email": "qc-author@example.test", "password": "synthetic author password"}), &tok)
+	pub, priv, _ := ed25519.GenerateKey(nil)
+	var k service.KeyView
+	_ = json.Unmarshal(call("POST", "/v1/authors/me/keys", tok.Token, map[string]any{"public_key_pem": marketplace.PublicKeyPEM(pub)}), &k)
+	call("POST", "/v1/authors/me/keys/"+k.KeyID+"/verify", tok.Token, map[string]any{"signature": marketplace.Sign(priv, marketplace.KeyProofMessage(k.KeyID, k.Challenge))})
+	for i, id := range []string{"qc-mod-one", "qc-mod-two", "qc-mod-three"} {
+		man, _ := json.Marshal(map[string]any{
+			"id": id, "name": "QC Module " + id, "version": "1.0.0",
+			"permissions": []string{"matters:read", "notes:write"},
+		})
+		pkg, err := marketplace.BuildPackage(man, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := map[string]any{
+			"package_base64": base64.StdEncoding.EncodeToString(pkg),
+			"signature":      marketplace.Sign(priv, pkg),
+			"key_id":         k.KeyID,
+		}
+		if i == 0 {
+			body["price_note"] = "$1 for QC"
+		}
+		call("POST", "/v1/authors/me/packages", tok.Token, body)
+	}
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/modules.marketplace_address", map[string]any{"value": market.URL})
 }

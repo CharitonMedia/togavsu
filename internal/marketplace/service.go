@@ -96,6 +96,11 @@ func (s *Service) setting(ctx context.Context, key string) string {
 	return v
 }
 
+// Address is modules.marketplace_address as stored for the firm.
+func (s *Service) Address(ctx context.Context) string {
+	return s.setting(ctx, "modules.marketplace_address")
+}
+
 func (s *Service) now() time.Time { return s.d.Now().UTC() }
 
 func micro(t time.Time) int64 { return domain.UnixMicroUTC(t) }
@@ -225,12 +230,17 @@ type Verified struct {
 }
 
 // trusted is every signer the firm accepts: the keys the marketplace publishes (fresh
-// when it answers, the last copy when it does not) plus the trusted local keys.
+// when it answers, the last copy when it does not) plus the trusted local keys. Over
+// plain http to togavsu-marketplace, only trusted local keys are returned.
 func (s *Service) trusted(ctx context.Context) ([]TrustedKey, error) {
 	_ = s.refreshMarketplaceKeys(ctx)
+	q := `SELECT key_id, name, public_key_pem, 'local' FROM trusted_signing_keys ORDER BY 1`
+	if s.trustsPublishedKeys(ctx) {
+		q = `SELECT key_id, author, public_key_pem, 'marketplace' FROM marketplace_signing_keys
+		UNION ALL SELECT key_id, name, public_key_pem, 'local' FROM trusted_signing_keys ORDER BY 1`
+	}
 	var out []TrustedKey
-	rows, err := s.d.DB.QueryContext(ctx, `SELECT key_id, author, public_key_pem, 'marketplace' FROM marketplace_signing_keys
-		UNION ALL SELECT key_id, name, public_key_pem, 'local' FROM trusted_signing_keys ORDER BY 1`)
+	rows, err := s.d.DB.QueryContext(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -251,9 +261,20 @@ func (s *Service) trusted(ctx context.Context) ([]TrustedKey, error) {
 	return out, rows.Err()
 }
 
+func (s *Service) trustsPublishedKeys(ctx context.Context) bool {
+	return TrustsMarketplaceKeys(s.setting(ctx, "modules.marketplace_address"))
+}
+
 // refreshMarketplaceKeys replaces the cached marketplace keys with what it publishes now.
 // A key whose id does not match its bytes is dropped. Unreachable keeps the cache.
+// Over plain http to togavsu-marketplace, keys are not fetched and any cache is cleared.
 func (s *Service) refreshMarketplaceKeys(ctx context.Context) error {
+	if !s.trustsPublishedKeys(ctx) {
+		return audit.WithTx(ctx, s.d.DB, func(ctx context.Context) error {
+			_, err := audit.Conn(ctx, s.d.DB).ExecContext(ctx, `DELETE FROM marketplace_signing_keys`)
+			return err
+		})
+	}
 	keys, err := s.d.Client.SigningKeys(ctx)
 	if err != nil {
 		return err

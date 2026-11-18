@@ -140,7 +140,10 @@ func TestBaseURL(t *testing.T) {
 		"https://marketplace.example.test/":   true,
 		"http://127.0.0.1:8090":               true,
 		"http://localhost:8090":               true,
+		"http://togavsu-marketplace:8090":     true,
+		"http://togavsu-marketplace":          true,
 		"http://marketplace.example.test":     false,
+		"http://other-single-label":           false,
 		"togavsu-marketplace":                 false,
 		"ftp://marketplace.example.test":      false,
 		"https://user:pw@marketplace.example": false,
@@ -148,6 +151,42 @@ func TestBaseURL(t *testing.T) {
 	} {
 		if _, err := BaseURL(addr); (err == nil) != ok {
 			t.Errorf("%q: %v", addr, err)
+		}
+	}
+	if !TrustsMarketplaceKeys("https://marketplace.example.test") || !TrustsMarketplaceKeys("http://127.0.0.1:8090") || !TrustsMarketplaceKeys("http://localhost:8090") {
+		t.Fatal("https and loopback must trust marketplace keys")
+	}
+	if TrustsMarketplaceKeys("http://togavsu-marketplace:8090") || TrustsMarketplaceKeys("http://togavsu-marketplace") || !TrustsMarketplaceKeys("togavsu-marketplace") || !TrustsMarketplaceKeys("") {
+		t.Fatal("plain http to togavsu-marketplace must not trust marketplace keys")
+	}
+	if !IsComposeMarketplaceHTTP("http://togavsu-marketplace:8090") || IsComposeMarketplaceHTTP("http://127.0.0.1:8090") {
+		t.Fatal("compose http detection")
+	}
+}
+
+func TestNewerVersion(t *testing.T) {
+	if !NewerVersion("1.1.0", "1.0.0") || NewerVersion("1.0.0", "1.0.0") || NewerVersion("1.0.0", "1.1.0") {
+		t.Fatal("semver compare")
+	}
+	if NewerVersion("", "1.0.0") || !NewerVersion("1.0.0", "") {
+		t.Fatal("empty installed")
+	}
+	for _, c := range []struct {
+		listed, installed string
+		newer             bool
+	}{
+		{"1.0.0", "1.0.0-rc1", true},
+		{"1.0.0-rc1", "1.0.0", false},
+		{"1.0.0-beta", "1.0.0-alpha", true},
+		{"1.0.0-alpha.1", "1.0.0-alpha", true},
+		{"1.0.0-alpha", "1.0.0-alpha.1", false},
+		{"1.0.0-alpha.beta", "1.0.0-alpha.1", true},
+		{"1.0.0-rc.11", "1.0.0-rc.2", true},
+		{"1.0.0+build.2", "1.0.0+build.1", false},
+		{"1.0.1-rc1", "1.0.0", true},
+	} {
+		if got := NewerVersion(c.listed, c.installed); got != c.newer {
+			t.Errorf("NewerVersion(%q, %q) = %v, want %v", c.listed, c.installed, got, c.newer)
 		}
 	}
 }
