@@ -108,6 +108,32 @@ func TestManifestRefusals(t *testing.T) {
 	}
 }
 
+// TestReservedContractOperationNames: CORE-31 reserves events and providers so they
+// cannot collide with POST …/events and GET …/providers (Codex P2).
+func TestReservedContractOperationNames(t *testing.T) {
+	base := string(sampleManifest(t))
+	base = strings.Replace(base, "permissions:\n",
+		"permissions:\n  - scope: contracts:provide\n    reason: Provide.\n", 1)
+	provide := "provides:\n  - contract: phone.provider.v1\n    operations:\n      - name: echo\n        path: /contracts/echo\n"
+	if !strings.HasSuffix(base, "\n") {
+		base += "\n"
+	}
+	okSrc := base + provide
+	if _, err := modules.ParseManifest([]byte(okSrc)); err != nil {
+		t.Fatalf("echo operation should parse: %v", err)
+	}
+	for _, reserved := range []string{"events", "providers"} {
+		bad := base + "provides:\n  - contract: phone.provider.v1\n    operations:\n      - name: " + reserved + "\n        path: /contracts/" + reserved + "\n"
+		_, err := modules.ParseManifest([]byte(bad))
+		if err == nil {
+			t.Fatalf("operation name %q accepted", reserved)
+		}
+		if !strings.Contains(err.Error(), "reserved") && !strings.Contains(err.Error(), reserved) {
+			t.Fatalf("operation %q refusal: %v", reserved, err)
+		}
+	}
+}
+
 // Signature checks belong to the marketplace component (Deps.Signing); ReadPackage only
 // unpacks bytes it verified and parses the manifest.
 func TestReadPackage(t *testing.T) {

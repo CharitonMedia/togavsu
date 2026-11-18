@@ -177,6 +177,33 @@ func TestPGCalendarReplacement(t *testing.T) {
 	if res.Header.Get("Set-Cookie") != "" {
 		t.Fatal("a module response set a cookie on the core's domain")
 	}
+	// Replacement routes mint a viewer context token from the session cookie: never
+	// answer credentialed CORS for Origin: null (sandboxed frames must not read them).
+	reqCORS, _ := http.NewRequest("GET", e.srv.URL+"/api/v1/calendar-events", nil)
+	reqCORS.Header.Set("X-Test-User", "staff")
+	reqCORS.Header.Set("Origin", "null")
+	reqCORS.Header.Set("Cookie", "togavsu_session=secret")
+	resCORS, err := http.DefaultClient.Do(reqCORS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resCORS.Body)
+	resCORS.Body.Close()
+	if acao := resCORS.Header.Get("Access-Control-Allow-Origin"); acao != "" {
+		t.Fatalf("replacement route must not set ACAO for Origin null, got %q", acao)
+	}
+	opt, _ := http.NewRequest(http.MethodOptions, e.srv.URL+"/api/v1/calendar-events", nil)
+	opt.Header.Set("Origin", "null")
+	opt.Header.Set("Access-Control-Request-Method", "GET")
+	optRes, err := http.DefaultClient.Do(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, optRes.Body)
+	optRes.Body.Close()
+	if acao := optRes.Header.Get("Access-Control-Allow-Origin"); acao != "" {
+		t.Fatalf("replacement OPTIONS must not set ACAO for Origin null, got %q", acao)
+	}
 	// Other domains stay with the core.
 	if r := e.do("GET", "/api/v1/time-entries", nil, e.as("staff")...); r.code != http.StatusOK || strings.Contains(r.body, "calendar-plus") {
 		t.Fatalf("time after the calendar switch: %d %s", r.code, r.body)

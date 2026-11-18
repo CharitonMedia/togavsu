@@ -4,8 +4,20 @@ Marketplace modules build in their own repositories (`github.com/CharitonMedia/t
 and cannot import the core's `internal/` packages. The kit gives them the core's own code
 through three public surfaces:
 
-- `pkg/modulekit`: manifest and migration checks, package build, signing and verification.
+- `pkg/modulekit`: manifest and migration checks, package build, signing and verification,
+  plus CORE-31/32 helpers (`IssueStepToken` / `VerifyStepToken`, signed public CSRF
+  `IssueSignedPublicCSRF` / `CheckSignedPublicCSRF`, `PublicCSRFPassHeader` /
+  `X-Togavsu-Public-CSRF` on proxied public pages, `SignWebhook` / `VerifyWebhook` —
+  contract calls use the same HMAC as events). Provided contract operation names
+  `events` and `providers` are reserved (they collide with the core's
+  `POST …/contracts/{contract}/events` and `GET …/providers` routes) and fail
+  `ParseManifest` / `Check`.
 - `cmd/togavsu-module`: the same checks, packaging and verification as a command.
+- `pkg/modulekit/forms`: CORE-33 form definitions, validation, HTMX rendering and autosave
+  (JSON or form-urlencoded with CSRF on autosave/offline), repeating add/remove
+  (`RepeatingJS`, index cap `MaxRepeatingIndex`), offline queue, and masked-field
+  encryption (`EnsureKey` only on `ErrSecretNotFound`); answers stay in the module's own
+  schema.
 - `pkg/modulekit/coretest`: an acceptance harness that runs the real composed core in the
   test process.
 
@@ -395,6 +407,38 @@ publishes with no local key, and approves its permissions as for a file install.
 `coretest` suite can do the same against the local marketplace: set
 `modules.marketplace_address` with `PATCH /api/v1/settings/modules.marketplace_address`
 `{"value": "http://127.0.0.1:8090"}` as `c.Admin`, then post the install.
+
+## pkg/modulekit/forms
+
+CORE-33. Import `github.com/CharitonMedia/togavsu/pkg/modulekit/forms`. The package is
+types and helpers only: no core tables, no module schema. Intake and mo-estate-planning
+store answers in their own schemas and call the kit to define, validate, render and
+autosave forms.
+
+| Need | Call |
+| --- | --- |
+| Definition model (tracks, screens, fields) | `Form`, `Track`, `Screen`, `Field`, `FieldType` (`AllFieldTypes`: the 16 types) |
+| Audiences | `AudienceStaff`, `AudienceClient`, `AudiencePublic`; `Field.VisibleTo`, `VisibleFields` |
+| Answers and "I don't know" | `Answers`, `Answer` (`Unknown`), `Address`, `Merge`, `MergeFormSubmit` (keeps masked on empty post; `ClearMaskedValue` clears; repeating rows match by `RowIDKey`/`__row`, never by index, including nested repeating groups), `ParseFormAnswers(form, values)` (schema-driven types for all 16 fields; projects `__present` into each repeating row so nested clears work; explicit `name.__unknown=0` clears Unknown), `UnknownToggleJS`, `RepeatingJS` (mints/keeps `__row` on add/reindex; reindexes only the group's `data-name` `[N]`, so nested groups leave outer/inner indexes alone) |
+| Conditions (`eq`, `neq`, `in`, `exists`, `notExists`, `gt`/`lt`/`gte`/`lte`, count ops on repeating groups) | `Condition`, `Op*`, `Eval` |
+| Validation | `Validate`, `ValidateScreen`, `Issues` |
+| HTMX renderer | `RenderScreen(w, screen, answers, audience, RenderOptions)` — one `hx-post` on the `<form>` (`hx-include="this"`); booleans emit hidden `false` |
+| Autosave + offline queue | Whole-form shape (every control + CSRF; masked untouched stripped): `AutosaveHandler` / `AutosaveHandlerForm` (CORS for `Origin: null`, typed `ParseFormAnswers`, empty masked keep stored), `AutosavePatch.Apply`, `DecodeAutosave`, `OfflineQueueJS` (memory fallback when `localStorage` throws; strips empty masked; replays urlencoded) |
+| Masked fields | `SecretStore` (`PutSecret`/`GetSecret`), optional `CreateIfAbsentStore`, `HTTPSecretStore` (core PUT with `If-None-Match: *`), `EncryptMasked`, `DecryptMasked`, `SealAnswers` (skips already-sealed under the field key), `EnsureKey` / `LoadKey` (create-if-absent or put+re-read); ciphertext in answers (`CipherPrefix`), AES-256 key name in the module secret store |
+
+```go
+import "github.com/CharitonMedia/togavsu/pkg/modulekit/forms"
+
+issues := forms.Validate(def, answers, forms.AudienceClient)
+_ = forms.RenderScreen(w, screen, answers, forms.AudiencePublic, forms.RenderOptions{
+    AutosaveURL: "/m/intake/api/autosave",
+})
+mux.Handle("/m/intake/api/autosave", forms.AutosaveHandlerForm(def, func(r *http.Request, p forms.AutosavePatch) (forms.Answers, error) {
+    cur := load(r) // module-owned storage
+    p.Apply(&cur)
+    return cur, save(r, cur)
+}))
+```
 
 ## Acceptance suites with coretest
 

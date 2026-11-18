@@ -49,6 +49,8 @@ type Chrome struct {
 	Scripts []string
 	// WorkInFrame (frame.Page) turns the client idle sign-out off.
 	WorkInFrame bool
+	// Banners is CORE-34 staff banner slot HTML above the page title; empty when none.
+	Banners template.HTML
 }
 
 type view struct {
@@ -200,6 +202,11 @@ func (h *Handler) ChromeFor(r *http.Request, p domain.Principal, title string) (
 	c.Notice, c.Error = r.URL.Query().Get("notice"), r.URL.Query().Get("error")
 	c.Notice, _ = truncate(c.Notice, fixed.NoticeMax)
 	c.Error, _ = truncate(c.Error, fixed.NoticeMax)
+	if h.Banners != nil {
+		if html, err := h.Banners(ctx); err == nil {
+			c.Banners = html
+		}
+	}
 	return c, nil
 }
 

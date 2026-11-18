@@ -429,8 +429,9 @@ def _check(spec: dict) -> None:
                 if canonical not in _operation_ids(spec):
                     raise SystemExit(f"alias {operation['operationId']} missing {canonical}")
     unused = sorted(set(SCOPES) - used)
-    # mail:system is module-token-only; no HTTP operation declares it yet (CORE-05).
-    unused = [s for s in unused if s != "mail:system"]
+    # Module-token install scopes with no dedicated HTTP operation yet (CORE-05, CORE-32, CORE-34).
+    # public_pages:serve gates /p/{id}/; banner:show gates the staff banner slot.
+    unused = [s for s in unused if s not in {"mail:system", "public_pages:serve", "banner:show"}]
     if unused:
         raise SystemExit(f"unused scopes: {unused}")
 

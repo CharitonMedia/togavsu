@@ -132,6 +132,7 @@
 {{if .Modules}}{{range .Modules}}<article class="module" id="module-{{.ID}}">
 <h3>{{.Name}} <span class="muted">{{.ID}} {{.Version}}</span> <span class="tag">{{.Status}}</span>{{if .Replaces}} <span class="tag">replaces {{.Replaces}}</span>{{end}}</h3>
 {{if .LastError}}<p class="error" role="alert">{{.LastError}}</p>{{end}}
+{{if or .PublicPages .PublicOperations}}<p class="muted" id="public-{{.ID}}">Public pages: {{if .PublicPages}}{{range $i, $p := .PublicPages}}{{if $i}}, {{end}}<code>{{$p}}</code>{{end}}{{else}}none{{end}}. Public operations (required core-signed public credential as <code>Authorization: Bearer</code> or <code>X-Togavsu-Public-Step</code>; limited to these operations): {{if .PublicOperations}}{{range $i, $o := .PublicOperations}}{{if $i}}, {{end}}<code>{{$o}}</code>{{end}}{{else}}none{{end}}.</p>{{end}}
 {{if .Undecided}}<form method="post" action="/admin/modules/permissions" class="form-grid permissions"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}">
 <p>This module asks for these permissions. Declining a required one cancels the install.</p>
 {{range .Permissions}}{{if eq .Decision "pending"}}<fieldset><legend><code>{{.Scope}}</code>{{if .Required}} (required){{end}}</legend>
@@ -173,6 +174,29 @@
 <label class="visually-hidden" for="dh-{{.Domain}}">Handler for {{.Domain}}</label><select id="dh-{{.Domain}}" name="module_id"><option value="">Core</option>{{$cur := .ModuleID}}{{range index $cands .Domain}}<option{{if eq . $cur}} selected{{end}}>{{.}}</option>{{end}}</select>
 <button type="submit">Switch</button></form></td></tr>{{end}}
 </tbody></table>
+</section>
+
+<section class="card" id="contract-links"><h2>Module service contracts</h2>
+<p class="muted">Approve a link between a consumer and a provider. Modules never learn each other's address; the core proxies every call.</p>
+{{if .Contracts}}<table><thead><tr><th>Contract</th><th>Consumer</th><th>Provider</th><th></th></tr></thead><tbody>
+{{range .Contracts}}<tr id="contract-{{.ID}}"><td><code>{{.Contract}}</code></td><td>{{.ConsumerID}}</td><td>{{.ProviderID}}</td>
+<td><form method="post" action="/admin/modules/contract-unlink" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="link_id" value="{{.ID}}"><button type="submit" class="danger">Unlink</button></form></td></tr>{{end}}
+</tbody></table>{{else}}<p class="hint">No contract links yet.</p>{{end}}
+<form method="post" action="/admin/modules/contract-link" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label for="cl-contract">Contract</label><input id="cl-contract" name="contract" required placeholder="phone.provider.v1">
+<label for="cl-consumer">Consumer module id</label><input id="cl-consumer" name="consumer_id" required>
+<label for="cl-provider">Provider module id</label><input id="cl-provider" name="provider_id" required>
+<div><button type="submit">Link</button></div></form>
+</section>
+
+<section class="card" id="banner-order"><h2>Staff banner order</h2>
+<p class="muted">Order modules with a staff banner. Empty keeps install order.</p>
+{{if .Banners}}<ul>{{range .Banners}}<li><code>{{.ModuleID}}</code></li>{{end}}</ul>
+<form method="post" action="/admin/modules/banner-order" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label for="banner-order-input">Order (module ids, comma or space separated)</label>
+<input id="banner-order-input" name="order" value="{{range $i, $id := .BannerOrder}}{{if $i}} {{end}}{{$id}}{{end}}" placeholder="google-notebooklm other-mod">
+<div><button type="submit">Save banner order</button></div></form>
+{{else}}<p class="hint">No installed modules declare a staff banner.</p>{{end}}
 </section>
 
 <section class="card" id="trusted-keys"><h2>Trusted local signing keys</h2>

@@ -658,6 +658,36 @@ func fixedSite(path, fn string) bool {
 		case "allow", "inboundWebhook":
 			return true
 		}
+	case strings.HasSuffix(slash, "internal/modules/public.go"):
+		// Public page rate window and Retry-After floor; rate/bytes are settings (CORE-32).
+		switch fn {
+		case "allow", "evict", "publicPage", "clientIP", "remoteHost", "proxyPeer", "submittedPublicCSRF", "publicCookieSecure",
+			"isOpaqueOrigin", "applyOpaqueOriginCORS", "answerOpaqueOriginCORS", "LooksLikePublicStep", "AuthenticatePublicStep",
+			"RequirePublicOperation", "PublicStepKey":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/modules/steptoken.go"):
+		// Step-token default TTL and CSRF width (CORE-32); not firm settings.
+		switch fn {
+		case "IssueStepToken", "VerifyStepToken", "IssuePublicCSRF", "IssueSignedPublicCSRF", "CheckPublicCSRF", "CheckSignedPublicCSRF", "CheckPublicStep",
+			"AuthenticatePublicStep", "RequirePublicOperation", "LooksLikePublicStep", "PublicStepKey":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/modules/contracts.go"):
+		// Contract proxy body floor uses modules.contract_call_max_bytes (CORE-31).
+		switch fn {
+		case "CallContract", "PushContractEvent", "LinkContract", "UnlinkContract", "linkedProvider", "ListLinkedProviders", "refuseExtraProvider", "ListContractLinks", "auditContractCall":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/modules/contracts_http.go"):
+		return fn == "callContract" || fn == "pushContractEvent"
+	case strings.HasSuffix(slash, "internal/modules/banner.go"):
+		// Banner height floor uses domain.StaffBannerDefaultHeight (CORE-34).
+		return fn == "ListStaffBanners" || fn == "BannerHTML" || fn == "PutBannerOrder"
+	case strings.HasSuffix(slash, "internal/modules/manifest.go"):
+		// Manifest path/height grammar for staff_banner (CORE-34).
+		return fn == "validateStaffBanner" || fn == "validateProvides" || fn == "validateConsumes" ||
+			fn == "validatePublicPages" || fn == "checkManifest"
 	case strings.HasSuffix(slash, "internal/modules/nav.go"):
 		// Badge cache TTL and fetch timeout; order default is domain.SidebarDefaultOrder.
 		switch fn {
@@ -667,7 +697,7 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "internal/modules/secrets.go"):
 		// RowsAffected zero means missing; max counts are domain.ModuleSecret*.
 		switch fn {
-		case "PutSecret", "GetSecret", "DeleteSecret":
+		case "PutSecret", "PutSecretIfAbsent", "putSecret", "GetSecret", "DeleteSecret":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/trust/create_notification.go"):
@@ -737,6 +767,21 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "internal/calendar/ical.go"):
 		// RFC 5545 folds content lines at 75 octets. A protocol width, not a firm setting.
 		return fn == "foldWidth"
+	case strings.Contains(slash, "/pkg/modulekit/forms/"):
+		// CORE-33 forms kit: comparison ranks, AES key width, parse indexes; answers stay in the module.
+		switch fn {
+		case "DecodeAutosave", "AutosaveHandler", "AutosaveHandlerForm", "ParseFormAnswers", "parsePostedAnswers",
+			"parseFieldInto", "parseRepeating", "parseNumberAnswer", "parseDateAnswer", "parseAddress", "parseBool",
+			"decodeAutosaveRequest", "patchFromForm", "formFields", "formAutosaveAttrs",
+			"splitRepeatingKey", "jsonStringEscape", "renderRepeatRow", "inValue", "compareValue",
+			"compareCount", "cmp", "cmpCount", "Eval", "validateField", "Validate", "ValidateScreen",
+			"KeyBytes", "EnsureKey", "LoadKey", "EncryptMasked", "DecryptMasked", "SealAnswers",
+			"MergeFormSubmit", "maskedFieldIDs", "applyFormsOpaqueCORS", "ClearMaskedValue",
+			"CreateSecretIfAbsent", "PutSecret", "GetSecret", "PutSecretIfAbsent", "secretURL", "secretAPIError",
+			"isConflict", "authorize", "put", "client", "disabledIfUnknown", "lastValue", "keyPosted",
+			"unknownPosted", "addressPosted", "repeatingPosted", "applyUnknownClear":
+			return true
+		}
 	case strings.HasSuffix(slash, "internal/practice/service.go"):
 		// AES-256-GCM key width and the position of @ in an email address.
 		switch fn {

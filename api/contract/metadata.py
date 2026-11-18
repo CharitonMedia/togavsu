@@ -389,6 +389,15 @@ CORE_EXTENSION_EXCLUSIONS = {
         "module device grants",
         'per-user device grant (CORE-28 / PRD 9.10). Credential material for a module, not a section 5 record.',
     ),
+    "ModuleContractLink": (
+        "module contract links",
+        'admin-approved consumer↔provider link (CORE-31 / PRD 9.10). Runtime wiring between modules, not a section 5 record.',
+    ),
+    "ModuleStaffBanner": (
+        "module staff banners",
+        'staff banner slot view (CORE-34 / PRD 9.10). Shell presentation for a module page, not a section 5 record.',
+    ),
+
     "UserDirectoryEntry": (
         "user directory",
         'module directory projection (CORE-19 / PRD 9.10). A narrowed user list for modules; User is the extension target.',
@@ -972,7 +981,22 @@ EVENT_EXEMPTIONS = {
     "matchMail": (
         "Mail address matching for the email module (CORE-26). Returns match results and an optional match_token; "
         "no activity-stream event is emitted on the match itself."
-    )
+    ),
+    "listModuleContractProviders": (
+        "Lists linked provider module ids for the calling consumer on one contract (CORE-31). "
+        "Ids only; no activity-stream event."
+    ),
+    "callModuleContract": (
+        "Proxies a consumer contract call to a linked provider (CORE-31). "
+        "Linking and unlinking emit module.contract_linked / module.contract_unlinked; the proxy itself emits none."
+    ),
+    "pushModuleContractEvent": (
+        "Queues a provider-pushed contract event for linked consumers (CORE-31). "
+        "Delivery uses the module webhook path; no separate activity-stream event is required on the push."
+    ),
+    "putModuleBannerOrder": (
+        "Stores modules.staff_banner_order (CORE-34). Setting updates are audited; no activity-stream event."
+    ),
 }
 
 MUTATION_EVENTS = {

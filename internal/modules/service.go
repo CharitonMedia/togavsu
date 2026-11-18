@@ -85,6 +85,9 @@ type Service struct {
 	inboundOnce sync.Once
 	inbound     *inboundRate
 
+	publicOnce sync.Once
+	public     *publicRate
+
 	// mailMatchingCheck verifies a match_token on createAiCall (CORE-27).
 	mailMatchingCheck func(ctx context.Context, p domain.Principal, credential string) error
 }
@@ -404,6 +407,10 @@ type View struct {
 	Permissions []PermissionView `json:"permissions"`
 	Replaces    *string          `json:"replaces"`
 	Status      string           `json:"status"`
+	// PublicPages are manifest public_pages paths (CORE-32), shown at install.
+	PublicPages []string `json:"public_pages,omitempty"`
+	// PublicOperations are manifest public_operations (CORE-32), shown at install.
+	PublicOperations []string `json:"public_operations,omitempty"`
 	// LastError is the last failed bring-up (help, widgets, sidebar or container), for
 	// the admin tab; the contract's Module has no field for it.
 	LastError string `json:"-"`
@@ -424,6 +431,14 @@ func (s *Service) view(ctx context.Context, r modRow) (View, error) {
 			rep := pkg.Manifest.Replaces
 			v.Replaces = &rep
 		}
+		for _, pg := range pkg.Manifest.PublicPages {
+			path := strings.TrimSpace(pg.Path)
+			if path == "" {
+				continue
+			}
+			v.PublicPages = append(v.PublicPages, path)
+		}
+		v.PublicOperations = append([]string{}, pkg.Manifest.PublicOperations...)
 	}
 	return v, nil
 }
@@ -900,6 +915,9 @@ func (s *Service) activate(ctx context.Context, p domain.Principal, r modRow) er
 func (s *Service) bringUp(ctx context.Context, p domain.Principal, r modRow, m Manifest) error {
 	s.forget(r.ID)
 	var errs []string
+	if err := s.SyncPublicPages(ctx, r.ID, m.PublicPages); err != nil {
+		errs = append(errs, "public_pages: "+err.Error())
+	}
 	if s.d.Help != nil {
 		pages := make([]help.PageInput, 0, len(m.Help.Pages))
 		for _, pg := range m.Help.Pages {
@@ -965,6 +983,16 @@ func (s *Service) deployment(ctx context.Context, r modRow, m Manifest) (Deploym
 func (s *Service) bringDown(ctx context.Context, module string, remove bool) []string {
 	s.forget(module)
 	var errs []string
+	if _, err := s.q(ctx).ExecContext(ctx, `DELETE FROM core.module_public_pages WHERE module_id = $1`, module); err != nil {
+		errs = append(errs, "public_pages: "+err.Error())
+	}
+	// Keep admin-approved contract links while disabled so re-enable restores them.
+	// CallContract already refuses a disabled provider. Remove links only on uninstall.
+	if remove {
+		if _, err := s.q(ctx).ExecContext(ctx, `DELETE FROM core.module_contract_links WHERE consumer_id = $1 OR provider_id = $1`, module); err != nil {
+			errs = append(errs, "contracts: "+err.Error())
+		}
+	}
 	if s.d.Widgets != nil {
 		s.d.Widgets.RemoveModule(module)
 	}

@@ -18980,6 +18980,9 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "headers": [
+          "If-None-Match"
+        ],
         "credentials": {
           "module_bearer": {
             "header": "Authorization",
@@ -19004,6 +19007,7 @@
           "path",
           "query",
           "idempotency_key",
+          "headers",
           "body"
         ]
       }
@@ -19114,6 +19118,302 @@
         "result": {
           "encoding": "json",
           "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "listModuleContractLinks",
+      "method": "GET",
+      "path": "/api/v1/modules/contract-links",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 50
+      },
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "createModuleContractLink",
+      "method": "POST",
+      "path": "/api/v1/modules/contract-links",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "deleteModuleContractLink",
+      "method": "DELETE",
+      "path": "/api/v1/modules/contract-links/{link_id}",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "listModuleContractProviders",
+      "method": "GET",
+      "path": "/api/v1/modules/contracts/{contract}/providers",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "contracts:call"
+      ],
+      "roles": [],
+      "module_delegation": "service_principal",
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 50
+      },
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "callModuleContract",
+      "method": "POST",
+      "path": "/api/v1/modules/contracts/{contract}/{operation}",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "contracts:call"
+      ],
+      "roles": [],
+      "module_delegation": "service_principal",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "headers": [
+          "X-Togavsu-Contract-Provider"
+        ],
+        "credentials": {
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "headers",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "pushModuleContractEvent",
+      "method": "POST",
+      "path": "/api/v1/modules/contracts/{contract}/events",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "contracts:provide"
+      ],
+      "roles": [],
+      "module_delegation": "service_principal",
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "listModuleBanners",
+      "method": "GET",
+      "path": "/api/v1/modules/banners",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 50
+      },
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "putModuleBannerOrder",
+      "method": "PUT",
+      "path": "/api/v1/modules/banner-order",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "empty"
         },
         "arguments": [
           "path",

@@ -1,0 +1,962 @@
+package core
+
+import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/CharitonMedia/togavsu/internal/modules"
+	"github.com/CharitonMedia/togavsu/internal/testkit"
+)
+
+func patchManifest(raw []byte, id, name, extraPerms, tail string) []byte {
+	m := string(raw)
+	m = strings.Replace(m, "id: matter-clock", "id: "+id, 1)
+	m = strings.Replace(m, "name: Matter Clock", "name: "+name, 1)
+	if extraPerms != "" {
+		m = strings.Replace(m, "permissions:\n", "permissions:\n"+extraPerms, 1)
+	}
+	if tail != "" {
+		if !strings.HasSuffix(m, "\n") {
+			m += "\n"
+		}
+		m += tail
+	}
+	return []byte(m)
+}
+
+// TestCORE31ContractCall covers CU2-03 and CU2-01 for CORE-31.
+func TestCORE31ContractCall(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	const contract = "phone.provider.v1"
+
+	var gotBody []byte
+	var gotSig, gotConsumer string
+	x.rt.Serve("phone-provider", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotSig = r.Header.Get(modules.SignatureHeader)
+			gotConsumer = r.Header.Get("X-Togavsu-Contract-Consumer")
+			gotBody, _ = io.ReadAll(r.Body)
+			if err := modules.VerifyWebhook(m.WebhookSecret, gotSig, gotBody, time.Now().UTC(), 0); err != nil {
+				t.Errorf("provider verify: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Provider-Host", r.Host) // must not leak to consumer
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		})
+	})
+
+	prov := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-provider", "Phone Provider",
+			"  - scope: contracts:provide\n    reason: Provide contract.\n",
+			"provides:\n  - contract: "+contract+"\n    operations:\n      - name: echo\n        path: /contracts/echo\n")
+	})
+	cons := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-consumer", "Phone Consumer",
+			"  - scope: contracts:call\n    reason: Call contract.\n",
+			"consumes:\n  - contract: "+contract+"\n")
+	})
+	for _, pkg := range [][]byte{prov, cons} {
+		if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+			t.Fatalf("install: %s", problem)
+		}
+	}
+	x.approveOnTab("phone-provider")
+	x.approveOnTab("phone-consumer")
+
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = x.rt.Last("phone-consumer").Secrets["togavsu_api_token"]
+
+	if r := bot.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{"n": 1}); r.code != http.StatusConflict || r.json["code"] != "contract_unlinked" {
+		t.Fatalf("unlinked call: %d %s", r.code, r.body)
+	}
+
+	noscope := newClient(t, x.srv.URL)
+	noscope.bearer = x.rt.Last("phone-provider").Secrets["togavsu_api_token"]
+	if r := noscope.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{}); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("provider calling without contracts:call: %d %s", r.code, r.body)
+	}
+
+	link := x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-consumer", "provider_id": "phone-provider",
+	})
+	linkID := str(t, link.json, "id")
+
+	r := bot.must(http.StatusOK, "POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{"n": 7})
+	if !strings.Contains(r.body, `"ok":true`) || gotConsumer != "phone-consumer" || len(gotBody) == 0 {
+		t.Fatalf("linked call: body=%s consumer=%s got=%s", r.body, gotConsumer, gotBody)
+	}
+	if strings.Contains(r.body, "X-Provider-Host") || strings.Contains(strings.ToLower(r.body), "127.0.0.1") {
+		t.Fatalf("consumer learned provider address: %s", r.body)
+	}
+
+	provTok := newClient(t, x.srv.URL)
+	provTok.bearer = x.rt.Last("phone-provider").Secrets["togavsu_api_token"]
+	if r := provTok.do("POST", "/api/v1/modules/contracts/"+contract+"/events", map[string]any{
+		"action": "ring", "payload": map[string]any{"from": "test"},
+	}); r.code != http.StatusNoContent && r.code != http.StatusOK {
+		t.Fatalf("push contract event: %d %s", r.code, r.body)
+	}
+	if r := provTok.do("POST", "/api/v1/modules/contracts/"+contract+"/events", map[string]any{
+		"action": "matter.created", "payload": map[string]any{"id": "x"},
+	}); r.code < 400 || !strings.Contains(r.body, "scoped under") {
+		t.Fatalf("forged core event action: %d %s", r.code, r.body)
+	}
+
+	auditCall := x.admin.must(http.StatusOK, "GET", "/api/v1/audit-log?entity_type=module_contract_call&limit=50", nil)
+	if !strings.Contains(auditCall.body, contract) || !strings.Contains(auditCall.body, "echo") || !strings.Contains(auditCall.body, "phone-consumer") {
+		t.Fatalf("missing contract call audit: %s", auditCall.body)
+	}
+	auditEvent := x.admin.must(http.StatusOK, "GET", "/api/v1/audit-log?entity_type=module_contract_event&limit=50", nil)
+	if !strings.Contains(auditEvent.body, contract+".ring") && !strings.Contains(auditEvent.body, "ring") {
+		t.Fatalf("missing contract event audit: %s", auditEvent.body)
+	}
+	if strings.Contains(strings.ToLower(auditCall.body), "127.0.0.1") || strings.Contains(strings.ToLower(auditEvent.body), "http://") {
+		t.Fatalf("audit leaked address")
+	}
+
+	x.admin.must(http.StatusNoContent, "DELETE", "/api/v1/modules/contract-links/"+linkID, nil)
+	if r := bot.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{"n": 2}); r.code != http.StatusConflict || r.json["code"] != "contract_unlinked" {
+		t.Fatalf("after unlink: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE31DisableKeepsLinks: disabling a module must not wipe admin-approved contract links.
+func TestCORE31DisableKeepsLinks(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	const contract = "phone.provider.v1"
+	x.rt.Serve("phone-provider", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		})
+	})
+	prov := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-provider", "Phone Provider",
+			"  - scope: contracts:provide\n    reason: Provide contract.\n",
+			"provides:\n  - contract: "+contract+"\n    operations:\n      - name: echo\n        path: /contracts/echo\n")
+	})
+	cons := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-consumer", "Phone Consumer",
+			"  - scope: contracts:call\n    reason: Call contract.\n",
+			"consumes:\n  - contract: "+contract+"\n")
+	})
+	for _, pkg := range [][]byte{prov, cons} {
+		if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+			t.Fatalf("install: %s", problem)
+		}
+	}
+	x.approveOnTab("phone-provider")
+	x.approveOnTab("phone-consumer")
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-consumer", "provider_id": "phone-provider",
+	})
+	if _, problem := x.tabForm(x.admin, "disable", url.Values{"module_id": {"phone-provider"}}, nil); problem != "" {
+		t.Fatalf("disable: %s", problem)
+	}
+	links := x.admin.must(http.StatusOK, "GET", "/api/v1/modules/contract-links", nil)
+	if !strings.Contains(links.body, "phone-provider") || !strings.Contains(links.body, "phone-consumer") {
+		t.Fatalf("links lost on disable: %s", links.body)
+	}
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = x.rt.Last("phone-consumer").Secrets["togavsu_api_token"]
+	if r := bot.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{}); r.json["code"] != "contract_unlinked" {
+		t.Fatalf("disabled provider should refuse call: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE32PublicPages covers CU2-04 and CSRF POST success/failure.
+func TestCORE32PublicPages(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+
+	var lastCSRF, lastStep string
+	var lastMethod string
+	x.rt.Serve("intake-mod", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/intake" && !strings.HasPrefix(r.URL.Path, "/intake/") {
+				http.NotFound(w, r)
+				return
+			}
+			lastMethod = r.Method
+			lastStep = r.Header.Get(modules.PublicStepHeader)
+			lastCSRF = r.Header.Get(modules.PublicCSRFPassHeader)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			if r.Method == http.MethodPost {
+				_, _ = w.Write([]byte("<html><body>posted ok</body></html>"))
+				return
+			}
+			_, _ = w.Write([]byte("<html><body>public intake step=" + lastStep + " csrf=" + lastCSRF + "</body></html>"))
+		})
+	})
+
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "intake-mod", "Intake",
+			"  - scope: public_pages:serve\n    reason: Public pages.\n  - scope: contacts:write\n    reason: Intake.\n",
+			"public_pages:\n  - path: /intake\npublic_operations:\n  - createContact\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	// Install/approval view must name public pages and operations (CORE-32).
+	tab := x.admin.do("GET", "/admin?tab=modules", nil)
+	if tab.code != http.StatusOK || !strings.Contains(tab.body, "/intake") || !strings.Contains(tab.body, "createContact") || !strings.Contains(tab.body, "id=\"public-intake-mod\"") {
+		snip := tab.body
+		if len(snip) > 800 {
+			snip = snip[:800]
+		}
+		t.Fatalf("admin install view missing public pages/ops: %d %s", tab.code, snip)
+	}
+	x.approveOnTab("intake-mod")
+
+	anon := newClient(t, x.srv.URL)
+	r := anon.do("GET", "/p/intake-mod/intake", nil)
+	if r.code != http.StatusOK || !strings.Contains(r.body, "public intake") {
+		t.Fatalf("public page: %d %s", r.code, r.body)
+	}
+	{
+		req, err := http.NewRequest(http.MethodGet, x.srv.URL+"/p/intake-mod/intake", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := anon.http.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		csp := res.Header.Get("Content-Security-Policy")
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+		if !strings.Contains(csp, "sandbox") || strings.Contains(csp, "allow-same-origin") {
+			t.Fatalf("public page CSP must be opaque (no allow-same-origin): %q", csp)
+		}
+	}
+	if lastCSRF == "" || lastStep == "" {
+		t.Fatalf("module did not receive CSRF pass-through or step token: csrf=%q step=%q", lastCSRF, lastStep)
+	}
+	u, _ := url.Parse(x.srv.URL + "/p/intake-mod/intake")
+	var csrfCookie string
+	for _, c := range anon.http.Jar.Cookies(u) {
+		if c.Name == modules.PublicCSRFCookie {
+			csrfCookie = c.Value
+		}
+	}
+	if csrfCookie == "" || csrfCookie != lastCSRF {
+		t.Fatalf("csrf cookie=%q pass=%q", csrfCookie, lastCSRF)
+	}
+	if r := anon.do("GET", "/p/intake-mod/secret", nil); r.code != http.StatusNotFound {
+		t.Fatalf("undeclared public path: %d %s", r.code, r.body)
+	}
+
+	// POST without CSRF must fail.
+	if r := anon.do("POST", "/p/intake-mod/intake", url.Values{"name": {"Avery"}}); r.code != http.StatusForbidden || !strings.Contains(r.body, "csrf") {
+		t.Fatalf("POST without csrf: %d %s", r.code, r.body)
+	}
+	// POST with form csrf (buffered after body read) must reach the module.
+	postOK := anon.do("POST", "/p/intake-mod/intake", url.Values{"csrf": {csrfCookie}, "name": {"Avery"}})
+	if postOK.code != http.StatusOK || !strings.Contains(postOK.body, "posted ok") || lastMethod != http.MethodPost {
+		t.Fatalf("POST with csrf: %d %s method=%s", postOK.code, postOK.body, lastMethod)
+	}
+	// Opaque-origin HTMX may omit the cookie; signed CSRF in the header alone must work.
+	anonNoCookie := newClient(t, x.srv.URL)
+	hdrOnly := anonNoCookie.do("POST", "/p/intake-mod/intake", url.Values{"name": {"Blake"}}, modules.PublicCSRFHeader, lastCSRF)
+	if hdrOnly.code != http.StatusOK || !strings.Contains(hdrOnly.body, "posted ok") {
+		t.Fatalf("POST with X-CSRF-Token only (no cookie): %d %s", hdrOnly.code, hdrOnly.body)
+	}
+	// Wrong csrf fails.
+	if r := anon.do("POST", "/p/intake-mod/intake", url.Values{"csrf": {"not-the-token"}, "name": {"x"}}); r.code != http.StatusForbidden {
+		t.Fatalf("POST bad csrf: %d %s", r.code, r.body)
+	}
+
+	bot := newClient(t, x.srv.URL)
+	// Required public-page credential: core-signed step as Authorization bearer (CU2-04).
+	bot.bearer = lastStep
+	if r := bot.do("GET", "/api/v1/matters", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" || !strings.Contains(r.body, "public_operations") {
+		t.Fatalf("listMatter outside public_operations via public credential: %d %s", r.code, r.body)
+	}
+	// createContact is listed and contacts:write is approved; not scope_denied.
+	if r := bot.do("POST", "/api/v1/contacts", map[string]any{
+		"display_name": "Public Person", "kind": "person",
+	}); r.json["code"] == "scope_denied" {
+		t.Fatalf("createContact in public_operations with approved scope denied: %s", r.body)
+	}
+	// Public step must not reach module runtime secrets (forms-kit AES key) or contract calls.
+	if r := bot.do("GET", "/api/v1/modules/intake-mod/secrets/forms%2Fssn", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" || !strings.Contains(r.body, "public_operations") {
+		t.Fatalf("getModuleSecret via public step: %d %s", r.code, r.body)
+	}
+	if r := bot.do("POST", "/api/v1/modules/contracts/phone.provider.v1/dial", map[string]any{}); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" || !strings.Contains(r.body, "public_operations") {
+		t.Fatalf("callModuleContract via public step: %d %s", r.code, r.body)
+	}
+	// Webhook-secret-forged step tokens are refused (core-only key).
+	secret := x.rt.Last("intake-mod").Secrets["togavsu_webhook_secret"]
+	forged, err := modules.IssueStepToken([]byte(secret), "intake-mod", 0, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bot.bearer = forged
+	if r := bot.do("GET", "/api/v1/matters", nil); r.code != http.StatusUnauthorized && r.json["code"] != "unauthenticated" && r.json["code"] != "scope_denied" {
+		t.Fatalf("forged step token should be refused: %d %s", r.code, r.body)
+	}
+	// Permanent install token + forged step header also refuses the limited path.
+	bot.bearer = x.rt.Last("intake-mod").Secrets["togavsu_api_token"]
+	if r := bot.do("GET", "/api/v1/matters", nil, modules.PublicStepHeader, forged); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("forged step header with install token: %d %s", r.code, r.body)
+	}
+	// Core-issued step header with install token enforces public_operations.
+	if r := bot.do("GET", "/api/v1/matters", nil, modules.PublicStepHeader, lastStep); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("listMatter with core step header: %d %s", r.code, r.body)
+	}
+
+	// Fresh IP key: rate counters are per IP+module in-process; reset by using a distinct
+	// Forwarded-For so earlier GETs in this test do not burn the budget.
+	x.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/modules.public_page_rate_per_minute", map[string]any{"value": 1})
+	anon2 := newClient(t, x.srv.URL)
+	if r := anon2.do("GET", "/p/intake-mod/intake", nil, "X-Forwarded-For", "203.0.113.50"); r.code != http.StatusOK {
+		t.Fatalf("first after rate set: %d %s", r.code, r.body)
+	}
+	if r := anon2.do("GET", "/p/intake-mod/intake", nil, "X-Forwarded-For", "203.0.113.50"); r.code != http.StatusTooManyRequests {
+		t.Fatalf("rate limited want 429 got %d %s", r.code, r.body)
+	}
+
+	// Over-limit large body: call the mux directly so req.Body is our counter (Codex P2).
+	// Burn the per-IP budget first, then POST a claimed 2 MiB body that must not be read.
+	burn := httptest.NewRequest(http.MethodGet, "/p/intake-mod/intake", nil)
+	burn.RemoteAddr = "203.0.113.51:9"
+	burnRec := httptest.NewRecorder()
+	x.app.Handler().ServeHTTP(burnRec, burn)
+	if burnRec.Code != http.StatusOK {
+		t.Fatalf("burn rate for large-body check: %d %s", burnRec.Code, burnRec.Body.String())
+	}
+	unread := &unreadBody{}
+	req := httptest.NewRequest(http.MethodPost, "/p/intake-mod/intake", unread)
+	req.RemoteAddr = "203.0.113.51:9"
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.ContentLength = 2 << 20
+	rec := httptest.NewRecorder()
+	x.app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("over-limit large body want 429 got %d %s", rec.Code, rec.Body.String())
+	}
+	if unread.reads > 0 {
+		t.Fatalf("rate-limited public page read the body (%d reads); must refuse before ReadAll", unread.reads)
+	}
+	// OPTIONS preflight is also rate-limited before the CORS answer.
+	opt := httptest.NewRequest(http.MethodOptions, "/p/intake-mod/intake", nil)
+	opt.RemoteAddr = "203.0.113.51:9"
+	opt.Header.Set("Origin", "null")
+	opt.Header.Set("Access-Control-Request-Method", "POST")
+	optRec := httptest.NewRecorder()
+	x.app.Handler().ServeHTTP(optRec, opt)
+	if optRec.Code != http.StatusTooManyRequests {
+		t.Fatalf("over-limit OPTIONS want 429 got %d %s", optRec.Code, optRec.Body.String())
+	}
+}
+
+// unreadBody counts Read calls — proves public-page rate checks run before ReadAll.
+type unreadBody struct{ reads int }
+
+func (u *unreadBody) Read(p []byte) (int, error) {
+	u.reads++
+	return 0, io.ErrUnexpectedEOF
+}
+
+func (u *unreadBody) Close() error { return nil }
+
+// TestCORE34StaffBanner covers banner listing and shell slot (CU2-01).
+func TestCORE34StaffBanner(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+
+	x.rt.Serve("banner-mod", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("banner"))
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "banner-mod", "Banner",
+			"  - scope: banner:show\n    reason: Staff banner.\n",
+			"staff_banner:\n  path: /banner\n  height: 40\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("banner-mod")
+
+	list := x.admin.must(http.StatusOK, "GET", "/api/v1/modules/banners", nil)
+	raw, _ := json.Marshal(list.json["data"])
+	if !bytes.Contains(raw, []byte("banner-mod")) {
+		t.Fatalf("banners: %s", list.body)
+	}
+	x.admin.must(http.StatusNoContent, "PUT", "/api/v1/modules/banner-order", map[string]any{
+		"order": []string{"banner-mod"},
+	})
+
+	tab := x.admin.do("GET", "/admin?tab=modules", nil)
+	if tab.code != http.StatusOK || !strings.Contains(tab.body, `id="banner-order"`) || !strings.Contains(tab.body, "banner-mod") {
+		t.Fatalf("modules tab missing banner-order form: %d", tab.code)
+	}
+	if _, problem := x.tabForm(x.admin, "banner-order", url.Values{"order": {"banner-mod"}}, nil); problem != "" {
+		t.Fatalf("banner-order form: %s", problem)
+	}
+
+	home := x.admin.do("GET", "/", nil)
+	if home.code != http.StatusOK || !strings.Contains(home.body, "staff-banner") || !strings.Contains(home.body, "banner-mod") {
+		snip := home.body
+		if len(snip) > 500 {
+			snip = snip[:500]
+		}
+		t.Fatalf("shell missing banner: %d %s", home.code, snip)
+	}
+	if strings.Contains(home.body, `style="height:`) || strings.Contains(home.body, `style="width:100%;height:`) {
+		t.Fatalf("banner must not use inline styles (staff CSP style-src self): %s", home.body)
+	}
+	if !strings.Contains(home.body, `height="40"`) || !strings.Contains(home.body, "staff-banner-h-40") {
+		t.Fatalf("banner must expose CSP-safe height: missing height=40 / staff-banner-h-40")
+	}
+	bridge := x.admin.do("GET", "/ui/static/banner-bridge.js", nil)
+	if bridge.code != http.StatusOK || !strings.Contains(bridge.body, "fromBanner") || !strings.Contains(bridge.body, "ev.source") {
+		t.Fatalf("banner-bridge missing source match: %d", bridge.code)
+	}
+	if strings.Contains(bridge.body, "ev.origin") {
+		t.Fatalf("banner-bridge must not filter on ev.origin (sandboxed banners post from opaque origin null)")
+	}
+}
+
+// TestCORE2BOpenAPIAndMCP: new operations appear in openapi and on /mcp (CU2-01).
+func TestCORE2BOpenAPIAndMCP(t *testing.T) {
+	x := newExt(t)
+	spec := x.admin.must(http.StatusOK, "GET", "/api/v1/openapi.json", nil)
+	body := spec.body
+	for _, id := range []string{"callModuleContract", "pushModuleContractEvent", "createModuleContractLink", "deleteModuleContractLink", "listModuleContractLinks", "listModuleBanners", "putModuleBannerOrder"} {
+		if !strings.Contains(body, `"operationId": "`+id+`"`) && !strings.Contains(body, `"operationId":"`+id+`"`) {
+			t.Fatalf("openapi missing %s", id)
+		}
+	}
+	for _, scope := range []string{"contracts:call", "contracts:provide", "public_pages:serve", "banner:show"} {
+		if !strings.Contains(body, scope) {
+			t.Fatalf("openapi missing scope %s", scope)
+		}
+	}
+	for _, key := range []string{"modules.public_page_rate_per_minute", "modules.public_page_max_bytes", "modules.contract_call_max_bytes", "modules.staff_banner_order"} {
+		if !strings.Contains(body, key) {
+			t.Fatalf("openapi missing setting %s", key)
+		}
+	}
+	list := x.admin.must(http.StatusOK, "POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+	toolsBody := list.body
+	for _, name := range []string{"callModuleContract", "pushModuleContractEvent", "createModuleContractLink", "deleteModuleContractLink", "listModuleBanners", "putModuleBannerOrder"} {
+		if !strings.Contains(toolsBody, `"`+name+`"`) {
+			t.Fatalf("/mcp tools/list missing %s", name)
+		}
+	}
+	noscope := newClient(t, x.srv.URL)
+	tok := x.admin.must(http.StatusCreated, "POST", "/api/v1/api-tokens", map[string]any{
+		"name": "core2b-noscope", "scopes": []string{"matters:read"},
+	})
+	noscope.bearer = str(t, tok.json, "secret")
+	if r := noscope.do("POST", "/api/v1/modules/contracts/phone.provider.v1/echo", map[string]any{}); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("call without contracts:call: %d %s", r.code, r.body)
+	}
+	if r := mcpCall(noscope, "callModuleContract", map[string]any{
+		"path": map[string]any{"contract": "phone.provider.v1", "operation": "echo"},
+		"body": map[string]any{},
+	}); !strings.Contains(r.body, "scope_denied") {
+		t.Fatalf("mcp call without scope: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE2BCU201ScopeDenied: every CORE-31/32/34 operation refuses without its scope
+// over REST and /mcp; unapproved public_pages:serve and banner:show also deny (CU2-01 / Codex P2).
+func TestCORE2BCU201ScopeDenied(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	const contract = "phone.provider.v1"
+
+	x.rt.Serve("phone-provider", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		})
+	})
+	x.rt.Serve("phone-consumer", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`ok`))
+		})
+	})
+	x.rt.Serve("pub-denied", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("should-not-serve"))
+		})
+	})
+	x.rt.Serve("banner-denied", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("banner"))
+		})
+	})
+
+	prov := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-provider", "Phone Provider",
+			"  - scope: contracts:provide\n    reason: Provide contract.\n",
+			"provides:\n  - contract: "+contract+"\n    operations:\n      - name: echo\n        path: /contracts/echo\n")
+	})
+	cons := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-consumer", "Phone Consumer",
+			"  - scope: contracts:call\n    reason: Call contract.\n",
+			"consumes:\n  - contract: "+contract+"\n")
+	})
+	pub := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "pub-denied", "Pub Denied",
+			"  - scope: public_pages:serve\n    reason: Public.\n    required: false\n",
+			"public_pages:\n  - path: /form\n")
+	})
+	ban := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "banner-denied", "Banner Denied",
+			"  - scope: banner:show\n    reason: Banner.\n    required: false\n",
+			"staff_banner:\n  path: /banner\n  height: 40\n")
+	})
+	for _, pkg := range [][]byte{prov, cons, pub, ban} {
+		if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+			t.Fatalf("install: %s", problem)
+		}
+	}
+	x.approveOnTab("phone-provider")
+	x.approveOnTab("phone-consumer")
+	// Decline public_pages:serve and banner:show.
+	for _, mod := range []string{"pub-denied", "banner-denied"} {
+		v, err := x.app.Modules.Get(context.Background(), x.adminP(), mod)
+		if err != nil {
+			t.Fatal(err)
+		}
+		form := url.Values{"module_id": {mod}}
+		for _, perm := range v.Permissions {
+			if perm.Decision != "pending" {
+				continue
+			}
+			if perm.Scope == "public_pages:serve" || perm.Scope == "banner:show" {
+				form.Set("scope:"+perm.Scope, "decline")
+				continue
+			}
+			form.Set("scope:"+perm.Scope, "approve")
+		}
+		if _, problem := x.tabForm(x.admin, "permissions", form, nil); problem != "" {
+			t.Fatalf("decline scopes on %s: %s", mod, problem)
+		}
+	}
+
+	noscope := newClient(t, x.srv.URL)
+	tok := x.admin.must(http.StatusCreated, "POST", "/api/v1/api-tokens", map[string]any{
+		"name": "core2b-cu201-noscope", "scopes": []string{"matters:read"},
+	})
+	noscope.bearer = str(t, tok.json, "secret")
+
+	denyREST := func(method, path string, body any) {
+		t.Helper()
+		r := noscope.do(method, path, body)
+		if r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+			t.Fatalf("%s %s without scope: %d %s", method, path, r.code, r.body)
+		}
+	}
+	denyMCP := func(name string, args map[string]any) {
+		t.Helper()
+		r := mcpCall(noscope, name, args)
+		if !strings.Contains(r.body, "scope_denied") {
+			t.Fatalf("mcp %s without scope: %d %s", name, r.code, r.body)
+		}
+	}
+
+	denyREST("GET", "/api/v1/modules/contract-links", nil)
+	denyMCP("listModuleContractLinks", map[string]any{})
+	denyREST("POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-consumer", "provider_id": "phone-provider",
+	})
+	denyMCP("createModuleContractLink", map[string]any{
+		"body": map[string]any{"contract": contract, "consumer_id": "phone-consumer", "provider_id": "phone-provider"},
+	})
+	denyREST("DELETE", "/api/v1/modules/contract-links/00000000-0000-4000-8000-000000000001", nil)
+	denyMCP("deleteModuleContractLink", map[string]any{
+		"path": map[string]any{"link_id": "00000000-0000-4000-8000-000000000001"},
+	})
+	denyREST("GET", "/api/v1/modules/banners", nil)
+	denyMCP("listModuleBanners", map[string]any{})
+	denyREST("PUT", "/api/v1/modules/banner-order", map[string]any{"order": []string{"banner-denied"}})
+	denyMCP("putModuleBannerOrder", map[string]any{
+		"body": map[string]any{"order": []string{"banner-denied"}},
+	})
+
+	// Module tokens: consumer lacks contracts:provide; provider lacks contracts:call.
+	consumer := newClient(t, x.srv.URL)
+	consumer.bearer = x.rt.Last("phone-consumer").Secrets["togavsu_api_token"]
+	if r := consumer.do("POST", "/api/v1/modules/contracts/"+contract+"/events", map[string]any{
+		"action": "ring", "payload": map[string]any{},
+	}); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("push event without contracts:provide: %d %s", r.code, r.body)
+	}
+	if r := mcpCall(consumer, "pushModuleContractEvent", map[string]any{
+		"path": map[string]any{"contract": contract},
+		"body": map[string]any{"action": "ring", "payload": map[string]any{}},
+	}); !strings.Contains(r.body, "scope_denied") {
+		t.Fatalf("mcp push without contracts:provide: %d %s", r.code, r.body)
+	}
+	provider := newClient(t, x.srv.URL)
+	provider.bearer = x.rt.Last("phone-provider").Secrets["togavsu_api_token"]
+	if r := provider.do("GET", "/api/v1/modules/contracts/"+contract+"/providers", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("list providers without contracts:call: %d %s", r.code, r.body)
+	}
+	if r := mcpCall(provider, "listModuleContractProviders", map[string]any{
+		"path": map[string]any{"contract": contract},
+	}); !strings.Contains(r.body, "scope_denied") {
+		t.Fatalf("mcp list providers without contracts:call: %d %s", r.code, r.body)
+	}
+
+	anon := newClient(t, x.srv.URL)
+	if r := anon.do("GET", "/p/pub-denied/form", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("public page without public_pages:serve: %d %s", r.code, r.body)
+	}
+	list := x.admin.must(http.StatusOK, "GET", "/api/v1/modules/banners", nil)
+	if strings.Contains(list.body, "banner-denied") {
+		t.Fatalf("ListStaffBanners included unapproved banner: %s", list.body)
+	}
+	if r := x.admin.do("GET", "/modules/banner-denied/banner", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("bannerPage without banner:show: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE32PublicAutosaveCSRF: forms-kit autosave through /p/ carries CSRF (Codex P1).
+func TestCORE32PublicAutosaveCSRF(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+
+	var lastAutosaveCSRF, lastAutosaveBody string
+	x.rt.Serve("intake-auto", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/form" && r.Method == http.MethodGet:
+				csrf := r.Header.Get(modules.PublicCSRFPassHeader)
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = w.Write([]byte(`<html><body><form class="tv-form" method="POST" action="/p/intake-auto/form" hx-post="/p/intake-auto/autosave" hx-include="this" hx-headers='{"X-CSRF-Token":"` + csrf + `"}'>` +
+					`<input type="hidden" name="csrf" value="` + csrf + `">` +
+					`<input name="name" value="">` +
+					`</form></body></html>`))
+			case r.URL.Path == "/autosave" && r.Method == http.MethodPost:
+				lastAutosaveCSRF = r.Header.Get(modules.PublicCSRFHeader)
+				if lastAutosaveCSRF == "" {
+					_ = r.ParseForm()
+					lastAutosaveCSRF = r.Form.Get("csrf")
+				}
+				raw, _ := io.ReadAll(r.Body)
+				lastAutosaveBody = string(raw)
+				w.WriteHeader(http.StatusNoContent)
+			case r.URL.Path == "/form":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				http.NotFound(w, r)
+			}
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "intake-auto", "Intake Auto",
+			"  - scope: public_pages:serve\n    reason: Public pages.\n",
+			"public_pages:\n  - path: /form\n  - path: /autosave\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("intake-auto")
+
+	anon := newClient(t, x.srv.URL)
+	page := anon.do("GET", "/p/intake-auto/form", nil)
+	if page.code != http.StatusOK || !strings.Contains(page.body, `name="csrf"`) {
+		t.Fatalf("public form: %d %s", page.code, page.body)
+	}
+	u, _ := url.Parse(x.srv.URL + "/p/intake-auto/form")
+	var csrf string
+	for _, c := range anon.http.Jar.Cookies(u) {
+		if c.Name == modules.PublicCSRFCookie {
+			csrf = c.Value
+		}
+	}
+	if csrf == "" {
+		t.Fatal("missing csrf cookie")
+	}
+	if r := anon.do("POST", "/p/intake-auto/autosave", url.Values{"csrf": {csrf}, "name": {"Avery"}}); r.code != http.StatusNoContent {
+		t.Fatalf("autosave with csrf: %d %s", r.code, r.body)
+	}
+	if lastAutosaveCSRF == "" && !strings.Contains(lastAutosaveBody, "Avery") {
+		t.Fatalf("module did not see autosave: csrf=%q body=%q", lastAutosaveCSRF, lastAutosaveBody)
+	}
+	if r := anon.do("POST", "/p/intake-auto/autosave", url.Values{"name": {"Nope"}}); r.code != http.StatusForbidden {
+		t.Fatalf("autosave without csrf: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE31OneProviderUnlessEveryMany: many:true cannot join a single-provider contract (Codex P2).
+func TestCORE31OneProviderUnlessEveryMany(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	const contract = "phone.provider.v1"
+	for _, id := range []string{"phone-a", "phone-b", "phone-cons"} {
+		name := id
+		x.rt.Serve(name, func(m testkit.Module) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"ok":true}`))
+			})
+		})
+	}
+	single := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-a", "Phone A",
+			"  - scope: contracts:provide\n    reason: Provide.\n",
+			"provides:\n  - contract: "+contract+"\n    operations:\n      - name: echo\n        path: /echo\n")
+	})
+	many := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-b", "Phone B",
+			"  - scope: contracts:provide\n    reason: Provide.\n",
+			"provides:\n  - contract: "+contract+"\n    many: true\n    operations:\n      - name: echo\n        path: /echo\n")
+	})
+	cons := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-cons", "Phone Cons",
+			"  - scope: contracts:call\n    reason: Call.\n",
+			"consumes:\n  - contract: "+contract+"\n")
+	})
+	for _, pkg := range [][]byte{single, many, cons} {
+		if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+			t.Fatalf("install: %s", problem)
+		}
+	}
+	x.approveOnTab("phone-a")
+	x.approveOnTab("phone-b")
+	x.approveOnTab("phone-cons")
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-cons", "provider_id": "phone-a",
+	})
+	if r := x.admin.do("POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-cons", "provider_id": "phone-b",
+	}); r.code != http.StatusConflict {
+		t.Fatalf("many provider joining single-provider contract: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE31ManyProviderSelect: consumer can call the second many-provider via header (Codex P2).
+func TestCORE31ManyProviderSelect(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	const contract = "phone.provider.v1"
+	var hitA, hitB int
+	for _, id := range []string{"phone-zoom", "phone-google"} {
+		id := id
+		x.rt.Serve(id, func(m testkit.Module) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if id == "phone-zoom" {
+					hitA++
+				} else {
+					hitB++
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"provider":"` + id + `"}`))
+			})
+		})
+	}
+	for _, id := range []string{"phone-zoom", "phone-google"} {
+		pkg := x.build(func(f map[string][]byte) {
+			f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], id, id,
+				"  - scope: contracts:provide\n    reason: Provide.\n",
+				"provides:\n  - contract: "+contract+"\n    many: true\n    operations:\n      - name: echo\n        path: /echo\n")
+		})
+		if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+			t.Fatalf("install %s: %s", id, problem)
+		}
+		x.approveOnTab(id)
+	}
+	cons := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-cons", "Cons",
+			"  - scope: contracts:call\n    reason: Call.\n",
+			"consumes:\n  - contract: "+contract+"\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, cons); problem != "" {
+		t.Fatalf("install cons: %s", problem)
+	}
+	x.approveOnTab("phone-cons")
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-cons", "provider_id": "phone-zoom",
+	})
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-cons", "provider_id": "phone-google",
+	})
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = x.rt.Last("phone-cons").Secrets["togavsu_api_token"]
+	listed := bot.must(http.StatusOK, "GET", "/api/v1/modules/contracts/"+contract+"/providers", nil)
+	if !strings.Contains(listed.body, "phone-zoom") || !strings.Contains(listed.body, "phone-google") {
+		t.Fatalf("providers list: %s", listed.body)
+	}
+	r := bot.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{"n": 1},
+		modules.ContractProviderHeader, "phone-google")
+	if r.code != http.StatusOK || !strings.Contains(r.body, "phone-google") || hitB != 1 || hitA != 0 {
+		t.Fatalf("second provider call: code=%d body=%s hitA=%d hitB=%d", r.code, r.body, hitA, hitB)
+	}
+	if r := bot.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{},
+		modules.ContractProviderHeader, "not-linked"); r.code != http.StatusNotFound {
+		t.Fatalf("unknown provider selector: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE32PublicStepRequiresApprovedScopes: public credential + op in public_operations
+// still needs the operation's scopes approved (CU2-01 / Codex P1).
+func TestCORE32PublicStepRequiresApprovedScopes(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	var lastStep string
+	x.rt.Serve("scope-mod", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			lastStep = r.Header.Get(modules.PublicStepHeader)
+			_, _ = w.Write([]byte("ok"))
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "scope-mod", "Scope Mod",
+			"  - scope: public_pages:serve\n    reason: Public.\n  - scope: contacts:write\n    reason: Intake.\n    required: false\n",
+			"public_pages:\n  - path: /form\npublic_operations:\n  - createContact\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	// Approve every pending scope except contacts:write (declined) so createContact stays unapproved.
+	v, err := x.app.Modules.Get(context.Background(), x.adminP(), "scope-mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"module_id": {"scope-mod"}}
+	for _, perm := range v.Permissions {
+		if perm.Decision != "pending" {
+			continue
+		}
+		if perm.Scope == "contacts:write" {
+			form.Set("scope:"+perm.Scope, "decline")
+			continue
+		}
+		form.Set("scope:"+perm.Scope, "approve")
+	}
+	if _, problem := x.tabForm(x.admin, "permissions", form, nil); problem != "" {
+		t.Fatalf("approve all but contacts:write: %s", problem)
+	}
+	anon := newClient(t, x.srv.URL)
+	if r := anon.do("GET", "/p/scope-mod/form", nil); r.code != http.StatusOK || lastStep == "" {
+		t.Fatalf("public page: %d step=%q body=%s", r.code, lastStep, r.body)
+	}
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = lastStep
+	r := bot.do("POST", "/api/v1/contacts", map[string]any{
+		"display_name": "No Scope", "kind": "person",
+	})
+	if r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("createContact without approved contacts:write: %d %s", r.code, r.body)
+	}
+	if strings.Contains(r.body, "public_operations") {
+		t.Fatalf("denial must be missing approved scope, not public_operations: %s", r.body)
+	}
+}
+
+// TestCORE32PublicOperationsCredentialLabel: install view names the required public credential.
+func TestCORE32PublicOperationsCredentialLabel(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	x.rt.Serve("intake-label", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("ok"))
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "intake-label", "Intake Label",
+			"  - scope: public_pages:serve\n    reason: Public.\n",
+			"public_pages:\n  - path: /x\npublic_operations:\n  - createContact\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	tab := x.admin.do("GET", "/admin?tab=modules", nil)
+	if tab.code != http.StatusOK || !strings.Contains(tab.body, "X-Togavsu-Public-Step") || !strings.Contains(tab.body, "required core-signed public credential") {
+		t.Fatalf("install view must name required public credential: %d", tab.code)
+	}
+}
+
+// TestCORE32PublicPageSVGSandbox: non-HTML /p/ responses still get the opaque CSP sandbox (Codex P1).
+func TestCORE32PublicPageSVGSandbox(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	x.rt.Serve("svg-mod", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "image/svg+xml")
+			_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>document.cookie</script></svg>`))
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "svg-mod", "SVG",
+			"  - scope: public_pages:serve\n    reason: Public.\n",
+			"public_pages:\n  - path: /badge.svg\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("svg-mod")
+	anon := newClient(t, x.srv.URL)
+	req, err := http.NewRequest(http.MethodGet, x.srv.URL+"/p/svg-mod/badge.svg", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := anon.http.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	csp := res.Header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "sandbox") || strings.Contains(csp, "allow-same-origin") {
+		t.Fatalf("SVG /p/ response must be opaque sandboxed: csp=%q ctype=%q", csp, res.Header.Get("Content-Type"))
+	}
+}
+
+// TestCORE32OpaqueOriginCORS: Origin null preflight on /p/ is answered (Codex P1 CORE-33).
+func TestCORE32OpaqueOriginCORS(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	x.rt.Serve("cors-mod", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html>ok</html>"))
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "cors-mod", "CORS",
+			"  - scope: public_pages:serve\n    reason: Public.\n",
+			"public_pages:\n  - path: /form\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("cors-mod")
+	req, err := http.NewRequest(http.MethodOptions, x.srv.URL+"/p/cors-mod/form", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Origin", "null")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "x-csrf-token, hx-request")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("preflight status %d", res.StatusCode)
+	}
+	if res.Header.Get("Access-Control-Allow-Origin") != "null" {
+		t.Fatalf("ACAO = %q", res.Header.Get("Access-Control-Allow-Origin"))
+	}
+	if !strings.Contains(strings.ToLower(res.Header.Get("Access-Control-Allow-Headers")), "x-csrf-token") {
+		t.Fatalf("Allow-Headers = %q", res.Header.Get("Access-Control-Allow-Headers"))
+	}
+}

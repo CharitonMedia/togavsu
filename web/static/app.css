@@ -241,6 +241,16 @@ td.nowrap{white-space:nowrap}
 .area-editor .editor-foot{font-size:.8rem;color:var(--muted);padding:.25rem 0}
 .area-editor form label{display:block;margin:.75rem 0}
 .area-module .module-frame{display:block;width:100%;height:calc(100vh - 150px);border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+/* CORE-34 staff banner slot: height via iframe height attr + stepped classes (CSP style-src self; no inline style). */
+.staff-banners{display:flex;flex-direction:column;gap:0;width:100%}
+.staff-banner{width:100%;overflow:hidden}
+.staff-banner[hidden]{display:none!important}
+.staff-banner-frame{display:block;width:100%;border:0;vertical-align:top;background:transparent}
+.staff-banner-h-24{height:24px}.staff-banner-h-32{height:32px}.staff-banner-h-40{height:40px}.staff-banner-h-48{height:48px}
+.staff-banner-h-56{height:56px}.staff-banner-h-64{height:64px}.staff-banner-h-72{height:72px}.staff-banner-h-80{height:80px}
+.staff-banner-h-96{height:96px}.staff-banner-h-112{height:112px}.staff-banner-h-128{height:128px}.staff-banner-h-160{height:160px}
+.staff-banner-h-192{height:192px}.staff-banner-h-224{height:224px}.staff-banner-h-256{height:256px}.staff-banner-h-320{height:320px}
+.staff-banner-h-400{height:400px}
 @media (max-width:800px){.glance{grid-template-columns:1fr 1fr}}
 /* A list page's New button: a closed panel above the list that opens the create form. */
 details.new{margin:0 0 14px}

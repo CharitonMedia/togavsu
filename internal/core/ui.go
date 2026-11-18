@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"html/template"
 	"io/fs"
 	"net/http"
 	"sort"
@@ -30,6 +31,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 	"github.com/CharitonMedia/togavsu/web"
 	"github.com/CharitonMedia/togavsu/web/static"
@@ -80,6 +82,7 @@ type UI struct {
 	Catalog *dashboard.Catalog
 	inner   http.Handler
 	dash    *http.ServeMux
+	dashH   *dashboard.Handler
 	helpMux *http.ServeMux
 	cal     *http.ServeMux
 	shell   frame.Shell
@@ -162,11 +165,13 @@ func MountUI(ctx context.Context, app *App, opt UIOptions) (*UI, error) {
 			}
 			return aiCallPanel(r, p, app.ext.Modules, app.Settings)
 		}
+		// Banners are wired in WireStaffBanners after openModules (Modules is nil here).
 	}
 	ledger := audit.NewPostgres(app.Pool)
 	dh.Audit = func(r *http.Request, p domain.Principal, limit int) ([]dashboard.AuditRow, error) {
 		return AuditRows(r.Context(), p, ledger, app, limit)
 	}
+	u.dashH = dh
 	u.dash = dh.Routes()
 	u.shell = dh.Frame
 	u.helpMux = (&help.Handler{Svc: hs, Principal: u.principal}).Routes()
@@ -175,6 +180,20 @@ func MountUI(ctx context.Context, app *App, opt UIOptions) (*UI, error) {
 	}
 	u.inner = u.route(app.setupGate(app.passwordChangeGate(app.mux)))
 	return u, nil
+}
+
+// WireStaffBanners attaches CORE-34 banner HTML to the shell after the module runtime is open.
+func (u *UI) WireStaffBanners(mods *modules.Service) {
+	if u == nil || u.dashH == nil || mods == nil {
+		return
+	}
+	u.dashH.Banners = func(ctx context.Context) (template.HTML, error) {
+		list, err := mods.ListStaffBanners(ctx)
+		if err != nil {
+			return "", err
+		}
+		return modules.BannerHTML(list), nil
+	}
 }
 
 // Handler is the whole site: the module runtime's domain router and include= reader,

@@ -41,7 +41,19 @@ func ownModuleSecret(p domain.Principal, module string) error {
 }
 
 // PutSecret stores a sealed secret for the calling module (putModuleSecret).
+// When createIfAbsent is true (If-None-Match: * on the HTTP PUT), an existing
+// name answers conflict and is left unchanged so concurrent EnsureKey creators
+// cannot overwrite each other's AES key.
 func (s *Service) PutSecret(ctx context.Context, p domain.Principal, module, name, value string) error {
+	return s.putSecret(ctx, p, module, name, value, false)
+}
+
+// PutSecretIfAbsent is putModuleSecret with If-None-Match: * semantics.
+func (s *Service) PutSecretIfAbsent(ctx context.Context, p domain.Principal, module, name, value string) error {
+	return s.putSecret(ctx, p, module, name, value, true)
+}
+
+func (s *Service) putSecret(ctx context.Context, p domain.Principal, module, name, value string, createIfAbsent bool) error {
 	if err := ownModuleSecret(p, module); err != nil {
 		return err
 	}
@@ -71,11 +83,27 @@ func (s *Service) PutSecret(ctx context.Context, p domain.Principal, module, nam
 		if exists == 0 && n >= maxSecretsPerModule {
 			return domain.Invalid("name", "a module may store at most 512 secrets")
 		}
-		if _, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_secrets (module_id, name, value, created_at, updated_at)
+		if createIfAbsent {
+			if exists > 0 {
+				return domain.Conflict("secret " + name + " already exists")
+			}
+			res, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_secrets (module_id, name, value, created_at, updated_at)
+VALUES ($1,$2,$3,$4,$4)
+ON CONFLICT (module_id, name) DO NOTHING`,
+				module, name, sealed, now)
+			if err != nil {
+				return err
+			}
+			if rows, _ := res.RowsAffected(); rows == 0 {
+				return domain.Conflict("secret " + name + " already exists")
+			}
+		} else {
+			if _, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_secrets (module_id, name, value, created_at, updated_at)
 VALUES ($1,$2,$3,$4,$4)
 ON CONFLICT (module_id, name) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
-			module, name, sealed, now); err != nil {
-			return err
+				module, name, sealed, now); err != nil {
+				return err
+			}
 		}
 		_, err := s.d.Audit.Record(ctx, p, audit.Change{
 			Entity: "module_secret", EntityID: domain.ID(module), Field: "name", New: name, Reason: "putModuleSecret",

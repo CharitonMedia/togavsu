@@ -7062,7 +7062,15 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(uncovered, [])
         self.assertEqual(
             exempt,
-            ["putFileChunk", "exchangeModuleDeviceGrant", "putModuleSecret", "deleteModuleSecret"],
+            [
+                "putFileChunk",
+                "exchangeModuleDeviceGrant",
+                "putModuleSecret",
+                "deleteModuleSecret",
+                "callModuleContract",
+                "pushModuleContractEvent",
+                "putModuleBannerOrder",
+            ],
         )
         self.assertEqual(_operation(self.spec, "cancelTrustReplenishment")["x-togavsu-events"], ["trust.replenishment_cancelled"])
         self.assertEqual(_operation(self.spec, "satisfyTrustReplenishment")["x-togavsu-events"], ["trust.replenishment_satisfied"])

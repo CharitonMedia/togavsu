@@ -1,0 +1,464 @@
+package forms
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func TestAutosavePatchApply(t *testing.T) {
+	dst := Answers{"keep": {Value: "1"}}
+	trueUnknown := true
+	AutosavePatch{Answers: Answers{"a": {Value: "x"}}}.Apply(&dst)
+	AutosavePatch{Field: "b", Value: "y"}.Apply(&dst)
+	AutosavePatch{Field: "c", Unknown: &trueUnknown}.Apply(&dst)
+	if dst.Get("keep").StringValue() != "1" || dst.Get("a").StringValue() != "x" || dst.Get("b").StringValue() != "y" {
+		t.Fatalf("dst = %#v", dst)
+	}
+	if !dst.Get("c").Unknown || dst.Get("c").Value != nil {
+		t.Fatalf("unknown answer = %#v", dst["c"])
+	}
+}
+
+func TestAutosaveHandler(t *testing.T) {
+	var stored Answers
+	h := AutosaveHandler(func(r *http.Request, patch AutosavePatch) (Answers, error) {
+		patch.Apply(&stored)
+		return stored, nil
+	})
+	body := `{"field":"name","value":"Avery"}`
+	req := httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if stored.Get("name").StringValue() != "Avery" {
+		t.Fatalf("stored = %#v", stored)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/autosave?echo=1", strings.NewReader(`{"answers":{"email":{"value":"a@example.com"}}}`))
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("echo code = %d", rec.Code)
+	}
+	var got Answers
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Get("email").StringValue() != "a@example.com" {
+		t.Fatalf("echo = %#v", got)
+	}
+
+	hFail := AutosaveHandler(func(*http.Request, AutosavePatch) (Answers, error) {
+		return nil, errors.New("nope")
+	})
+	rec = httptest.NewRecorder()
+	hFail.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"field":"x","value":"1"}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("fail code = %d", rec.Code)
+	}
+}
+
+func TestParseFormAnswers(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "name", Type: TypeText, AllowUnknown: true},
+		{ID: "addr", Type: TypeAddress},
+		{ID: "tags", Type: TypeMultiSelect, Options: []Option{{Value: "x"}, {Value: "y"}}},
+		{ID: "ok", Type: TypeBoolean},
+	}}}}}}
+	got := ParseFormAnswers(form, map[string][]string{
+		"name":           {"Avery"},
+		"name.__unknown": {"1"},
+		"addr.line1":     {"1 Main"},
+		"addr.city":      {"Town"},
+		"addr.state":     {"MO"},
+		"addr.postal":    {"65101"},
+		"tags":           {"x", "y"},
+		"ok":             {"true"},
+	})
+	if !got.Get("name").Unknown {
+		t.Fatalf("name should be unknown: %#v", got["name"])
+	}
+	addr := got.Get("addr").AddressValue()
+	if addr.Line1 != "1 Main" || addr.City != "Town" || addr.State != "MO" || addr.Postal != "65101" {
+		t.Fatalf("addr = %#v", addr)
+	}
+	if len(got.Get("tags").StringsValue()) != 2 {
+		t.Fatalf("tags = %#v", got["tags"])
+	}
+	if !got.Get("ok").BoolValue() {
+		t.Fatal("ok should be true")
+	}
+}
+
+// TestClearUnknownThenSaveValue: unchecking "I don't know" (hidden 0 + last value)
+// clears Unknown so a later value can be stored (Codex P2).
+func TestClearUnknownThenSaveValue(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "name", Type: TypeText, AllowUnknown: true},
+	}}}}}}
+	var buf strings.Builder
+	if err := RenderScreen(&buf, form.Tracks[0].Screens[0], Answers{"name": {Unknown: true}}, AudiencePublic, RenderOptions{
+		AutosaveURL: "/autosave",
+		FormAction:  "/submit",
+		CSRFToken:   "tok",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, `name="name.__unknown" value="0"`) || !strings.Contains(html, `name="name.__unknown" value="1"`) {
+		t.Fatalf("render must emit hidden 0 + checkbox 1:\n%s", html)
+	}
+	if !strings.Contains(UnknownToggleJS, ".__unknown") || !strings.Contains(UnknownToggleJS, "disabled") {
+		t.Fatal("UnknownToggleJS must toggle disabled on the field controls")
+	}
+
+	stored := Answers{"name": {Unknown: true}}
+	// Uncheck: HTMX includes hidden 0 (checkbox omitted).
+	clear := ParseFormAnswers(form, map[string][]string{
+		"name.__unknown": {"0"},
+		"csrf":           {"tok"},
+	})
+	stored = MergeFormSubmit(stored, clear, form)
+	if stored.Get("name").Unknown {
+		t.Fatalf("explicit 0 must clear Unknown: %#v", stored["name"])
+	}
+	// Save a real value after clearing.
+	save := ParseFormAnswers(form, map[string][]string{
+		"name":           {"Avery"},
+		"name.__unknown": {"0"},
+		"csrf":           {"tok"},
+	})
+	stored = MergeFormSubmit(stored, save, form)
+	if stored.Get("name").Unknown || stored.Get("name").StringValue() != "Avery" {
+		t.Fatalf("after clear+save: %#v", stored["name"])
+	}
+	// Checked again: hidden 0 then checkbox 1 → last wins.
+	idk := ParseFormAnswers(form, map[string][]string{
+		"name.__unknown": {"0", "1"},
+	})
+	if !idk.Get("name").Unknown {
+		t.Fatalf("0 then 1 must be unknown: %#v", idk["name"])
+	}
+}
+
+// TestClearUnknownThenSaveValueMasked: unchecking "I don't know" on a masked field
+// must clear Unknown while keeping stored ciphertext (Codex P2).
+func TestClearUnknownThenSaveValueMasked(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "ssn", Type: TypeMasked, AllowUnknown: true, SecretKey: "forms/ssn"},
+	}}}}}}
+	cipher := CipherPrefix + "kept-cipher"
+	stored := Answers{"ssn": {Unknown: true, Value: cipher}}
+	clear := ParseFormAnswers(form, map[string][]string{
+		"ssn.__unknown": {"0"},
+		"ssn":           {""},
+		"csrf":          {"tok"},
+	})
+	stored = MergeFormSubmit(stored, clear, form)
+	if stored.Get("ssn").Unknown {
+		t.Fatalf("explicit 0 must clear Unknown on masked: %#v", stored["ssn"])
+	}
+	if stored.Get("ssn").StringValue() != cipher {
+		t.Fatalf("empty masked clear must keep ciphertext: %#v", stored["ssn"])
+	}
+	save := ParseFormAnswers(form, map[string][]string{
+		"ssn":           {"123-45-6789"},
+		"ssn.__unknown": {"0"},
+		"csrf":          {"tok"},
+	})
+	stored = MergeFormSubmit(stored, save, form)
+	if stored.Get("ssn").Unknown || stored.Get("ssn").StringValue() != "123-45-6789" {
+		t.Fatalf("after clear+save masked: %#v", stored["ssn"])
+	}
+
+	// Field-level autosave path (AutosavePatch.Apply) must match.
+	again := Answers{"ssn": {Unknown: true, Value: cipher}}
+	unk := false
+	AutosavePatch{form: form, Field: "ssn", Unknown: &unk, Value: ""}.Apply(&again)
+	if again.Get("ssn").Unknown || again.Get("ssn").StringValue() != cipher {
+		t.Fatalf("AutosavePatch clear unknown masked: %#v", again["ssn"])
+	}
+}
+
+func TestOfflineQueueJSPresent(t *testing.T) {
+	if !strings.Contains(OfflineQueueJS, "localStorage") || !strings.Contains(OfflineQueueJS, "TogavsuFormsOffline") {
+		t.Fatal("OfflineQueueJS missing expected pieces")
+	}
+	if !strings.Contains(OfflineQueueJS, "_togavsuBody") || !strings.Contains(OfflineQueueJS, "htmx:configRequest") {
+		t.Fatal("OfflineQueueJS must capture the HTMX body for replay")
+	}
+	if !strings.Contains(OfflineQueueJS, "application/x-www-form-urlencoded") {
+		t.Fatal("OfflineQueueJS must replay the whole-form urlencoded body")
+	}
+	if !strings.Contains(OfflineQueueJS, "data-autosave-masked") {
+		t.Fatal("OfflineQueueJS must strip empty masked fields from whole-form posts")
+	}
+	if !strings.Contains(OfflineQueueJS, "X-CSRF-Token") || !strings.Contains(OfflineQueueJS, "csrfToken") {
+		t.Fatal("OfflineQueueJS must carry X-CSRF-Token on enqueue and flush")
+	}
+	if !strings.Contains(OfflineQueueJS, "var mem") {
+		t.Fatal("OfflineQueueJS must keep a memory fallback when localStorage throws on opaque origin")
+	}
+}
+
+func TestAutosaveHandlerOpaqueCORS(t *testing.T) {
+	h := AutosaveHandler(func(*http.Request, AutosavePatch) (Answers, error) {
+		return Answers{}, nil
+	})
+	req := httptest.NewRequest(http.MethodOptions, "/autosave", nil)
+	req.Header.Set("Origin", "null")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "x-csrf-token,hx-request")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("preflight code = %d", rec.Code)
+	}
+	if rec.Header().Get("Access-Control-Allow-Origin") != "null" {
+		t.Fatalf("ACAO = %q", rec.Header().Get("Access-Control-Allow-Origin"))
+	}
+	if !strings.Contains(strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers")), "x-csrf-token") {
+		t.Fatalf("Allow-Headers = %q", rec.Header().Get("Access-Control-Allow-Headers"))
+	}
+}
+
+// TestOpaqueOriginOfflineQueueJS runs the Node behavioural check that localStorage
+// SecurityError (opaque CSP origin) still queues and flushes with the memory fallback.
+func TestOpaqueOriginOfflineQueueJS(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available for opaque-origin offline queue check")
+	}
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("no caller")
+	}
+	script := filepath.Join(filepath.Dir(file), "opaque_origin_test.js")
+	out, err := exec.Command(node, script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("opaque-origin offline queue: %v\n%s", err, out)
+	}
+}
+
+func TestAutosaveHandlerAcceptsFormURLEncoded(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "name", Type: TypeText},
+		{ID: "email", Type: TypeEmail},
+	}}}}}}
+	var stored Answers
+	h := AutosaveHandlerForm(form, func(r *http.Request, patch AutosavePatch) (Answers, error) {
+		patch.Apply(&stored)
+		return stored, nil
+	})
+	body := "name=Avery&email=a%40example.com"
+	req := httptest.NewRequest(http.MethodPost, "/autosave?echo=1", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if stored.Get("name").StringValue() != "Avery" || stored.Get("email").StringValue() != "a@example.com" {
+		t.Fatalf("stored = %#v", stored)
+	}
+}
+
+func TestAutosaveOfflineReplayDoesNotWipe(t *testing.T) {
+	dst := Answers{"name": {Value: "Avery"}}
+	AutosavePatch{Offline: true, Field: "name"}.Apply(&dst)
+	if dst.Get("name").StringValue() != "Avery" {
+		t.Fatalf("offline empty patch wiped value: %#v", dst["name"])
+	}
+	AutosavePatch{Offline: true, Answers: Answers{"name": {Value: "Blake"}}}.Apply(&dst)
+	if dst.Get("name").StringValue() != "Blake" {
+		t.Fatalf("offline answers not applied: %#v", dst["name"])
+	}
+}
+
+// TestAutosaveHXTriggerNameDoesNotErase is the Codex P1: HTMX always sends
+// HX-Trigger-Name for the named control; that must not clear the just-saved value.
+func TestAutosaveHXTriggerNameDoesNotErase(t *testing.T) {
+	var stored Answers
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "name", Type: TypeText},
+	}}}}}}
+	h := AutosaveHandlerForm(form, func(r *http.Request, patch AutosavePatch) (Answers, error) {
+		patch.Apply(&stored)
+		return stored, nil
+	})
+	req := httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("name=Avery&csrf=tok"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Trigger-Name", "name")
+	req.Header.Set("X-CSRF-Token", "tok")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if stored.Get("name").StringValue() != "Avery" {
+		t.Fatalf("HX-Trigger-Name erased name: %#v", stored)
+	}
+	// "I don't know" checkbox triggers as name.__unknown — must not invent a junk key.
+	req = httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("name.__unknown=1&csrf=tok"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Trigger-Name", "name.__unknown")
+	req.Header.Set("X-CSRF-Token", "tok")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if _, junk := stored["name.__unknown"]; junk {
+		t.Fatalf("junk key from HX-Trigger-Name: %#v", stored)
+	}
+	if !stored.Get("name").Unknown {
+		t.Fatalf("unknown not applied: %#v", stored["name"])
+	}
+}
+
+// TestAutosaveEndToEndHTMXShape renders a form and posts exactly what HTMX would
+// send for whole-form autosave (headers included) for a normal field, an
+// untouched masked field (omitted from body), and an offline form-urlencoded
+// replay; checks stored answers after each.
+func TestAutosaveEndToEndHTMXShape(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "name", Type: TypeText, Label: "Name"},
+		{ID: "ssn", Type: TypeMasked, Label: "SSN", SecretKey: "forms/ssn"},
+	}}}}}}
+	sealed := CipherPrefix + "already-sealed"
+	stored := Answers{"ssn": {Value: sealed}}
+
+	var buf strings.Builder
+	if err := RenderScreen(&buf, form.Tracks[0].Screens[0], stored, AudiencePublic, RenderOptions{
+		AutosaveURL: "/autosave",
+		FormAction:  "/submit",
+		CSRFToken:   "csrf-tok",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, `hx-post="/autosave"`) || !strings.Contains(html, `hx-include="this"`) {
+		t.Fatalf("render missing whole-form autosave attrs: %s", html)
+	}
+	if !strings.Contains(html, `data-autosave-masked="1"`) {
+		t.Fatalf("masked field must carry data-autosave-masked: %s", html)
+	}
+	if strings.Contains(html, `name="ssn" value="`) {
+		t.Fatalf("unrevealed masked must render empty: %s", html)
+	}
+
+	h := AutosaveHandlerForm(form, func(r *http.Request, patch AutosavePatch) (Answers, error) {
+		patch.Apply(&stored)
+		return stored, nil
+	})
+
+	// 1) Whole form: name changed; empty masked omitted (OfflineQueueJS / configRequest strip).
+	req := httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("name=Avery&csrf=csrf-tok"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("X-CSRF-Token", "csrf-tok")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent || stored.Get("name").StringValue() != "Avery" {
+		t.Fatalf("normal field: code=%d stored=%#v", rec.Code, stored)
+	}
+	if stored.Get("ssn").StringValue() != sealed {
+		t.Fatalf("normal field save must not touch ssn: %#v", stored["ssn"])
+	}
+
+	// 2) Whole form with empty masked posted — MergeFormSubmit keeps sealed value.
+	req = httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("name=Avery&ssn=&csrf=csrf-tok"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("X-CSRF-Token", "csrf-tok")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent || stored.Get("ssn").StringValue() != sealed {
+		t.Fatalf("empty masked wiped ssn: code=%d stored=%#v", rec.Code, stored)
+	}
+
+	// 3) Offline replay: same whole-form urlencoded shape.
+	req = httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("name=Blake&csrf=csrf-tok"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("X-Togavsu-Forms-Offline", "1")
+	req.Header.Set("X-CSRF-Token", "csrf-tok")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent || stored.Get("name").StringValue() != "Blake" {
+		t.Fatalf("offline replay: code=%d stored=%#v", rec.Code, stored)
+	}
+	if stored.Get("ssn").StringValue() != sealed {
+		t.Fatalf("offline replay must not touch ssn: %#v", stored["ssn"])
+	}
+}
+
+func TestParseFormAnswersRepeating(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "kids", Type: TypeRepeating, Fields: []Field{{ID: "name", Type: TypeText}}},
+	}}}}}}
+	got := ParseFormAnswers(form, map[string][]string{
+		"kids[0]." + RowIDKey: {"id-0"},
+		"kids[0].name":        {"Ada"},
+		"kids[1]." + RowIDKey: {"id-1"},
+		"kids[1].name":        {"Bea"},
+	})
+	rows := got.Get("kids").RowsValue()
+	if len(rows) != 2 || rows[0]["name"].StringValue() != "Ada" || rows[1]["name"].StringValue() != "Bea" {
+		t.Fatalf("repeating rows = %#v", got["kids"])
+	}
+	if rowIDOf(rows[0]) != "id-0" || rowIDOf(rows[1]) != "id-1" {
+		t.Fatalf("row ids = %#v", rows)
+	}
+}
+
+func TestParseFormAnswersRejectsHugeRepeatingIndex(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "kids", Type: TypeRepeating, Fields: []Field{{ID: "name", Type: TypeText}}},
+	}}}}}}
+	got := ParseFormAnswers(form, map[string][]string{
+		"kids[0].name":          {"Ada"},
+		"kids[2000000000].name": {"Boom"},
+		"kids[100].name":        {"TooHigh"}, // MaxRepeatingIndex is 99
+	})
+	rows := got.Get("kids").RowsValue()
+	if len(rows) != 1 || rows[0]["name"].StringValue() != "Ada" {
+		t.Fatalf("huge index must not allocate; got %#v", got["kids"])
+	}
+}
+
+func TestRendererToAutosaveHandler(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "name", Type: TypeText, Label: "Name"},
+	}}}}}}
+	screen := form.Tracks[0].Screens[0]
+	var buf strings.Builder
+	if err := RenderScreen(&buf, screen, Answers{}, AudiencePublic, RenderOptions{
+		AutosaveURL: "/autosave",
+		FormAction:  "/submit",
+		CSRFToken:   "tok",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, `hx-post="/autosave"`) || !strings.Contains(html, `name="name"`) {
+		t.Fatalf("render: %s", html)
+	}
+	var stored Answers
+	h := AutosaveHandlerForm(form, func(r *http.Request, patch AutosavePatch) (Answers, error) {
+		patch.Apply(&stored)
+		return stored, nil
+	})
+	req := httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader("name=FromRender"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent || stored.Get("name").StringValue() != "FromRender" {
+		t.Fatalf("renderer→handler: code=%d stored=%#v", rec.Code, stored)
+	}
+}

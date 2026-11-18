@@ -79,6 +79,7 @@
     </ul></div></details>
 </header>
 <main id="main" class="page{{if .Area}} area-{{.Area}}{{end}}">
+{{if .Banners}}{{.Banners}}{{end}}
 <div class="titlebar"><h1>{{.Title}}</h1>{{if .HelpPath}}<a class="help-q" href="{{.HelpPath}}" aria-label="Help for this page" title="Help for this page">?</a>{{end}}</div>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}

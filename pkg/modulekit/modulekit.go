@@ -21,6 +21,7 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -140,6 +141,50 @@ func Scopes() []string { return identity.Scopes() }
 
 // KnownScope reports whether the core accepts scope as a permission.
 func KnownScope(scope string) bool { return identity.KnownScope(scope) }
+
+// CORE-32 public-page step tokens and CSRF helpers (also used by CORE-31 HMAC signing).
+const (
+	PublicStepHeader     = modules.PublicStepHeader
+	PublicCSRFCookie     = modules.PublicCSRFCookie
+	PublicCSRFHeader     = modules.PublicCSRFHeader
+	PublicCSRFPassHeader = modules.PublicCSRFPassHeader
+	SignatureHeader      = modules.SignatureHeader
+)
+
+// StepToken is a verified public-page step token (CORE-32).
+type StepToken = modules.StepToken
+
+// IssueStepToken / VerifyStepToken are the HMAC step-token helpers for public pages.
+func IssueStepToken(secret []byte, moduleID string, ttl time.Duration, now time.Time) (string, error) {
+	return modules.IssueStepToken(secret, moduleID, ttl, now)
+}
+
+// VerifyStepToken checks an HMAC step token.
+func VerifyStepToken(secret []byte, token string, now time.Time) (StepToken, error) {
+	return modules.VerifyStepToken(secret, token, now)
+}
+
+// IssuePublicCSRF / CheckPublicCSRF are the random double-submit CSRF helpers.
+func IssuePublicCSRF() (string, error) { return modules.IssuePublicCSRF() }
+func CheckPublicCSRF(cookie, submitted string) error {
+	return modules.CheckPublicCSRF(cookie, submitted)
+}
+
+// IssueSignedPublicCSRF / CheckSignedPublicCSRF are the HMAC CSRF helpers used on /p/{id}/.
+func IssueSignedPublicCSRF(secret []byte, moduleID string, ttl time.Duration, now time.Time) (string, error) {
+	return modules.IssueSignedPublicCSRF(secret, moduleID, ttl, now)
+}
+func CheckSignedPublicCSRF(secret []byte, moduleID, cookie, submitted string, now time.Time) error {
+	return modules.CheckSignedPublicCSRF(secret, moduleID, cookie, submitted, now)
+}
+
+// SignWebhook / VerifyWebhook are the HMAC scheme contract calls share with events.
+func SignWebhook(secret string, at time.Time, body []byte) string {
+	return modules.SignWebhook(secret, at, body)
+}
+func VerifyWebhook(secret, header string, body []byte, now time.Time, tolerance time.Duration) error {
+	return modules.VerifyWebhook(secret, header, body, now, tolerance)
+}
 
 // Install refusal codes the checks return in a *domain.APIError's Code (see Code).
 const (

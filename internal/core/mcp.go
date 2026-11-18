@@ -183,7 +183,18 @@ func (a *App) mcpCaller(r *http.Request) (domain.Principal, error) {
 		if !ok || strings.TrimSpace(token) == "" {
 			return domain.Principal{}, domain.Unauthenticated("authorization must be a bearer token")
 		}
-		c, err := a.Identity.Authenticate(r.Context(), identity.Presented{Bearer: strings.TrimSpace(token)})
+		bearer := strings.TrimSpace(token)
+		if modules.LooksLikePublicStep(bearer) && a.ext != nil && a.ext.Modules != nil {
+			moduleID, _, err := a.ext.Modules.AuthenticatePublicStep(r.Context(), bearer)
+			if err != nil {
+				return domain.Principal{}, err
+			}
+			if r.Header.Get(modules.PublicStepHeader) == "" {
+				r.Header.Set(modules.PublicStepHeader, bearer)
+			}
+			return domain.Principal{Source: domain.SourceModule, ModuleID: moduleID}, nil
+		}
+		c, err := a.Identity.Authenticate(r.Context(), identity.Presented{Bearer: bearer})
 		return c.Principal, err
 	}
 	return a.principal(r)
@@ -282,7 +293,7 @@ func (a *App) callTool(w http.ResponseWriter, r *http.Request, req rpcReq) {
 		rpcReply(w, req.ID, nil, &rpcErr{Code: -32602, Message: "invalid tool arguments"})
 		return
 	}
-	for _, h := range []string{"Authorization", "Cookie", "X-CSRF-Token", "Idempotency-Key", modules.TaskAuthorizationHeader, modules.ContextHeader} {
+	for _, h := range []string{"Authorization", "Cookie", "X-CSRF-Token", "Idempotency-Key", modules.TaskAuthorizationHeader, modules.ContextHeader, modules.PublicStepHeader} {
 		if v := r.Header.Get(h); v != "" {
 			inner.Header.Set(h, v)
 		}

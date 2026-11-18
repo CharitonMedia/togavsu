@@ -62,11 +62,13 @@ matter_parties
 matter_walls
 matters
 module_alerts
+module_contract_links
 module_deliveries
 module_devices
 module_event_cursor
 module_packages
 module_permissions
+module_public_pages
 module_secrets
 module_settings
 modules

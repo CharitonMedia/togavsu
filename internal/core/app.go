@@ -400,6 +400,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.Modules = ext.Modules
+	ui.WireStaffBanners(ext.Modules)
 	docs.Files.SetMailFilingCheck(app.optionalMailFilingFromContext)
 	app.Practice.SetMailFilingCheck(app.requireMailFilingFromContext)
 	ext.Modules.SetMailMatchingCheck(app.verifyMailMatchingGrant)
@@ -444,12 +445,17 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	if !ok {
 		return fail(errors.New("core: the module handler is not a ServeMux"))
 	}
+	contractMux, ok := ext.modH.ContractRoutes().(*http.ServeMux)
+	if !ok {
+		return fail(errors.New("core: the module contract handler is not a ServeMux"))
+	}
 	mkMux, ok := (&marketplace.Handler{Svc: ext.Market, Principal: app.principal}).Routes().(*http.ServeMux)
 	if !ok {
 		return fail(errors.New("core: the marketplace handler is not a ServeMux"))
 	}
 	last := len(app.domains) - 1
-	app.domains = append(app.domains[:last:last], modMux, mkMux, app.domains[last])
+	// contractMux ahead of modMux so CORE-31 paths win without ServeMux pattern conflicts.
+	app.domains = append(app.domains[:last:last], contractMux, modMux, mkMux, app.domains[last])
 	app.uiMuxes = []*http.ServeMux{ui.helpMux, ui.dash}
 	// Each request reads a setting or an identity user once however many rows ask
 	// (AC-017); the memo ends with the request, so changes apply from the next one.

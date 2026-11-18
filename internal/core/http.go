@@ -241,6 +241,25 @@ func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 			in.CSRF = r.FormValue("csrf")
 		}
 	}
+	// CORE-32: core-signed public-page credential as Authorization bearer. Limited to
+	// public_operations first (refusePublicStepOutsideOps in principal), then the
+	// route's contract scopes against the module's approved install scopes
+	// (requirePublicStepRouteScopes). Modules receive the credential on each /p/
+	// proxy as X-Togavsu-Public-Step. Scope checks run after the public_operations
+	// gate so a missing contracts:call (etc.) does not mask a public_operations denial.
+	if in.Bearer != "" && in.SessionToken == "" && modules.LooksLikePublicStep(in.Bearer) && a.ext != nil && a.ext.Modules != nil {
+		moduleID, scopes, err := a.ext.Modules.AuthenticatePublicStep(r.Context(), in.Bearer)
+		if err != nil {
+			return identity.Caller{}, shared(err)
+		}
+		if r.Header.Get(modules.PublicStepHeader) == "" {
+			r.Header.Set(modules.PublicStepHeader, in.Bearer)
+		}
+		return identity.Caller{
+			Principal: domain.Principal{Source: domain.SourceModule, ModuleID: moduleID},
+			Scopes:    scopes,
+		}, nil
+	}
 	c, err := a.Identity.Authenticate(r.Context(), in)
 	if err != nil {
 		return identity.Caller{}, shared(err)
@@ -346,6 +365,15 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 	if err != nil {
 		return p, err
 	}
+	// CORE-32: a public-page step credential is limited to public_operations on every
+	// route, including after viewer delegation and before service-call elevation.
+	// Approved install scopes are still required for the route (CU2-01).
+	if err := a.refusePublicStepOutsideOps(r, p); err != nil {
+		return p, err
+	}
+	if err := a.requirePublicStepRouteScopes(r, c); err != nil {
+		return p, err
+	}
 	if moduleOwn(p) {
 		runtime := moduleRuntimeRoute(r, p)
 		if err := a.allowServiceCall(r, p); err != nil {
@@ -415,6 +443,7 @@ var serviceDelegation = map[string]bool{
 // for a service principal or a noninteractive grant workflow (CORE-01). A task-authorization
 // header only skips this gate for delegated_viewer_or_noninteractive (the grant path);
 // a junk header on an unmarked write still answers scope_denied.
+// Public-step limits are enforced in refusePublicStepOutsideOps (also for runtime routes).
 func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
 	if moduleRuntimeRoute(r, p) {
 		return nil
@@ -430,6 +459,62 @@ func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
 		return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
 	}
 	return a.enforceServiceCallLimit(r.Context(), p, t.Name)
+}
+
+// refusePublicStepOutsideOps refuses a public-page step credential on any operation
+// not listed under public_operations (CORE-32), including module runtime routes
+// (secrets/settings), module-handler routes, and viewer-delegated calls.
+func (a *App) refusePublicStepOutsideOps(r *http.Request, p domain.Principal) error {
+	step := r.Header.Get(modules.PublicStepHeader)
+	if step == "" || a.ext == nil || a.ext.Modules == nil {
+		return nil
+	}
+	moduleID := p.ModuleID
+	op := ""
+	if t, ok := a.toolFor(r.Method, r.URL.Path); ok {
+		op = t.Name
+	}
+	// Runtime secrets/settings/views have no public_operations name → always refuse.
+	if moduleID != "" && moduleRuntimeRoute(r, domain.Principal{Source: domain.SourceModule, ModuleID: moduleID}) {
+		op = ""
+	}
+	if op == "" || moduleID == "" {
+		return &domain.APIError{Code: "scope_denied", Message: "operation is not in public_operations"}
+	}
+	return a.ext.Modules.CheckPublicStep(r.Context(), moduleID, step, op)
+}
+
+// requirePublicStepRouteScopes requires the route's contract scopes against the
+// module's approved install scopes when a public-page step credential is present
+// (CORE-32 / CU2-01). Runs after refusePublicStepOutsideOps so public_operations
+// denials stay distinct from missing approved scopes.
+func (a *App) requirePublicStepRouteScopes(r *http.Request, c identity.Caller) error {
+	if r.Header.Get(modules.PublicStepHeader) == "" {
+		return nil
+	}
+	if moduleRuntimeRoute(r, c.Principal) {
+		return nil
+	}
+	t, ok := a.toolFor(r.Method, r.URL.Path)
+	if !ok || entryTypeScoped[t.Name] {
+		return nil
+	}
+	if err := c.RequireScopes(t.Scopes...); err != nil {
+		return shared(err)
+	}
+	return nil
+}
+
+// enforcePublicStep restricts a public-page step token to manifest public_operations (CORE-32).
+func (a *App) enforcePublicStep(r *http.Request, p domain.Principal, op string) error {
+	step := r.Header.Get(modules.PublicStepHeader)
+	if step == "" || a.ext == nil || a.ext.Modules == nil {
+		return nil
+	}
+	if op == "" {
+		return &domain.APIError{Code: "scope_denied", Message: "operation is not in public_operations"}
+	}
+	return a.ext.Modules.CheckPublicStep(r.Context(), p.ModuleID, step, op)
 }
 
 // enforceServiceCallLimit applies modules.service_call_limit.<operation> when that

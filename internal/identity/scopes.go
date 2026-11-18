@@ -48,6 +48,11 @@ var catalog = map[string]struct{}{
 	"client_access:read":   {},
 	"client_access:write":  {},
 	"books:read":           {},
+	// CORE-31 / CORE-32 / CORE-34 module API update 2.
+	"contracts:call":     {},
+	"contracts:provide":  {},
+	"public_pages:serve": {},
+	"banner:show":        {},
 }
 
 // moduleOnlyScopes are grantable only on a module token (CORE-02, CORE-04 to CORE-06).
@@ -57,6 +62,10 @@ var moduleOnlyScopes = map[string]struct{}{
 	"module_secrets:write": {},
 	"mail:send":            {},
 	"mail:system":          {},
+	"contracts:call":       {},
+	"contracts:provide":    {},
+	"public_pages:serve":   {},
+	"banner:show":          {},
 }
 
 func knownScope(scope string) bool {

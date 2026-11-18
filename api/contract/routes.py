@@ -5125,7 +5125,9 @@ def _modules(api: Contract) -> None:
             "The calling module's own bearer stores one sealed secret under name. "
             "The path module_id must match the token's module. A context token is ignored. "
             "At most 512 secrets per module, 16 KiB each; names match ^[a-z0-9/_-]{1,128}$. "
-            "The audit log records the name only. Uninstall with keep-data keeps secrets; delete removes them."
+            "The audit log records the name only. Uninstall with keep-data keeps secrets; delete removes them. "
+            "If-None-Match: * creates only when absent (409 conflict when the name exists) so "
+            "concurrent EnsureKey creators cannot overwrite a sealed AES key (CORE-33)."
         ),
         tag="Modules",
         features=["modules"],
@@ -5134,7 +5136,16 @@ def _modules(api: Contract) -> None:
         body="ModuleSecretWrite",
         success="204",
         response_content={},
-        error_codes=["forbidden", "scope_denied", "not_found"],
+        error_codes=["forbidden", "scope_denied", "not_found", "conflict"],
+        extra_parameters=[
+            {
+                "name": "If-None-Match",
+                "in": "header",
+                "required": False,
+                "schema": {"type": "string", "enum": ["*"]},
+                "description": "When *, create only if the secret name is absent; existing names answer 409 conflict.",
+            }
+        ],
         extra_access=MODULE_SECRET,
     )
     api.add(
@@ -5227,6 +5238,187 @@ def _modules(api: Contract) -> None:
                 ],
             },
         },
+    )
+    # CORE-31 module service contracts.
+    api.add(
+        "get",
+        "/api/v1/modules/contract-links",
+        operation_id="listModuleContractLinks",
+        summary="List approved module contract links",
+        description="Admin view of consumer↔provider links for named contracts (CORE-31).",
+        tag="Modules",
+        features=["modules"],
+        roles=ADMIN,
+        scopes=["modules:read"],
+        response="ModuleContractLink",
+        paginate=True,
+        writes=False,
+    )
+    api.add(
+        "post",
+        "/api/v1/modules/contract-links",
+        operation_id="createModuleContractLink",
+        summary="Approve a module contract link",
+        description=(
+            "Admin links a consumer module to a provider for one named contract. "
+            "Emits module.contract_linked. One provider per contract per firm unless the provider declares many (CORE-31)."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=ADMIN,
+        scopes=["modules:write"],
+        body_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["contract", "consumer_id", "provider_id"],
+            "properties": {
+                "contract": {"type": "string"},
+                "consumer_id": {"type": "string"},
+                "provider_id": {"type": "string"},
+            },
+        },
+        response="ModuleContractLink",
+        success="201",
+        events=["module.contract_linked"],
+        error_codes=["conflict", "not_found", "validation"],
+    )
+    api.add(
+        "delete",
+        "/api/v1/modules/contract-links/{link_id}",
+        operation_id="deleteModuleContractLink",
+        summary="Remove a module contract link",
+        description="Admin unlinks a contract; further calls answer contract_unlinked at once (CORE-31). Emits module.contract_unlinked.",
+        tag="Modules",
+        features=["modules"],
+        roles=ADMIN,
+        scopes=["modules:write"],
+        success="204",
+        response_content={},
+        events=["module.contract_unlinked"],
+        error_codes=["not_found"],
+    )
+    api.add(
+        "get",
+        "/api/v1/modules/contracts/{contract}/providers",
+        operation_id="listModuleContractProviders",
+        summary="List linked providers for a contract",
+        description=(
+            "Returns provider module ids the calling consumer is linked to for the contract. "
+            "Ids only; never addresses (CORE-31)."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["contracts:call"],
+        response_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["data", "page"],
+            "properties": {
+                "data": {"type": "array", "items": {"type": "string"}},
+                "page": {"$ref": "#/components/schemas/Page"},
+            },
+        },
+        paginate=True,
+        writes=False,
+        error_codes=["scope_denied", "not_found", "forbidden"],
+        extra_access={"module_delegation": "service_principal"},
+    )
+    api.add(
+        "post",
+        "/api/v1/modules/contracts/{contract}/{operation}",
+        operation_id="callModuleContract",
+        summary="Call a linked module contract operation",
+        description=(
+            "The consumer module's bearer with contracts:call posts a body; the core proxies it to the "
+            "admin-linked provider's declared path, HMAC-signed like events, carrying the caller's "
+            "context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects "
+            "a linked provider module id (never an address); omit it to use the earliest link. "
+            "Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31)."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["contracts:call"],
+        body_schema={"type": "object", "additionalProperties": True},
+        response_schema={"type": "object", "additionalProperties": True},
+        extra_parameters=[
+            {
+                "name": "X-Togavsu-Contract-Provider",
+                "in": "header",
+                "required": False,
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 63,
+                    "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                },
+                "description": "Linked provider module id on a many-provider contract (CORE-31). Module id only; never an address.",
+            }
+        ],
+        error_codes=["scope_denied", "contract_unlinked", "not_found", "payload_too_large", "forbidden"],
+        extra_access={"module_delegation": "service_principal"},
+    )
+    api.add(
+        "post",
+        "/api/v1/modules/contracts/{contract}/events",
+        operation_id="pushModuleContractEvent",
+        summary="Push a contract event to linked consumers",
+        description=(
+            "The provider module's bearer with contracts:provide queues a contract event for every "
+            "linked consumer, delivered like core events (CORE-31)."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=[],
+        scopes=["contracts:provide"],
+        body_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["action"],
+            "properties": {
+                "action": {"type": "string"},
+                "payload": {},
+            },
+        },
+        success="204",
+        response_content={},
+        error_codes=["scope_denied", "not_found", "forbidden", "validation"],
+        extra_access={"module_delegation": "service_principal"},
+    )
+    # CORE-34 staff banners.
+    api.add(
+        "get",
+        "/api/v1/modules/banners",
+        operation_id="listModuleBanners",
+        summary="List staff banner slots",
+        description="Enabled modules with staff_banner, in modules.staff_banner_order (CORE-34).",
+        tag="Modules",
+        features=["modules"],
+        roles=ADMIN,
+        scopes=["modules:read"],
+        response="ModuleStaffBanner",
+        paginate=True,
+        writes=False,
+    )
+    api.add(
+        "put",
+        "/api/v1/modules/banner-order",
+        operation_id="putModuleBannerOrder",
+        summary="Set staff banner order",
+        description="Admin order of module ids for the staff banner slot (CORE-34).",
+        tag="Modules",
+        features=["modules"],
+        roles=ADMIN,
+        scopes=["modules:write"],
+        body_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["order"],
+            "properties": {"order": {"type": "array", "items": {"type": "string"}}},
+        },
+        success="204",
+        response_content={},
     )
     api.add(
         "get",
