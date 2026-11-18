@@ -148,8 +148,9 @@ const OfflineQueueJS = `(function(){
 
 // RepeatingJS wires Add/Remove for TypeRepeating groups rendered by RenderScreen.
 // Row identity lives in hidden inputs named "*.__row" (RowIDKey). reindex only
-// renumbers [N] in control names; it never changes __row values. Add mints a
-// fresh id so merge can tell new rows from kept ones after remove/reorder.
+// renumbers this group's [N] (data-name prefix); it never changes __row values
+// or outer/inner indexes in nested repeating groups. Add mints a fresh id so
+// merge can tell new rows from kept ones after remove/reorder.
 const RepeatingJS = `(function(){
   function newRowId(){
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, "");
@@ -157,17 +158,36 @@ const RepeatingJS = `(function(){
     for (var i=0;i<32;i++) s += Math.floor(Math.random()*16).toString(16);
     return s;
   }
+  function escapeRegExp(s){
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  function groupPrefix(container){
+    return container.getAttribute("data-name") || container.getAttribute("data-field") || "";
+  }
   function reindex(container){
+    var prefix = groupPrefix(container);
+    if (!prefix) return;
+    var nameRe = new RegExp("^" + escapeRegExp(prefix) + "\\[\\d+\\]");
+    var idStem = "f-" + prefix.replace(/\./g, "-").replace(/\[/g, "-").replace(/\]/g, "");
+    var idRe = new RegExp("^" + escapeRegExp(idStem) + "-\\d+");
     var rows = container.querySelectorAll(":scope > fieldset.tv-repeat-row");
     for (var i=0;i<rows.length;i++){
       rows[i].setAttribute("data-index", String(i));
+      var next = prefix + "[" + i + "]";
+      var nextId = idStem + "-" + i;
       var inputs = rows[i].querySelectorAll("[name]");
       for (var j=0;j<inputs.length;j++){
-        var n = inputs[j].getAttribute("name");
+        var el = inputs[j];
+        var n = el.getAttribute("name");
+        if (n === "__present") {
+          var v = el.value || "";
+          if (nameRe.test(v)) el.value = v.replace(nameRe, next);
+          continue;
+        }
         if (!n) continue;
-        // Keep the __row value; only rewrite the array index in the name.
-        inputs[j].setAttribute("name", n.replace(/\[\d+\]/, "["+i+"]"));
-        if (inputs[j].id) inputs[j].id = inputs[j].id.replace(/-\d+-/, "-"+i+"-");
+        // Keep the __row value; rewrite only this group's [N] in the name.
+        if (nameRe.test(n)) el.setAttribute("name", n.replace(nameRe, next));
+        if (el.id && idRe.test(el.id)) el.id = el.id.replace(idRe, nextId);
       }
     }
   }

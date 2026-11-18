@@ -349,3 +349,252 @@ func TestPresenceClearsMultiSelectAndRepeating(t *testing.T) {
 		t.Fatalf("other screen: %#v", stored["other_screen"])
 	}
 }
+
+// TestNestedRepeatingGroupsE2E: repeating-inside-repeating through renderer →
+// HTMX autosave shape → parse → merge (Codex P2 on e729d02). Covers add/edit/
+// delete at both levels, presence clear of all inner rows, masked keep, and
+// file-ref keep. RepeatingJS must reindex only the edited group's own [N].
+func TestNestedRepeatingGroupsE2E(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "kids", Type: TypeRepeating, Fields: []Field{
+			{ID: "name", Type: TypeText},
+			{ID: "ssn", Type: TypeMasked, SecretKey: "forms/ssn"},
+			{ID: "doc", Type: TypeFile},
+			{ID: "pets", Type: TypeRepeating, Fields: []Field{
+				{ID: "name", Type: TypeText},
+				{ID: "chip", Type: TypeMasked, SecretKey: "forms/chip"},
+				{ID: "photo", Type: TypeFile},
+			}},
+		}},
+	}}}}}}
+
+	kidA, kidB := "kid-a", "kid-b"
+	petA1, petA2, petB1 := "pet-a1", "pet-a2", "pet-b1"
+	ssnA, ssnB := CipherPrefix+"ssn-a", CipherPrefix+"ssn-b"
+	chipA1, chipA2, chipB1 := CipherPrefix+"chip-a1", CipherPrefix+"chip-a2", CipherPrefix+"chip-b1"
+
+	stored := Answers{"kids": {Value: []map[string]Answer{
+		{
+			RowIDKey: {Value: kidA}, "name": {Value: "Ada"}, "ssn": {Value: ssnA}, "doc": {Value: "doc-a"},
+			"pets": {Value: []map[string]Answer{
+				{RowIDKey: {Value: petA1}, "name": {Value: "Fluffy"}, "chip": {Value: chipA1}, "photo": {Value: "photo-a1"}},
+				{RowIDKey: {Value: petA2}, "name": {Value: "Spot"}, "chip": {Value: chipA2}, "photo": {Value: "photo-a2"}},
+			}},
+		},
+		{
+			RowIDKey: {Value: kidB}, "name": {Value: "Bea"}, "ssn": {Value: ssnB}, "doc": {Value: "doc-b"},
+			"pets": {Value: []map[string]Answer{
+				{RowIDKey: {Value: petB1}, "name": {Value: "Rex"}, "chip": {Value: chipB1}, "photo": {Value: "photo-b1"}},
+			}},
+		},
+	}}}
+
+	var buf strings.Builder
+	if err := RenderScreen(&buf, form.Tracks[0].Screens[0], stored, AudiencePublic, RenderOptions{
+		AutosaveURL: "/autosave",
+		FormAction:  "/submit",
+		CSRFToken:   "tok",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	html := buf.String()
+	// Nested group must carry its full name path so RepeatingJS reindexes only that [N].
+	if !strings.Contains(html, `data-name="kids"`) {
+		t.Fatalf("outer repeating needs data-name:\n%s", html)
+	}
+	if !strings.Contains(html, `data-name="kids[0].pets"`) || !strings.Contains(html, `data-name="kids[1].pets"`) {
+		t.Fatalf("nested repeating needs full-path data-name:\n%s", html)
+	}
+	if !strings.Contains(html, `name="kids[0].pets[1].`+RowIDKey+`"`) || !strings.Contains(html, petA2) {
+		t.Fatalf("nested row ids missing:\n%s", html)
+	}
+	if !strings.Contains(RepeatingJS, "data-name") {
+		t.Fatal("RepeatingJS must reindex by data-name prefix, not first [N]")
+	}
+
+	h := AutosaveHandlerForm(form, func(r *http.Request, patch AutosavePatch) (Answers, error) {
+		patch.Apply(&stored)
+		return stored, nil
+	})
+
+	// 1) Edit kid B name + pet under kid A; leave masked/file empty (unchanged).
+	// Simulates browser post after correct nested reindex (outer indexes untouched).
+	body := url.Values{
+		"__present": {
+			"kids",
+			"kids[0].name", "kids[0].ssn", "kids[0].doc", "kids[0].pets",
+			"kids[0].pets[0].name", "kids[0].pets[0].chip", "kids[0].pets[0].photo",
+			"kids[0].pets[1].name", "kids[0].pets[1].chip", "kids[0].pets[1].photo",
+			"kids[1].name", "kids[1].ssn", "kids[1].doc", "kids[1].pets",
+			"kids[1].pets[0].name", "kids[1].pets[0].chip", "kids[1].pets[0].photo",
+		},
+		"kids[0]." + RowIDKey:         {kidA},
+		"kids[0].name":                {"Ada"},
+		"kids[0].pets[0]." + RowIDKey: {petA1},
+		"kids[0].pets[0].name":        {"Fluffy"},
+		"kids[0].pets[1]." + RowIDKey: {petA2},
+		"kids[0].pets[1].name":        {"Spotty"}, // edit inner
+		"kids[1]." + RowIDKey:         {kidB},
+		"kids[1].name":                {"Beatrice"}, // edit outer
+		"kids[1].pets[0]." + RowIDKey: {petB1},
+		"kids[1].pets[0].name":        {"Rex"},
+		"csrf":                        {"tok"},
+	}.Encode()
+	req := httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("X-CSRF-Token", "tok")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("edit autosave code=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rows := stored.Get("kids").RowsValue()
+	if len(rows) != 2 {
+		t.Fatalf("edit wiped kids: %#v", rows)
+	}
+	if rows[0]["ssn"].StringValue() != ssnA || rows[1]["ssn"].StringValue() != ssnB {
+		t.Fatalf("outer masked lost: %#v", rows)
+	}
+	if rows[0]["doc"].StringValue() != "doc-a" || rows[1]["doc"].StringValue() != "doc-b" {
+		t.Fatalf("outer file lost: %#v", rows)
+	}
+	if rows[1]["name"].StringValue() != "Beatrice" {
+		t.Fatalf("outer edit: %#v", rows[1])
+	}
+	petsA := rows[0]["pets"].RowsValue()
+	if len(petsA) != 2 || petsA[1]["name"].StringValue() != "Spotty" {
+		t.Fatalf("inner edit: %#v", petsA)
+	}
+	if petsA[0]["chip"].StringValue() != chipA1 || petsA[1]["chip"].StringValue() != chipA2 {
+		t.Fatalf("inner masked lost: %#v", petsA)
+	}
+	if petsA[0]["photo"].StringValue() != "photo-a1" || petsA[1]["photo"].StringValue() != "photo-a2" {
+		t.Fatalf("inner file lost: %#v", petsA)
+	}
+
+	// 2) Delete petA1 under kid A (inner delete). Remaining petA2 keeps its own chip/photo.
+	// After RepeatingJS reindex of kids[0].pets only: Spotty is pets[0] with petA2 id.
+	body = url.Values{
+		"__present": {
+			"kids",
+			"kids[0].name", "kids[0].ssn", "kids[0].doc", "kids[0].pets",
+			"kids[0].pets[0].name", "kids[0].pets[0].chip", "kids[0].pets[0].photo",
+			"kids[1].name", "kids[1].ssn", "kids[1].doc", "kids[1].pets",
+			"kids[1].pets[0].name", "kids[1].pets[0].chip", "kids[1].pets[0].photo",
+		},
+		"kids[0]." + RowIDKey:         {kidA},
+		"kids[0].name":                {"Ada"},
+		"kids[0].pets[0]." + RowIDKey: {petA2},
+		"kids[0].pets[0].name":        {"Spotty"},
+		"kids[1]." + RowIDKey:         {kidB},
+		"kids[1].name":                {"Beatrice"},
+		"kids[1].pets[0]." + RowIDKey: {petB1},
+		"kids[1].pets[0].name":        {"Rex"},
+		"csrf":                        {"tok"},
+	}.Encode()
+	req = httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("X-CSRF-Token", "tok")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("inner delete code=%d", rec.Code)
+	}
+	rows = stored.Get("kids").RowsValue()
+	petsA = rows[0]["pets"].RowsValue()
+	if len(petsA) != 1 || rowIDOf(petsA[0]) != petA2 {
+		t.Fatalf("after inner delete: %#v", petsA)
+	}
+	if petsA[0]["chip"].StringValue() != chipA2 || petsA[0]["photo"].StringValue() != "photo-a2" {
+		t.Fatalf("petA2 must keep own sealed/file (not petA1's): %#v", petsA[0])
+	}
+	petsB := rows[1]["pets"].RowsValue()
+	if len(petsB) != 1 || petsB[0]["chip"].StringValue() != chipB1 {
+		t.Fatalf("sibling kid pets untouched: %#v", petsB)
+	}
+
+	// 3) Clear every pet under kid A via presence only (no pets[N] keys).
+	body = url.Values{
+		"__present": {
+			"kids",
+			"kids[0].name", "kids[0].ssn", "kids[0].doc", "kids[0].pets",
+			"kids[1].name", "kids[1].ssn", "kids[1].doc", "kids[1].pets",
+			"kids[1].pets[0].name", "kids[1].pets[0].chip", "kids[1].pets[0].photo",
+		},
+		"kids[0]." + RowIDKey:         {kidA},
+		"kids[0].name":                {"Ada"},
+		"kids[1]." + RowIDKey:         {kidB},
+		"kids[1].name":                {"Beatrice"},
+		"kids[1].pets[0]." + RowIDKey: {petB1},
+		"kids[1].pets[0].name":        {"Rex"},
+		"csrf":                        {"tok"},
+	}.Encode()
+	req = httptest.NewRequest(http.MethodPost, "/autosave", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("X-CSRF-Token", "tok")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("clear inner code=%d", rec.Code)
+	}
+	rows = stored.Get("kids").RowsValue()
+	if got := rows[0]["pets"].RowsValue(); len(got) != 0 {
+		t.Fatalf("presence must clear nested repeating: %#v", got)
+	}
+	if got := rows[1]["pets"].RowsValue(); len(got) != 1 || rowIDOf(got[0]) != petB1 {
+		t.Fatalf("other outer row's pets must stay: %#v", rows[1]["pets"])
+	}
+	if rows[0]["ssn"].StringValue() != ssnA {
+		t.Fatalf("outer masked after clear: %#v", rows[0])
+	}
+
+	// 4) Add a new inner pet (unknown __row) under kid B + full submit path.
+	petNew := "pet-new"
+	full := url.Values{
+		"__present": {
+			"kids",
+			"kids[0].name", "kids[0].ssn", "kids[0].doc", "kids[0].pets",
+			"kids[1].name", "kids[1].ssn", "kids[1].doc", "kids[1].pets",
+			"kids[1].pets[0].name", "kids[1].pets[0].chip", "kids[1].pets[0].photo",
+			"kids[1].pets[1].name", "kids[1].pets[1].chip", "kids[1].pets[1].photo",
+		},
+		"kids[0]." + RowIDKey:         {kidA},
+		"kids[0].name":                {"Ada"},
+		"kids[0].ssn":                 {""},
+		"kids[1]." + RowIDKey:         {kidB},
+		"kids[1].name":                {"Beatrice"},
+		"kids[1].ssn":                 {""},
+		"kids[1].pets[0]." + RowIDKey: {petB1},
+		"kids[1].pets[0].name":        {"Rex"},
+		"kids[1].pets[0].chip":        {""},
+		"kids[1].pets[1]." + RowIDKey: {petNew},
+		"kids[1].pets[1].name":        {"Nala"},
+		"kids[1].pets[1].chip":        {""},
+		"csrf":                        {"tok"},
+	}
+	posted := ParseFormAnswers(form, full)
+	stored = MergeFormSubmit(stored, posted, form)
+	rows = stored.Get("kids").RowsValue()
+	if len(rows[0]["pets"].RowsValue()) != 0 {
+		t.Fatalf("kid A pets still clear: %#v", rows[0]["pets"])
+	}
+	petsB = rows[1]["pets"].RowsValue()
+	if len(petsB) != 2 {
+		t.Fatalf("add inner row: %#v", petsB)
+	}
+	if rowIDOf(petsB[0]) != petB1 || petsB[0]["chip"].StringValue() != chipB1 {
+		t.Fatalf("existing pet keep masked: %#v", petsB[0])
+	}
+	if rowIDOf(petsB[1]) != petNew || petsB[1]["name"].StringValue() != "Nala" {
+		t.Fatalf("new pet: %#v", petsB[1])
+	}
+	if petsB[1]["chip"].StringValue() != "" || petsB[1]["photo"].StringValue() != "" {
+		t.Fatalf("new pet must not inherit masked/file: %#v", petsB[1])
+	}
+	if rows[1]["ssn"].StringValue() != ssnB || rows[1]["doc"].StringValue() != "doc-b" {
+		t.Fatalf("outer keep after submit: %#v", rows[1])
+	}
+}

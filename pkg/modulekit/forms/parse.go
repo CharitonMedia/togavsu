@@ -290,6 +290,21 @@ func parseRepeating(field Field, values map[string][]string, name string) []map[
 		rows[i] = map[string]Answer{}
 	}
 	rowForm := Form{Tracks: []Track{{Screens: []Screen{{Fields: field.Fields}}}}}
+	rowPrefix := make([]string, max+1)
+	for i := 0; i <= max; i++ {
+		rowPrefix[i] = name + "[" + strconv.Itoa(i) + "]."
+	}
+	// Project __present markers into each row so nested clears (empty multi-select,
+	// all inner repeating rows removed) are visible to parsePostedAnswers.
+	presentByRow := make([][]string, max+1)
+	for _, v := range values["__present"] {
+		for i := 0; i <= max; i++ {
+			if strings.HasPrefix(v, rowPrefix[i]) {
+				presentByRow[i] = append(presentByRow[i], v[len(rowPrefix[i]):])
+				break
+			}
+		}
+	}
 	for i := 0; i <= max; i++ {
 		rowVals := map[string][]string{}
 		for _, p := range parts {
@@ -297,6 +312,9 @@ func parseRepeating(field Field, values map[string][]string, name string) []map[
 				continue
 			}
 			rowVals[p.rest] = append([]string{}, p.vals...)
+		}
+		if len(presentByRow[i]) > 0 {
+			rowVals["__present"] = append([]string{}, presentByRow[i]...)
 		}
 		// Row identity is not a schema Field; lift it before typed parse.
 		if rid := lastValue(rowVals[RowIDKey]); rid != "" {

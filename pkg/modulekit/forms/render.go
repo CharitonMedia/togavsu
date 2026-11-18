@@ -281,7 +281,10 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 		}
 	case TypeRepeating:
 		rows := ans.RowsValue()
-		if _, err := fmt.Fprintf(w, `<div class="tv-repeating" data-field="%s">`+"\n", html.EscapeString(field.ID)); err != nil {
+		// data-name is the full control path (e.g. kids[1].pets) so RepeatingJS
+		// reindexes only this group's [N], leaving outer and deeper indexes alone.
+		if _, err := fmt.Fprintf(w, `<div class="tv-repeating" data-field="%s" data-name="%s">`+"\n",
+			html.EscapeString(field.ID), html.EscapeString(name)); err != nil {
 			return err
 		}
 		for i, row := range rows {
