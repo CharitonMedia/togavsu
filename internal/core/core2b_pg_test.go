@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"io"
@@ -280,11 +281,11 @@ func TestCORE32PublicPages(t *testing.T) {
 	if r := bot.do("GET", "/api/v1/matters", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" || !strings.Contains(r.body, "public_operations") {
 		t.Fatalf("listMatter outside public_operations via public credential: %d %s", r.code, r.body)
 	}
-	// createContact is listed; may succeed or fail validation, but not scope_denied for the op itself.
+	// createContact is listed and contacts:write is approved; not scope_denied.
 	if r := bot.do("POST", "/api/v1/contacts", map[string]any{
 		"display_name": "Public Person", "kind": "person",
-	}); r.json["code"] == "scope_denied" && strings.Contains(r.body, "public_operations") {
-		t.Fatalf("createContact in public_operations denied: %s", r.body)
+	}); r.json["code"] == "scope_denied" {
+		t.Fatalf("createContact in public_operations with approved scope denied: %s", r.body)
 	}
 	// Public step must not reach module runtime secrets (forms-kit AES key) or contract calls.
 	if r := bot.do("GET", "/api/v1/modules/intake-mod/secrets/forms%2Fssn", nil); r.code != http.StatusForbidden || r.json["code"] != "scope_denied" || !strings.Contains(r.body, "public_operations") {
@@ -596,6 +597,62 @@ func TestCORE31ManyProviderSelect(t *testing.T) {
 	if r := bot.do("POST", "/api/v1/modules/contracts/"+contract+"/echo", map[string]any{},
 		modules.ContractProviderHeader, "not-linked"); r.code != http.StatusNotFound {
 		t.Fatalf("unknown provider selector: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE32PublicStepRequiresApprovedScopes: public credential + op in public_operations
+// still needs the operation's scopes approved (CU2-01 / Codex P1).
+func TestCORE32PublicStepRequiresApprovedScopes(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	var lastStep string
+	x.rt.Serve("scope-mod", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			lastStep = r.Header.Get(modules.PublicStepHeader)
+			_, _ = w.Write([]byte("ok"))
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "scope-mod", "Scope Mod",
+			"  - scope: public_pages:serve\n    reason: Public.\n  - scope: contacts:write\n    reason: Intake.\n    required: false\n",
+			"public_pages:\n  - path: /form\npublic_operations:\n  - createContact\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	// Approve every pending scope except contacts:write (declined) so createContact stays unapproved.
+	v, err := x.app.Modules.Get(context.Background(), x.adminP(), "scope-mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"module_id": {"scope-mod"}}
+	for _, perm := range v.Permissions {
+		if perm.Decision != "pending" {
+			continue
+		}
+		if perm.Scope == "contacts:write" {
+			form.Set("scope:"+perm.Scope, "decline")
+			continue
+		}
+		form.Set("scope:"+perm.Scope, "approve")
+	}
+	if _, problem := x.tabForm(x.admin, "permissions", form, nil); problem != "" {
+		t.Fatalf("approve all but contacts:write: %s", problem)
+	}
+	anon := newClient(t, x.srv.URL)
+	if r := anon.do("GET", "/p/scope-mod/form", nil); r.code != http.StatusOK || lastStep == "" {
+		t.Fatalf("public page: %d step=%q body=%s", r.code, lastStep, r.body)
+	}
+	bot := newClient(t, x.srv.URL)
+	bot.bearer = lastStep
+	r := bot.do("POST", "/api/v1/contacts", map[string]any{
+		"display_name": "No Scope", "kind": "person",
+	})
+	if r.code != http.StatusForbidden || r.json["code"] != "scope_denied" {
+		t.Fatalf("createContact without approved contacts:write: %d %s", r.code, r.body)
+	}
+	if strings.Contains(r.body, "public_operations") {
+		t.Fatalf("denial must be missing approved scope, not public_operations: %s", r.body)
 	}
 }
 

@@ -51,6 +51,8 @@ func TestRenderScreenAudiencesAndHTMX(t *testing.T) {
 		`hx-include="closest .tv-field, [name=csrf]"`,
 		`X-CSRF-Token`,
 		`I don't know`,
+		`name="name.__unknown" value="0"`,
+		`name="name.__unknown" value="1"`,
 		`disabled`,
 		`tv-field-error`,
 		`type="hidden"`,

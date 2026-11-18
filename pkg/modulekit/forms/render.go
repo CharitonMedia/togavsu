@@ -274,6 +274,11 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 		}
 	}
 	if field.AllowUnknown && field.Type != TypeHidden && field.Type != TypeReadOnly {
+		// Hidden 0 + checkbox 1: unchecking posts an explicit clear so ParseFormAnswers
+		// can turn Unknown off (unchecked checkboxes alone omit the name).
+		if _, err := fmt.Fprintf(w, `<input type="hidden" name="%s.__unknown" value="0">`+"\n", html.EscapeString(name)); err != nil {
+			return err
+		}
 		if _, err := fmt.Fprintf(w, `<label class="tv-unknown"><input type="checkbox" name="%s.__unknown" value="1"%s%s> I don't know</label>`+"\n",
 			html.EscapeString(name), unknownChecked, hx); err != nil {
 			return err
@@ -347,3 +352,25 @@ func disabledIfUnknown(ans Answer) string {
 	}
 	return ""
 }
+
+// UnknownToggleJS re-enables field controls when the "I don't know" checkbox is
+// unchecked (disabled inputs are left out of form posts and hx-include). Modules
+// embed this beside the rendered form, like OfflineQueueJS / RepeatingJS.
+const UnknownToggleJS = `(function(){
+  function setDisabled(field, on){
+    if (!field) return;
+    var nodes = field.querySelectorAll("input, select, textarea");
+    for (var i=0;i<nodes.length;i++){
+      var el = nodes[i];
+      if (!el.name) continue;
+      if (el.name.slice(-10)===".__unknown") continue;
+      el.disabled = !!on;
+    }
+  }
+  document.addEventListener("change", function(e){
+    var t = e.target;
+    if (!t || !t.name || t.name.slice(-10)!==".__unknown" || t.type!=="checkbox") return;
+    var field = t.closest(".tv-field");
+    setDisabled(field, t.checked);
+  });
+})();`

@@ -697,7 +697,7 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "internal/modules/secrets.go"):
 		// RowsAffected zero means missing; max counts are domain.ModuleSecret*.
 		switch fn {
-		case "PutSecret", "GetSecret", "DeleteSecret":
+		case "PutSecret", "PutSecretIfAbsent", "putSecret", "GetSecret", "DeleteSecret":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/trust/create_notification.go"):
@@ -775,7 +775,8 @@ func fixedSite(path, fn string) bool {
 			"compareCount", "cmp", "cmpCount", "Eval", "validateField", "Validate", "ValidateScreen",
 			"KeyBytes", "EnsureKey", "LoadKey", "EncryptMasked", "DecryptMasked", "SealAnswers",
 			"MergeFormSubmit", "maskedFieldIDs", "applyFormsOpaqueCORS", "ClearMaskedValue",
-			"CreateSecretIfAbsent":
+			"CreateSecretIfAbsent", "PutSecret", "GetSecret", "PutSecretIfAbsent", "secretURL", "secretAPIError",
+			"isConflict", "authorize", "put", "client", "disabledIfUnknown":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/practice/service.go"):

@@ -438,6 +438,11 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json", "docs/api/coverage.md"],
                 "change": "CORE-30 widens delegated_viewer_or_service_principal on list/get matter, conflict check, create note/event and related ops, and publishes modules.service_call_limit.* settings (default 120). CORE-36 documents getConflictCheck, scope_denied naming, and Accepts().core_items on the module API surface.",
             },
+            {
+                "id": "module-secret-create-if-absent",
+                "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json"],
+                "change": "putModuleSecret accepts If-None-Match: * for create-if-absent (409 conflict when the name exists) so forms EnsureKey / HTTPSecretStore cannot race-overwrite a sealed AES key (CORE-33).",
+            },
         ],
         "intentional_corrections": [
             {

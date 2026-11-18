@@ -79,9 +79,9 @@
     "runtime_fixtures": 52
   },
   "artifacts": {
-    "api/openapi/v1/openapi.json": "43ebccf700bb9bbb88fca13529df26045b028650e6637eecef869cdff2090adb",
+    "api/openapi/v1/openapi.json": "7235d27bfa7c68d9b21acc4230460ca883f710aa53f2df6a22f650f0d5e857a8",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
-    "api/openapi/v1/mcp-tools.json": "34aec7f26ae959b1da7c04f40811df9b1e22dfe2fddc21377301323ab744c2a4",
+    "api/openapi/v1/mcp-tools.json": "b1fe9ccb487a44f1d493740791029db52dc391052f8ca79946e5202ab839e4a6",
     "docs/api/coverage.md": "67e94f67c9be2ecb505973a59de08187ec49130b8a9c06a1eb47a9c4be52d020"
   },
   "intentional_generated_deltas": [
@@ -196,6 +196,14 @@
         "docs/api/coverage.md"
       ],
       "change": "CORE-30 widens delegated_viewer_or_service_principal on list/get matter, conflict check, create note/event and related ops, and publishes modules.service_call_limit.* settings (default 120). CORE-36 documents getConflictCheck, scope_denied naming, and Accepts().core_items on the module API surface."
+    },
+    {
+      "id": "module-secret-create-if-absent",
+      "files": [
+        "api/openapi/v1/openapi.json",
+        "api/openapi/v1/mcp-tools.json"
+      ],
+      "change": "putModuleSecret accepts If-None-Match: * for create-if-absent (409 conflict when the name exists) so forms EnsureKey / HTTPSecretStore cannot race-overwrite a sealed AES key (CORE-33)."
     }
   ],
   "intentional_corrections": [

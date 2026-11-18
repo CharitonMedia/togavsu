@@ -1,13 +1,16 @@
 package modules_test
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/modules"
+	"github.com/CharitonMedia/togavsu/pkg/modulekit/forms"
 )
 
 func (e *env) secretToken(t *testing.T, module string) string {
@@ -82,6 +85,72 @@ func TestPGModuleSecrets(t *testing.T) {
 	}
 	if r := e.do("GET", path, nil, auth...); r.code != http.StatusNotFound {
 		t.Fatalf("after delete: %d %s", r.code, r.body)
+	}
+}
+
+func TestPGModuleSecretsCreateIfAbsent(t *testing.T) {
+	e := newEnv(t)
+	e.installSample()
+	tok := e.secretToken(t, "matter-clock")
+	auth := []string{"Authorization", "Bearer " + tok}
+	path := secretPath("matter-clock", "forms/ssn")
+
+	if r := e.do("PUT", path, map[string]any{"value": "key-a"}, append(auth, "If-None-Match", "*")...); r.code != http.StatusNoContent {
+		t.Fatalf("create-if-absent first: %d %s", r.code, r.body)
+	}
+	if r := e.do("PUT", path, map[string]any{"value": "key-b"}, append(auth, "If-None-Match", "*")...); r.code != http.StatusConflict || r.json["code"] != "conflict" {
+		t.Fatalf("create-if-absent second: %d %s", r.code, r.body)
+	}
+	r := e.do("GET", path, nil, auth...)
+	if r.code != http.StatusOK || r.json["value"] != "key-a" {
+		t.Fatalf("winner key kept: %d %s", r.code, r.body)
+	}
+	// Plain PUT still overwrites.
+	if r := e.do("PUT", path, map[string]any{"value": "key-c"}, auth...); r.code != http.StatusNoContent {
+		t.Fatalf("overwrite put: %d %s", r.code, r.body)
+	}
+	if r := e.do("GET", path, nil, auth...); r.code != http.StatusOK || r.json["value"] != "key-c" {
+		t.Fatalf("overwrite: %d %s", r.code, r.body)
+	}
+}
+
+// TestPGModuleSecretsHTTPStoreEnsureKey exercises forms.HTTPSecretStore against the
+// real putModuleSecret If-None-Match path so concurrent EnsureKey cannot lose seals.
+func TestPGModuleSecretsHTTPStoreEnsureKey(t *testing.T) {
+	e := newEnv(t)
+	e.installSample()
+	tok := e.secretToken(t, "matter-clock")
+	store := &forms.HTTPSecretStore{
+		BaseURL: strings.TrimRight(e.srv.URL, "/") + "/api/v1/modules/matter-clock/secrets",
+		Token:   tok,
+	}
+	ctx := context.Background()
+	const n = 8
+	var wg sync.WaitGroup
+	sealed := make([]string, n)
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			s, err := forms.EncryptMasked(ctx, store, "forms/race", "plain-"+strings.Repeat("y", i+1))
+			if err != nil {
+				t.Errorf("EncryptMasked %d: %v", i, err)
+				return
+			}
+			sealed[i] = s
+		}()
+	}
+	wg.Wait()
+	for i, s := range sealed {
+		if s == "" {
+			t.Fatalf("missing seal %d", i)
+		}
+		want := "plain-" + strings.Repeat("y", i+1)
+		plain, err := forms.DecryptMasked(ctx, store, "forms/race", s)
+		if err != nil || plain != want {
+			t.Fatalf("decrypt %d: plain=%q err=%v", i, plain, err)
+		}
 	}
 }
 

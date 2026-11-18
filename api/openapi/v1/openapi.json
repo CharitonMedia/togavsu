@@ -65441,7 +65441,7 @@
       "put": {
         "operationId": "putModuleSecret",
         "summary": "Store a module secret",
-        "description": "The calling module's own bearer stores one sealed secret under name. The path module_id must match the token's module. A context token is ignored. At most 512 secrets per module, 16 KiB each; names match ^[a-z0-9/_-]{1,128}$. The audit log records the name only. Uninstall with keep-data keeps secrets; delete removes them.",
+        "description": "The calling module's own bearer stores one sealed secret under name. The path module_id must match the token's module. A context token is ignored. At most 512 secrets per module, 16 KiB each; names match ^[a-z0-9/_-]{1,128}$. The audit log records the name only. Uninstall with keep-data keeps secrets; delete removes them. If-None-Match: * creates only when absent (409 conflict when the name exists) so concurrent EnsureKey creators cannot overwrite a sealed AES key (CORE-33).",
         "tags": [
           "Modules"
         ],
@@ -65473,6 +65473,18 @@
           },
           {
             "$ref": "#/components/parameters/csrfToken"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "*"
+              ]
+            },
+            "description": "When *, create only if the secret name is absent; existing names answer 409 conflict."
           }
         ],
         "responses": {
@@ -65539,6 +65551,9 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "headers": [
+              "If-None-Match"
+            ],
             "credentials": {
               "module_bearer": {
                 "header": "Authorization",
@@ -65563,6 +65578,7 @@
               "path",
               "query",
               "idempotency_key",
+              "headers",
               "body"
             ]
           }
@@ -65578,7 +65594,8 @@
         "x-togavsu-error-codes": [
           "forbidden",
           "scope_denied",
-          "not_found"
+          "not_found",
+          "conflict"
         ],
         "requestBody": {
           "required": true,

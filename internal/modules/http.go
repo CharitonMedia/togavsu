@@ -235,10 +235,10 @@ func (h *Handler) scoped(scope string, fn handlerFunc) http.HandlerFunc {
 			writeErr(w, err)
 			return
 		}
-		// CORE-32: a public-page step credential is limited by public_operations in the
-		// core's moduleCaller (refusePublicStepOutsideOps), not by install scopes.
-		if scope != "" && c.Bearer && r.Header.Get(PublicStepHeader) == "" && !hasScope(c.Scopes, scope) {
-			writeErr(w, domain.Forbidden("this token lacks the "+scope+" scope"))
+		// CORE-32: public_operations is gated in moduleCaller; approved install scopes
+		// still apply here (CU2-01), including when X-Togavsu-Public-Step is present.
+		if scope != "" && c.Bearer && !hasScope(c.Scopes, scope) {
+			writeErr(w, &domain.APIError{Code: "scope_denied", Message: "this token lacks the " + scope + " scope"})
 			return
 		}
 		fn(w, r.WithContext(context.WithValue(r.Context(), scopesKey{}, c.Scopes)), c)
@@ -620,7 +620,8 @@ func (h *Handler) renderDeviceConnect(w http.ResponseWriter, r *http.Request, c 
 	_ = deviceConnectPage.Execute(w, map[string]string{"Name": name, "CSRF": csrf, "Error": errText})
 }
 
-// putSecret is putModuleSecret (CORE-06).
+// putSecret is putModuleSecret (CORE-06). If-None-Match: * creates only when absent
+// (409 conflict when the name exists) so module EnsureKey races cannot overwrite keys.
 func (h *Handler) putSecret(w http.ResponseWriter, r *http.Request, c Caller) {
 	var body struct {
 		Value string `json:"value"`
@@ -629,7 +630,14 @@ func (h *Handler) putSecret(w http.ResponseWriter, r *http.Request, c Caller) {
 		writeErr(w, err)
 		return
 	}
-	if err := h.Svc.PutSecret(r.Context(), c.Principal, r.PathValue("module_id"), r.PathValue("name"), body.Value); err != nil {
+	module, name := r.PathValue("module_id"), r.PathValue("name")
+	var err error
+	if strings.TrimSpace(r.Header.Get("If-None-Match")) == "*" {
+		err = h.Svc.PutSecretIfAbsent(r.Context(), c.Principal, module, name, body.Value)
+	} else {
+		err = h.Svc.PutSecret(r.Context(), c.Principal, module, name, body.Value)
+	}
+	if err != nil {
 		writeErr(w, err)
 		return
 	}

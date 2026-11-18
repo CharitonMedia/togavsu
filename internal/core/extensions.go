@@ -145,6 +145,7 @@ func (x *extensions) close() {
 // contract scopes). The module handler applies a context token itself.
 // CORE-32: a public-page step credential is limited to public_operations here too
 // (contract calls, secrets, mail, and other module-handler routes never reach principal).
+// Approved install scopes still apply via Handler.scoped (CU2-01).
 func (a *App) moduleCaller(r *http.Request) (modules.Caller, error) {
 	c, err := a.caller(r)
 	if err != nil {

@@ -349,6 +349,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 "doc-tender-status-reprocess-model-choices",
                 "ai-call-log-filters",
                 "core-update-2a-service-principal",
+                "module-secret-create-if-absent",
             },
         )
 

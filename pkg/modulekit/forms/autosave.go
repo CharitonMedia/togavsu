@@ -133,7 +133,7 @@ const OfflineQueueJS = `(function(){
         var v = decodeURIComponent((i<0?"":pair.slice(i+1)).replace(/\+/g," "));
         if (k === "csrf") return;
         if (k.slice(-10)===".__unknown") {
-          answers[k.slice(0,-10)] = {unknown:true};
+          answers[k.slice(0,-10)] = {unknown: !(v==="0"||v==="false"||v==="")};
         } else if (masked && k === field && !v) {
           // omit empty masked — never overwrite sealed value on replay
         } else {
@@ -242,6 +242,10 @@ func (p AutosavePatch) Apply(dst *Answers) {
 	}
 	if p.Unknown != nil && *p.Unknown {
 		dst.Set(p.Field, Answer{Unknown: true})
+		return
+	}
+	if p.Unknown != nil && !*p.Unknown && p.Value == nil {
+		dst.Set(p.Field, Answer{Unknown: false})
 		return
 	}
 	if maskedFieldIDs(p.form)[p.Field] {
@@ -381,7 +385,12 @@ func ParseFormAnswers(values map[string][]string) Answers {
 	for key, vals := range values {
 		if strings.HasSuffix(key, ".__unknown") {
 			id := strings.TrimSuffix(key, ".__unknown")
-			unknown[id] = len(vals) > 0 && vals[0] != "" && vals[0] != "0" && vals[0] != "false"
+			// Hidden 0 + checkbox 1 posts both; the last value wins (unchecked → "0").
+			last := ""
+			if len(vals) > 0 {
+				last = vals[len(vals)-1]
+			}
+			unknown[id] = last != "" && last != "0" && last != "false"
 			continue
 		}
 		if len(vals) == 0 {
@@ -454,7 +463,12 @@ func ParseFormAnswers(values map[string][]string) Answers {
 	for id, u := range unknown {
 		if u {
 			out.Set(id, Answer{Unknown: true})
+			continue
 		}
+		// Explicit __unknown=0 clears a prior "I don't know" (CU2 / Codex P2).
+		ans := out.Get(id)
+		ans.Unknown = false
+		out.Set(id, ans)
 	}
 	return out
 }

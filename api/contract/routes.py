@@ -5125,7 +5125,9 @@ def _modules(api: Contract) -> None:
             "The calling module's own bearer stores one sealed secret under name. "
             "The path module_id must match the token's module. A context token is ignored. "
             "At most 512 secrets per module, 16 KiB each; names match ^[a-z0-9/_-]{1,128}$. "
-            "The audit log records the name only. Uninstall with keep-data keeps secrets; delete removes them."
+            "The audit log records the name only. Uninstall with keep-data keeps secrets; delete removes them. "
+            "If-None-Match: * creates only when absent (409 conflict when the name exists) so "
+            "concurrent EnsureKey creators cannot overwrite a sealed AES key (CORE-33)."
         ),
         tag="Modules",
         features=["modules"],
@@ -5134,7 +5136,16 @@ def _modules(api: Contract) -> None:
         body="ModuleSecretWrite",
         success="204",
         response_content={},
-        error_codes=["forbidden", "scope_denied", "not_found"],
+        error_codes=["forbidden", "scope_denied", "not_found", "conflict"],
+        extra_parameters=[
+            {
+                "name": "If-None-Match",
+                "in": "header",
+                "required": False,
+                "schema": {"type": "string", "enum": ["*"]},
+                "description": "When *, create only if the secret name is absent; existing names answer 409 conflict.",
+            }
+        ],
         extra_access=MODULE_SECRET,
     )
     api.add(

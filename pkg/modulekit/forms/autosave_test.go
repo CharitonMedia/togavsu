@@ -93,6 +93,57 @@ func TestParseFormAnswers(t *testing.T) {
 	}
 }
 
+// TestClearUnknownThenSaveValue: unchecking "I don't know" (hidden 0 + last value)
+// clears Unknown so a later value can be stored (Codex P2).
+func TestClearUnknownThenSaveValue(t *testing.T) {
+	form := Form{Tracks: []Track{{Screens: []Screen{{Fields: []Field{
+		{ID: "name", Type: TypeText, AllowUnknown: true},
+	}}}}}}
+	var buf strings.Builder
+	if err := RenderScreen(&buf, form.Tracks[0].Screens[0], Answers{"name": {Unknown: true}}, AudiencePublic, RenderOptions{
+		AutosaveURL: "/autosave",
+		FormAction:  "/submit",
+		CSRFToken:   "tok",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	html := buf.String()
+	if !strings.Contains(html, `name="name.__unknown" value="0"`) || !strings.Contains(html, `name="name.__unknown" value="1"`) {
+		t.Fatalf("render must emit hidden 0 + checkbox 1:\n%s", html)
+	}
+	if !strings.Contains(UnknownToggleJS, ".__unknown") || !strings.Contains(UnknownToggleJS, "disabled") {
+		t.Fatal("UnknownToggleJS must toggle disabled on the field controls")
+	}
+
+	stored := Answers{"name": {Unknown: true}}
+	// Uncheck: HTMX includes hidden 0 (checkbox omitted).
+	clear := ParseFormAnswers(map[string][]string{
+		"name.__unknown": {"0"},
+		"csrf":           {"tok"},
+	})
+	stored = MergeFormSubmit(stored, clear, form)
+	if stored.Get("name").Unknown {
+		t.Fatalf("explicit 0 must clear Unknown: %#v", stored["name"])
+	}
+	// Save a real value after clearing.
+	save := ParseFormAnswers(map[string][]string{
+		"name":           {"Avery"},
+		"name.__unknown": {"0"},
+		"csrf":           {"tok"},
+	})
+	stored = MergeFormSubmit(stored, save, form)
+	if stored.Get("name").Unknown || stored.Get("name").StringValue() != "Avery" {
+		t.Fatalf("after clear+save: %#v", stored["name"])
+	}
+	// Checked again: hidden 0 then checkbox 1 → last wins.
+	idk := ParseFormAnswers(map[string][]string{
+		"name.__unknown": {"0", "1"},
+	})
+	if !idk.Get("name").Unknown {
+		t.Fatalf("0 then 1 must be unknown: %#v", idk["name"])
+	}
+}
+
 func TestOfflineQueueJSPresent(t *testing.T) {
 	if !strings.Contains(OfflineQueueJS, "localStorage") || !strings.Contains(OfflineQueueJS, "TogavsuFormsOffline") {
 		t.Fatal("OfflineQueueJS missing expected pieces")

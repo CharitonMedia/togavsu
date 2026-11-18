@@ -242,10 +242,11 @@ func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 		}
 	}
 	// CORE-32: core-signed public-page credential as Authorization bearer. Limited to
-	// public_operations (refusePublicStepOutsideOps); modules receive it on each /p/
-	// proxy as X-Togavsu-Public-Step. Do not RequireScopes here — approved install
-	// scopes are not the public-page allowlist, and a missing contracts:call (etc.)
-	// must not mask the public_operations denial.
+	// public_operations first (refusePublicStepOutsideOps in principal), then the
+	// route's contract scopes against the module's approved install scopes
+	// (requirePublicStepRouteScopes). Modules receive the credential on each /p/
+	// proxy as X-Togavsu-Public-Step. Scope checks run after the public_operations
+	// gate so a missing contracts:call (etc.) does not mask a public_operations denial.
 	if in.Bearer != "" && in.SessionToken == "" && modules.LooksLikePublicStep(in.Bearer) && a.ext != nil && a.ext.Modules != nil {
 		moduleID, scopes, err := a.ext.Modules.AuthenticatePublicStep(r.Context(), in.Bearer)
 		if err != nil {
@@ -366,7 +367,11 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 	}
 	// CORE-32: a public-page step credential is limited to public_operations on every
 	// route, including after viewer delegation and before service-call elevation.
+	// Approved install scopes are still required for the route (CU2-01).
 	if err := a.refusePublicStepOutsideOps(r, p); err != nil {
+		return p, err
+	}
+	if err := a.requirePublicStepRouteScopes(r, c); err != nil {
 		return p, err
 	}
 	if moduleOwn(p) {
@@ -477,6 +482,27 @@ func (a *App) refusePublicStepOutsideOps(r *http.Request, p domain.Principal) er
 		return &domain.APIError{Code: "scope_denied", Message: "operation is not in public_operations"}
 	}
 	return a.ext.Modules.CheckPublicStep(r.Context(), moduleID, step, op)
+}
+
+// requirePublicStepRouteScopes requires the route's contract scopes against the
+// module's approved install scopes when a public-page step credential is present
+// (CORE-32 / CU2-01). Runs after refusePublicStepOutsideOps so public_operations
+// denials stay distinct from missing approved scopes.
+func (a *App) requirePublicStepRouteScopes(r *http.Request, c identity.Caller) error {
+	if r.Header.Get(modules.PublicStepHeader) == "" {
+		return nil
+	}
+	if moduleRuntimeRoute(r, c.Principal) {
+		return nil
+	}
+	t, ok := a.toolFor(r.Method, r.URL.Path)
+	if !ok || entryTypeScoped[t.Name] {
+		return nil
+	}
+	if err := c.RequireScopes(t.Scopes...); err != nil {
+		return shared(err)
+	}
+	return nil
 }
 
 // enforcePublicStep restricts a public-page step token to manifest public_operations (CORE-32).
