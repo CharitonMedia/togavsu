@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -79,19 +80,38 @@ func (r *publicRate) evict(now time.Time, window time.Duration) {
 	}
 }
 
-// clientIP prefers X-Forwarded-For's first hop, then RemoteAddr.
+// clientIP returns the client address for public-page rate limits (CORE-32).
+// RemoteAddr is parsed with SplitHostPort (IPv6-safe). X-Forwarded-For is trusted
+// only when the immediate peer looks like an on-host/docker reverse proxy; the
+// right-most hop is the one the proxy appended.
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
+	host := remoteHost(r.RemoteAddr)
+	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" && proxyPeer(host) {
+		parts := strings.Split(xff, ",")
+		if last := strings.TrimSpace(parts[len(parts)-1]); last != "" {
+			return last
 		}
-		return strings.TrimSpace(xff)
 	}
-	host, _, _ := strings.Cut(r.RemoteAddr, ":")
 	if host != "" {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+func remoteHost(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err == nil {
+		return host
+	}
+	return strings.TrimSpace(addr)
+}
+
+func proxyPeer(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 
 func publicCookieSecure(r *http.Request) bool {
@@ -195,7 +215,20 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// CSRF: set cookie on GET; require match on unsafe methods.
+	row, err := h.Svc.row(r.Context(), moduleID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	secret, err := h.Svc.open(row.WebhookSecret)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	sec := []byte(secret)
+
+	// CSRF: signed token (no allow-same-origin). Cookie is optional defense-in-depth;
+	// opaque-origin HTMX may omit it, so MAC verification is authoritative.
 	csrfCookie, _ := r.Cookie(PublicCSRFCookie)
 	csrfTok := ""
 	if csrfCookie != nil {
@@ -203,8 +236,8 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		if csrfTok == "" {
-			tok, err := IssuePublicCSRF()
+		if csrfTok == "" || CheckSignedPublicCSRF(sec, moduleID, csrfTok, csrfTok, h.Svc.now()) != nil {
+			tok, err := IssueSignedPublicCSRF(sec, moduleID, 0, h.Svc.now())
 			if err != nil {
 				writeErr(w, err)
 				return
@@ -217,23 +250,13 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 		submitted := submittedPublicCSRF(r, body)
-		if err := CheckPublicCSRF(csrfTok, submitted); err != nil {
+		if err := CheckSignedPublicCSRF(sec, moduleID, csrfTok, submitted, h.Svc.now()); err != nil {
 			writeErr(w, err)
 			return
 		}
 	}
 
-	row, err := h.Svc.row(r.Context(), moduleID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	secret, err := h.Svc.open(row.WebhookSecret)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	step, err := IssueStepToken([]byte(secret), moduleID, 30*time.Minute, h.Svc.now())
+	step, err := IssueStepToken(sec, moduleID, 30*time.Minute, h.Svc.now())
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -267,8 +290,10 @@ func (h *Handler) publicPage(w http.ResponseWriter, r *http.Request) {
 		ModifyResponse: func(resp *http.Response) error {
 			resp.Header.Del("Set-Cookie")
 			if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "text/html") {
-				// allow-same-origin so the double-submit CSRF cookie is sent on POSTs from the page.
-				resp.Header.Set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox")
+				// Opaque origin: never allow-same-origin (module script must not inherit
+				// the core host or staff session cookies). CSRF is a signed token passed
+				// as X-Togavsu-Public-CSRF for forms/HTMX.
+				resp.Header.Set("Content-Security-Policy", "sandbox allow-scripts allow-forms allow-downloads allow-popups allow-popups-to-escape-sandbox")
 			}
 			return nil
 		},

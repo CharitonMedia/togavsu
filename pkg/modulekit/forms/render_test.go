@@ -48,6 +48,8 @@ func TestRenderScreenAudiencesAndHTMX(t *testing.T) {
 		`data-audience="public"`,
 		`hx-post="/m/intake/api/autosave"`,
 		`name="csrf" value="tok"`,
+		`hx-include="closest .tv-field, [name=csrf]"`,
+		`X-CSRF-Token`,
 		`I don't know`,
 		`disabled`,
 		`tv-field-error`,

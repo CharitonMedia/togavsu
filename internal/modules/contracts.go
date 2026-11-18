@@ -106,19 +106,13 @@ func (s *Service) LinkContract(ctx context.Context, p domain.Principal, in Contr
 	actor := string(p.UserID)
 	var out ContractLink
 	err = s.commit(ctx, func(ctx context.Context) error {
-		// Serialize one-provider checks so concurrent links cannot create two providers.
-		if !offer.Many {
-			if _, err := s.q(ctx).ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "module_contract:"+in.Contract); err != nil {
-				return err
-			}
-			var existing string
-			err := s.q(ctx).QueryRowContext(ctx, `SELECT provider_id FROM core.module_contract_links WHERE contract = $1 LIMIT 1`, in.Contract).Scan(&existing)
-			if err == nil && existing != in.ProviderID {
-				return domain.Conflict("contract " + in.Contract + " already has provider " + existing)
-			}
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return err
-			}
+		// Serialize provider checks. Many providers are allowed only when every linked
+		// provider (including this one) declares many: true for the contract.
+		if _, err := s.q(ctx).ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "module_contract:"+in.Contract); err != nil {
+			return err
+		}
+		if err := s.refuseExtraProvider(ctx, in.Contract, in.ProviderID, offer.Many); err != nil {
+			return err
 		}
 		var existing string
 		err := s.q(ctx).QueryRowContext(ctx, `SELECT id FROM core.module_contract_links WHERE contract = $1 AND consumer_id = $2 AND provider_id = $3`,
@@ -190,8 +184,56 @@ func (s *Service) UnlinkContract(ctx context.Context, p domain.Principal, linkID
 	})
 }
 
+// refuseExtraProvider enforces one provider per contract unless every linked provider
+// (and the one being linked) declares many: true. Caller holds the contract advisory lock.
+func (s *Service) refuseExtraProvider(ctx context.Context, contract, providerID string, newMany bool) error {
+	rows, err := s.q(ctx).QueryContext(ctx, `SELECT DISTINCT provider_id FROM core.module_contract_links WHERE contract = $1`, contract)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var providers []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		providers = append(providers, id)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(providers) == 0 {
+		return nil
+	}
+	onlySame := true
+	for _, id := range providers {
+		if id != providerID {
+			onlySame = false
+			break
+		}
+	}
+	if onlySame {
+		return nil
+	}
+	if !newMany {
+		return domain.Conflict("contract " + contract + " already has provider " + providers[0])
+	}
+	for _, id := range providers {
+		in, err := s.Installed(ctx, id)
+		if err != nil {
+			return err
+		}
+		offer, ok := in.Manifest.Provide(contract)
+		if !ok || !offer.Many {
+			return domain.Conflict("contract " + contract + " already has provider " + id)
+		}
+	}
+	return nil
+}
+
 // linkedProvider returns the provider id for a consumer on a contract, or empty when none.
-// When a contract allows many providers, the earliest link (created_at, id) is used.
+// When several providers are linked (all declared many), the earliest link (created_at, id) is used.
 func (s *Service) linkedProvider(ctx context.Context, contract, consumer string) (string, error) {
 	var provider string
 	err := s.q(ctx).QueryRowContext(ctx, `SELECT provider_id FROM core.module_contract_links WHERE contract = $1 AND consumer_id = $2 ORDER BY created_at ASC, id ASC LIMIT 1`,

@@ -1,4 +1,6 @@
-/* CORE-34: staff banner show/hide bridge. Module frames post {type:"togavsu:banner.show"|"togavsu:banner.hide", module_id}. */
+/* CORE-34: staff banner show/hide bridge. Module frames post {type:"togavsu:banner.show"|"togavsu:banner.hide", module_id}.
+   Banner iframes use staffFrameSandbox (no allow-same-origin), so postMessage arrives with origin "null".
+   Match ev.source to the banner iframe contentWindow — same pattern as module-bridge.js. */
 (function () {
   function apply(moduleId, show) {
     var nodes = document.querySelectorAll('.staff-banner[data-module="' + moduleId + '"]');
@@ -15,7 +17,6 @@
     return "";
   }
   window.addEventListener("message", function (ev) {
-    if (ev.origin !== window.location.origin) return;
     var d = ev.data;
     if (!d || typeof d !== "object") return;
     var t = d.type;

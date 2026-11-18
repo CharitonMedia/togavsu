@@ -37,13 +37,14 @@ func RenderScreen(w io.Writer, screen Screen, answers Answers, audience Audience
 			html.EscapeString(method), html.EscapeString(opts.FormAction), html.EscapeString(string(audience))); err != nil {
 			return err
 		}
-		if opts.CSRFToken != "" {
-			if _, err := fmt.Fprintf(w, `<input type="hidden" name="csrf" value="%s">`+"\n", html.EscapeString(opts.CSRFToken)); err != nil {
-				return err
-			}
-		}
 	} else {
 		if _, err := fmt.Fprintf(w, `<div class="tv-form" data-audience="%s">`+"\n", html.EscapeString(string(audience))); err != nil {
+			return err
+		}
+	}
+	// CSRF hidden input for full submit and for HTMX autosave hx-include / offline queue.
+	if opts.CSRFToken != "" {
+		if _, err := fmt.Fprintf(w, `<input type="hidden" name="csrf" value="%s">`+"\n", html.EscapeString(opts.CSRFToken)); err != nil {
 			return err
 		}
 	}
@@ -88,7 +89,7 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 			return err
 		}
 	}
-	hx := autosaveAttrs(opts.AutosaveURL, name)
+	hx := autosaveAttrs(opts.AutosaveURL, name, opts.CSRFToken)
 	unknownChecked := ""
 	if ans.Unknown {
 		unknownChecked = " checked"
@@ -306,12 +307,30 @@ func renderRepeatRow(w io.Writer, field Field, name string, i int, row map[strin
 	return nil
 }
 
-func autosaveAttrs(url, name string) string {
+func autosaveAttrs(url, name, csrf string) string {
 	if url == "" {
 		return ""
 	}
-	return fmt.Sprintf(` hx-post="%s" hx-trigger="change delay:400ms, blur" hx-include="closest .tv-field" hx-swap="none" data-autosave-name="%s"`,
+	// Include the form csrf input so public-page CheckPublicCSRF sees it; also set
+	// X-CSRF-Token for callers that read the header (and for offline queue parity).
+	attrs := fmt.Sprintf(` hx-post="%s" hx-trigger="change delay:400ms, blur" hx-include="closest .tv-field, [name=csrf]" hx-swap="none" data-autosave-name="%s"`,
 		html.EscapeString(url), html.EscapeString(name))
+	if csrf != "" {
+		attrs += fmt.Sprintf(` hx-headers="%s"`, html.EscapeString(`{"X-CSRF-Token":"`+jsonStringEscape(csrf)+`"}`))
+	}
+	return attrs
+}
+
+// jsonStringEscape escapes a value for embedding inside a JSON string in an HTML attribute.
+func jsonStringEscape(s string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+		"\n", `\n`,
+		"\r", `\r`,
+		"\t", `\t`,
+	)
+	return replacer.Replace(s)
 }
 
 func disabledIfUnknown(ans Answer) string {

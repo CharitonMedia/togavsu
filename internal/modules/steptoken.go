@@ -89,7 +89,16 @@ func VerifyStepToken(secret []byte, token string, now time.Time) (StepToken, err
 	return st, nil
 }
 
-// IssuePublicCSRF returns a random CSRF token for a public page form.
+// publicCSRF is the signed payload for a public-page CSRF token (CORE-32).
+// Tokens are HMAC-signed with the module webhook secret so the core can check
+// POSTs without allow-same-origin (opaque-origin pages cannot rely on cookie JS).
+type publicCSRF struct {
+	ModuleID  string `json:"module_id"`
+	ExpiresAt int64  `json:"exp"`
+	Nonce     string `json:"nonce"`
+}
+
+// IssuePublicCSRF returns a random CSRF token (kit helper for tests and non-proxied forms).
 func IssuePublicCSRF() (string, error) {
 	var b [32]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -98,9 +107,73 @@ func IssuePublicCSRF() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-// CheckPublicCSRF compares the double-submit cookie and header/form value.
+// IssueSignedPublicCSRF builds an HMAC CSRF token for moduleID (CORE-32).
+// secret is the module webhook secret. ttl defaults to 12 hours.
+func IssueSignedPublicCSRF(secret []byte, moduleID string, ttl time.Duration, now time.Time) (string, error) {
+	moduleID = strings.TrimSpace(moduleID)
+	if moduleID == "" || len(secret) == 0 {
+		return "", domain.Invalid("csrf", "module and secret are required")
+	}
+	if ttl <= 0 {
+		ttl = 12 * time.Hour
+	}
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", err
+	}
+	c := publicCSRF{
+		ModuleID:  moduleID,
+		ExpiresAt: now.UTC().Add(ttl).Unix(),
+		Nonce:     hex.EncodeToString(nonce[:]),
+	}
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	payload := base64.RawURLEncoding.EncodeToString(raw)
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte("public-csrf|" + payload))
+	return payload + "." + hex.EncodeToString(mac.Sum(nil)), nil
+}
+
+// CheckPublicCSRF compares the double-submit cookie and header/form value (random tokens).
 func CheckPublicCSRF(cookie, submitted string) error {
 	if cookie == "" || submitted == "" || !hmac.Equal([]byte(cookie), []byte(submitted)) {
+		return domain.Forbidden("csrf required")
+	}
+	return nil
+}
+
+// CheckSignedPublicCSRF verifies a signed public CSRF token for moduleID.
+// When the cookie is present (same-site navigations), it must match the submitted
+// value; opaque-origin HTMX may omit the cookie, so MAC verification alone is enough.
+func CheckSignedPublicCSRF(secret []byte, moduleID, cookie, submitted string, now time.Time) error {
+	moduleID = strings.TrimSpace(moduleID)
+	if submitted == "" || moduleID == "" || len(secret) == 0 {
+		return domain.Forbidden("csrf required")
+	}
+	payload, sig, ok := strings.Cut(submitted, ".")
+	if !ok || payload == "" || sig == "" {
+		return domain.Forbidden("csrf required")
+	}
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte("public-csrf|" + payload))
+	want := hex.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(want), []byte(sig)) {
+		return domain.Forbidden("csrf required")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(payload)
+	if err != nil {
+		return domain.Forbidden("csrf required")
+	}
+	var c publicCSRF
+	if err := json.Unmarshal(raw, &c); err != nil || c.ModuleID != moduleID {
+		return domain.Forbidden("csrf required")
+	}
+	if now.UTC().Unix() > c.ExpiresAt {
+		return domain.Forbidden("csrf required")
+	}
+	if cookie != "" && !hmac.Equal([]byte(cookie), []byte(submitted)) {
 		return domain.Forbidden("csrf required")
 	}
 	return nil

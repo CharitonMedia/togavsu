@@ -221,6 +221,22 @@ func TestCORE32PublicPages(t *testing.T) {
 	if r.code != http.StatusOK || !strings.Contains(r.body, "public intake") {
 		t.Fatalf("public page: %d %s", r.code, r.body)
 	}
+	{
+		req, err := http.NewRequest(http.MethodGet, x.srv.URL+"/p/intake-mod/intake", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := anon.http.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		csp := res.Header.Get("Content-Security-Policy")
+		_, _ = io.Copy(io.Discard, res.Body)
+		_ = res.Body.Close()
+		if !strings.Contains(csp, "sandbox") || strings.Contains(csp, "allow-same-origin") {
+			t.Fatalf("public page CSP must be opaque (no allow-same-origin): %q", csp)
+		}
+	}
 	if lastCSRF == "" || lastStep == "" {
 		t.Fatalf("module did not receive CSRF pass-through or step token: csrf=%q step=%q", lastCSRF, lastStep)
 	}
@@ -246,6 +262,12 @@ func TestCORE32PublicPages(t *testing.T) {
 	postOK := anon.do("POST", "/p/intake-mod/intake", url.Values{"csrf": {csrfCookie}, "name": {"Avery"}})
 	if postOK.code != http.StatusOK || !strings.Contains(postOK.body, "posted ok") || lastMethod != http.MethodPost {
 		t.Fatalf("POST with csrf: %d %s method=%s", postOK.code, postOK.body, lastMethod)
+	}
+	// Opaque-origin HTMX may omit the cookie; signed CSRF in the header alone must work.
+	anonNoCookie := newClient(t, x.srv.URL)
+	hdrOnly := anonNoCookie.do("POST", "/p/intake-mod/intake", url.Values{"name": {"Blake"}}, modules.PublicCSRFHeader, lastCSRF)
+	if hdrOnly.code != http.StatusOK || !strings.Contains(hdrOnly.body, "posted ok") {
+		t.Fatalf("POST with X-CSRF-Token only (no cookie): %d %s", hdrOnly.code, hdrOnly.body)
 	}
 	// Wrong csrf fails.
 	if r := anon.do("POST", "/p/intake-mod/intake", url.Values{"csrf": {"not-the-token"}, "name": {"x"}}); r.code != http.StatusForbidden {
@@ -327,8 +349,11 @@ func TestCORE34StaffBanner(t *testing.T) {
 		t.Fatalf("shell missing banner: %d %s", home.code, snip)
 	}
 	bridge := x.admin.do("GET", "/ui/static/banner-bridge.js", nil)
-	if bridge.code != http.StatusOK || !strings.Contains(bridge.body, "ev.origin") || !strings.Contains(bridge.body, "fromBanner") {
-		t.Fatalf("banner-bridge missing origin/source checks: %d", bridge.code)
+	if bridge.code != http.StatusOK || !strings.Contains(bridge.body, "fromBanner") || !strings.Contains(bridge.body, "ev.source") {
+		t.Fatalf("banner-bridge missing source match: %d", bridge.code)
+	}
+	if strings.Contains(bridge.body, "ev.origin") {
+		t.Fatalf("banner-bridge must not filter on ev.origin (sandboxed banners post from opaque origin null)")
 	}
 }
 
@@ -372,5 +397,142 @@ func TestCORE2BOpenAPIAndMCP(t *testing.T) {
 		"body": map[string]any{},
 	}); !strings.Contains(r.body, "scope_denied") {
 		t.Fatalf("mcp call without scope: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE32PublicAutosaveCSRF: forms-kit autosave through /p/ carries CSRF (Codex P1).
+func TestCORE32PublicAutosaveCSRF(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+
+	var lastAutosaveCSRF, lastAutosaveBody string
+	x.rt.Serve("intake-auto", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/form" && r.Method == http.MethodGet:
+				csrf := r.Header.Get(modules.PublicCSRFPassHeader)
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = w.Write([]byte(`<html><body><form class="tv-form" method="POST" action="/p/intake-auto/form">` +
+					`<input type="hidden" name="csrf" value="` + csrf + `">` +
+					`<input name="name" value="" hx-post="/p/intake-auto/autosave" hx-include="closest .tv-field, [name=csrf]" hx-headers='{"X-CSRF-Token":"` + csrf + `"}'>` +
+					`</form></body></html>`))
+			case r.URL.Path == "/autosave" && r.Method == http.MethodPost:
+				lastAutosaveCSRF = r.Header.Get(modules.PublicCSRFHeader)
+				if lastAutosaveCSRF == "" {
+					_ = r.ParseForm()
+					lastAutosaveCSRF = r.Form.Get("csrf")
+				}
+				raw, _ := io.ReadAll(r.Body)
+				lastAutosaveBody = string(raw)
+				w.WriteHeader(http.StatusNoContent)
+			case r.URL.Path == "/form":
+				w.WriteHeader(http.StatusNoContent)
+			default:
+				http.NotFound(w, r)
+			}
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "intake-auto", "Intake Auto",
+			"  - scope: public_pages:serve\n    reason: Public pages.\n",
+			"public_pages:\n  - path: /form\n  - path: /autosave\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	x.approveOnTab("intake-auto")
+
+	anon := newClient(t, x.srv.URL)
+	page := anon.do("GET", "/p/intake-auto/form", nil)
+	if page.code != http.StatusOK || !strings.Contains(page.body, `name="csrf"`) {
+		t.Fatalf("public form: %d %s", page.code, page.body)
+	}
+	u, _ := url.Parse(x.srv.URL + "/p/intake-auto/form")
+	var csrf string
+	for _, c := range anon.http.Jar.Cookies(u) {
+		if c.Name == modules.PublicCSRFCookie {
+			csrf = c.Value
+		}
+	}
+	if csrf == "" {
+		t.Fatal("missing csrf cookie")
+	}
+	if r := anon.do("POST", "/p/intake-auto/autosave", url.Values{"csrf": {csrf}, "name": {"Avery"}}); r.code != http.StatusNoContent {
+		t.Fatalf("autosave with csrf: %d %s", r.code, r.body)
+	}
+	if lastAutosaveCSRF == "" && !strings.Contains(lastAutosaveBody, "Avery") {
+		t.Fatalf("module did not see autosave: csrf=%q body=%q", lastAutosaveCSRF, lastAutosaveBody)
+	}
+	if r := anon.do("POST", "/p/intake-auto/autosave", url.Values{"name": {"Nope"}}); r.code != http.StatusForbidden {
+		t.Fatalf("autosave without csrf: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE31OneProviderUnlessEveryMany: many:true cannot join a single-provider contract (Codex P2).
+func TestCORE31OneProviderUnlessEveryMany(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	const contract = "phone.provider.v1"
+	for _, id := range []string{"phone-a", "phone-b", "phone-cons"} {
+		name := id
+		x.rt.Serve(name, func(m testkit.Module) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"ok":true}`))
+			})
+		})
+	}
+	single := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-a", "Phone A",
+			"  - scope: contracts:provide\n    reason: Provide.\n",
+			"provides:\n  - contract: "+contract+"\n    operations:\n      - name: echo\n        path: /echo\n")
+	})
+	many := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-b", "Phone B",
+			"  - scope: contracts:provide\n    reason: Provide.\n",
+			"provides:\n  - contract: "+contract+"\n    many: true\n    operations:\n      - name: echo\n        path: /echo\n")
+	})
+	cons := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "phone-cons", "Phone Cons",
+			"  - scope: contracts:call\n    reason: Call.\n",
+			"consumes:\n  - contract: "+contract+"\n")
+	})
+	for _, pkg := range [][]byte{single, many, cons} {
+		if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+			t.Fatalf("install: %s", problem)
+		}
+	}
+	x.approveOnTab("phone-a")
+	x.approveOnTab("phone-b")
+	x.approveOnTab("phone-cons")
+	x.admin.must(http.StatusCreated, "POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-cons", "provider_id": "phone-a",
+	})
+	if r := x.admin.do("POST", "/api/v1/modules/contract-links", map[string]any{
+		"contract": contract, "consumer_id": "phone-cons", "provider_id": "phone-b",
+	}); r.code != http.StatusConflict {
+		t.Fatalf("many provider joining single-provider contract: %d %s", r.code, r.body)
+	}
+}
+
+// TestCORE32PublicOperationsAdvisoryLabel: install view labels the step-header limit (Codex P2).
+func TestCORE32PublicOperationsAdvisoryLabel(t *testing.T) {
+	x := newExt(t)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	x.rt.Serve("intake-label", func(m testkit.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("ok"))
+		})
+	})
+	pkg := x.build(func(f map[string][]byte) {
+		f[modules.ManifestFile] = patchManifest(f[modules.ManifestFile], "intake-label", "Intake Label",
+			"  - scope: public_pages:serve\n    reason: Public.\n",
+			"public_pages:\n  - path: /x\npublic_operations:\n  - createContact\n")
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
+		t.Fatalf("install: %s", problem)
+	}
+	tab := x.admin.do("GET", "/admin?tab=modules", nil)
+	if tab.code != http.StatusOK || !strings.Contains(tab.body, "X-Togavsu-Public-Step") || !strings.Contains(tab.body, "advisory") {
+		t.Fatalf("install view must label public_operations as step-enforced/advisory: %d", tab.code)
 	}
 }

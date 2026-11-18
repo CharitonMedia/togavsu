@@ -164,10 +164,18 @@ func VerifyStepToken(secret []byte, token string, now time.Time) (StepToken, err
 	return modules.VerifyStepToken(secret, token, now)
 }
 
-// IssuePublicCSRF / CheckPublicCSRF are the public-page CSRF helpers.
+// IssuePublicCSRF / CheckPublicCSRF are the random double-submit CSRF helpers.
 func IssuePublicCSRF() (string, error) { return modules.IssuePublicCSRF() }
 func CheckPublicCSRF(cookie, submitted string) error {
 	return modules.CheckPublicCSRF(cookie, submitted)
+}
+
+// IssueSignedPublicCSRF / CheckSignedPublicCSRF are the HMAC CSRF helpers used on /p/{id}/.
+func IssueSignedPublicCSRF(secret []byte, moduleID string, ttl time.Duration, now time.Time) (string, error) {
+	return modules.IssueSignedPublicCSRF(secret, moduleID, ttl, now)
+}
+func CheckSignedPublicCSRF(secret []byte, moduleID, cookie, submitted string, now time.Time) error {
+	return modules.CheckSignedPublicCSRF(secret, moduleID, cookie, submitted, now)
 }
 
 // SignWebhook / VerifyWebhook are the HMAC scheme contract calls share with events.

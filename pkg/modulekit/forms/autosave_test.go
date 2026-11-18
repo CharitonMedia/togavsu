@@ -100,6 +100,9 @@ func TestOfflineQueueJSPresent(t *testing.T) {
 	if !strings.Contains(OfflineQueueJS, `"answers"`) && !strings.Contains(OfflineQueueJS, "answers:") {
 		t.Fatal("OfflineQueueJS must enqueue answers, not a nil raw value")
 	}
+	if !strings.Contains(OfflineQueueJS, "X-CSRF-Token") || !strings.Contains(OfflineQueueJS, "csrfToken") {
+		t.Fatal("OfflineQueueJS must carry X-CSRF-Token on enqueue and flush")
+	}
 }
 
 func TestAutosaveHandlerAcceptsFormURLEncoded(t *testing.T) {
@@ -141,6 +144,18 @@ func TestParseFormAnswersRepeating(t *testing.T) {
 	rows := got.Get("kids").RowsValue()
 	if len(rows) != 2 || rows[0]["name"].StringValue() != "Ada" || rows[1]["name"].StringValue() != "Bea" {
 		t.Fatalf("repeating rows = %#v", got["kids"])
+	}
+}
+
+func TestParseFormAnswersRejectsHugeRepeatingIndex(t *testing.T) {
+	got := ParseFormAnswers(map[string][]string{
+		"kids[0].name":           {"Ada"},
+		"kids[2000000000].name":  {"Boom"},
+		"kids[100].name":         {"TooHigh"}, // MaxRepeatingIndex is 99
+	})
+	rows := got.Get("kids").RowsValue()
+	if len(rows) != 1 || rows[0]["name"].StringValue() != "Ada" {
+		t.Fatalf("huge index must not allocate; got %#v", got["kids"])
 	}
 }
 

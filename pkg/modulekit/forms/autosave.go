@@ -16,6 +16,10 @@ const OfflineQueueJS = `(function(){
   var KEY = window.TOGAVSU_FORMS_QUEUE_KEY || "togavsu-forms-offline-queue";
   function load(){ try { return JSON.parse(localStorage.getItem(KEY)||"[]"); } catch(e){ return []; } }
   function save(q){ localStorage.setItem(KEY, JSON.stringify(q)); }
+  function csrfToken(){
+    var el = document.querySelector("input[name=csrf]");
+    return el && el.value ? el.value : (window.TOGAVSU_PUBLIC_CSRF || "");
+  }
   function enqueue(url, body, headers){
     var q = load();
     q.push({url:url, body:body, headers:headers||{}, at:Date.now()});
@@ -33,11 +37,15 @@ const OfflineQueueJS = `(function(){
         if (!hdrs["Content-Type"] && !hdrs["content-type"]) {
           hdrs["Content-Type"] = "application/json";
         }
+        var csrf = csrfToken();
+        if (csrf && !hdrs["X-CSRF-Token"] && !hdrs["x-csrf-token"]) {
+          hdrs["X-CSRF-Token"] = csrf;
+        }
         var res = await fetch(item.url, {
           method: "POST",
           headers: hdrs,
           body: item.body,
-          credentials: "same-origin"
+          credentials: "include"
         });
         if (!res.ok) keep.push(item);
       } catch (e) { keep.push(item); }
@@ -47,8 +55,14 @@ const OfflineQueueJS = `(function(){
   document.addEventListener("htmx:configRequest", function(e){
     var xhr = e.detail && e.detail.xhr;
     var params = e.detail && e.detail.parameters;
+    var headers = e.detail && e.detail.headers;
     if (!xhr || !params) return;
     try {
+      var csrf = csrfToken();
+      if (csrf) {
+        if (headers && typeof headers === "object") headers["X-CSRF-Token"] = csrf;
+        if (!params.csrf) params.csrf = csrf;
+      }
       var parts = [];
       Object.keys(params).forEach(function(k){
         var v = params[k];
@@ -60,6 +74,7 @@ const OfflineQueueJS = `(function(){
       });
       xhr._togavsuBody = parts.join("&");
       xhr._togavsuContentType = "application/x-www-form-urlencoded";
+      xhr._togavsuCSRF = csrf || "";
     } catch (err) {}
   });
   document.addEventListener("htmx:sendError", function(e){
@@ -77,6 +92,7 @@ const OfflineQueueJS = `(function(){
         var i = pair.indexOf("=");
         var k = decodeURIComponent((i<0?pair:pair.slice(0,i)).replace(/\+/g," "));
         var v = decodeURIComponent((i<0?"":pair.slice(i+1)).replace(/\+/g," "));
+        if (k === "csrf") return;
         if (k.slice(-10)===".__unknown") {
           answers[k.slice(0,-10)] = {unknown:true};
         } else {
@@ -91,11 +107,14 @@ const OfflineQueueJS = `(function(){
       if (input && input.value != null) answers[field] = {value: input.value};
     }
     var body = JSON.stringify({offline:true, answers: answers, field: field});
-    enqueue(url, body, {"Content-Type":"application/json","X-Togavsu-Forms-Offline":"1"});
+    var hdrs = {"Content-Type":"application/json","X-Togavsu-Forms-Offline":"1"};
+    var csrf = (xhr && xhr._togavsuCSRF) || csrfToken();
+    if (csrf) hdrs["X-CSRF-Token"] = csrf;
+    enqueue(url, body, hdrs);
   });
   window.addEventListener("online", flush);
   document.addEventListener("DOMContentLoaded", flush);
-  window.TogavsuFormsOffline = {enqueue:enqueue, flush:flush, key:KEY};
+  window.TogavsuFormsOffline = {enqueue:enqueue, flush:flush, key:KEY, csrfToken:csrfToken};
 })();`
 
 // RepeatingJS wires Add/Remove for TypeRepeating groups rendered by RenderScreen.
@@ -306,15 +325,24 @@ func ParseFormAnswers(values map[string][]string) Answers {
 	for id, parts := range repeating {
 		max := -1
 		for _, p := range parts {
+			if p.idx > MaxRepeatingIndex {
+				continue // refuse unbounded allocation from forged indices
+			}
 			if p.idx > max {
 				max = p.idx
 			}
+		}
+		if max < 0 {
+			continue
 		}
 		rows := make([]map[string]Answer, max+1)
 		for i := range rows {
 			rows[i] = map[string]Answer{}
 		}
 		for _, p := range parts {
+			if p.idx > MaxRepeatingIndex {
+				continue
+			}
 			rowVals := map[string][]string{p.rest: p.vals}
 			parsed := ParseFormAnswers(rowVals)
 			for k, a := range parsed {
@@ -330,6 +358,11 @@ func ParseFormAnswers(values map[string][]string) Answers {
 	}
 	return out
 }
+
+// MaxRepeatingIndex is the highest accepted repeating-row index in a form POST
+// (0..MaxRepeatingIndex inclusive). Larger indices are ignored so an anonymous
+// public-page POST cannot force a multi-gigabyte allocation.
+const MaxRepeatingIndex = 99
 
 // splitRepeatingKey parses "kids[0].name" into id, index, rest.
 func splitRepeatingKey(key string) (id string, idx int, rest string, ok bool) {

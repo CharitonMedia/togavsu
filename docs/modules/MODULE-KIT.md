@@ -5,14 +5,16 @@ and cannot import the core's `internal/` packages. The kit gives them the core's
 through three public surfaces:
 
 - `pkg/modulekit`: manifest and migration checks, package build, signing and verification,
-  plus CORE-31/32 helpers (`IssueStepToken` / `VerifyStepToken`, public CSRF including
-  `PublicCSRFPassHeader` / `X-Togavsu-Public-CSRF` on proxied public pages,
-  `SignWebhook` / `VerifyWebhook` — contract calls use the same HMAC as events).
+  plus CORE-31/32 helpers (`IssueStepToken` / `VerifyStepToken`, signed public CSRF
+  `IssueSignedPublicCSRF` / `CheckSignedPublicCSRF`, `PublicCSRFPassHeader` /
+  `X-Togavsu-Public-CSRF` on proxied public pages, `SignWebhook` / `VerifyWebhook` —
+  contract calls use the same HMAC as events).
 - `cmd/togavsu-module`: the same checks, packaging and verification as a command.
 - `pkg/modulekit/forms`: CORE-33 form definitions, validation, HTMX rendering and autosave
-  (JSON or form-urlencoded), repeating add/remove (`RepeatingJS`), offline queue, and
-  masked-field encryption (`EnsureKey` only on `ErrSecretNotFound`); answers stay in the
-  module's own schema.
+  (JSON or form-urlencoded with CSRF on autosave/offline), repeating add/remove
+  (`RepeatingJS`, index cap `MaxRepeatingIndex`), offline queue, and masked-field
+  encryption (`EnsureKey` only on `ErrSecretNotFound`); answers stay in the module's own
+  schema.
 - `pkg/modulekit/coretest`: an acceptance harness that runs the real composed core in the
   test process.
 
