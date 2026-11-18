@@ -1,0 +1,40 @@
+{
+  "task_id": "desk-fix-ledger-seal-module-grants",
+  "status": "pass",
+  "scope": "Desk fix 5: ledgerseal.Script no longer REVOKE ALL from the application role, so module REFERENCES (id) grants on append-only tables survive SealLedgers / wrapLedgerMigration re-seal / core migrate. status pass means the required local commands on this revision exited 0. It is not full product acceptance.",
+  "tested_revision": "d9d8bf51f2acb2e37d2794d79ddd19a6ebc91482",
+  "prd_sections": [
+    "5",
+    "6"
+  ],
+  "acceptance_ids": [],
+  "tests": [
+    {
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "seconds": 2
+    },
+    {
+      "command": "go test -count=1 -timeout 45m ./internal/...",
+      "exit_code": 0,
+      "seconds": 161,
+      "note": "Ran with TOGAVSU_TEST_DATABASE_URL against local Docker postgres:17 (synthetic credentials only; URL not recorded here). Includes TestSealLedgersKeepsDependentReferences, TestApplySealedAfterDependentReferences, TestPGCoreMigrateTwiceAfterLedgerExtendingModule, and existing supervisor restore tests."
+    }
+  ],
+  "implemented": [
+    "ledgerseal.Script: REVOKE ALL FROM PUBLIC only; REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER, MAINTAIN from the application role; REVOKE GRANT OPTION FOR SELECT, INSERT from the application role; existing GRANT SELECT/INSERT and GRANT REFERENCES (id) WITH GRANT OPTION unchanged; writer-role REVOKE ALL lines unchanged; never CASCADE; VerifySealed unchanged",
+    "internal/db/ledgers_test.go: Postgres re-seal after application role GRANTs REFERENCES (id) on trust_ledger to another role; ApplySealed of a migration naming trust_ledger after that; asserts dependent grant kept, VerifySealed, no UPDATE/DELETE/TRUNCATE, no grant option on SELECT/INSERT",
+    "internal/modules/ledger_seal_grants_pg_test.go: provision a ledger-extending module (REFERENCES + FK table on trust_ledger) then core.MigrateSealed twice; both succeed and the module grant remains"
+  ],
+  "pending": [
+    "GitHub CI and Codex checkpoint on the controller-published head of claude/togavsu-desk-fix-ledger-seal-module-grants-571ce8c3 (this lane cannot push)",
+    "Required checks named by the assignment: Core tests, Supervisor tests, Backup integration — pending until controller publishes",
+    "No acceptance_ids on this desk-fix assignment; not a phase completion claim"
+  ],
+  "simplification": {
+    "net_lines": 264,
+    "ponytail_debt_sections": 13,
+    "ponytail_debt_numbered": 64,
+    "note": "No new PONYTAIL-DEBT entries. One-line SQL change in ledgerseal.Script; tests only elsewhere. Writer-role paths and VerifySealed left untouched."
+  }
+}
