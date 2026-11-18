@@ -19,8 +19,14 @@ const MaxRepeatingIndex = domain.FormsMaxRepeatingIndex
 // booleans bool, multi-selects []string, dates validated strings, addresses
 // structs, repeating groups ordered row arrays. Keys ending in ".__unknown"
 // mark "I don't know". Address parts use "id.line1" names as RenderScreen emits.
-// Repeating rows use "id[N].sub". Non-field keys (csrf) are ignored. Fields with
-// no posted keys are omitted so MergeFormSubmit can keep other screens' answers.
+// Repeating rows use "id[N].sub". Non-field keys (csrf) are ignored.
+//
+// Presence: RenderScreen emits name="__present" value="<field name>" for every
+// rendered control. A present field with no value is cleared (empty multi-select,
+// all repeating rows removed). A field not listed in __present is omitted so
+// MergeFormSubmit keeps other screens' answers. TypeFile is never read from the
+// form post (upload endpoint only). Empty masked values are still parsed as ""
+// so MergeFormSubmit can keep sealed ciphertext at any nesting depth.
 func ParseFormAnswers(form Form, values map[string][]string) Answers {
 	return parsePostedAnswers(form, values)
 }
@@ -59,49 +65,87 @@ func parseFieldInto(out Answers, field Field, values map[string][]string, namePr
 	switch field.Type {
 	case TypeReadOnly:
 		return
+	case TypeFile:
+		// File answers are set only by the upload endpoint; ignore form posts.
+		return
 	case TypeRepeating:
 		if !repeatingPosted(values, name) {
-			if u, ok := unknownPosted(values, name); ok && !u {
-				ans := out.Get(field.ID)
-				ans.Unknown = false
-				out.Set(field.ID, ans)
+			if fieldPresent(values, name) {
+				out.Set(field.ID, Answer{Value: []map[string]Answer{}})
+				return
 			}
+			applyUnknownClear(out, field.ID, values, name)
 			return
 		}
 		out.Set(field.ID, Answer{Value: parseRepeating(field, values, name)})
 	case TypeAddress:
 		if !addressPosted(values, name) {
+			if fieldPresent(values, name) {
+				out.Set(field.ID, Answer{Value: Address{}})
+				return
+			}
 			applyUnknownClear(out, field.ID, values, name)
 			return
 		}
 		out.Set(field.ID, Answer{Value: parseAddress(values, name)})
 	case TypeBoolean:
 		if !keyPosted(values, name) {
+			if fieldPresent(values, name) {
+				out.Set(field.ID, Answer{Value: false})
+				return
+			}
 			applyUnknownClear(out, field.ID, values, name)
 			return
 		}
 		out.Set(field.ID, Answer{Value: parseBool(lastValue(values[name]))})
 	case TypeMultiSelect:
 		if !keyPosted(values, name) {
+			if fieldPresent(values, name) {
+				out.Set(field.ID, Answer{Value: []string{}})
+				return
+			}
 			applyUnknownClear(out, field.ID, values, name)
 			return
 		}
 		out.Set(field.ID, Answer{Value: append([]string{}, values[name]...)})
 	case TypeNumber:
 		if !keyPosted(values, name) {
+			if fieldPresent(values, name) {
+				out.Set(field.ID, Answer{Value: nil})
+				return
+			}
 			applyUnknownClear(out, field.ID, values, name)
 			return
 		}
 		out.Set(field.ID, parseNumberAnswer(lastValue(values[name])))
 	case TypeDate:
 		if !keyPosted(values, name) {
+			if fieldPresent(values, name) {
+				out.Set(field.ID, Answer{Value: ""})
+				return
+			}
 			applyUnknownClear(out, field.ID, values, name)
 			return
 		}
 		out.Set(field.ID, parseDateAnswer(lastValue(values[name])))
-	default:
-		// text, email, tel, textarea, select, radio, masked, hidden, file
+	case TypeMasked:
 		if !keyPosted(values, name) {
+			if fieldPresent(values, name) {
+				// Empty/omitted masked → Answer{Value:""}; MergeFormSubmit keeps sealed.
+				out.Set(field.ID, Answer{Value: ""})
+				return
+			}
+			applyUnknownClear(out, field.ID, values, name)
+			return
+		}
+		out.Set(field.ID, Answer{Value: lastValue(values[name])})
+	default:
+		// text, email, tel, textarea, select, radio, hidden
+		if !keyPosted(values, name) {
+			if fieldPresent(values, name) {
+				out.Set(field.ID, Answer{Value: ""})
+				return
+			}
 			applyUnknownClear(out, field.ID, values, name)
 			return
 		}
@@ -112,6 +156,16 @@ func parseFieldInto(out Answers, field Field, values map[string][]string, namePr
 		ans.Unknown = false
 		out.Set(field.ID, ans)
 	}
+}
+
+// fieldPresent reports whether RenderScreen's __present marker listed this control.
+func fieldPresent(values map[string][]string, name string) bool {
+	for _, v := range values["__present"] {
+		if v == name {
+			return true
+		}
+	}
+	return false
 }
 
 func applyUnknownClear(out Answers, id string, values map[string][]string, name string) {

@@ -85,6 +85,12 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 		html.EscapeString(class), html.EscapeString(field.ID), html.EscapeString(string(field.Type))); err != nil {
 		return err
 	}
+	// Presence marker: parser clears when present with no value; omitted fields keep stored answers.
+	if field.Type != TypeReadOnly {
+		if _, err := fmt.Fprintf(w, `<input type="hidden" name="__present" value="%s">`+"\n", html.EscapeString(name)); err != nil {
+			return err
+		}
+	}
 	if field.Type != TypeHidden && field.Label != "" {
 		if _, err := fmt.Fprintf(w, `<label for="%s">%s</label>`+"\n", html.EscapeString(id), html.EscapeString(field.Label)); err != nil {
 			return err
@@ -104,16 +110,30 @@ func renderField(w io.Writer, field Field, ans Answer, opts RenderOptions, nameP
 		unknownChecked = " checked"
 	}
 	switch field.Type {
-	case TypeText, TypeEmail, TypeTel, TypeDate, TypeMasked, TypeFile:
+	case TypeFile:
+		// Stored ref is shown + hidden for UI; file picker is unnamed for urlencoded
+		// posts (answers come from the upload endpoint). OfflineQueueJS also strips type=file.
+		ref := ans.StringValue()
+		if ref != "" {
+			if _, err := fmt.Fprintf(w, `<p class="tv-file-name">%s</p>`+"\n", html.EscapeString(ref)); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(w, `<input type="hidden" name="%s.__ref" value="%s">`+"\n",
+				html.EscapeString(name), html.EscapeString(ref)); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintf(w, `<input type="file" id="%s" data-field-file="%s"%s>`+"\n",
+			html.EscapeString(id), html.EscapeString(name), disabledIfUnknown(ans)); err != nil {
+			return err
+		}
+	case TypeText, TypeEmail, TypeTel, TypeDate, TypeMasked:
 		inputType := string(field.Type)
 		if field.Type == TypeMasked {
 			inputType = "password"
 			if opts.RevealMasked {
 				inputType = "text"
 			}
-		}
-		if field.Type == TypeFile {
-			inputType = "file"
 		}
 		val := ans.StringValue()
 		if field.Type == TypeMasked && !opts.RevealMasked && val != "" {

@@ -18,6 +18,7 @@ func TestFieldTypeRoundTripAutosaveAndSubmit(t *testing.T) {
 		name   string
 		field  Field
 		post   url.Values
+		seed   Answers // optional pre-existing answers (file upload path)
 		check  func(t *testing.T, a Answer)
 		skipRO bool
 	}{
@@ -179,7 +180,9 @@ func TestFieldTypeRoundTripAutosaveAndSubmit(t *testing.T) {
 		{
 			name:  "file",
 			field: Field{ID: "f", Type: TypeFile, Label: "Doc"},
-			post:  url.Values{"f": {"file-ref-1"}, "csrf": {"tok"}},
+			// File answers are set by the upload endpoint, not urlencoded form posts.
+			seed: Answers{"f": {Value: "file-ref-1"}},
+			post: url.Values{"__present": {"f"}, "csrf": {"tok"}},
 			check: func(t *testing.T, a Answer) {
 				if a.StringValue() != "file-ref-1" {
 					t.Fatalf("file = %#v", a)
@@ -233,7 +236,10 @@ func TestFieldTypeRoundTripAutosaveAndSubmit(t *testing.T) {
 				t.Fatalf("must not use per-field hx-include:\n%s", html)
 			}
 
-			var stored Answers
+			stored := Answers{}
+			for k, v := range tc.seed {
+				stored[k] = v
+			}
 			h := AutosaveHandlerForm(form, func(r *http.Request, patch AutosavePatch) (Answers, error) {
 				patch.Apply(&stored)
 				return stored, nil
@@ -253,9 +259,13 @@ func TestFieldTypeRoundTripAutosaveAndSubmit(t *testing.T) {
 				tc.check(t, stored.Get(tc.field.ID))
 			}
 
-			// Full submit path: same parser.
+			// Full submit path: same parser; seed again so file upload refs survive.
+			base := Answers{}
+			for k, v := range tc.seed {
+				base[k] = v
+			}
 			posted := ParseFormAnswers(form, tc.post)
-			stored = MergeFormSubmit(Answers{}, posted, form)
+			stored = MergeFormSubmit(base, posted, form)
 			if !tc.skipRO {
 				tc.check(t, stored.Get(tc.field.ID))
 			}

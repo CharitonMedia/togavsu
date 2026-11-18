@@ -23,7 +23,9 @@ import (
 //
 // The form element carries one hx-post (debounced change/input). Masked rule: an
 // untouched masked control is stripped from the post (sends nothing for that
-// field) and never overwrites stored ciphertext; post ClearMaskedValue to erase.
+// field) and never overwrites stored ciphertext at any nesting depth; post
+// ClearMaskedValue to erase. File inputs are stripped from urlencoded autosave;
+// file answers are set only by the upload endpoint.
 //
 // OfflineQueueJS is a small script modules embed beside the HTMX form. It queues
 // autosave bodies in localStorage while offline and flushes them when the
@@ -84,7 +86,8 @@ const OfflineQueueJS = `(function(){
     var params = e.detail && e.detail.parameters;
     var headers = e.detail && e.detail.headers;
     if (!xhr || !params) return;
-    // Whole-form post: strip empty masked controls so they never overwrite sealed data.
+    // Whole-form post: strip empty masked controls so they never overwrite sealed data;
+    // strip file inputs entirely (answers come from the upload endpoint only).
     var root = elt;
     if (root && root.querySelectorAll) {
       var masked = root.querySelectorAll("[data-autosave-masked='1']");
@@ -94,6 +97,14 @@ const OfflineQueueJS = `(function(){
         if (inp.value == null || String(inp.value) === "") {
           delete params[inp.name];
         }
+      }
+      var files = root.querySelectorAll("input[type=file], input[type='file']");
+      for (var fi=0; fi<files.length; fi++){
+        var fin = files[fi];
+        if (!fin) continue;
+        if (fin.name) delete params[fin.name];
+        var fkey = fin.getAttribute && fin.getAttribute("data-field-file");
+        if (fkey) delete params[fkey];
       }
     }
     try {

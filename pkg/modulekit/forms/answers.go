@@ -65,36 +65,107 @@ func (a *Answers) Merge(patch Answers) {
 const ClearMaskedValue = "__clear__"
 
 // MergeFormSubmit merges posted form answers into existing. Masked fields keep their
-// stored value when the posted string is empty (RevealMasked=false renders value="");
-// post ClearMaskedValue to erase. Unknown still replaces. Non-masked fields merge as Merge.
+// stored value when the posted string is empty or missing (RevealMasked=false renders
+// value=""; OfflineQueueJS omits empty masked controls) at any nesting depth, including
+// repeating rows. Post ClearMaskedValue to erase. Empty file posts keep the stored ref.
+// Repeating groups merge row-by-row and field-by-field so a sibling edit cannot drop
+// nested masked/file answers. Unknown still replaces. Other fields replace as Merge.
 func MergeFormSubmit(existing Answers, posted Answers, form Form) Answers {
 	out := Answers{}
 	for id, ans := range existing {
 		out[id] = ans
 	}
-	masked := maskedFieldIDs(form)
+	fields := formFields(form)
+	byID := map[string]Field{}
+	for _, f := range fields {
+		byID[f.ID] = f
+	}
 	for id, ans := range posted {
 		if ans.Unknown {
 			ans.Value = nil
 			out[id] = ans
 			continue
 		}
-		if masked[id] {
-			s, _ := ans.Value.(string)
-			if s == "" {
-				// Empty masked post never overwrites ciphertext, but still clears Unknown
-				// when the client posts Unknown=false (uncheck "I don't know").
-				cur := out[id]
-				cur.Unknown = false
-				out[id] = cur
-				continue
-			}
-			if s == ClearMaskedValue {
-				out[id] = Answer{Value: ""}
-				continue
-			}
+		if f, ok := byID[id]; ok {
+			out[id] = mergePostedField(out[id], ans, f)
+			continue
 		}
 		out[id] = ans
+	}
+	return out
+}
+
+func mergePostedField(existing, posted Answer, field Field) Answer {
+	switch field.Type {
+	case TypeMasked:
+		s, _ := posted.Value.(string)
+		if s == "" {
+			cur := existing
+			cur.Unknown = false
+			return cur
+		}
+		if s == ClearMaskedValue {
+			return Answer{Value: ""}
+		}
+		return posted
+	case TypeFile:
+		s, _ := posted.Value.(string)
+		if s == "" {
+			return existing
+		}
+		return posted
+	case TypeRepeating:
+		return Answer{Value: mergeRepeatingRows(existing.RowsValue(), posted.RowsValue(), field.Fields)}
+	default:
+		return posted
+	}
+}
+
+func mergeRepeatingRows(existing, posted []map[string]Answer, nested []Field) []map[string]Answer {
+	if posted == nil {
+		return nil
+	}
+	out := make([]map[string]Answer, len(posted))
+	for i, prow := range posted {
+		var erow map[string]Answer
+		if i < len(existing) {
+			erow = existing[i]
+		}
+		row := map[string]Answer{}
+		// Preserve nested masked/file values that the post omitted entirely.
+		for _, f := range nested {
+			if f.Type != TypeMasked && f.Type != TypeFile && f.Type != TypeRepeating {
+				continue
+			}
+			if _, ok := prow[f.ID]; ok {
+				continue
+			}
+			if erow == nil {
+				continue
+			}
+			if cur, ok := erow[f.ID]; ok {
+				row[f.ID] = cur
+			}
+		}
+		for id, pans := range prow {
+			var f Field
+			for _, nf := range nested {
+				if nf.ID == id {
+					f = nf
+					break
+				}
+			}
+			var eans Answer
+			if erow != nil {
+				eans = erow[id]
+			}
+			if f.ID != "" {
+				row[id] = mergePostedField(eans, pans, f)
+			} else {
+				row[id] = pans
+			}
+		}
+		out[i] = row
 	}
 	return out
 }
