@@ -1555,6 +1555,28 @@
         "Core tests"
       ],
       "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install: there is no marketplace to install modules from, and the marketplace refuses the kit's own signed package file. Read docs/build/desk-fixes/marketplace-catalog.md and build Lane B exactly as it says: the upload endpoint taking the kit's whole signed package file (digest checked, unknown fields still refused, the old three-field body still working), the listing price defaulting to the manifest's price when no price_note is sent, the togavsu-module publish subcommand with modulekit.Publish behind it (create or sign in the author, register and prove the key, upload each file, already-listed is done, conflicting bytes is an error), and the togavsu-marketplace service in compose.yaml under the compose profile marketplace with its operator token made once by the existing bootstrap secrets step, internal network only. The marketplace operator token goes only in the new marketsecrets volume (bootstrap and togavsu-marketplace mount it, nothing else), the config is the committed deploy/marketplace/config.json mounted read-only at /etc/togavsu-marketplace/config.json, the token file is root:65532 0640 in a 0750 directory, the data volume mounts at /var/lib/togavsu-marketplace, and scripts/ci/check-compose.py, scripts/ci/test-bootstrap.sh and scripts/ci/test-compose-first-run.sh gain the checks the spec lists, including a startup check that the marketplace answers under the marketplace profile. Update marketplace/README.md, docs/modules/MODULE-KIT.md and docs/modules/CONTRIBUTOR-GAPS.md as the spec says. Write the tests the spec lists. Do not touch internal/dashboard/, internal/core/, internal/settings/, web/, api/ or internal/marketplace/; Lane A owns them. Change nothing else. Run go vet ./... and go test ./marketplace/... ./pkg/modulekit/... ./cmd/togavsu-module/... and record the results and the tested SHA in docs/build/reports/desk-fix-marketplace-publish.json."
+    },
+    {
+      "id": "desk-fix-password-optional",
+      "wave": "desk-fix-4",
+      "phase": 8,
+      "depends_on": [],
+      "owned_paths": [
+        "internal/identity/",
+        "internal/core/",
+        "internal/settings/",
+        "docs/build/desk-fixes/settings-labels.md",
+        "docs/build/reports/desk-fix-password-optional.json"
+      ],
+      "prd_sections": [
+        "8.7"
+      ],
+      "acceptance_ids": [],
+      "required_checks": [
+        "Core tests",
+        "Core settings checks"
+      ],
+      "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install: his test install signs in with an email alone, but that switch exists only on the install's local copy, so every update drops it. Read docs/build/desk-fixes/password-optional.md and build it exactly as it says: the security.password_optional setting (Sign In Without a Password, Security tab, bool, default false, not PRD, the help text as written), identity.Service.PasswordOptional, the Login change (off changes nothing; on lets a known active account in whatever the password box holds; unknown or inactive accounts, lockout accounting and two-factor unchanged), the sign-in page's optional label and dropped required mark through one renderLogin helper, the label in docs/build/desk-fixes/settings-labels.md and internal/settings/labels_test.go, and the tests the spec lists. Change nothing else. Run go vet ./... and go test ./internal/... and record the results and the tested SHA in docs/build/reports/desk-fix-password-optional.json."
     }
   ],
   "max_repairs": 1,
