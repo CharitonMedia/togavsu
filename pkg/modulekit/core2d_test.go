@@ -91,6 +91,9 @@ func TestTimestampedWebhookAndProviderHelpers(t *testing.T) {
 }
 
 func TestRuntimePendingCriteriaAndGooseUpInventory(t *testing.T) {
+	if modulekit.RuntimeSupported("module.event_record_reads") {
+		t.Fatal("removed event-record grants advertised as supported")
+	}
 	files := sample(t)
 	pending, err := modulekit.WritePending([]modulekit.Pending{{Runtime: "processor.payment_principal", Core: modulekit.CoreItems{"CORE-23"}, Reason: "Background payment processor grant is unavailable."}})
 	if err != nil {
