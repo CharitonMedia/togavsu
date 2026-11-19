@@ -61,6 +61,9 @@ func (s *Service) Timeline(ctx context.Context, p domain.Principal, matter domai
 		if clientView && !row.ClientVisible {
 			continue
 		}
+		if !s.fileEventAllows(ctx, p, row) {
+			continue
+		}
 		out = append(out, s.timelineRow(ctx, row))
 	}
 	return out, nil
@@ -184,8 +187,11 @@ func (s *Service) timelineRow(ctx context.Context, row domain.Event) TimelineEnt
 	}
 }
 
-// feedAllows hides a walled matter and a contact who exists only on walled matters.
+// feedAllows hides walled matters, unreadable contacts and attorney-only files.
 func (s *Service) feedAllows(ctx context.Context, p domain.Principal, row domain.Event) bool {
+	if !s.fileEventAllows(ctx, p, row) {
+		return false
+	}
 	if !row.MatterID.IsZero() && !s.visibleMatter(ctx, p, row.MatterID) {
 		return false
 	}
@@ -197,6 +203,23 @@ func (s *Service) feedAllows(ctx context.Context, p domain.Principal, row domain
 		return false
 	}
 	return true
+}
+
+// fileEventAllows applies the same file rule to timelines, Activities and listEvents.
+// Resolve the current flag on every read, including events written before a file
+// became attorney-only. A lookup failure must not expose a file's summary.
+func (s *Service) fileEventAllows(ctx context.Context, p domain.Principal, row domain.Event) bool {
+	if row.RecordType != "file" || p.HasRole(domain.RoleAdmin) || p.HasRole(domain.RoleAttorney) {
+		return true
+	}
+	reader, ok := s.db.(interface {
+		FileAttorneyOnly(context.Context, domain.ID) (bool, error)
+	})
+	if !ok {
+		return false
+	}
+	only, err := reader.FileAttorneyOnly(ctx, row.RecordID)
+	return err == nil && !only
 }
 
 func (s *Service) eventContact(ctx context.Context, row domain.Event) (domain.ID, bool) {
@@ -307,7 +330,8 @@ func (s *Service) DeleteEvent(ctx context.Context, id domain.ID) (err error) {
 }
 
 // FeedAllows reports whether p may see row in the Activities feed: not on a walled
-// matter p is not on, and not about a contact p cannot read. The core's event list
+// matter p is not on, not about a contact p cannot read, and not naming an
+// attorney-only file unless p is an attorney or admin. The core's event list
 // (listEvents) applies it to every row of core.events.
 func (s *Service) FeedAllows(ctx context.Context, p domain.Principal, row domain.Event) bool {
 	return s.feedAllows(ctx, p, row)

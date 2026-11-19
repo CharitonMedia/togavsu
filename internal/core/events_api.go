@@ -495,14 +495,13 @@ func (a *App) listEventsJSON(w http.ResponseWriter, r *http.Request) {
 
 // feed reads pages of core.events until it has q.Limit rows the caller may see.
 func (a *App) feed(ctx context.Context, p domain.Principal, q eventQuery) ([]map[string]any, *eventCursor, error) {
-	attorney := p.HasRole(domain.RoleAdmin) || p.HasRole(domain.RoleAttorney)
 	out := []map[string]any{}
 	after := q.After
 	batch := q.Limit + 1
 	for {
 		sql := `SELECT e.id, e.created_at, e.created_by, e.actor_kind, e.actor_id, e.action, e.record_type, e.record_id,
-COALESCE(e.matter_id, ''), e.summary, e.client_visible, e.module_id, COALESCE(f.attorney_only, 0)
-FROM events e LEFT JOIN files f ON e.record_type = 'file' AND f.id = e.record_id
+COALESCE(e.matter_id, ''), e.summary, e.client_visible, e.module_id
+FROM events e
 WHERE e.created_at >= $1`
 		args := []any{q.From}
 		add := func(cond string, v any) {
@@ -535,28 +534,26 @@ WHERE e.created_at >= $1`
 			return nil, nil, err
 		}
 		var page []domain.Event
-		var hidden []bool
 		for rows.Next() {
 			var ev domain.Event
 			var at int64
-			var visible, attorneyOnly int
+			var visible int
 			if err := rows.Scan(&ev.ID, &at, &ev.CreatedBy, &ev.ActorKind, &ev.ActorID, &ev.Action, &ev.RecordType, &ev.RecordID,
-				&ev.MatterID, &ev.Summary, &visible, &ev.ModuleID, &attorneyOnly); err != nil {
+				&ev.MatterID, &ev.Summary, &visible, &ev.ModuleID); err != nil {
 				rows.Close()
 				return nil, nil, err
 			}
 			ev.CreatedAt, ev.UpdatedAt = domain.FromUnixMicro(at), domain.FromUnixMicro(at)
 			ev.ClientVisible = visible != none
 			page = append(page, ev)
-			hidden = append(hidden, attorneyOnly != none && !attorney)
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
 			return nil, nil, err
 		}
-		for i, ev := range page {
+		for _, ev := range page {
 			last := &eventCursor{At: domain.UnixMicroUTC(ev.CreatedAt), ID: ev.ID}
-			if hidden[i] || !a.Practice.FeedAllows(ctx, p, ev) {
+			if !a.Practice.FeedAllows(ctx, p, ev) {
 				after = last
 				continue
 			}

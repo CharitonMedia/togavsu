@@ -665,6 +665,15 @@ func (d *Durable) Kinds(ctx context.Context) (map[string]int, error) {
 	return out, rows.Err()
 }
 
+// FileAttorneyOnly resolves the current file flag for event visibility. A missing
+// file matches the core feed's historical LEFT JOIN / COALESCE rule.
+func (d *Durable) FileAttorneyOnly(ctx context.Context, id domain.ID) (bool, error) {
+	var only bool
+	err := audit.Conn(ctx, d.db).QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM core.files WHERE id=$1 AND attorney_only<>0)`, string(id)).Scan(&only)
+	return only, err
+}
+
 // ReadEvents reads the append-only stream all domains and modules publish.
 func (d *Durable) ReadEvents(ctx context.Context, matter domain.ID, since time.Time) ([]domain.Event, error) {
 	// An unprojected standalone practice store still owns its document event stream.
