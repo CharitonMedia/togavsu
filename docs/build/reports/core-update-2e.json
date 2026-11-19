@@ -1,0 +1,198 @@
+{
+  "task_id": "core-update-2e",
+  "status": "pending",
+  "base_revision": "2ffe2d3c1eb9e19db013f4f1d38206a135a49817",
+  "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32",
+  "full_suite_launch_revision": "d79c228aeb3ceeceaf1f464c849297b11fb81fbf",
+  "revision_note": "Full suites launched at d79c228. The only successor before this report refreshes docs/api/stage1-inventory.json, with identical Go source/tests; final focused sender tests, vet and API checks run on 1cb6e32. Only this report changes after tested_revision.",
+  "report_state_reason": "All five assigned sender requirements and CU2-03/CU2-07 evidence pass. Both full race commands exit 1 only in the unchanged supervisor package, with the host prerequisites and one shared temporary Caddy-fixture collision recorded below. Merge evidence remains pending a fully equipped CI host, Docker checks and an independent exact-base/head checkpoint.",
+  "prd_sections": [
+    "core PRD 9",
+    "CORE-CHANGES-2 4.1",
+    "CORE-CHANGES-2 4.2 CORE-31/CORE-36",
+    "CORE-CHANGES-2 18.3"
+  ],
+  "acceptance_mapping": {
+    "CU2-03": "Contract sender provenance, authenticated delivery and unlink/retry extension",
+    "CU2-07": "Unchanged batch 1 modules exercised by the existing full-suite compatibility test"
+  },
+  "tests": [
+    {
+      "name": "Sender acceptance on server A",
+      "command": "go test -race -count=1 -v ./pkg/modulekit ./pkg/modulekit/coretest ./internal/core -run 'TestWebhookSender|TestReadDeliveryRequiresSender|TestCoreUpdate2ESender|TestSystemMailSender|TestTimestampedWebhookAndProviderHelpers'",
+      "exit_code": 0,
+      "result": "Five top-level tests pass without skips, including the real Postgres coretest contract event/call/retry path; no race findings.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Sender acceptance on server B",
+      "command": "TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" go test -race -count=1 -v ./pkg/modulekit ./pkg/modulekit/coretest ./internal/core -run 'TestWebhookSender|TestReadDeliveryRequiresSender|TestCoreUpdate2ESender|TestSystemMailSender|TestTimestampedWebhookAndProviderHelpers'",
+      "exit_code": 0,
+      "result": "Same five tests pass without skips on the second synthetic Postgres 17 server; no race findings.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Full race suite on server A",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 2 -timeout 25m ./...",
+      "exit_code": 1,
+      "result": "34 package groups pass, including composed core, modules, practice, modulekit and coretest; only internal/supervisor fails. No race-detector findings. Three host prerequisites are unavailable: TestTwoComposeProjectsStaySeparate needs sudo/Docker facilities, TestStalledSSHHandshakeRestartsWriters cannot create an SSH key because this container has no passwd entry for uid 1000, and TestOpenSSHNamespaceFirstUseAndStoreDelete needs real sshd. No tests changed or disabled.",
+      "tested_revision": "d79c228aeb3ceeceaf1f464c849297b11fb81fbf"
+    },
+    {
+      "name": "Full race suite on server B",
+      "command": "TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 2 -timeout 25m ./...",
+      "exit_code": 1,
+      "result": "34 package groups pass, including composed core, modules, practice, modulekit and coretest; only internal/supervisor fails. No race-detector findings. Three host prerequisites are unavailable: TestTwoComposeProjectsStaySeparate needs sudo/Docker facilities, TestStalledSSHHandshakeRestartsWriters cannot create an SSH key because this container has no passwd entry for uid 1000, and TestOpenSSHNamespaceFirstUseAndStoreDelete needs real sshd. No tests changed or disabled. This concurrent run additionally failed TestCaddyConsecutiveSwitchesPreserveAdmin because both suites extracted the Caddy fixture into /out/tmp at once; isolated rerun recorded separately, without product/test changes.",
+      "tested_revision": "d79c228aeb3ceeceaf1f464c849297b11fb81fbf"
+    },
+    {
+      "name": "Named unchanged-module compatibility at final code revision",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -v ./internal/core -run '^TestCU207Batch1ModulesUnchanged$'",
+      "exit_code": 0,
+      "result": "matter-clock and all five unchanged batch 1 modules install, run real routes, accept/reject signed/forged events and uninstall. Six signed-event subtests pass; no skips or race findings.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Isolated Caddy fixture rerun on server B",
+      "command": "TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TMPDIR=/out/tmp-b go test -race -count=1 -v ./internal/supervisor -run '^TestCaddyConsecutiveSwitchesPreserveAdmin$'",
+      "exit_code": 0,
+      "result": "Pass. /out/tmp-b was created and the already downloaded real Caddy binary copied to its existing test cache name; no network download, test patch, substitute binary or timeout change in this rerun. Clears the shared /out/tmp extraction collision, while both original full commands remain recorded as failed.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Go vet",
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "result": "All packages pass.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "API contracts and regeneration",
+      "command": "PATH=/out/venv/bin:$PATH sh api/check.sh",
+      "exit_code": 0,
+      "result": "131 tests and both OpenAPI validators pass, broken reference rejected, generated bytes match. The stale generated inventory checksum found in the initial run was regenerated; no assertion was weakened.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Settings source scan",
+      "command": "go test -count=1 ./internal/settings",
+      "exit_code": 0,
+      "result": "All settings tests pass; protocol/helper use existing one/zero constants.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Formatting and whitespace",
+      "command": "test -z \"$(gofmt -l cmd internal pkg api web examples)\" && git diff --check",
+      "exit_code": 0,
+      "result": "Pass.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Debt ledger",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "result": "111 markers, 69 ledger entries, unchanged.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Setup metadata",
+      "command": "python3 scripts/check_setup.py",
+      "exit_code": 0,
+      "result": "52 core and 23 batch 2 criteria indexed; metadata only. No core-update-2e task exists in this checkout; no plan/task files edited.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Compose static check",
+      "command": "python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "result": "Pass; static validation only.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Pending gate",
+      "command": "sh scripts/ci/pending-gate.sh",
+      "exit_code": 0,
+      "result": "Existing AC-001/016/018 remain pending.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Batch 1 source provenance",
+      "command": "Compare /out/batch1-compat files byte-for-byte against their downloaded Go dependency archives",
+      "exit_code": 0,
+      "result": "All five unchanged module snapshots match: documents 64 files, email 109, client-portal 48, lawpay-docuseal 66, quickbooks 60. Go proxy main resolved to fc4c7661cc08, 31e57e9463c0, 57b909d0e93c, 915ded572070 and 9269820406a2 respectively. No module source or dependency pin edited.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    },
+    {
+      "name": "Protected paths and modes",
+      "command": "Inspect every candidate commit and aggregate diff against the named base",
+      "exit_code": 0,
+      "result": "No prohibited control-plane or .github edits, added symlinks, submodules, dependencies or migrations. The only docs/build file is this report.",
+      "tested_revision": "1cb6e32e1bbeafc443ca84fec26c956275e61b32"
+    }
+  ],
+  "passed_acceptance_ids": [
+    "CU2-03",
+    "CU2-07"
+  ],
+  "pending_acceptance_ids": [],
+  "assignment_criteria": [
+    {
+      "id": "sender-provenance",
+      "status": "pass",
+      "evidence": "Production Deliver selects module_deliveries.created_by; CallContract uses the authenticated consumer id, core events/grants and mail use core. A spoofed provider_id and sender in payload do not affect the verified pusher."
+    },
+    {
+      "id": "signed-sender-and-2d-compatibility",
+      "status": "pass",
+      "evidence": "Separate X-Togavsu-Sender-Signature t=,v2= HMAC over v2.<unix>.<sender>.<raw body>; original timestamped v1 header stays unchanged. Both strict sender and legacy verification pass on each actual delivery. Tampering, missing binding, duplicate headers, timestamp mismatch/expiry and empty/wrong keys fail."
+    },
+    {
+      "id": "modulekit-and-coretest",
+      "status": "pass",
+      "evidence": "VerifyWebhookSender returns only authenticated identity; SignWebhookSenderHeaders and coretest.ReadDelivery supply helpers. Real coretest DeliverEvents uses the production queue and signer."
+    },
+    {
+      "id": "retry-after-unlink",
+      "status": "pass",
+      "evidence": "Two providers linked; Zoom pushes payload claiming Google; duplicate push from Google preserves first pusher. First delivery refused, Zoom unlinked, persisted retry due advanced in test only. Retried sender remains Zoom and body identical. A new push after unlink fails."
+    },
+    {
+      "id": "documentation",
+      "status": "pass",
+      "evidence": "MODULE-KIT, module API, API conventions, shared contract docs, generated OpenAPI and CORE-UPDATE-2E describe sender header fields, exact wire framing, compatibility and verification. API contract tests validate required sender headers and unchanged v1 schema."
+    }
+  ],
+  "phase_cases": [
+    {
+      "id": "sender-provenance-and-retry",
+      "status": "pass",
+      "command": "go test -race -count=1 -v ./pkg/modulekit ./pkg/modulekit/coretest ./internal/core -run 'TestWebhookSender|TestReadDeliveryRequiresSender|TestCoreUpdate2ESender|TestSystemMailSender|TestTimestampedWebhookAndProviderHelpers'",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-03"
+      ]
+    },
+    {
+      "id": "batch1-unchanged",
+      "status": "pass",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -v ./internal/core -run '^TestCU207Batch1ModulesUnchanged$'",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-07"
+      ]
+    }
+  ],
+  "pending_checks": [
+    "Full race commands remain failed on local supervisor host prerequisites: sudo/Docker facilities, a passwd entry for the container UID, and real sshd. Rerun unchanged supervisor/full suites on the equipped CI host; do not treat local full commands as passes.",
+    "Docker image builds, supervisor image, Compose execution and smoke/clean-install acceptance are not run locally because Docker is unavailable; CI must run them.",
+    "Fresh independent checkpoint against exact base and final head; implementation worker does not approve itself."
+  ],
+  "simplification": {
+    "result": "Reuse existing delivery queue, timestamp verifier and module-id validator; standard-library HMAC only. Separate header preserves strict 2d parsing without altering legacy verifier behavior. No shortcut or new debt.",
+    "implementation_net_lines": 716,
+    "scope": "Implementation, tests, docs and regenerated inventory, excluding this report.",
+    "debt_entries": 69,
+    "ponytail_markers": 111
+  },
+  "proposed_ci_change": "None; run the existing Docker-enabled checks on the candidate."
+}
