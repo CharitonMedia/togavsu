@@ -21,12 +21,21 @@ const (
 )
 
 // SignWebhookSenderHeaders adds a sender binding to the unchanged v1 headers.
-// It returns nil for an empty secret or invalid sender. Sender must be core or a
-// module id; neither dots nor other delimiters are allowed in module ids.
+// It returns nil for an empty secret or invalid/reserved module sender. Core's own
+// deliveries use SignCoreWebhookHeaders, never a module-supplied identity.
 func SignWebhookSenderHeaders(secret string, at time.Time, sender string, body []byte) http.Header {
 	if !marketplace.ValidModuleID(sender) {
 		return nil
 	}
+	return signWebhookSenderHeaders(secret, at, sender, body)
+}
+
+// SignCoreWebhookHeaders signs a core-emitted delivery with core's reserved identity.
+func SignCoreWebhookHeaders(secret string, at time.Time, body []byte) http.Header {
+	return signWebhookSenderHeaders(secret, at, marketplace.CoreSenderID, body)
+}
+
+func signWebhookSenderHeaders(secret string, at time.Time, sender string, body []byte) http.Header {
 	headers := SignWebhookHeaders(secret, at, body)
 	if headers == nil {
 		return nil
@@ -54,7 +63,7 @@ func VerifyWebhookSender(secret string, headers http.Header, body []byte, now ti
 		}
 	}
 	sender := headers.Get(SenderHeader)
-	if !marketplace.ValidModuleID(sender) {
+	if sender != marketplace.CoreSenderID && !marketplace.ValidModuleID(sender) {
 		return "", errors.New("modules: invalid webhook sender")
 	}
 	if err := VerifyWebhookHeaders(secret, headers, body, now, tolerance); err != nil {

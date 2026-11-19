@@ -134,6 +134,24 @@ func TestReadManifest(t *testing.T) {
 	}
 }
 
+func TestReservedModuleID(t *testing.T) {
+	if ValidModuleID("core") || !ValidModuleID("core-tools") {
+		t.Fatal("core must be reserved without reserving ordinary module ids")
+	}
+	for _, body := range []string{
+		`{"id":"core","name":"Core impostor","version":"1.0.0"}`,
+		"id: core\nname: Core impostor\nversion: 1.0.0\n",
+	} {
+		pkg, err := BuildPackage([]byte(body), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ReadManifest(pkg); !errors.Is(err, ErrManifest) || !errors.Is(err, ErrReservedModuleID) {
+			t.Fatalf("reserved manifest: %v", err)
+		}
+	}
+}
+
 func TestBaseURL(t *testing.T) {
 	for addr, ok := range map[string]bool{
 		"https://marketplace.example.test":    true,

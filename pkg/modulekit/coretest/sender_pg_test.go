@@ -2,13 +2,18 @@ package coretest_test
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	matterclock "github.com/CharitonMedia/togavsu/examples/matter-clock"
 	"github.com/CharitonMedia/togavsu/pkg/modulekit"
 	"github.com/CharitonMedia/togavsu/pkg/modulekit/coretest"
 )
@@ -140,4 +145,86 @@ func TestCoreUpdate2ESenderPersistsAcrossUnlink(t *testing.T) {
 	// delivery's authenticated sender still identifies that provider.
 	envelope["id"] = "synthetic-after-unlink"
 	c.ModuleClient(zoom).Must(http.StatusForbidden, "POST", "/api/v1/modules/contracts/"+contract+"/events", envelope)
+}
+
+func TestCoreUpdate2EReservedSender(t *testing.T) {
+	c := coretest.New(t)
+	files, err := matterclock.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	files[modulekit.ManifestFile] = bytes.Replace(files[modulekit.ManifestFile], []byte("id: matter-clock"), []byte("id: core"), 1)
+	if _, err := modulekit.ParseManifest(files[modulekit.ManifestFile]); err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("runtime manifest must reject reserved id: %v", err)
+	}
+	if _, _, err := modulekit.Check(files); err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("kit install checks must reject reserved id: %v", err)
+	}
+	// Bypass author-tool validation to exercise an actually signed malicious package.
+	raw, err := modulekit.Archive(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.TrustKey("synthetic-reserved-id", pub)
+	signed, err := json.Marshal(modulekit.SignedPackage{ListingID: "core", Version: "1.0.0", Digest: modulekit.Digest(raw), Signature: modulekit.Sign(priv, raw), KeyID: modulekit.KeyID(pub), PackageBase64: base64.StdEncoding.EncodeToString(raw)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := c.TryInstall(signed); r.Code != http.StatusBadRequest || !strings.Contains(r.Body, "reserved") {
+		t.Fatalf("reserved install: %d %s", r.Code, r.Body)
+	}
+	if c.Count(`SELECT COUNT(*) FROM core.modules WHERE id='core'`) != 0 {
+		t.Fatal("reserved module was persisted")
+	}
+	const contract = "phone.provider.v1"
+	for _, link := range []map[string]any{
+		{"contract": contract, "consumer_id": "core", "provider_id": "phone-zoom"},
+		{"contract": contract, "consumer_id": "phone-consumer", "provider_id": "core"},
+	} {
+		r := c.Admin.Do("POST", "/api/v1/modules/contract-links", link)
+		if r.Code != http.StatusBadRequest || !strings.Contains(r.Body, "reserved") {
+			t.Fatalf("reserved link: %d %s", r.Code, r.Body)
+		}
+	}
+	// Model a delivery left by an older installation: nonempty created_by=core
+	// must never be upgraded into a valid core signature by the production pump.
+	var delivered atomic.Bool
+	c.Serve("phone-consumer", func(m coretest.Module) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sender, body, err := coretest.ReadDelivery(m, r)
+			if err != nil {
+				t.Error(err)
+			}
+			var event map[string]any
+			if err := json.Unmarshal(body, &event); err != nil {
+				t.Error(err)
+			}
+			if event["id"] == "synthetic-reserved-sender" {
+				delivered.Store(true)
+			} else if sender != "core" {
+				t.Errorf("core emission has sender %q", sender)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+	})
+	install2d(t, c, "phone-consumer", []string{"contracts:call"}, "consumes:\n  - contract: "+contract+"\n")
+	install2d(t, c, "phone-zoom", []string{"contracts:provide"}, "provides:\n  - contract: "+contract+"\n    operations:\n      - name: call\n        path: /call\n")
+	c.Admin.Must(http.StatusCreated, "POST", "/api/v1/modules/contract-links", map[string]any{"contract": contract, "consumer_id": "phone-consumer", "provider_id": "phone-zoom"})
+	c.ModuleClient("phone-zoom").Must(http.StatusNoContent, "POST", "/api/v1/modules/contracts/"+contract+"/events", map[string]any{"id": "synthetic-reserved-sender", "contract": contract, "consumer_id": "phone-consumer", "occurred_at": time.Now().UTC().Format(time.RFC3339Nano), "action": contract + ".recording", "payload": map[string]any{"sender": "core"}})
+	db, err := sql.Open("pgx", c.DatabaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`UPDATE core.module_deliveries SET created_by='core' WHERE event_id='synthetic-reserved-sender'`); err != nil {
+		t.Fatal(err)
+	}
+	c.DeliverEvents()
+	if delivered.Load() || c.Count(`SELECT COUNT(*) FROM core.module_deliveries WHERE event_id='synthetic-reserved-sender' AND status='pending' AND attempts=1 AND last_error LIKE '%reserved%'`) != 1 {
+		t.Fatal("module-originated reserved sender reached the receiver or was not refused")
+	}
 }

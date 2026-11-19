@@ -9,6 +9,7 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/dashboard"
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 )
 
 // ManifestFile is the signed manifest's name inside a module package (PRD 9.2).
@@ -366,6 +367,9 @@ func (m Manifest) ValidateAll() []error {
 func (m Manifest) validate(report func(error) bool) {
 	ok := func(err error) bool { return err == nil || report(err) }
 	checks := []func() bool{
+		func() bool {
+			return !marketplace.ReservedModuleID(m.ID) || ok(invalid("id", marketplace.ErrReservedModuleID.Error()))
+		},
 		func() bool {
 			return moduleID.MatchString(m.ID) || ok(invalid("id", "module id must be a lower-case slug"))
 		},

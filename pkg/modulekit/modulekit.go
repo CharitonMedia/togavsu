@@ -205,9 +205,14 @@ func VerifyWebhookHeaders(secret string, header http.Header, body []byte, now ti
 }
 
 // SignWebhookSenderHeaders preserves the v1 headers and adds sender and v2 binding
-// headers. It returns nil for an empty secret or invalid sender id.
+// headers. It returns nil for an empty secret or invalid/reserved module sender id.
 func SignWebhookSenderHeaders(secret string, at time.Time, sender string, body []byte) http.Header {
 	return modules.SignWebhookSenderHeaders(secret, at, sender, body)
+}
+
+// SignCoreWebhookHeaders builds synthetic core-emitted deliveries for module tests.
+func SignCoreWebhookHeaders(secret string, at time.Time, body []byte) http.Header {
+	return modules.SignCoreWebhookHeaders(secret, at, body)
 }
 
 // VerifyWebhookSender requires the timestamped v1 signature and v2 sender binding.

@@ -6,6 +6,12 @@ in `module_deliveries.created_by`, independently of provider-controlled JSON.
 Contract calls identify the calling consumer; core events, grants and routed mail
 identify `core`.
 
+`core` is a reserved module id: manifest checks, local/marketplace installs,
+catalog publication and contract linking reject it with an explicit error.
+Module delivery signing refuses reserved senders. Only core emissions use the
+separate core signer, including the historical empty `created_by` queue form;
+nonempty `created_by=core` rows fail delivery instead of impersonating core.
+
 `X-Togavsu-Sender` and `X-Togavsu-Sender-Signature` add a timestamped v2 HMAC while
 preserving the exact 2d `t=,v1=` signature header. No schema migration, dependency
 change, release/version bump or module package change is required.

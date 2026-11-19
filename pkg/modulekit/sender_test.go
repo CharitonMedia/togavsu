@@ -35,8 +35,10 @@ func TestWebhookSenderBinding(t *testing.T) {
 	if err != nil || sender != "phone-zoom" {
 		t.Fatalf("verified sender %q: %v", sender, err)
 	}
-	for _, id := range []string{"core", "phone-google"} {
-		h := modulekit.SignWebhookSenderHeaders("secret", now, id, body)
+	for id, h := range map[string]http.Header{
+		"core":         modulekit.SignCoreWebhookHeaders("secret", now, body),
+		"phone-google": modulekit.SignWebhookSenderHeaders("secret", now, "phone-google", body),
+	} {
 		if got, err := modulekit.VerifyWebhookSender("secret", h, body, now, 0); err != nil || got != id {
 			t.Fatalf("%q: %v", got, err)
 		}
@@ -48,6 +50,7 @@ func TestWebhookSenderBinding(t *testing.T) {
 	}
 	for name, change := range map[string]func(http.Header){
 		"spoof sender":     func(h http.Header) { h.Set(modulekit.SenderHeader, "phone-google") },
+		"spoof core":       func(h http.Header) { h.Set(modulekit.SenderHeader, "core") },
 		"missing sender":   func(h http.Header) { h.Del(modulekit.SenderHeader) },
 		"empty sender":     func(h http.Header) { h.Set(modulekit.SenderHeader, "") },
 		"bad sender":       func(h http.Header) { h.Set(modulekit.SenderHeader, "phone.zoom") },
@@ -102,12 +105,12 @@ func TestWebhookSenderBinding(t *testing.T) {
 			}
 		})
 	}
-	for _, id := range []string{"", "phone.zoom", "phone\nzoom"} {
+	for _, id := range []string{"", "core", "phone.zoom", "phone\nzoom"} {
 		if modulekit.SignWebhookSenderHeaders("secret", now, id, body) != nil {
 			t.Fatalf("signed invalid sender %q", id)
 		}
 	}
-	if modulekit.SignWebhookSenderHeaders("", now, "core", body) != nil {
+	if modulekit.SignWebhookSenderHeaders("", now, "phone-zoom", body) != nil || modulekit.SignCoreWebhookHeaders("", now, body) != nil {
 		t.Fatal("signed with empty key")
 	}
 	if got, err := modulekit.VerifyWebhookSender("secret", headers, body, now.Add(300*time.Second), 0); err != nil || got != "phone-zoom" {

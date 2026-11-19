@@ -1,5 +1,10 @@
 # Module API
 
+The manifest `id` must identify a module. The id `core` is reserved for core's
+authenticated delivery sender and cannot be installed from a local file or the
+marketplace, published to the catalog, or used as a contract consumer/provider.
+These paths return a validation error explaining that the id is reserved.
+
 Public module API additions from `togavsu-initial-modules-prd.md` §4 and `docs/modules/CORE-CHANGES.md` (CORE-01–CORE-29). Operation shapes, scopes and `module_delegation` live in `api/openapi/v1/openapi.json` and `api/openapi/v1/mcp-tools.json`; MCP parity is described in [mcp.md](mcp.md). Conventions for walls, grants and service principals are in [conventions.md](conventions.md).
 
 ## Service principals (CORE-01)
@@ -215,7 +220,10 @@ durably, including across retries, which receive fresh timestamps/signatures.
 
 For synthetic sender-aware requests, use
 `modulekit.SignWebhookSenderHeaders(secret, now, sender, body)`; it returns all
-four headers, or nil for an empty secret/invalid id. In `coretest.Serve` handlers,
+four headers, or nil for an empty secret or invalid/reserved module id. For a
+synthetic core emission use `modulekit.SignCoreWebhookHeaders(secret, now, body)`.
+Production core emissions use that separate signer; nonempty `created_by=core`
+is a reserved module sender and is refused. In `coretest.Serve` handlers,
 `sender, body, err := coretest.ReadDelivery(m, request)` reads and verifies using
 the real deployment secret. `c.DeliverEvents()` uses the production queue and
 sender signer for contract events, core events and retries.

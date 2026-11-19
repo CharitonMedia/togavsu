@@ -15,6 +15,10 @@ Configuration is a JSON file (`config.example.json`); omitted fields keep the de
 
 Packages are tar archives (gzip optional) with `togavsu-module.yaml` at the root, signed with Ed25519 over the exact package bytes. The signature is standard base64. A key is named by its key id, `ed25519-` plus the first 16 bytes of the SHA-256 of the raw public key, as hex. `internal/marketplace` holds the shared code (`Sign`, `Verify`, `KeyID`, `ReadManifest`, `BuildPackage`) that the service and the core both use.
 
+The manifest module id `core` is reserved for core's authenticated deliveries.
+The manifest reader and catalog upload reject it with a reserved-id validation
+error, as do local and marketplace installs. Choose a different id for a module.
+
 The listing price is taken from the manifest's `price` field at first upload: either the old string or CORE-35's structured `{amount_cents, currency, interval, note}` (`interval` is `month` or `year`). It is shown as the provider's information beside: "Sold and licensed by {author}. Togavsu doesn't sell or bill this module." The author can change the listed price and an optional link to their own sales page with `PATCH /v1/authors/me/listings/{id}/price` without uploading a new package; that change shows at once and does not touch installs.
 
 `POST /v1/authors/me/packages` takes the kit's signed package file as its body unchanged (`listing_id`, `version`, `immutable`, `manifest`, `digest`, `signature`, `key_id`, `package_base64`). A tampered digest or package bytes is refused. A priced module installs from the local marketplace with no key and no payment step: `GET /v1/listings/{id}/versions/{version}/package` returns the signed package.

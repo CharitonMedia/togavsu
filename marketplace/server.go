@@ -365,6 +365,9 @@ func checkUploadPackageMeta(listingID, version string, immutable *bool, manifest
 	}
 	man, err := shared.ReadManifest(pkg)
 	if err != nil {
+		if errors.Is(err, shared.ErrReservedModuleID) {
+			return invalid("id", shared.ErrReservedModuleID.Error())
+		}
 		return invalid("package", "the package needs a "+shared.ManifestName+" with id, name, version and permissions")
 	}
 	if listingID != "" && listingID != man.ID {

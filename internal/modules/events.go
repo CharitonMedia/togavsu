@@ -479,12 +479,7 @@ JOIN core.modules m ON m.id = d.module_id WHERE d.status = 'pending' AND d.next_
 		if err != nil {
 			return sent, err
 		}
-		// Empty created_by is the historical core-emitted delivery convention.
-		sender := d.sender
-		if sender == "" {
-			sender = "core"
-		}
-		derr := s.post(ctx, d.module, secret, grant, sender, []byte(d.payload))
+		derr := s.post(ctx, d.module, secret, grant, d.sender, []byte(d.payload))
 		n := d.attempts + 1
 		at := s.now()
 		switch {
@@ -526,8 +521,13 @@ func (s *Service) post(ctx context.Context, module, secret, grant, sender string
 	req.Header.Set("Content-Type", "application/json")
 	at := s.now()
 	headers := SignWebhookSenderHeaders(secret, at, sender, body)
+	// Only empty created_by identifies a core emission. A module-originated row
+	// claiming a reserved identity must fail, including on retries of old rows.
+	if sender == "" {
+		headers = SignCoreWebhookHeaders(secret, at, body)
+	}
 	if headers == nil {
-		return errors.New("modules: empty webhook secret")
+		return errors.New("modules: invalid or reserved webhook sender")
 	}
 	for key, values := range headers {
 		req.Header[key] = values

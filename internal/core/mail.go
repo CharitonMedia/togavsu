@@ -234,7 +234,7 @@ func (m *systemMailer) postModule(ctx context.Context, route modules.SystemMailR
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", msg.ID)
 	at := m.now()
-	headers := modules.SignWebhookSenderHeaders(route.Secret, at, "core", raw)
+	headers := modules.SignCoreWebhookHeaders(route.Secret, at, raw)
 	if headers == nil {
 		return errors.New("modules: empty webhook secret")
 	}

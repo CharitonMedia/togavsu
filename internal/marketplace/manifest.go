@@ -24,6 +24,15 @@ const gzipMagic = "\x1f\x8b"
 // ErrManifest means the package has no readable manifest or the manifest is incomplete.
 var ErrManifest = errors.New("manifest")
 
+// ErrReservedModuleID means a module tried to use core's delivery identity.
+var ErrReservedModuleID = errors.New("module id \"core\" is reserved for core deliveries")
+
+// CoreSenderID is core's authenticated identity on deliveries to modules.
+const CoreSenderID = "core"
+
+// ReservedModuleID reports whether id is reserved for core's own identity.
+func ReservedModuleID(id string) bool { return id == CoreSenderID }
+
 // Manifest is the part of togavsu-module.yaml a listing shows: the module id, its name,
 // the version and the permissions it requests. Raw is the whole manifest, kept so the
 // core hands the module runtime exactly what was signed.
@@ -41,8 +50,8 @@ var moduleID = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 // version is a dotted release number with an optional pre-release or build suffix.
 var versionForm = regexp.MustCompile(`^[0-9]+(\.[0-9]+){0,3}([-+][0-9A-Za-z.-]{1,64})?$`)
 
-// ValidModuleID reports whether id is a module id.
-func ValidModuleID(id string) bool { return moduleID.MatchString(id) }
+// ValidModuleID reports whether id is a module id, excluding core's reserved identity.
+func ValidModuleID(id string) bool { return moduleID.MatchString(id) && !ReservedModuleID(id) }
 
 // ValidVersion reports whether v is a version string the marketplace accepts.
 func ValidVersion(v string) bool { return versionForm.MatchString(v) }
@@ -120,6 +129,9 @@ func ParseManifest(body []byte) (Manifest, error) {
 		}
 	}
 	m := Manifest{ID: strings.TrimSpace(raw.ID), Name: strings.TrimSpace(raw.Name), Version: strings.TrimSpace(raw.Version), Permissions: []string{}, Raw: json.RawMessage(doc)}
+	if ReservedModuleID(m.ID) {
+		return Manifest{}, errors.Join(ErrManifest, ErrReservedModuleID)
+	}
 	if !ValidModuleID(m.ID) || m.Name == "" || !ValidVersion(m.Version) {
 		return Manifest{}, ErrManifest
 	}

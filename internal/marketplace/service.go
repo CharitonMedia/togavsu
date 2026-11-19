@@ -133,6 +133,8 @@ func apiError(err error) error {
 		return &Error{Code: "unavailable", Message: "the marketplace could not be reached", Status: http.StatusServiceUnavailable}
 	case errors.Is(err, ErrDigestMismatch), errors.Is(err, ErrSignatureInvalid), errors.Is(err, ErrUntrustedKey):
 		return &Error{Code: contractVerificationCode(err), Message: "the package failed verification (" + verificationCode(err) + "); nothing was installed", Status: http.StatusUnprocessableEntity}
+	case errors.Is(err, ErrReservedModuleID):
+		return domain.Invalid("id", ErrReservedModuleID.Error())
 	case errors.Is(err, ErrManifest):
 		return domain.Invalid("package", "the package has no readable "+ManifestName)
 	}

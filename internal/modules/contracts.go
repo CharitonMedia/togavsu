@@ -15,6 +15,7 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 )
 
 const contractCallMaxBytesKey = "modules.contract_call_max_bytes"
@@ -78,6 +79,11 @@ func (s *Service) LinkContract(ctx context.Context, p domain.Principal, in Contr
 	in.ProviderID = strings.TrimSpace(in.ProviderID)
 	if in.Contract == "" || in.ConsumerID == "" || in.ProviderID == "" {
 		return ContractLink{}, domain.Invalid("contract", "contract, consumer_id and provider_id are required")
+	}
+	for field, id := range map[string]string{"consumer_id": in.ConsumerID, "provider_id": in.ProviderID} {
+		if marketplace.ReservedModuleID(id) {
+			return ContractLink{}, domain.Invalid(field, marketplace.ErrReservedModuleID.Error())
+		}
 	}
 	if in.ConsumerID == in.ProviderID {
 		return ContractLink{}, domain.Invalid("provider_id", "a module cannot link to itself")
@@ -362,7 +368,7 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 	at := s.now()
 	headers := SignWebhookSenderHeaders(secret, at, consumerID, body)
 	if headers == nil {
-		return 0, nil, nil, errors.New("modules: empty webhook secret")
+		return 0, nil, nil, errors.New("modules: empty webhook secret or invalid/reserved module sender")
 	}
 	for key, values := range headers {
 		req.Header[key] = values

@@ -674,6 +674,10 @@ core-emitted events (including grants) and system mail. This is separate from
 payload fields: `module` in a core event still names the recipient. Payload
 `sender` or `provider_id` values are untrusted claims.
 
+The module id `core` is reserved for core's own deliveries. Manifest validation,
+local/marketplace installation, catalog publication and contract linking refuse
+it with a reserved-id error. A module cannot install or link under that identity.
+
 The core reads queued senders from `core.module_deliveries.created_by`, recorded
 when the push was accepted. Historical empty values mean `core`. Retries retain
 that identity and body even after provider links change. An unlink prevents new
@@ -715,7 +719,11 @@ durably, including across retries, which receive fresh timestamps/signatures.
 
 For synthetic sender-aware requests, use
 `modulekit.SignWebhookSenderHeaders(secret, now, sender, body)`; it returns all
-four headers, or nil for an empty secret/invalid id. In `coretest.Serve` handlers,
+four headers, or nil for an empty secret or invalid/reserved module id (including
+`core`). Use `modulekit.SignCoreWebhookHeaders(secret, now, body)` for a synthetic
+core emission. In production, only a queued row with empty `created_by` uses the
+core signer; a nonempty module sender of `core` is refused, including on retry.
+In `coretest.Serve` handlers,
 `sender, body, err := coretest.ReadDelivery(m, request)` reads and verifies using
 the real deployment secret. `c.DeliverEvents()` uses the production queue and
 sender signer for contract events, core events and retries.
