@@ -1,11 +1,14 @@
 {
   "task_id": "core-update-2d",
+  "fix_pass": 2,
   "status": "pending",
   "implementation_status": "implemented_and_locally_tested",
-  "base_revision": "1d898ca5c3dd6cc5f67a495aac6eb345f8f2dcb0",
-  "tested_revision": "2b48e3436a21b7832f5ac1234b2aea8f05a4e141",
-  "stack_target": "claude/togavsu-core-update-2c-2319fa4a (PR 84, still in review)",
-  "assignment_source": "The nine numbered items in the worker assignment; core-update-2d is absent from the base tasks.json. No plan/task/control-plane files were changed.",
+  "base_revision": "ade4fb4aadb0a2693127adfaf1a7236f49f03449",
+  "head_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+  "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+  "target_branch": "batch2",
+  "revision_note": "The named head/tested revision is the final implementation commit. The following report-only commit changes only this evidence file; the PR body records its exact final candidate SHA for independent review. No implementation-authored passing checkpoint is supplied.",
+  "assignment_source": "User assignment; absent from tasks.json. No control-plane files changed.",
   "prd_sections": [
     "4",
     "7",
@@ -19,216 +22,407 @@
     "9.4",
     "9.9"
   ],
-  "items": [
+  "acceptance_ids": [
+    "CU2-01",
+    "CU2-02",
+    "CU2-03",
+    "CU2-05",
+    "CU2-07"
+  ],
+  "review_fixes": [
     {
       "item": 1,
-      "name": "Service-principal reads",
-      "status": "implemented_tested",
-      "tests": [
-        "TestCoreUpdate2DReadsWallsMailSettingsAndPhone"
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-02"
       ],
-      "result": "Existing read scopes cover deadline/calendar get/list, matter-party contact filter, firm time zone, addresses, party roles, custom-field definitions and directory/work email; each new read has a live per-operation limit."
+      "status": "implemented_tested",
+      "result": "Remove every event-record wall bypass, scope, mint/verify path and service elevation exception. All ten record kinds enforce service walls, delegated viewers, list omission and next-read wall removal. The obsolete runtime capability flag is also removed and asserted unsupported.",
+      "tests": [
+        "TestCoreUpdate2DServiceWallsEveryRecord",
+        "TestServicePrincipalNeverCrossesWall"
+      ]
     },
     {
       "item": 2,
-      "name": "Walled record reads",
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-02"
+      ],
       "status": "implemented_tested",
+      "result": "Delete response buffering and wall-membership metadata. Directory checks caller access before candidate filtering.",
       "tests": [
         "TestCoreUpdate2DReadsWallsMailSettingsAndPhone",
-        "TestCoreUpdate2DEventRecordKinds",
-        "TestEventReadRejectsExpiredChangedAndOtherModule"
-      ],
-      "result": "Only inside-wall viewers or approved expiring exact-record grants; no list/write/sibling/attorney-only bypass. Metadata identifies permitted users, including contact-derived walls. Directory checks each candidate. REST/MCP grants and header-override refusals are tested."
+        "TestCoreUpdate2DServiceWallsEveryRecord"
+      ]
     },
     {
       "item": 3,
-      "name": "Module mail",
-      "status": "implemented_tested",
-      "tests": [
-        "TestCoreUpdate2DReadsWallsMailSettingsAndPhone",
-        "TestPGSendModuleMail"
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-03",
+        "CU2-05",
+        "CU2-07"
       ],
-      "result": "mail:send service calls resolve only contact parties on the named accessible matter; matter/outbox/audit/timeline attribution retained."
+      "status": "implemented_tested",
+      "result": "Preserve batch 1 sha256=<hex> raw-body HMAC plus separate Unix timestamp; require both headers, nonempty secret, constant-time comparison and the fixed five-minute window.",
+      "tests": [
+        "TestTimestampedWebhookAndProviderHelpers",
+        "TestWebhookSignature",
+        "TestCU207Batch1ModulesUnchanged"
+      ]
     },
     {
       "item": 4,
-      "name": "Own and contract settings",
-      "status": "implemented_tested",
-      "tests": [
-        "TestCoreUpdate2DReadsWallsMailSettingsAndPhone"
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-05"
       ],
-      "result": "Own reads audited; contract runtime setting allowlist under settings:read and approved contract permission; own-settings setup write uses module_settings:write and an admin viewer. modules:write stays forbidden."
+      "status": "implemented_tested",
+      "result": "Keep delegated actor_id as the user; expand-only migration 1550 adds events.module_id. Practice, billing, files, calendar, module mail and appended events retain who/via attribution; person filter/counts and timeline cover it.",
+      "tests": [
+        "TestCoreUpdate2DDelegatedActorAcrossWriters",
+        "TestDelegatedModuleActionsInPersonFeedAndCounts",
+        "TestEventAttributionKeepsDelegatedPerson",
+        "TestEventModuleMigrationExpandsWithoutRewritingActors"
+      ]
     },
     {
       "item": 5,
-      "name": "Contracts",
-      "status": "implemented_tested",
-      "tests": [
-        "TestCoreUpdate2DContractForwardingTargetAndLimit",
-        "TestCORE31ContractCall"
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-03",
+        "CU2-05"
       ],
-      "result": "Provider-audience forwarded contexts verify/delegate and expire with unlinking; stable targeted envelope is preserved and deduplicated; oversized responses return too_large. Compatibility comparison with separately held definitions remains pending because docs/contracts/ was absent at base."
+      "status": "implemented_tested",
+      "result": "Contract settings require the bearer settings:read scope as well as install approval. Every module call remains audited under its module id, delegated or background.",
+      "tests": [
+        "TestCoreUpdate2DReadsWallsMailSettingsAndPhone"
+      ]
     },
     {
       "item": 6,
-      "name": "Webhooks and helpers",
-      "status": "implemented_tested",
-      "tests": [
-        "TestCoreUpdate2DInboundAuthorizationOptIn",
-        "TestTimestampedWebhookAndProviderHelpers",
-        "TestWebhookAuthorizationOptInRequiresScope"
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-02",
+        "CU2-03",
+        "CU2-05",
+        "CU2-07"
       ],
-      "result": "Timestamp+body HMAC, matching timestamp header, nonempty secret and bidirectional window checks; per-hook Authorization forwarding requires approved webhooks:authorization and is never core auth; public provider CRC/HMAC helpers."
+      "status": "implemented_tested",
+      "result": "Replace stale evidence; target batch2 and bind tests to the final implementation revision. CU2-07 is run with unchanged dependency packages.",
+      "tests": [
+        "TestCU207Batch1ModulesUnchanged"
+      ]
     },
     {
       "item": 7,
-      "name": "Purge and activity",
-      "status": "implemented_tested",
-      "tests": [
-        "TestCoreUpdate2DPurgeRestrictAndConverter",
-        "TestCoreUpdate2DReadsWallsMailSettingsAndPhone",
-        "TestEventsFeedAndAppend"
+      "acceptance_ids": [
+        "CU2-02",
+        "CU2-05"
       ],
-      "result": "Purge holds bytes while module RESTRICT links exist and names retainers. New module event actors are named in shared timeline and activity streams without rewriting append-only history."
+      "status": "implemented_tested",
+      "result": "Remove event-record read grants entirely. A module-appended event naming a walled contact creates no credential and cannot authorize a read.",
+      "tests": [
+        "TestCoreUpdate2DServiceWallsEveryRecord"
+      ]
     },
     {
       "item": 8,
-      "name": "Public kit inventory, pending and converter",
-      "status": "implemented_tested",
-      "tests": [
-        "TestRuntimePendingCriteriaAndGooseUpInventory",
-        "TestRuntimePendingCLI",
-        "TestCoreUpdate2DPurgeRestrictAndConverter"
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-05"
       ],
-      "result": "Migration inventory matches Goose Up. Runtime criteria remain explicitly held until supported, then strict checks refuse stale entries. coretest conversion is in process, including invalid-output/failure/access tests; other CLI paths point inside a test directory."
+      "status": "implemented_tested",
+      "result": "Service read audit rows identify the exact operation and requested record path. Tests assert an exact additional row, including token/module provenance, per affected record get and new read.",
+      "tests": [
+        "TestCoreUpdate2DReadsWallsMailSettingsAndPhone",
+        "TestCoreUpdate2DServiceWallsEveryRecord"
+      ]
     },
     {
       "item": 9,
-      "name": "Contact phone-row slot",
+      "acceptance_ids": [
+        "CU2-02",
+        "CU2-05"
+      ],
       "status": "implemented_tested",
+      "result": "Delete obsolete event-token tests with the removed mechanism; replace them with no-grant delivery, forged/legacy-header and appended-event wall regressions. No expiry check can mask a module/signature check because no grant path survives.",
+      "tests": [
+        "TestCoreUpdate2DServiceWallsEveryRecord"
+      ]
+    },
+    {
+      "item": 10,
+      "acceptance_ids": [
+        "CU2-05"
+      ],
+      "status": "implemented_tested",
+      "result": "ProviderCRC returns Zoom hex HMAC for encryptedToken. ProviderCRCBase64 names the separate sha256=<base64> convention.",
+      "tests": [
+        "TestTimestampedWebhookAndProviderHelpers"
+      ]
+    },
+    {
+      "item": 11,
+      "acceptance_ids": [
+        "CU2-03",
+        "CU2-05"
+      ],
+      "status": "implemented_tested",
+      "result": "Event post, contract calls and routed mail refuse empty webhook secrets before outbound delivery.",
+      "tests": [
+        "TestEventDeliveryRefusesEmptySecret",
+        "TestCallContractFailsClosedWhenAuditFails",
+        "TestSystemMailRefusesEmptyWebhookSecret"
+      ]
+    },
+    {
+      "item": 12,
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-05"
+      ],
+      "status": "implemented_tested",
+      "result": "Phone action frames carry phone_id and contact_id only; the module reads the number through the API.",
       "tests": [
         "TestCoreUpdate2DReadsWallsMailSettingsAndPhone"
+      ]
+    },
+    {
+      "item": 13,
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-05",
+        "CU2-07"
       ],
-      "result": "Approved contacts:read manifest items render beside phones; sandboxed action frames recheck access. Paginated REST/MCP discovery uses the same access path."
+      "status": "implemented_tested",
+      "result": "Align conventions, module kit, API/MCP docs, contributor gaps, generated OpenAPI, simulator and inventory with the single retained webhook format.",
+      "tests": [
+        "api/check.sh"
+      ]
+    },
+    {
+      "item": 14,
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-05"
+      ],
+      "status": "implemented_tested",
+      "result": "events_api omits actor_name rather than returning a raw id; the timeline resolves user display names.",
+      "tests": [
+        "TestEventsFeedAndAppend",
+        "TestCoreUpdate2DReadsWallsMailSettingsAndPhone"
+      ]
+    },
+    {
+      "item": 15,
+      "acceptance_ids": [
+        "CU2-05"
+      ],
+      "status": "implemented_tested",
+      "result": "Use plain decimal and zero literals. Source checking recognizes the core protocol functions and still rejects tunables in other functions.",
+      "tests": [
+        "TestWebhookProtocolLiteralsStayFixedAndFunctionScoped",
+        "TestModuleClean"
+      ]
     }
   ],
+  "retained_assignment_behaviors": [
+    "Scoped service reads with live per-operation limits and core walls; exact email/phone matching for background contacts.",
+    "Service mail resolves current contact-party addresses on a named accessible matter and records matter/audit/outbox.",
+    "Own settings and admin-delegated module_settings:write; modules:write remains forbidden to modules.",
+    "Forwarded provider context with live-link revocation, targeted/deduplicated contract envelopes, and response too_large.",
+    "Per-hook approved Authorization forwarding remains opt-in and never becomes core authentication.",
+    "Purge respects module RESTRICT links, Goose Up-only inventory, runtime pending criteria with strict retirement, in-process converter and phone-row slot."
+  ],
+  "batch1_compatibility": {
+    "acceptance_id": "CU2-07",
+    "status": "run_pass",
+    "test": "TestCU207Batch1ModulesUnchanged",
+    "result": "Matter Clock and all five unchanged batch 1 packages installed, served real routes through the core proxy, and uninstalled with schema/route removal. Go dependency downloads supplied the permitted source snapshots without cloning other machines. Package files match their original dependency archives byte for byte.",
+    "sources": [
+      {
+        "module": "documents",
+        "version": "v0.0.0-20261114212949-fc4c7661cc08",
+        "module_sum": "h1:z1K0EpYdwPAnnbDHbQ2aQN3zQZqr7wrEbefRBCxiMWs=",
+        "package_unchanged": true
+      },
+      {
+        "module": "email",
+        "version": "v0.0.0-20261114212952-31e57e9463c0",
+        "module_sum": "h1:vQKGifzK8f1c5YxX042CrWWUrWCTYMnxYAy+nI2AJA0=",
+        "package_unchanged": true
+      },
+      {
+        "module": "client-portal",
+        "version": "v0.0.0-20261114212958-57b909d0e93c",
+        "module_sum": "h1:JXcHsZ63S4+UzIlIbr5CMDvxdlKkI9Vd1mWd/V9Xqn8=",
+        "package_unchanged": true
+      },
+      {
+        "module": "lawpay-docuseal",
+        "version": "v0.0.0-20261114213008-915ded572070",
+        "module_sum": "h1:Yy9hz9s7WJu1u0U8NcVQLPeQP4NdPr0/83Hww0lVriU=",
+        "package_unchanged": true
+      },
+      {
+        "module": "quickbooks",
+        "version": "v0.0.0-20261114213013-9269820406a2",
+        "module_sum": "h1:2Ms8+qjZCjPJQpyis0DOgUflnTm/eOFoHsvPa3+wlC0=",
+        "package_unchanged": true
+      }
+    ],
+    "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+    "evidence": "TestCU207Batch1ModulesUnchanged is included in the passing full internal/core suite on this implementation head."
+  },
   "tests": [
     {
-      "name": "Changed-package race regression",
-      "command": "TMPDIR=/out/tmp go test -race ./pkg/modulekit/... ./internal/modules ./internal/practice ./internal/calendar ./internal/files ./internal/billing ./internal/trust ./internal/identity ./internal/settings ./internal/editor ./internal/domain ./cmd/togavsu-module",
-      "exit_code": 0,
-      "tested_revision": "a480030969e4cef7bc8ffea409a0b68fc4a76808",
-      "result": "All 14 package groups passed. Docker/pinned-binary checks use their existing availability gates; no test was edited to skip or weaken coverage."
+      "name": "Full repository race run",
+      "command": "go test -race -count=1 -p 2 -timeout 25m ./...",
+      "exit_code": 1,
+      "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+      "result": "All 35 test package groups accounted for: 34 pass, only unchanged supervisor fails in the three host-facility tests listed below. Core passes in 728.287 seconds; CU2-07 runs inside that passing suite. Existing availability gates remain; this is not Docker/image/browser acceptance."
     },
     {
-      "name": "Broad composed-core race regression",
-      "command": "TMPDIR=/out/tmp go test -race ./internal/core -run '^(TestCORE|TestFirmProfileAndUserDirectory|TestEventsFeedAndAppend|TestPGSendModuleMail|TestExtensions|TestModule|TestNewSettingsMatchTheContract|TestBearerScopesMCPAndSettings|TestPartyRolesAPI|TestCU208FreshInstallNoModules|TestReleaseWallHidesMatterEverywhere|TestReleaseAllOperationsMounted|TestReleaseEveryDomainWriteIsAudited|TestPracticeRecordsOnCore|TestTrustDepositFeedAttribution)'",
+      "name": "API contracts and regeneration",
+      "command": "sh api/check.sh",
       "exit_code": 0,
-      "tested_revision": "a480030969e4cef7bc8ffea409a0b68fc4a76808",
-      "result": "Passed in 330.957 seconds, covering service scopes/walls, module lifecycle, mail, contracts, OpenAPI/MCP, firm directory, event feed and fresh-install setup. The external-repository CU2-07 check was not selected."
-    },
-    {
-      "name": "Final public-surface race regression",
-      "command": "TMPDIR=/out/tmp go test -race ./pkg/modulekit/... ./cmd/togavsu-module ./internal/settings ./internal/domain",
-      "exit_code": 0,
-      "tested_revision": "2b48e3436a21b7832f5ac1234b2aea8f05a4e141",
-      "result": "All passed, including five core-update-2d Postgres acceptance tests and the runtime-criterion CLI checks."
-    },
-    {
-      "name": "API contract suite and regeneration",
-      "command": "PATH=/out/venv/bin:$PATH sh api/check.sh",
-      "exit_code": 0,
-      "tested_revision": "2b48e3436a21b7832f5ac1234b2aea8f05a4e141",
-      "result": "130 tests; core and marketplace OpenAPI validation; deliberately broken reference rejected; regenerated artifacts byte-identical. Runtime simulator fixtures are not executed by this check."
+      "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+      "result": "130 tests pass, both OpenAPI validators pass, broken reference refused, regenerated artifacts byte-identical. Simulator runtime fixtures are not executed by this script."
     },
     {
       "name": "Go vet",
-      "command": "TMPDIR=/out/tmp go vet ./...",
+      "command": "go vet ./...",
       "exit_code": 0,
-      "tested_revision": "2b48e3436a21b7832f5ac1234b2aea8f05a4e141"
+      "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+      "result": "Pass."
     },
     {
-      "name": "Formatting and diff",
-      "command": "test -z \"$(gofmt -l cmd internal pkg)\" && git diff --check",
+      "name": "Controller/setup metadata",
+      "command": "python3 scripts/check_setup.py",
       "exit_code": 0,
-      "tested_revision": "2b48e3436a21b7832f5ac1234b2aea8f05a4e141"
+      "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+      "result": "Pass: 52 core and 23 batch 2 criteria indexed. Metadata only; product acceptance remains pending."
+    },
+    {
+      "name": "Script regression",
+      "command": "python3 -m unittest discover -s scripts -p 'test_*.py'",
+      "exit_code": 0,
+      "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+      "result": "228 tests pass."
+    },
+    {
+      "name": "Pending gate",
+      "command": "sh scripts/ci/pending-gate.sh",
+      "exit_code": 0,
+      "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+      "result": "Pass; AC-001, AC-016 and AC-018 remain pending as reported by the existing gate."
+    },
+    {
+      "name": "Static Compose",
+      "command": "python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+      "result": "Pass; does not run Docker Compose."
     },
     {
       "name": "Debt ledger",
       "command": "python3 scripts/release/check_debt.py",
       "exit_code": 0,
-      "tested_revision": "2b48e3436a21b7832f5ac1234b2aea8f05a4e141",
-      "result": "111 repository markers; 69 ledger entries, unchanged."
+      "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+      "result": "Pass: 111 markers, 69 ledger entries, unchanged."
     },
     {
-      "name": "Final core surface regression",
-      "command": "TMPDIR=/out/tmp go test -race ./internal/core -run '^(TestCORE30|TestCORE31|TestCORE2BOpenAPIAndMCP|TestFirmProfileAndUserDirectory|TestPGSendModuleMail|TestEventsFeedAndAppend|TestNewSettingsMatchTheContract)'",
+      "name": "Formatting and patch hygiene",
+      "command": "test -z \"$(gofmt -l cmd internal pkg api web examples)\" && git diff --check",
       "exit_code": 0,
-      "tested_revision": "2d8b1142fffaadb2a075e9c0b815b90263a1f5ef",
-      "result": "Passed in 55.585 seconds after the party/contact-channel grant addition."
+      "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+      "result": "Pass."
     },
     {
-      "name": "Domain read-only event credential and file access tests",
-      "command": "TMPDIR=/out/tmp go test -race ./internal/domain ./internal/files -run 'TestEventReadNever|TestPG.*Access|TestPG.*Wall'",
+      "name": "Protected paths and file modes",
+      "command": "git diff --raw ade4fb4aadb0a2693127adfaf1a7236f49f03449; inspect each fix-pass commit with git diff-tree",
       "exit_code": 0,
-      "tested_revision": "2b48e3436a21b7832f5ac1234b2aea8f05a4e141",
-      "result": "Both packages passed. Event credentials cannot grant writes or attorney-only access inside services."
+      "tested_revision": "916358bb983607594c194dec6e9bf51e30b2bffa",
+      "result": "Pass: no forbidden paths, symlinks or submodules."
     }
   ],
   "pending_checks": [
     {
-      "check": "External contract-definition comparison",
-      "reason": "docs/contracts/ did not exist in base. The implemented envelope is documented and tested in docs/contracts/README.md; compare any separately held batch-2 provider/consumer definitions before claiming their compatibility."
+      "check": "Supervisor host-facility tests",
+      "failed_tests": {
+        "TestTwoComposeProjectsStaySeparate": "Cannot execute sudo docker compose: sudo and Docker are unavailable locally.",
+        "TestStalledSSHHandshakeRestartsWriters": "ssh-keygen cannot resolve the container UID 1000 to an account.",
+        "TestOpenSSHNamespaceFirstUseAndStoreDelete": "The required real /usr/sbin/sshd is unavailable."
+      },
+      "reason": "Providing system accounts, sudo/Docker or sshd would require host changes outside the permitted workspace. Tests remain unchanged and must run in the suitable CI host/image."
+    },
+    {
+      "check": "Docker product CI and full clean-install/update acceptance",
+      "reason": "No Docker locally: image/supervisor builds, Compose, smoke, image-pinned LawCraft/browser and Docker Desktop acceptance must run in existing CI."
     },
     {
       "check": "Browser screenshot and console QC",
-      "reason": "No browser is installed in this container. Rendered contact page, action link, sandbox frame, API/MCP and access failure paths pass executable tests; browser screenshot/console evidence remains pending."
+      "reason": "No Chrome/Chromium locally. Rendered HTML, phone URL/sandbox and actor-via assertions run against composed core; screenshots and console evidence remain pending."
     },
     {
-      "check": "Docker product CI",
-      "reason": "No Docker is available locally. Image/supervisor image builds, Compose, smoke, full clean-install and updater/image acceptance must run in CI."
+      "check": "External contract-definition comparison",
+      "reason": "The referenced docs/contracts definitions were absent from the assignment base. The implemented envelope is documented and tested in docs/contracts/README.md; independently held module definitions were not supplied."
     },
     {
-      "check": "Unchanged external batch-1 module packages (CU2-07)",
-      "reason": "The existing TestCU207Batch1ModulesUnchanged fetches other GitHub repositories. Network access here is restricted to Go/Python dependencies, so this external-repository test was not selected for local execution."
-    },
-    {
-      "check": "Exact-SHA independent review",
-      "reason": "Implementation worker does not approve its own work. Review base 1d898ca5c3dd6cc5f67a495aac6eb345f8f2dcb0 against the published candidate head after report commit."
+      "check": "Independent exact-SHA review",
+      "reason": "Review the supplied base against the final candidate SHA in the PR body. The implementation worker does not approve itself."
     }
   ],
-  "failures_and_fixes": [
-    "Standalone unprojected practice stores initially lost their document events; preserved that path while projected composed installs query the shared stream by matter/time window.",
-    "Updated existing assertions for intentional service-contact mail and named module actors, with delivery/matter/actor checks retained and strengthened.",
-    "Added ordinary cursor pagination to phone-item discovery to satisfy the API list contract.",
-    "Named-contact grant initially failed on a separate custom-field read; exact-record responses now omit related custom-field/extension reads.",
-    "No tests were disabled or weakened. No release/tag/public version change or push/PR operation was performed."
-  ],
   "simplification": {
-    "net_implementation_lines": 4005,
+    "net_lines_excluding_report": 3164,
+    "net_fix_pass_lines_excluding_report": -841,
     "debt_ledger_entries": 69,
     "repository_ponytail_markers": 111,
     "new_dependencies": 0,
-    "new_migrations": 0,
+    "new_migrations": [
+      "1550_event_module.sql"
+    ],
     "new_debt_entries": 0,
-    "review": "Reused existing scoped service principals, wall services, module FK holder inspection, signing, settings, pagination and public harness. Shared event-actor identity avoids divergent writers. Metadata only inspects authorized core rows, never arbitrary included module columns."
+    "review": "Removed the complete grant and buffering mechanisms; reused core walls, scope checks, signing primitives and audit ledger. Shared actor helpers preserve users consistently. One expand-only attribution column; existing append-only rows and migration checksums unchanged."
+  },
+  "protected_path_audit": {
+    "control_plane_changes": false,
+    "github_changes": false,
+    "symlinks_added": false,
+    "submodules_added": false,
+    "result": "pass"
   },
   "out_of_scope": [
     "processor payment principal CORE-23",
-    "ContextClaims contact CORE-12",
-    "hook-route GET answer",
-    "module fee-agreement dual-write",
+    "ContextClaims contact",
+    "hook GET answer",
+    "fee-agreement dual-write",
     "staff banner frames",
     "documents-list action slot",
     "signed file-read addresses"
   ],
-  "protected_path_audit": {
-    "result": "pass",
-    "control_plane_changes": false,
-    "github_changes": false,
-    "symlinks_added": false,
-    "submodules_added": false
+  "release": "No push, PR operation, merge, release, tag or public version bump. Integration lead publishes the local lane commits.",
+  "proposed_ci_change": "None. Run the existing product and independent review gates on the batch2-targeted PR.",
+  "fixes_found_by_full_verification": [
+    "The initial diagnostic run reached the default ten-minute Go ceiling; final full verification uses the existing 25-minute ceiling in scripts/ci/test-core.sh.",
+    "Moved attribution migration 1550 to the late core-update directory so standalone domains apply lower migrations first; ordering and checksum checks remain enabled.",
+    "Schema inventory now recognizes expand-only ADD COLUMN; a live upgrade test preserves historical actor rows and reads new user/module attribution.",
+    "Registered the installed-module phone page in the route inventory and added actual composed-shell assertions to the public-kit acceptance test.",
+    "Added the three approved note/file service-limit defaults to the exhaustive defaults test; exact registry equality remains enforced. The corrected settings suite passes on the final implementation head."
+  ],
+  "local_validation": {
+    "passing_test_package_groups": 34,
+    "full_go_exit_code": 1,
+    "failed_package": "internal/supervisor",
+    "failed_tests": [
+      "TestTwoComposeProjectsStaySeparate",
+      "TestStalledSSHHandshakeRestartsWriters",
+      "TestOpenSSHNamespaceFirstUseAndStoreDelete"
+    ],
+    "classification": "Missing local host facilities; all application/module-kit packages pass. No tests were changed to skip these failures."
   },
-  "release": "No release, tag or public version bump.",
-  "proposed_ci_change": "None; run existing product CI on the stacked branch."
+  "test_environment_note": "Synthetic data and keys only, provided Postgres 17 services/client tools, pinned Python API dependencies and local Go dependency source snapshots. No credential, token or environment value is included in this report. The 25-minute Go-test ceiling is already defined by scripts/ci/test-core.sh; no new runtime timeout was added.",
+  "outcome": "All 15 requested code fixes implemented with passing application/kit regression evidence. Overall acceptance remains pending the named host/CI/browser/external-integration/independent-review checks; this is not a self-authored checkpoint pass."
 }
