@@ -393,7 +393,7 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 				return p, err
 			}
 			t, ok := a.toolFor(r.Method, r.URL.Path)
-			record := map[string]string{"getMatter": "matter", "getContact": "contact", "getCalendarEvent": "calendar_event", "getDeadline": "deadline", "getFile": "file", "getNote": "note"}[t.Name]
+			record := map[string]string{"getMatter": "matter", "getContact": "contact", "getCalendarEvent": "calendar_event", "getDeadline": "deadline", "getFile": "file", "getNote": "note", "getMatterParty": "matter_party", "getContactAddress": "contact_address", "getContactPhone": "contact_phone", "getContactEmail": "contact_email"}[t.Name]
 			if !ok || r.Method != http.MethodGet || record != g.RecordType || !strings.HasSuffix(r.URL.Path, "/"+string(g.RecordID)) {
 				return p, domain.Forbidden("event authorization is restricted to its named record get")
 			}
@@ -475,7 +475,7 @@ func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
 	}
 	if r.Header.Get(modules.EventAuthorizationHeader) != "" {
 		switch t.Name {
-		case "getMatter", "getContact", "getCalendarEvent", "getDeadline", "getFile", "getNote":
+		case "getMatter", "getContact", "getCalendarEvent", "getDeadline", "getFile", "getNote", "getMatterParty", "getContactAddress", "getContactPhone", "getContactEmail":
 			return a.enforceServiceCallLimit(r.Context(), p, t.Name)
 		}
 	}

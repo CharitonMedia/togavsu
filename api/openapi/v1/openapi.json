@@ -8362,6 +8362,15 @@
               "type": "string"
             },
             "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
+          },
+          {
+            "name": "X-Togavsu-Event-Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque five-minute grant delivered for this one core record. Requires approved event_records:read plus the operation read scope; no lists, writes, related records, or attorney-only bypass."
           }
         ],
         "responses": {
@@ -8428,6 +8437,9 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "headers": [
+              "X-Togavsu-Event-Authorization"
+            ],
             "credentials": {
               "context_token": {
                 "header": "X-Togavsu-Context-Token",
@@ -8453,6 +8465,7 @@
             "arguments": [
               "path",
               "query",
+              "headers",
               "context_token"
             ]
           }
@@ -9119,6 +9132,15 @@
               "type": "string"
             },
             "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
+          },
+          {
+            "name": "X-Togavsu-Event-Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque five-minute grant delivered for this one core record. Requires approved event_records:read plus the operation read scope; no lists, writes, related records, or attorney-only bypass."
           }
         ],
         "responses": {
@@ -9185,6 +9207,9 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "headers": [
+              "X-Togavsu-Event-Authorization"
+            ],
             "credentials": {
               "context_token": {
                 "header": "X-Togavsu-Context-Token",
@@ -9210,6 +9235,7 @@
             "arguments": [
               "path",
               "query",
+              "headers",
               "context_token"
             ]
           }
@@ -9883,6 +9909,15 @@
               "type": "string"
             },
             "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
+          },
+          {
+            "name": "X-Togavsu-Event-Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque five-minute grant delivered for this one core record. Requires approved event_records:read plus the operation read scope; no lists, writes, related records, or attorney-only bypass."
           }
         ],
         "responses": {
@@ -9949,6 +9984,9 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "headers": [
+              "X-Togavsu-Event-Authorization"
+            ],
             "credentials": {
               "context_token": {
                 "header": "X-Togavsu-Context-Token",
@@ -9974,6 +10012,7 @@
             "arguments": [
               "path",
               "query",
+              "headers",
               "context_token"
             ]
           }
@@ -13759,6 +13798,15 @@
               "type": "string"
             },
             "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
+          },
+          {
+            "name": "X-Togavsu-Event-Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque five-minute grant delivered for this one core record. Requires approved event_records:read plus the operation read scope; no lists, writes, related records, or attorney-only bypass."
           }
         ],
         "responses": {
@@ -13826,6 +13874,9 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "headers": [
+              "X-Togavsu-Event-Authorization"
+            ],
             "credentials": {
               "context_token": {
                 "header": "X-Togavsu-Context-Token",
@@ -13851,6 +13902,7 @@
             "arguments": [
               "path",
               "query",
+              "headers",
               "context_token"
             ]
           }

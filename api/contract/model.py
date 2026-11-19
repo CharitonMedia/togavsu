@@ -517,7 +517,7 @@ class Contract:
             if not public:
                 parameters.append({"$ref": "#/components/parameters/csrfToken"})
         parameters.extend(extra_parameters or [])
-        if operation_id in {"getMatter", "getContact", "getCalendarEvent", "getDeadline", "getFile", "getNote"}:
+        if operation_id in {"getMatter", "getContact", "getCalendarEvent", "getDeadline", "getFile", "getNote", "getMatterParty", "getContactAddress", "getContactPhone", "getContactEmail"}:
             parameters.append({"name":"X-Togavsu-Event-Authorization", "in":"header", "required":False,
                 "schema":{"type":"string"}, "description":"Opaque five-minute grant delivered for this one core record. Requires approved event_records:read plus the operation read scope; no lists, writes, related records, or attorney-only bypass."})
 

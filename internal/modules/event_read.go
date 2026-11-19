@@ -33,7 +33,7 @@ func (s *Service) eventReadToken(ctx context.Context, module string, body []byte
 		return "", err
 	}
 	switch ev.RecordType {
-	case "matter", "contact", "calendar_event", "deadline", "file", "note":
+	case "matter", "contact", "calendar_event", "deadline", "file", "note", "matter_party", "contact_address", "contact_phone", "contact_email":
 	default:
 		return "", nil
 	}
@@ -87,9 +87,9 @@ func (s *Service) VerifyEventRead(ctx context.Context, module, token string) (*d
 
 func eventRecordScope(record string) string {
 	switch record {
-	case "matter":
+	case "matter", "matter_party":
 		return "matters:read"
-	case "contact":
+	case "contact", "contact_address", "contact_phone", "contact_email":
 		return "contacts:read"
 	case "calendar_event":
 		return "calendar:read"

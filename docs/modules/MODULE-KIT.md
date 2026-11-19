@@ -529,7 +529,7 @@ from an event the core delivered. To receive the latter, request `event_records:
 as well as `events:read` and the record's ordinary read scope. Delivery includes
 `X-Togavsu-Event-Authorization`; present that header on the named record's get. It expires
 five minutes after delivery, names one module, event, record type, record id and matter,
-and permits no list, write, sibling record, include row, or attorney-only field. Core
+and permits no list, write, sibling record, include row, or attorney-only field. Named matter-party and contact-address/email/phone gets use the same exact-record rule. Core
 record events, rather than module-appended events or contract payloads, mint grants.
 MCP forwards the same header. Disabled modules and changed/expired credentials fail
 closed. A successful read is audited even with a delegated viewer. Walled record

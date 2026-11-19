@@ -2431,6 +2431,9 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "headers": [
+          "X-Togavsu-Event-Authorization"
+        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -2456,6 +2459,7 @@
         "arguments": [
           "path",
           "query",
+          "headers",
           "context_token"
         ]
       }
@@ -2687,6 +2691,9 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "headers": [
+          "X-Togavsu-Event-Authorization"
+        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -2712,6 +2719,7 @@
         "arguments": [
           "path",
           "query",
+          "headers",
           "context_token"
         ]
       }
@@ -2950,6 +2958,9 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "headers": [
+          "X-Togavsu-Event-Authorization"
+        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -2975,6 +2986,7 @@
         "arguments": [
           "path",
           "query",
+          "headers",
           "context_token"
         ]
       }
@@ -4156,6 +4168,9 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "headers": [
+          "X-Togavsu-Event-Authorization"
+        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -4181,6 +4196,7 @@
         "arguments": [
           "path",
           "query",
+          "headers",
           "context_token"
         ]
       }

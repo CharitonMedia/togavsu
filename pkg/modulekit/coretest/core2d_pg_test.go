@@ -29,7 +29,7 @@ func install2d(t *testing.T, c *coretest.Core, id string, scopes []string, tail 
 		permissions += "  - scope: " + scope + "\n    reason: Synthetic acceptance permission.\n"
 	}
 	text = strings.Replace(text, "permissions:\n", permissions, 1)
-	text = strings.Replace(text, "events:\n", "events:\n  - contact.*\n  - calendar_event.*\n  - deadline.*\n  - note.*\n  - file.*\n", 1)
+	text = strings.Replace(text, "events:\n", "events:\n  - matter.party_added\n  - matter_party.*\n  - contact_address.*\n  - contact_phone.*\n  - contact_email.*\n  - contact.*\n  - calendar_event.*\n  - deadline.*\n  - note.*\n  - file.*\n", 1)
 	files[modulekit.ManifestFile] = []byte(text + "\n" + tail)
 	for _, change := range changes {
 		change(files)
@@ -469,8 +469,14 @@ func TestCoreUpdate2DEventRecordKinds(t *testing.T) {
 	note := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/notes", map[string]any{"title": "Named walled note", "body": "Synthetic note body", "matter_id": matter})
 	deadline := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/deadlines", map[string]any{"title": "Named deadline", "due_on": time.Now().AddDate(0, 0, 1).UTC().Format("2006-01-02"), "responsible_user_id": c.Attorney.ID, "matter_id": matter})
 	file := upload2d(t, c.Attorney, matter)
+	address := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/contact-addresses", map[string]any{"contact_id": contact, "label": "work", "line1": "Synthetic address"})
+	phone := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/contact-phones", map[string]any{"contact_id": contact, "label": "work", "e164": "+15555550128", "effective_from": "2026-01-01"})
+	email := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/contact-emails", map[string]any{"contact_id": contact, "label": "work", "email": "named@synthetic.example"})
+	parties := c.Attorney.Must(http.StatusOK, "GET", "/api/v1/matter-parties?matter_id="+matter, nil)
+	party := parties.JSON["data"].([]any)[0].(map[string]any)["id"].(string)
+
 	c.DeliverEvents()
-	records := map[string]string{matter: "matters", contact: "contacts", str(t, note.JSON, "id"): "notes", str(t, deadline.JSON, "id"): "deadlines", str(t, file, "id"): "files"}
+	records := map[string]string{matter: "matters", contact: "contacts", str(t, note.JSON, "id"): "notes", str(t, deadline.JSON, "id"): "deadlines", str(t, file, "id"): "files", str(t, address.JSON, "id"): "contact-addresses", str(t, phone.JSON, "id"): "contact-phones", str(t, email.JSON, "id"): "contact-emails", party: "matter-parties"}
 	bot := c.ModuleClient(id)
 	for record, collection := range records {
 		mu.Lock()
