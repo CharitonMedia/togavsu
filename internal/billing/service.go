@@ -606,7 +606,7 @@ func (t *txn) event(action, recordType string, recordID, matter domain.ID, summa
 		return err
 	}
 	t.events = append(t.events, domain.Event{
-		Meta: meta, ActorKind: actorKind(t.p), ActorID: actor(t.p), Action: action,
+		Meta: meta, ActorKind: actorKind(t.p), ActorID: t.p.EventActor(), Action: action,
 		RecordType: recordType, RecordID: recordID, MatterID: matter, Summary: summary, ClientVisible: clientVisible,
 	})
 	return nil

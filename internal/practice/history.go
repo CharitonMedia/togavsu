@@ -2,6 +2,7 @@ package practice
 
 import (
 	"context"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -47,7 +48,10 @@ func (s *Service) Timeline(ctx context.Context, p domain.Principal, matter domai
 	}
 	// A client who can read the shared matter still only sees client-visible events.
 	clientView := s.gateMatterShared(ctx, p, matter, domain.ActionRead, false) != nil
-	events := s.db.Events()
+	events, err := s.sharedEvents(ctx, matter, time.Time{})
+	if err != nil {
+		return nil, err
+	}
 	var out []TimelineEntry
 	for i := len(events) - 1; i >= 0; i-- {
 		row := events[i]
@@ -81,7 +85,10 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 	window := s.intSetting(ctx, "activity.window_days", domain.ActivityWindowDays)
 	limit := s.intSetting(ctx, "activity.page_size", domain.ActivityPageSize)
 	cutoff := s.clock().AddDate(0, 0, -window)
-	events := s.db.Events()
+	events, err := s.sharedEvents(ctx, "", cutoff)
+	if err != nil {
+		return ActivityView{}, err
+	}
 	var all []TimelineEntry
 	for i := len(events) - 1; i >= 0; i-- {
 		row := events[i]
@@ -161,11 +168,14 @@ func activityTab(tab, kind string) bool {
 
 func (s *Service) timelineRow(ctx context.Context, row domain.Event) TimelineEntry {
 	name := row.ActorKind
+	if row.ActorKind == "module" {
+		name = string(row.ActorID)
+	}
 	if user, err := s.db.User(ctx, row.ActorID); err == nil && user.Name != "" {
 		name = user.Name
 	}
 	return TimelineEntry{
-		ID: row.ID, At: row.CreatedAt, ActorKind: row.ActorKind, ActorID: row.ActorID,
+		ID: row.ID, CreatedBy: row.CreatedBy, At: row.CreatedAt, ActorKind: row.ActorKind, ActorID: row.ActorID,
 		ActorName: name, Action: row.Action, Summary: row.Summary, ClientVisible: row.ClientVisible,
 		RecordType: row.RecordType, RecordID: row.RecordID, MatterID: row.MatterID,
 	}
@@ -298,4 +308,14 @@ func (s *Service) DeleteEvent(ctx context.Context, id domain.ID) (err error) {
 // (listEvents) applies it to every row of core.events.
 func (s *Service) FeedAllows(ctx context.Context, p domain.Principal, row domain.Event) bool {
 	return s.feedAllows(ctx, p, row)
+}
+
+// sharedEvents reads the core stream in composed installs, including module events.
+func (s *Service) sharedEvents(ctx context.Context, matter domain.ID, since time.Time) ([]domain.Event, error) {
+	if reader, ok := s.db.(interface {
+		ReadEvents(context.Context, domain.ID, time.Time) ([]domain.Event, error)
+	}); ok {
+		return reader.ReadEvents(ctx, matter, since)
+	}
+	return s.db.Events(), nil
 }

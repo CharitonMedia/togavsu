@@ -1,3 +1,9 @@
+<section class="card" id="contact-phones">
+ <h2>Phone numbers</h2>
+ {{range .PhoneRows}}<p>{{.Phone.Label}} <a href="tel:{{.Phone.PhoneE164}}">{{.Phone.PhoneE164}}</a>
+ {{range .Items}}<a class="button" href="{{.Path}}">{{.Title}} ({{.Name}})</a>{{end}}</p>
+ {{else}}<p>No phone numbers.</p>{{end}}
+</section>
 <p>{{.Contact.Kind}}{{if .Contact.Archived}} · archived{{end}}</p>
 {{if .Contact.AlsoKnownAs}}<p>Also known as {{.Contact.AlsoKnownAs}}</p>{{end}}
 <form class="card" method="post" action="/practice/contacts/{{.Contact.ID}}">

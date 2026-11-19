@@ -62,6 +62,8 @@ func (e *APIError) HTTPStatus() int {
 		return http.StatusBadRequest
 	case CodeConflict, CodeAppendOnly, CodeIdempotencyConflict, CodeDuplicateEmail:
 		return http.StatusConflict
+	case "too_large", "payload_too_large":
+		return http.StatusRequestEntityTooLarge
 	case CodeRateLimited:
 		return http.StatusTooManyRequests
 	case CodeBatchRejected:

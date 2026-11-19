@@ -209,6 +209,7 @@ func (a *App) appendEvents(ctx context.Context, p domain.Principal, items []even
 		if it.MatterID != nil {
 			ev.MatterID = *it.MatterID
 		}
+		ev.ActorID = p.EventActor()
 		if err := db.PublishEvent(ctx, tx, ev); err != nil {
 			return nil, err
 		}
@@ -263,7 +264,7 @@ func eventJSON(ev domain.Event) map[string]any {
 	}
 	return map[string]any{
 		"id": ev.ID, "created_at": ev.CreatedAt.UTC().Format(time.RFC3339Nano), "created_by": by,
-		"actor_kind": ev.ActorKind, "actor_id": actor, "action": ev.Action, "record_type": ev.RecordType,
+		"actor_kind": ev.ActorKind, "actor_id": actor, "actor_name": string(ev.ActorID), "action": ev.Action, "record_type": ev.RecordType,
 		"record_id": ev.RecordID, "matter_id": matter, "summary": ev.Summary, "client_visible": ev.ClientVisible,
 	}
 }

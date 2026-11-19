@@ -2340,7 +2340,8 @@ class ContractTest(unittest.TestCase):
         from pathlib import Path
 
         matter = _operation(self.spec, "getMatter")["x-togavsu-mcp"]["transfer"]
-        self.assertEqual(matter["arguments"], ["path", "query", "context_token"])
+        self.assertEqual(matter["arguments"], ["path", "query", "headers", "context_token"])
+        self.assertIn("X-Togavsu-Event-Authorization", matter["headers"])
         self.assertNotIn("matter_id", matter["arguments"])
         self.assertEqual(matter["credentials"]["context_token"]["header"], "X-Togavsu-Context-Token")
         self.assertFalse(matter["credentials"]["context_token"]["roles_from_arguments"])
@@ -4473,8 +4474,12 @@ class ContractTest(unittest.TestCase):
         secret = b"top-secret"
         payload = b'{"type":"matter.created"}'
         signature = webhook_signature(secret, payload)
-        self.assertEqual(signature, "sha256=e9464e954a1b5f9acf9da3a55d8f0a31d00090a745fa83e3591fe7d2afcbae88")
+        self.assertEqual(signature, "t=1800000000,v1=" + __import__("hmac").new(secret, b"1800000000." + payload, __import__("hashlib").sha256).hexdigest())
         self.assertTrue(webhook_signature_matches(secret, payload, signature))
+        self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1800000301))
+        self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1799999699))
+        self.assertFalse(webhook_signature_matches(b"", payload, signature))
+        self.assertEqual(webhook_signature(b"", payload), "")
         self.assertFalse(webhook_signature_matches(secret, payload + b" ", signature))
         self.assertFalse(webhook_signature_matches(b"other-secret", payload, signature))
         import hashlib

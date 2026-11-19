@@ -137,7 +137,7 @@ func (s *Service) GetEvent(ctx context.Context, p domain.Principal, id domain.ID
 	if err != nil {
 		return Event{}, missing(err, "calendar event")
 	}
-	if !row.MatterID.IsZero() && !s.visible(ctx, p, row.MatterID) {
+	if (!row.MatterID.IsZero() && !s.visible(ctx, p, row.MatterID)) && !p.EventRecord("calendar_event", id, row.MatterID) {
 		return Event{}, domain.NotFound("calendar event")
 	}
 	return row, nil

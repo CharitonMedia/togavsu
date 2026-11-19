@@ -62,8 +62,9 @@ type Config struct {
 	SupervisorMailOutbox string
 	// WordcraftCLI and EditorDist locate LawCraft's builds. Empty uses the image paths;
 	// a missing binary or folder leaves those features answering that they are absent.
-	WordcraftCLI string
-	EditorDist   string
+	DocumentConverter func(context.Context, []byte, string, string) ([]byte, error)
+	WordcraftCLI      string
+	EditorDist        string
 	// NoBackground leaves the documents' workers (Doc Tender, drop folder, moves and
 	// reminders) stopped, for tests that drive them step by step.
 	NoBackground bool
@@ -351,7 +352,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	}
 	host, _ := os.Hostname()
 	if err := openDocuments(ctx, docs, pool, aud, reg, store, app.Practice, users, cfg.Domain,
-		documentsConfig{DataDir: dataDir, WordcraftCLI: cli, EditorDist: dist, ProviderURLs: cfg.ProviderURLs, Worker: "core-" + host},
+		documentsConfig{DocumentConverter: cfg.DocumentConverter, DataDir: dataDir, WordcraftCLI: cli, EditorDist: dist, ProviderURLs: cfg.ProviderURLs, Worker: "core-" + host},
 		app.principal, now); err != nil {
 		return fail(err)
 	}
@@ -440,7 +441,11 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		app.Billing.SetProcessors(ext.Modules)
 	}
 	ph.Panels = app.matterPanels
+	ph.PhoneItems = app.contactPhoneRows
 	ph.Relink = ModuleRelinker(ext.Modules.Schemas(), pool)
+	app.Files.PurgeHolders = func(ctx context.Context, id domain.ID) ([]string, error) {
+		return ext.Modules.Schemas().Holders(ctx, "files", id)
+	}
 	modMux, ok := ext.modH.Routes().(*http.ServeMux)
 	if !ok {
 		return fail(errors.New("core: the module handler is not a ServeMux"))
@@ -462,7 +467,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	inner := ui.Handler()
 	app.handler = app.holdGate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = memoCaller(r)
-		inner.ServeHTTP(w, r.WithContext(practice.WithRequestMemo(r.Context())))
+		app.moduleReadResponses(inner).ServeHTTP(w, r.WithContext(practice.WithRequestMemo(r.Context())))
 	}))
 	if err := ext.start(ctx); err != nil {
 		return fail(err)

@@ -30,6 +30,8 @@ const ContextHeader = "X-Togavsu-Context-Token"
 // at which matter, through which module (PRD 9.4).
 type ContextClaims struct {
 	Module    string        `json:"mod"`
+	Provider  string        `json:"provider,omitempty"`
+	Contract  string        `json:"contract,omitempty"`
 	UserID    domain.ID     `json:"sub"`
 	Roles     []domain.Role `json:"roles"`
 	MatterID  domain.ID     `json:"matter,omitempty"`
@@ -186,11 +188,26 @@ func (s *Service) Delegate(ctx context.Context, caller domain.Principal, context
 		return domain.Principal{}, err
 	}
 	if c.Module != caller.ModuleID {
-		return domain.Principal{}, domain.Forbidden("the context token was issued for another module")
+		if c.Provider != caller.ModuleID || c.Contract == "" {
+			return domain.Principal{}, domain.Forbidden("the context token was issued for another module")
+		}
+		provider, err := s.linkedProvider(ctx, c.Contract, c.Module, caller.ModuleID)
+		if err != nil || provider != caller.ModuleID {
+			return domain.Principal{}, domain.Forbidden("forwarded context contract is no longer linked")
+		}
+		consumer, err := s.Installed(ctx, c.Module)
+		if err != nil || !consumer.Enabled || !consumer.Approved["contracts:call"] {
+			return domain.Principal{}, domain.Forbidden("consumer is unavailable")
+		}
+	} else if c.Provider != "" {
+		return domain.Principal{}, domain.Forbidden("forwarded context is for the provider only")
 	}
 	in, err := s.Installed(ctx, caller.ModuleID)
 	if err != nil || !in.Enabled {
 		return domain.Principal{}, domain.Forbidden("the module isn't enabled")
+	}
+	if c.Module != caller.ModuleID && !in.Approved["contracts:provide"] {
+		return domain.Principal{}, scopeDenied("contracts:provide")
 	}
 	return domain.Principal{UserID: c.UserID, Roles: c.Roles, Source: domain.SourceModule, ModuleID: caller.ModuleID, TokenID: caller.TokenID}, nil
 }

@@ -95,19 +95,21 @@ type Config struct {
 // Service is the one file store. Every method checks the caller in this layer, so the
 // API, MCP, UI, search, widgets and modules get the same answer.
 type Service struct {
-	st        *store
-	audit     *audit.Service
-	settings  Settings
-	dir       Directory
-	policy    domain.Policy
-	mail      Mailer
-	blobKey   []byte
-	configKey []byte
-	staging   string
-	http      *http.Client
-	now       func() time.Time
-	newID     func() (domain.ID, error)
-	onVersion func(ctx context.Context, ev VersionCreated)
+	// PurgeHolders names modules whose RESTRICT links retain a file. Called under its row lock.
+	PurgeHolders func(context.Context, domain.ID) ([]string, error)
+	st           *store
+	audit        *audit.Service
+	settings     Settings
+	dir          Directory
+	policy       domain.Policy
+	mail         Mailer
+	blobKey      []byte
+	configKey    []byte
+	staging      string
+	http         *http.Client
+	now          func() time.Time
+	newID        func() (domain.ID, error)
+	onVersion    func(ctx context.Context, ev VersionCreated)
 	// moduleOn reports whether a module is installed and enabled; nil refuses every
 	// module principal (SetModuleCheck).
 	moduleOn func(ctx context.Context, module string) (bool, error)
@@ -237,7 +239,7 @@ func (s *Service) event(ctx context.Context, p domain.Principal, f fileRow, acti
 		return err
 	}
 	return s.st.appendEvent(ctx, domain.Event{
-		Meta: m, ActorKind: actorKind(p), ActorID: actor(p, domain.SystemUserID), Action: action,
+		Meta: m, ActorKind: actorKind(p), ActorID: p.EventActor(), Action: action,
 		RecordType: "file", RecordID: f.ID, MatterID: f.MatterID, Summary: summary,
 		ClientVisible: clientSees(p, f),
 	})
@@ -345,6 +347,9 @@ func (s *Service) decide(ctx context.Context, p domain.Principal, f fileRow, act
 			return domain.Decision{}, err
 		}
 		in.ClientMatter = own != "" && own == f.ContactID
+	}
+	if action == domain.ActionRead && p.EventRecord("file", f.ID, f.MatterID) {
+		in.WallAllows = true
 	}
 	if own, err := s.ownUnassigned(ctx, p, f, action); err != nil || own {
 		return domain.Decision{Allow: own}, err

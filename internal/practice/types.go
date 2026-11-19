@@ -302,6 +302,7 @@ type HistoryRow struct {
 
 // TimelineEntry is one case-timeline row.
 type TimelineEntry struct {
+	CreatedBy     domain.ID
 	ID            domain.ID
 	At            time.Time
 	ActorKind     string

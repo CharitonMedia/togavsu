@@ -71,11 +71,20 @@ DELEGABLE_SCOPES = {
     "markers:write",
     "firm:read",
     "users:directory",
+ "module_settings:write", "event_records:read",
 }
+
+# Additional background read operations. Only these override earlier viewer-only marks.
+BACKGROUND_READ_OPERATIONS = frozenset({
+        "getDeadline", "listDeadline", "getCalendarEvent", "listMatterParty", "getMatterParty",
+        "getFirmProfile", "listUserDirectory", "listContactAddress", "getContactAddress",
+        "listPartyRole", "getPartyRole", "listCustomFieldDefinition", "getCustomFieldDefinition",
+        "listSettings", "getSetting", "getModuleSettings",
+})
 
 # Operations that accept a module service principal with no viewer (CORE-01), and a
 # viewer context token when present. createEvent/bulkEvent keep today's module append.
-SERVICE_PRINCIPAL_OPERATIONS = frozenset(
+SERVICE_PRINCIPAL_OPERATIONS = BACKGROUND_READ_OPERATIONS | frozenset(
     {
         "createEvent",
         "bulkEvent",
@@ -388,7 +397,9 @@ def _delegated_viewer(access: dict, public: bool, mcp: str) -> bool:
 def _delegation_mode(access: dict, public: bool, mcp: str, operation_id: str) -> str | None:
     if access.get("authorization_category") == "service_principal_issuance":
         return "service_principal"
-    # Explicit mark wins (CORE-01 delegated_viewer_or_service_principal and later items).
+    # New background reads override their earlier viewer-only marks.
+    if operation_id in BACKGROUND_READ_OPERATIONS:
+        return "delegated_viewer_or_service_principal"
     explicit = access.get("module_delegation")
     if explicit in (
         "delegated_viewer",
@@ -506,6 +517,9 @@ class Contract:
             if not public:
                 parameters.append({"$ref": "#/components/parameters/csrfToken"})
         parameters.extend(extra_parameters or [])
+        if operation_id in {"getMatter", "getContact", "getCalendarEvent", "getDeadline", "getFile", "getNote"}:
+            parameters.append({"name":"X-Togavsu-Event-Authorization", "in":"header", "required":False,
+                "schema":{"type":"string"}, "description":"Opaque five-minute grant delivered for this one core record. Requires approved event_records:read plus the operation read scope; no lists, writes, related records, or attorney-only bypass."})
 
         access = {
             "roles": roles or [],

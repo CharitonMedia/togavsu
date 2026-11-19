@@ -51,6 +51,7 @@ func (a *App) routes() {
 	a.meAppointmentsRoutes(m)
 	a.meTrustRoutes(m)
 	a.directoryRoutes(m)
+	m.HandleFunc("GET /api/v1/modules/contact-phone-items", a.contactPhoneItemsJSON)
 	a.booksRoutes(m)
 	a.clientAccessRoutes(m)
 	a.portalRoutes(m)
@@ -386,12 +387,29 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 		// CORE-30: non-books service calls need a staff role so Decide allows them; UserID
 		// stays zero so the principal is on no wall (walled matters stay omitted / not_found).
 		a.elevateServiceStaff(&p, r)
+		if tok := r.Header.Get(modules.EventAuthorizationHeader); tok != "" {
+			g, err := a.ext.Modules.VerifyEventRead(r.Context(), p.ModuleID, tok)
+			if err != nil {
+				return p, err
+			}
+			t, ok := a.toolFor(r.Method, r.URL.Path)
+			record := map[string]string{"getMatter": "matter", "getContact": "contact", "getCalendarEvent": "calendar_event", "getDeadline": "deadline", "getFile": "file", "getNote": "note"}[t.Name]
+			if !ok || r.Method != http.MethodGet || record != g.RecordType || !strings.HasSuffix(r.URL.Path, "/"+string(g.RecordID)) {
+				return p, domain.Forbidden("event authorization is restricted to its named record get")
+			}
+			p.EventRead = g
+		}
 		// CORE-01: every service call writes an audit row (module, operation, source service),
 		// including reads that would otherwise leave no write-side audit.
 		if !runtime {
 			if err := a.auditServiceCall(r, p); err != nil {
 				return p, err
 			}
+		}
+	}
+	if p.ModuleID != "" && !p.UserID.IsZero() && r.Method == http.MethodGet {
+		if err := a.auditServiceCall(r, p); err != nil {
+			return p, err
 		}
 	}
 	return p, nil
@@ -404,7 +422,7 @@ func (a *App) elevateServiceStaff(p *domain.Principal, r *http.Request) {
 		return
 	}
 	t, ok := a.toolFor(r.Method, r.URL.Path)
-	if !ok || !serviceDelegation[t.Delegation] {
+	if !ok || (!serviceDelegation[t.Delegation] && r.Header.Get(modules.EventAuthorizationHeader) == "") {
 		return
 	}
 	p.Roles = []domain.Role{domain.RoleStaff}
@@ -454,6 +472,12 @@ func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
 	}
 	if r.Header.Get(modules.TaskAuthorizationHeader) != "" && t.Delegation == "delegated_viewer_or_noninteractive" {
 		return nil
+	}
+	if r.Header.Get(modules.EventAuthorizationHeader) != "" {
+		switch t.Name {
+		case "getMatter", "getContact", "getCalendarEvent", "getDeadline", "getFile", "getNote":
+			return a.enforceServiceCallLimit(r.Context(), p, t.Name)
+		}
 	}
 	if !serviceDelegation[t.Delegation] {
 		return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}
@@ -865,8 +889,22 @@ func (a *App) entry(ctx context.Context, key string) (settings.Entry, error) {
 }
 
 func (a *App) settingsJSON(w http.ResponseWriter, r *http.Request) {
-	if _, err := a.admin(r); err != nil {
+	p, err := a.principal(r)
+	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if p.ModuleID != "" {
+		e, err := a.moduleContractSetting(r, p, "modules.contract_call_max_bytes")
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": []map[string]any{settingJSON(e)}, "page": map[string]any{"next_cursor": nil}})
+		return
+	}
+	if !p.HasRole(domain.RoleAdmin) {
+		writeErr(w, domain.Forbidden("admin role is required"))
 		return
 	}
 	list, err := a.Settings.List(r.Context())
@@ -885,8 +923,22 @@ func (a *App) settingsJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) settingJSON(w http.ResponseWriter, r *http.Request) {
-	if _, err := a.admin(r); err != nil {
+	p, err := a.principal(r)
+	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if p.ModuleID != "" {
+		e, err := a.moduleContractSetting(r, p, r.PathValue("setting_key"))
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, settingJSON(e))
+		return
+	}
+	if !p.HasRole(domain.RoleAdmin) {
+		writeErr(w, domain.Forbidden("admin role is required"))
 		return
 	}
 	e, err := a.entry(r.Context(), r.PathValue("setting_key"))

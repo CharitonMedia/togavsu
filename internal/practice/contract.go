@@ -375,7 +375,7 @@ func (h *Handler) partiesJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := h.Svc.ListParties(r.Context(), p, domain.ID(r.URL.Query().Get("matter_id")))
+	rows, err := h.Svc.ListParties(r.Context(), p, domain.ID(r.URL.Query().Get("matter_id")), domain.ID(r.URL.Query().Get("contact_id")))
 	if err != nil {
 		writeErr(w, err)
 		return

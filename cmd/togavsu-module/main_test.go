@@ -584,3 +584,24 @@ func TestKeyPrintsThePublicKeyAndProves(t *testing.T) {
 		t.Fatalf("bad seed: %d", code)
 	}
 }
+
+func TestRuntimePendingCLI(t *testing.T) {
+	dir := copyPackage(t, nil)
+	code, out, errs := cli("pending", "-dir", dir, "-runtime", "processor.payment_principal", "-core", "CORE-23", "-reason", "Background processor authorization remains unavailable.")
+	if code != exitOK || !strings.Contains(out, "runtime processor.payment_principal") {
+		t.Fatalf("runtime pending write: %d %s %s", code, out, errs)
+	}
+	code, result := checkJSON(t, "-installable", "-strict", dir)
+	if code != exitOK || !result.OK || len(result.Held) != 1 || result.Held[0].Pending.Runtime != "processor.payment_principal" || len(result.Unused) != 0 {
+		t.Fatalf("held runtime report: %d %+v", code, result)
+	}
+	supported := copyPackage(t, nil)
+	code, _, errs = cli("pending", "-dir", supported, "-runtime", "coretest.converter", "-core", "CORE-29", "-reason", "Document conversion stand-in.")
+	if code != exitOK {
+		t.Fatal(errs)
+	}
+	code, result = checkJSON(t, "-installable", "-strict", supported)
+	if code != exitRefused || result.OK || len(result.Unused) != 1 || len(result.Refusals) != 1 || result.Refusals[0].Code != modulekit.RefusePendingUnused {
+		t.Fatalf("supported runtime must retire: %d %+v", code, result)
+	}
+}

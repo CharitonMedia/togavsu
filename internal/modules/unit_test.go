@@ -205,7 +205,7 @@ func TestWebhookSignature(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	body := []byte(`{"id":"e1"}`)
 	sig := modules.SignWebhook("s3cret", now, body)
-	if !strings.HasPrefix(sig, "sha256=") || len(sig) != len("sha256=")+64 {
+	if !strings.HasPrefix(sig, "t=1800000000,v1=") {
 		t.Fatalf("contract format: %q", sig)
 	}
 	if err := modules.VerifyWebhook("s3cret", sig, body, now, time.Minute); err != nil {

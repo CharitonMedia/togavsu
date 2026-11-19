@@ -17,6 +17,9 @@ import (
 
 // tool is one entry of api/openapi/v1/mcp-tools.json: an API operation and its scopes.
 type tool struct {
+	Transfer struct {
+		Headers []string `json:"headers"`
+	} `json:"transfer"`
 	Name       string   `json:"name"`
 	Method     string   `json:"method"`
 	Path       string   `json:"path"`
@@ -217,16 +220,24 @@ func (a *App) listTools() []map[string]any {
 		for _, p := range params {
 			pathProps[p] = map[string]any{"type": "string"}
 		}
+		properties := map[string]any{
+			"path":  map[string]any{"type": "object", "properties": pathProps, "required": params},
+			"query": map[string]any{"type": "object"}, "body": map[string]any{},
+			"context_token": map[string]any{"type": "string"},
+		}
+		if len(t.Transfer.Headers) > 0 {
+			headers := map[string]any{}
+			for _, name := range t.Transfer.Headers {
+				headers[name] = map[string]any{"type": "string"}
+			}
+			properties["headers"] = map[string]any{"type": "object", "properties": headers, "additionalProperties": false}
+		}
 		out = append(out, map[string]any{
 			"name":        t.Name,
 			"description": t.Method + " " + t.Path,
 			"inputSchema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"path":  map[string]any{"type": "object", "properties": pathProps, "required": params},
-					"query": map[string]any{"type": "object"},
-					"body":  map[string]any{},
-				},
+				"type":       "object",
+				"properties": properties,
 			},
 		})
 	}
@@ -237,9 +248,11 @@ func (a *App) callTool(w http.ResponseWriter, r *http.Request, req rpcReq) {
 	var params struct {
 		Name      string `json:"name"`
 		Arguments struct {
-			Path  map[string]string `json:"path"`
-			Query map[string]any    `json:"query"`
-			Body  json.RawMessage   `json:"body"`
+			Path         map[string]string `json:"path"`
+			Query        map[string]any    `json:"query"`
+			Headers      map[string]string `json:"headers"`
+			ContextToken string            `json:"context_token"`
+			Body         json.RawMessage   `json:"body"`
 		} `json:"arguments"`
 	}
 	if err := json.Unmarshal(req.Params, &params); err != nil {
@@ -293,10 +306,26 @@ func (a *App) callTool(w http.ResponseWriter, r *http.Request, req rpcReq) {
 		rpcReply(w, req.ID, nil, &rpcErr{Code: -32602, Message: "invalid tool arguments"})
 		return
 	}
-	for _, h := range []string{"Authorization", "Cookie", "X-CSRF-Token", "Idempotency-Key", modules.TaskAuthorizationHeader, modules.ContextHeader, modules.PublicStepHeader} {
+	for _, h := range []string{"Authorization", "Cookie", "X-CSRF-Token", "Idempotency-Key", modules.EventAuthorizationHeader, modules.TaskAuthorizationHeader, modules.ContextHeader, modules.PublicStepHeader} {
 		if v := r.Header.Get(h); v != "" {
 			inner.Header.Set(h, v)
 		}
+	}
+	for key, value := range params.Arguments.Headers {
+		allowed := false
+		for _, name := range t.Transfer.Headers {
+			if strings.EqualFold(key, name) {
+				allowed = true
+			}
+		}
+		if !allowed || strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Host") {
+			rpcReply(w, req.ID, nil, &rpcErr{Code: -32602, Message: "header is not allowed for this operation"})
+			return
+		}
+		inner.Header.Set(key, value)
+	}
+	if params.Arguments.ContextToken != "" {
+		inner.Header.Set(modules.ContextHeader, params.Arguments.ContextToken)
 	}
 	if body != nil {
 		inner.Header.Set("Content-Type", "application/json")

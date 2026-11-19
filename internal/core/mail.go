@@ -230,7 +230,9 @@ func (m *systemMailer) postModule(ctx context.Context, route modules.SystemMailR
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", msg.ID)
-	req.Header.Set(modules.SignatureHeader, modules.SignWebhook(route.Secret, m.now(), raw))
+	at := m.now()
+	req.Header.Set(modules.SignatureHeader, modules.SignWebhook(route.Secret, at, raw))
+	req.Header.Set(modules.TimestampHeader, modules.WebhookTimestamp(at))
 	resp, err := m.client().Do(req)
 	if err != nil {
 		return err

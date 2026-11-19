@@ -102,7 +102,7 @@ func TestCORE31ContractCall(t *testing.T) {
 	provTok := newClient(t, x.srv.URL)
 	provTok.bearer = x.rt.Last("phone-provider").Secrets["togavsu_api_token"]
 	if r := provTok.do("POST", "/api/v1/modules/contracts/"+contract+"/events", map[string]any{
-		"action": "ring", "payload": map[string]any{"from": "test"},
+		"id": "synthetic-ring", "contract": contract, "consumer_id": "phone-consumer", "occurred_at": time.Now().UTC().Format(time.RFC3339Nano), "action": contract + ".ring", "payload": map[string]any{"from": "test"},
 	}); r.code != http.StatusNoContent && r.code != http.StatusOK {
 		t.Fatalf("push contract event: %d %s", r.code, r.body)
 	}

@@ -105,8 +105,14 @@ func TestPGSendModuleMail(t *testing.T) {
 		t.Fatal("contact mail not delivered")
 	}
 
-	if r := bot.do("POST", "/api/v1/mail/messages", contactBody, "Idempotency-Key", "mail-3"); r.code != http.StatusForbidden {
+	if r := bot.do("POST", "/api/v1/mail/messages", contactBody, "Idempotency-Key", "mail-3"); r.code != http.StatusOK || r.json["results"].([]any)[0].(map[string]any)["status"] != "sent" {
 		t.Fatalf("service to_contact_ids: %d %s", r.code, r.body)
+	}
+	if len(x.smtp.to("party@client.example")) != 2 {
+		t.Fatal("service contact mail not delivered")
+	}
+	if x.count(`SELECT COUNT(*) FROM core.mail_outbox WHERE kind='module_mail' AND record_id=$1 AND subject='Signing invite'`, matter) != 2 {
+		t.Fatal("service mail did not record its matter")
 	}
 
 	x.smtp.setReject(true)

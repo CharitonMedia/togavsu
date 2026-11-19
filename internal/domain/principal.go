@@ -31,6 +31,7 @@ const (
 
 // Principal is the authenticated caller. Handlers build it; services receive it.
 type Principal struct {
+	EventRead          *EventRead
 	UserID             ID
 	Roles              []Role
 	Source             ActorSource
@@ -111,4 +112,16 @@ func ParseRoles(s string) ([]Role, error) {
 		return nil, err
 	}
 	return roles, nil
+}
+
+// EventActor preserves a module's identity separately from the user foreign key on
+// created_by. Delegated user attribution is also retained in the audit ledger.
+func (p Principal) EventActor() ID {
+	if p.ModuleID != "" {
+		return ID(p.ModuleID)
+	}
+	if !p.UserID.IsZero() {
+		return p.UserID
+	}
+	return SystemUserID
 }

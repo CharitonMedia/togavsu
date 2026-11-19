@@ -461,7 +461,7 @@ func (s *Service) record(ctx context.Context, p domain.Principal, rows []change)
 		events = append(events, domain.Event{
 			Meta:          em,
 			ActorKind:     actorKind(p),
-			ActorID:       actorID(p),
+			ActorID:       p.EventActor(),
 			Action:        action,
 			RecordType:    row.Entity,
 			RecordID:      row.EntityID,

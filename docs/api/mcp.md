@@ -55,3 +55,11 @@ Every operation carries `x-togavsu-mcp`:
 | `transport` | Only `postMcp`. |
 
 A feature in the coverage matrix is reachable on `/api/v1` (or the public path the product scope names) and through one of these tools. The matrix is `docs/api/coverage.md`. Generating that file is part of `python3 -m contract.build`. Handlers and the MCP server are later work. This document is the mapping they have to match.
+
+Core-update-2d record gets accept `headers` with `X-Togavsu-Event-Authorization` for
+an approved module's event-scoped read. `tools/list` exposes only the headers declared
+by that operation. `tools/call` rejects unknown header keys, Authorization and Host
+and never takes bearer credentials from arguments. The event header may also be sent
+on the MCP HTTP request. Context-token arguments are verified exactly like the context
+header. The grant opens only its named record, with its ordinary read scope, and
+returns the same wall metadata as REST.

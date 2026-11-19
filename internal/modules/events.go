@@ -19,8 +19,8 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
-// SignatureHeader carries the webhook signature: sha256= plus lowercase hex HMAC-SHA256 of
-// the raw body bytes, keyed with the module's webhook secret (CORE-36 / OpenAPI contract).
+// SignatureHeader carries t=unix,v1=hex: HMAC-SHA256 over the timestamp,
+// a dot, and raw body bytes, keyed with the module webhook secret.
 const SignatureHeader = "X-Togavsu-Signature"
 
 // EventPayload is what a module receives for one event. It names the record; the module
@@ -324,24 +324,44 @@ func (s *Service) intSetting(ctx context.Context, key string) (int, error) {
 	return strconv.Atoi(v)
 }
 
-// SignWebhook returns the X-Togavsu-Signature value for body. at is unused; kept so
-// existing call sites compile (CORE-36 aligned the format with the OpenAPI contract).
+// TimestampHeader carries the same Unix timestamp authenticated by SignatureHeader.
+const TimestampHeader = "X-Togavsu-Timestamp"
+
+// SignWebhook authenticates timestamp + "." + raw body. Empty secrets are refused.
+// The timestamp is embedded so VerifyWebhook needs no separate untrusted header.
 func SignWebhook(secret string, at time.Time, body []byte) string {
-	_ = at
+	if secret == "" {
+		return ""
+	}
+	stamp := WebhookTimestamp(at)
 	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(stamp + "."))
 	mac.Write(body)
-	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	return "t=" + stamp + ",v1=" + hex.EncodeToString(mac.Sum(nil))
 }
 
-// VerifyWebhook checks a signature header; modules use it (examples/matter-clock).
-// now and tolerance are unused under the sha256= contract format (no embedded timestamp).
+// VerifyWebhook checks the HMAC and the timestamp window in either direction.
+// A zero tolerance uses the context-token lifetime (five minutes).
 func VerifyWebhook(secret, header string, body []byte, now time.Time, tolerance time.Duration) error {
-	_ = now
-	_ = tolerance
-	if !strings.HasPrefix(header, "sha256=") || len(header) != len("sha256=")+64 {
+	if secret == "" {
+		return errors.New("modules: empty webhook secret")
+	}
+	stamp, sig, ok := strings.Cut(strings.TrimPrefix(header, "t="), ",v1=")
+	at, err := strconv.ParseInt(stamp, 10, 64)
+	if !ok || err != nil || !strings.HasPrefix(header, "t=") || len(sig) != sha256.Size+sha256.Size {
 		return errors.New("modules: malformed webhook signature")
 	}
-	want := SignWebhook(secret, time.Time{}, body)
+	if tolerance == time.Duration(zero) {
+		tolerance = eventReadTTL()
+	}
+	if tolerance < time.Duration(zero) {
+		return errors.New("modules: invalid webhook tolerance")
+	}
+	delta := now.Sub(time.Unix(at, 0))
+	if delta > tolerance || delta < -tolerance {
+		return errors.New("modules: webhook timestamp outside window")
+	}
+	want := SignWebhook(secret, time.Unix(at, 0), body)
 	if !hmac.Equal([]byte(want), []byte(header)) {
 		return errors.New("modules: webhook signature doesn't match")
 	}
@@ -430,8 +450,17 @@ func (s *Service) post(ctx context.Context, module, secret, grant string, body [
 	if err != nil {
 		return err
 	}
+	eventRead, err := s.eventReadToken(ctx, module, body)
+	if err != nil {
+		return err
+	}
+	if eventRead != "" {
+		req.Header.Set(EventAuthorizationHeader, eventRead)
+	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(SignatureHeader, SignWebhook(secret, s.now(), body))
+	at := s.now()
+	req.Header.Set(SignatureHeader, SignWebhook(secret, at, body))
+	req.Header.Set(TimestampHeader, WebhookTimestamp(at))
 	if grant != "" {
 		req.Header.Set(TaskAuthorizationHeader, grant)
 	}
@@ -500,4 +529,13 @@ func (s *Service) Run(ctx context.Context, every time.Duration, logf func(string
 		case <-t.C:
 		}
 	}
+}
+
+// WebhookTimestamp is the canonical decimal timestamp used in both webhook headers.
+func WebhookTimestamp(at time.Time) string { return strconv.FormatInt(at.Unix(), webhookRadix) }
+
+var webhookRadix = (two + two + one) * two // decimal wire format, not a tunable
+func eventReadTTL() time.Duration {
+	ttl, _ := time.ParseDuration(strconv.Itoa(int(limits().ContextTTLSecond)) + "s")
+	return ttl
 }

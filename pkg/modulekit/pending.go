@@ -51,6 +51,7 @@ type Pending struct {
 	Field     string    `json:"field,omitempty"`
 	Scope     string    `json:"scope,omitempty"`
 	Migration string    `json:"migration,omitempty"`
+	Runtime   string    `json:"runtime,omitempty"`
 	Core      CoreItems `json:"core"`
 	Reason    string    `json:"reason"`
 }
@@ -96,6 +97,8 @@ func (p Pending) Part() string {
 		return "field " + p.Field
 	case p.Scope != "":
 		return "scope " + p.Scope
+	case p.Runtime != "":
+		return "runtime " + p.Runtime
 	}
 	return "migration " + p.Migration
 }
@@ -132,6 +135,8 @@ func named(items CoreItems) bool {
 	return len(items) > zero
 }
 
+var runtimeCriterion = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$`)
+
 var migrationFile = regexp.MustCompile(`^migrations/[0-9]+_[A-Za-z0-9._-]+\.sql$`)
 
 type pendingDoc struct {
@@ -157,14 +162,14 @@ func ParsePending(src []byte) ([]Pending, error) {
 	for i, p := range doc.Pending {
 		at := fmt.Sprintf("pending[%d]: ", i)
 		parts := zero
-		for _, v := range []string{p.Field, p.Scope, p.Migration} {
+		for _, v := range []string{p.Field, p.Scope, p.Migration, p.Runtime} {
 			if v != "" {
 				parts++
 			}
 		}
 		switch {
 		case parts != one:
-			return nil, bad(at + "name exactly one of field, scope or migration")
+			return nil, bad(at + "name exactly one of field, scope, migration or runtime")
 		case !named(p.Core):
 			return nil, bad(at + "core names the core change, or a list of them, the part waits on")
 		case strings.TrimSpace(p.Reason) == "":
@@ -173,6 +178,9 @@ func ParsePending(src []byte) ([]Pending, error) {
 			return nil, bad(at + "duplicate entry for " + p.Part())
 		}
 		seen[p.Part()] = true
+		if p.Runtime != "" && !runtimeCriterion.MatchString(p.Runtime) {
+			return nil, bad(at + "runtime names a dotted behavior criterion")
+		}
 		if p.Field != "" {
 			if _, err := yamlsubset.ParsePath(p.Field); err != nil {
 				return nil, bad(at + err.Error())
@@ -248,6 +256,7 @@ func pendingItem(e Pending, indent string) string {
 	line("field", yamlText(e.Field))
 	line("scope", yamlText(e.Scope))
 	line("migration", yamlText(e.Migration))
+	line("runtime", yamlText(e.Runtime))
 	if len(e.Core) == one {
 		line("core", yamlText(e.Core[zero]))
 	} else if len(e.Core) > one {
@@ -381,6 +390,11 @@ func Installable(files map[string][]byte) (InstallablePackage, error) {
 		}
 	}
 	var held []Held
+	for _, e := range entries {
+		if e.Runtime != "" && !RuntimeSupported(e.Runtime) {
+			held = append(held, Held{Pending: e, File: PendingFile, Part: e.Runtime, Refusals: []Refusal{{Kind: KindPending, Code: "runtime_pending", File: PendingFile, Value: e.Runtime, Message: e.Reason}}})
+		}
+	}
 	var removed [][]yamlsubset.Segment
 	var removedPaths []string
 	removedFiles := map[string]bool{}

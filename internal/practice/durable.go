@@ -664,3 +664,37 @@ func (d *Durable) Kinds(ctx context.Context) (map[string]int, error) {
 	}
 	return out, rows.Err()
 }
+
+// ReadEvents reads the append-only stream all domains and modules publish.
+func (d *Durable) ReadEvents(ctx context.Context, matter domain.ID, since time.Time) ([]domain.Event, error) {
+	// An unprojected standalone practice store still owns its document event stream.
+	if !d.project {
+		return d.Memory.Events(), nil
+	}
+
+	q := `SELECT id,created_at,updated_at,created_by,actor_kind,actor_id,action,record_type,record_id,COALESCE(matter_id,''),summary,client_visible FROM core.events WHERE created_at >= $1`
+	args := []any{domain.UnixMicroUTC(since)}
+	if !matter.IsZero() {
+		q += ` AND matter_id=$2`
+		args = append(args, string(matter))
+	}
+	rows, err := audit.Conn(ctx, d.db).QueryContext(ctx, q+` ORDER BY created_at,id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Event
+	for rows.Next() {
+		var ev domain.Event
+		var at, updated int64
+		var visible int
+		if err := rows.Scan(&ev.ID, &at, &updated, &ev.CreatedBy, &ev.ActorKind, &ev.ActorID, &ev.Action, &ev.RecordType, &ev.RecordID, &ev.MatterID, &ev.Summary, &visible); err != nil {
+			return nil, err
+		}
+		ev.CreatedAt = domain.FromUnixMicro(at)
+		ev.UpdatedAt = domain.FromUnixMicro(updated)
+		ev.ClientVisible = visible != int(0)
+		out = append(out, ev)
+	}
+	return out, rows.Err()
+}

@@ -81,13 +81,10 @@ func (s *Service) SendModuleMail(ctx context.Context, who domain.Principal, in M
 	}
 	serviceCall := who.Source == domain.SourceService && who.UserID.IsZero()
 	if hasContacts {
-		if serviceCall {
-			return ModuleMailResult{}, domain.Forbidden("to_contact_ids is only for a viewer call")
-		}
 		if in.MatterID.IsZero() {
 			return ModuleMailResult{}, domain.Invalid("matter_id", "matter_id is required with to_contact_ids")
 		}
-		if !who.HasRole(domain.RoleAdmin) && !who.HasRole(domain.RoleAttorney) && !who.HasRole(domain.RoleStaff) {
+		if !serviceCall && !who.HasRole(domain.RoleAdmin) && !who.HasRole(domain.RoleAttorney) && !who.HasRole(domain.RoleStaff) {
 			return ModuleMailResult{}, domain.Forbidden("to_contact_ids needs the admin, attorney or staff role")
 		}
 	}
@@ -240,6 +237,7 @@ func (s *Service) appendMailSent(ctx context.Context, who domain.Principal, matt
 		Summary:       "Email sent: " + subject,
 		ClientVisible: false,
 	}
+	ev.ActorID = who.EventActor()
 	if err := db.PublishEvent(ctx, audit.Conn(ctx, s.db), ev); err != nil {
 		return err
 	}

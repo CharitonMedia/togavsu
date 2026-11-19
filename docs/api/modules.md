@@ -44,13 +44,13 @@ Modules may link to `fee_agreement`, `payment_refund` and `trust_account`. Payme
 
 ## Contributor gap fixes and wider service calls (CORE-36, CORE-30)
 
-CORE-36 closes the public-kit gaps this batch hits: `/m/` forwards `X-Togavsu-Context-Token`; `GET /api/v1/me` accepts a context token as the viewer; a missing scope answers `scope_denied` naming the scope; webhook signatures are `sha256=` HMAC of the raw body; notes land in `core.notes`; invoices, payments and expenses dual-write into `core.invoices` / `core.payments` / `core.expenses`; conflict decisions emit `conflict_check.decided`; `getConflictCheck` accepts a service principal; `Accepts().core_items` lists built CORE items; coretest seeds markdown renditions without converters.
+CORE-36 closes the public-kit gaps this batch hits: `/m/` forwards `X-Togavsu-Context-Token`; `GET /api/v1/me` accepts a context token as the viewer; a missing scope answers `scope_denied` naming the scope; webhook signatures authenticate timestamp and raw body (`t=unix,v1=hex`); notes land in `core.notes`; invoices, payments and expenses dual-write into `core.invoices` / `core.payments` / `core.expenses`; conflict decisions emit `conflict_check.decided`; `getConflictCheck` accepts a service principal; `Accepts().core_items` lists built CORE items; coretest supplies Markdown renditions and an in-process converter stand-in.
 
 CORE-30 marks the wider service-call set `delegated_viewer_or_service_principal` (contacts, matters, conflicts, calendar, deadlines, notes, timeline, markdown renditions). Each has `modules.service_call_limit.<operationId>` (default 120/minute). `listContact` supports exact `email` and `phone` filters. Service-principal writes record the module as author with audit source `service`. Walls still omit walled matters from lists and answer `not_found` on gets.
 
 ## Module service contracts (CORE-31)
 
-Manifest `provides` and `consumes` name versioned contracts such as `phone.provider.v1`. The admin approves each consumer↔provider link (`POST /api/v1/modules/contract-links`, `DELETE …/contract-links/{link_id}`, `GET …/contract-links`) after both sides have approved `contracts:call` / `contracts:provide`. The consumer calls `POST /api/v1/modules/contracts/{contract}/{operation}` with scope `contracts:call`; the core proxies to the linked provider's declared path, HMAC-signed like events (`X-Togavsu-Signature`), carrying `X-Togavsu-Context-Token` when present. Operation names `events` and `providers` are reserved (they collide with `POST …/events` and `GET …/providers`) and are refused at manifest validation. On a many-provider contract the consumer lists linked provider module ids with `GET /api/v1/modules/contracts/{contract}/providers` and selects one with `X-Togavsu-Contract-Provider` (module id only; never an address). When the header is omitted the earliest link by `created_at`/`id` is used. Providers push events with `POST /api/v1/modules/contracts/{contract}/events` (`contracts:provide`); event actions are always scoped under the contract name (bare names are prefixed; names with a different namespace are refused). One provider per contract per firm unless **every** linked provider declares `many: true` (a `many: false` provider already linked blocks a second provider even if the new one sets `many: true`). Modules never learn each other's address. Unlinked calls answer `contract_unlinked`. Every proxied call and pushed event writes an audit record (consumer, provider, contract, operation/action, result) without any address. Body size is limited by `modules.contract_call_max_bytes` (25 MiB). Disabling a module keeps its approved links; removing it deletes them.
+Manifest `provides` and `consumes` name versioned contracts such as `phone.provider.v1`. The admin approves each consumer↔provider link (`POST /api/v1/modules/contract-links`, `DELETE …/contract-links/{link_id}`, `GET …/contract-links`) after both sides have approved `contracts:call` / `contracts:provide`. The consumer calls `POST /api/v1/modules/contracts/{contract}/{operation}` with scope `contracts:call`; the core proxies to the linked provider's declared path, HMAC-signed like events (`X-Togavsu-Signature`), carrying `X-Togavsu-Context-Token` when present. Operation names `events` and `providers` are reserved (they collide with `POST …/events` and `GET …/providers`) and are refused at manifest validation. On a many-provider contract the consumer lists linked provider module ids with `GET /api/v1/modules/contracts/{contract}/providers` and selects one with `X-Togavsu-Contract-Provider` (module id only; never an address). When the header is omitted the earliest link by `created_at`/`id` is used. Providers push events with `POST /api/v1/modules/contracts/{contract}/events` (`contracts:provide`); the event envelope names one linked consumer and preserves its id and payload; actions must already be scoped under the contract name. One provider per contract per firm unless **every** linked provider declares `many: true` (a `many: false` provider already linked blocks a second provider even if the new one sets `many: true`). Modules never learn each other's address. Unlinked calls answer `contract_unlinked`. Every proxied call and pushed event writes an audit record (consumer, provider, contract, operation/action, result) without any address. Body size is limited by `modules.contract_call_max_bytes` (25 MiB). Disabling a module keeps its approved links; removing it deletes them.
 
 ## Public module pages (CORE-32)
 
@@ -73,3 +73,38 @@ The manifest `price` field accepts the legacy string or a structured value `{amo
 Migration import (core PRD 8.22 / CORE-CHANGES-2 §6): the admin **Migration import** tab writes opening balances through the existing `bulkInvoice` operation (`POST /api/v1/invoices:bulk`, also on `/mcp`). Each `InvoiceWrite` item may carry `source` (`form`, `csv` or `api`), `external_ref` (unique per firm; a re-run skips already-imported rows), `document_of_record_file_id` and optional `due_on`. Do not send response-only `imported` / `import_source` on write. `preview=true` returns HTTP 200 with per-row results and writes nothing; a commit returns 201 with `data` and the same per-row `results` (zero-based `index`, one-based `row`, `ok`, optional `error` or skip reason). Rejected commits also return every row result and write nothing. Duplicate `external_ref` values inside one file are row errors; only earlier runs qualify for a skip. Preview executes the real commit transaction, then rolls it back, including file sharing, audit and events. Opening imports land as `sent` with one adjustment line `Balance forward as of [date]`, `imported: true`, optional amount-paid as one `other` payment with `Payment.imported` true (no money moved), and emit `invoice.imported` (and `invoice.created`). Numbers at or above `billing.invoice_number_start`, duplicates, non-positive amounts and missing matters are refused with a named reason and write nothing. When `billing.invoice_number_start` is 0, the floor is the lowest non-imported invoice number already in the practice; with no normal invoices yet, opening import is refused until the admin sets that value. Preview runs the same date, recompute and imported-payment checks as commit. Imported numbers never advance the normal sequence; the next draft still skips any number already taken. The client portal, statements and matter billing tab show the document of record for an imported invoice.
 
 An imported invoice pins `document_of_record_version_id` at import time; later uploads or restores of the file never change the invoice PDF. These file/version IDs are response fields on staff and client invoice reads. `getInvoicePdf` answers 303 with a `Location` naming that version by default, or 200 PDF bytes with `Accept: application/pdf` (also used by MCP). Both forms enforce the viewer's invoice and file access. Existing imports are backfilled to the latest file version saved by the invoice's creation time; unavailable historical bytes stay unavailable.
+
+## Core-update-2d background work
+
+The public kit's [background-work guide](../modules/MODULE-KIT.md#core-update-2d-background-reads-and-callback-work)
+now documents service-principal deadline/calendar get and lists, contact-filtered matter
+parties, addresses, roles/field definitions, firm time zone and the user directory.
+Each retains its existing read scope, gains a per-operation service-call limit, and
+writes an audit row under the module id. `user-directory?matter_id=` checks caller and
+candidate access; non-client rows include `work_email`.
+
+Walled gets require an inside-wall viewer or the one-record
+`X-Togavsu-Event-Authorization` delivered under approved `event_records:read` plus the
+ordinary read scope. It expires after five minutes and opens no list, write, sibling or
+attorney-only data. REST/MCP responses add `walled` and `wall_member_user_ids` for module
+reads. `mail:send` allows service sends to contact parties on an unwalled named matter.
+
+Module own-settings setup writes use `PUT /api/v1/modules/{id}/own-settings`
+(`putOwnModuleSettings`, `module_settings:write`, admin viewer). `modules:write` stays
+forbidden to modules. Own reads stay at `/settings`; module `settings:read` exposes only
+applicable contract runtime settings, including `modules.contract_call_max_bytes`,
+when the module has an approved contract permission.
+
+Forwarded context is signed for the selected provider and invalidated by unlinking.
+Provider events use the [targeted envelope](../contracts/README.md), preserving values
+and event id, with no implicit broadcast. Oversized provider responses are 413
+`too_large`. Events, contract calls and routed system mail use `t=unix,v1=hex` HMAC over
+`unix.raw-body` with `X-Togavsu-Timestamp`; body-only signatures and empty keys fail.
+Inbound hooks forward Authorization only with their per-hook `forward_authorization`
+flag and approved `webhooks:authorization`. Provider Authorization is never core auth.
+
+`GET /api/v1/modules/contact-phone-items?phone_id=` (`listContactPhoneItems`) exposes
+paginated viewer-only actions. Manifest `contact_phone_items` requires `contacts:read`;
+contact screens and sandboxed action frames check the same service access. Module events
+are named in the shared matter timeline and Activities Feed. Purge refuses retained
+module file links while keeping immutable version/audit metadata.

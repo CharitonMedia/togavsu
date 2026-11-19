@@ -4,7 +4,7 @@
 //	togavsu-module check [-installable [-strict]] [-json] [-previous <package dir> | -previous-file <signed file> -previous-pub <PEM file>] <package dir>
 //	togavsu-module package [-installable [-strict]] -dir <package dir> (-key <seed file> -out <signed file> | -unsigned -out <new dir>)
 //	togavsu-module verify -file <signed file> -pub <public key PEM file>
-//	togavsu-module pending -dir <package dir> (-field <path> | -scope <scope> | -migration <file>) -core <CORE-NN[,CORE-NN]> -reason <text>
+//	togavsu-module pending -dir <package dir> (-field <path> | -scope <scope> | -migration <file> | -runtime <criterion>) -core <CORE-NN[,CORE-NN]> -reason <text>
 //	togavsu-module key -key <seed file> [-prove <proof_message>]
 //	togavsu-module accepts
 //
@@ -61,7 +61,7 @@ const usage = `usage:
   togavsu-module check [-installable [-strict]] [-json] [-previous <package dir> | -previous-file <signed file> -previous-pub <PEM file>] <package dir>
   togavsu-module package [-installable [-strict]] -dir <package dir> (-key <seed file> -out <signed file> | -unsigned -out <new dir>)
   togavsu-module verify -file <signed file> -pub <public key PEM file>
-  togavsu-module pending -dir <package dir> (-field <path> | -scope <scope> | -migration <file>) -core <CORE-NN[,CORE-NN]> -reason <text>
+  togavsu-module pending -dir <package dir> (-field <path> | -scope <scope> | -migration <file> | -runtime <criterion>) -core <CORE-NN[,CORE-NN]> -reason <text>
   togavsu-module key -key <seed file> [-prove <proof_message>]
   togavsu-module accepts
 `
@@ -297,6 +297,7 @@ func addPending(args []string, stdout io.Writer, code *int) error {
 	fs := flags("pending", code)
 	dir := fs.String("dir", "", "package directory (pending.yaml beside togavsu-module.yaml)")
 	var e modulekit.Pending
+	fs.StringVar(&e.Runtime, "runtime", "", "runtime acceptance criterion waiting on core behavior")
 	fs.StringVar(&e.Field, "field", "", "manifest field path the entry holds back")
 	fs.StringVar(&e.Scope, "scope", "", "permission scope the entry holds back")
 	fs.StringVar(&e.Migration, "migration", "", "migration file the entry holds back (migrations/NNNN_name.sql)")
@@ -306,7 +307,7 @@ func addPending(args []string, stdout io.Writer, code *int) error {
 		return err
 	}
 	if *dir == "" || *core == "" || fs.NArg() != zero {
-		return fmt.Errorf("-dir, -core and one of -field, -scope or -migration are required")
+		return fmt.Errorf("-dir, -core and one of -field, -scope, -migration or -runtime are required")
 	}
 	for _, c := range strings.Split(*core, ",") {
 		e.Core = append(e.Core, strings.TrimSpace(c))
