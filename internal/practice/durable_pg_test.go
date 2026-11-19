@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -60,6 +61,18 @@ func practiceDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms}); err != nil {
+		t.Fatal(err)
+	}
+	// Match the composed core's late update order; never apply 1550 before domains.
+	attributionSQL, err := os.ReadFile("../core/migrations/1550_event_module.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attribution, err := db.LoadFS(fstest.MapFS{"1550_event_module.sql": {Data: attributionSQL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: attribution}); err != nil {
 		t.Fatal(err)
 	}
 	_ = plain.Close()

@@ -79,7 +79,7 @@ func filesDB(t *testing.T) *sql.DB {
 	}
 	// Core release migrations the files package reads but does not own (the composed
 	// core applies every package's migrations as one ordered set).
-	for _, name := range []string{"1252_file_publication_grants.sql", "1302_library_files.sql"} {
+	for _, name := range []string{"1252_file_publication_grants.sql", "1302_library_files.sql", "1550_event_module.sql"} {
 		raw, err := os.ReadFile("../core/migrations/" + name)
 		if err != nil {
 			t.Fatal(err)

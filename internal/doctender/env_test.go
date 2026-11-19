@@ -92,6 +92,18 @@ func testDB(t *testing.T) *sql.DB {
 	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: lib}); err != nil {
 		t.Fatalf("library migration: %v", err)
 	}
+	// Match the composed core's late update order; never apply 1550 before domains.
+	attributionSQL, err := os.ReadFile("../core/migrations/1550_event_module.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attribution, err := db.LoadFS(fstest.MapFS{"1550_event_module.sql": {Data: attributionSQL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: attribution}); err != nil {
+		t.Fatal(err)
+	}
 	_ = plain.Close()
 	pool, err := db.OpenPostgres(u.String(), "core")
 	if err != nil {

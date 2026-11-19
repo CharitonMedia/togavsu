@@ -218,6 +218,11 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 	if !strings.Contains(frame.Body, "sandbox") || !strings.Contains(frame.Body, "phone_id=") || strings.Contains(frame.Body, "phone=") || strings.Contains(frame.Body, "15555550123") {
 		t.Fatal(frame.Body)
 	}
+	for _, mark := range []string{`<body class="shell`, `<aside class="sidebar"`, `<header class="topbar">`} {
+		if !strings.Contains(frame.Body, mark) {
+			t.Fatalf("phone action outside app shell: missing %s", mark)
+		}
+	}
 	// A module with no read scopes is refused even with a legacy credential.
 	c.Handle("limited-two-d", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
 	install2d(t, c, "limited-two-d", nil, "")

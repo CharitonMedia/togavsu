@@ -97,6 +97,7 @@ func applyEmbedded(t *testing.T, db *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ms = append(ms, eventModuleMigration(t)...)
 	if err := Apply(context.Background(), db, ApplySpec{Owner: CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms}); err != nil {
 		t.Fatal(err)
 	}
@@ -113,6 +114,9 @@ func TestSchemaContract(t *testing.T) {
 	sqlText, err := SchemaSQL()
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, m := range eventModuleMigration(t) {
+		sqlText += "\n" + m.SQL
 	}
 	for _, re := range []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\bjsonb\b`),
@@ -137,6 +141,13 @@ func TestSchemaContract(t *testing.T) {
 	bodies := map[string]string{}
 	for _, m := range regexp.MustCompile(`(?is)create table\s+([a-z_]+)\s*\((.*?)\);`).FindAllStringSubmatch(sqlText, -1) {
 		bodies[m[1]] = m[2]
+	}
+	// Expand-only migrations add columns without changing original CREATE TABLE checksums.
+	for _, m := range regexp.MustCompile(`(?im)^ALTER TABLE\s+(?:core\.)?([a-z_]+)\s+ADD COLUMN\s+([a-z_]+)\s+([^;]+);`).FindAllStringSubmatch(sqlText, -1) {
+		if _, ok := bodies[m[1]]; !ok {
+			t.Fatalf("column added to unknown table %s", m[1])
+		}
+		bodies[m[1]] += "\n  " + m[2] + " " + m[3]
 	}
 	seen := map[string]bool{}
 	for _, rec := range domain.RecordTypes() {
@@ -741,4 +752,57 @@ func TestApplyCount(t *testing.T) {
 	if err == nil || n != 1 {
 		t.Fatalf("partial run applied %d, %v; want 1 and the count_missing error", n, err)
 	}
+}
+
+func TestEventModuleMigrationExpandsWithoutRewritingActors(t *testing.T) {
+	pool := openDB(t)
+	ctx := context.Background()
+	ms, err := Embedded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms = append(ms, eventModuleMigration(t)...)
+	if len(ms) != 3 || ms[2].Version != 1550 {
+		t.Fatalf("event module migration not last: %v", ms)
+	}
+	if err := Apply(ctx, pool, ApplySpec{Owner: CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms[:2]}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.ExecContext(ctx, `INSERT INTO core.events (id,created_at,updated_at,created_by,actor_kind,actor_id,action,record_type,record_id,summary,client_visible) VALUES ('historic',1,1,'person','staff','person','synthetic.created','matter','record','Existing actor',0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(ctx, pool, ApplySpec{Owner: CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms}); err != nil {
+		t.Fatal(err)
+	}
+	var actor, module, summary string
+	if err := pool.QueryRowContext(ctx, `SELECT actor_id,module_id,summary FROM core.events WHERE id='historic'`).Scan(&actor, &module, &summary); err != nil {
+		t.Fatal(err)
+	}
+	if actor != "person" || module != "" || summary != "Existing actor" {
+		t.Fatalf("historical event rewritten: %s %s %s", actor, module, summary)
+	}
+	if _, err := pool.ExecContext(ctx, `INSERT INTO core.events (id,created_at,updated_at,created_by,actor_kind,actor_id,module_id,action,record_type,record_id,summary,client_visible) VALUES ('delegated',2,2,'person','staff','person','synthetic-module','synthetic.created','matter','record','Delegated actor',0)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRowContext(ctx, `SELECT actor_id,module_id FROM core.events WHERE id='delegated'`).Scan(&actor, &module); err != nil || actor != "person" || module != "synthetic-module" {
+		t.Fatalf("new attribution: %s %s %v", actor, module, err)
+	}
+}
+
+// Late core updates are applied after domain migrations in composed installs.
+func eventModuleMigration(t *testing.T) []Migration {
+	t.Helper()
+	const name = "1550_event_module.sql"
+	raw, err := os.ReadFile("../core/migrations/" + name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	migrations, err := LoadFS(fstest.MapFS{name: {Data: raw}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task, ok := TaskForVersion(migrations[0].Version); !ok || task != "core-update-2d" {
+		t.Fatalf("attribution migration allocation: %s", task)
+	}
+	return migrations
 }

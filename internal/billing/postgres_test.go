@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"testing"
+	"testing/fstest"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/db"
@@ -73,6 +74,18 @@ func billingDBWith(t *testing.T, extra ...db.Migration) *sql.DB {
 		t.Fatalf("migration %d is outside the billing range", mine[0].Version)
 	}
 	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: append(append(core, mine...), extra...)}); err != nil {
+		t.Fatal(err)
+	}
+	// Match the composed core's late update order; never apply 1550 before domains.
+	attributionSQL, err := os.ReadFile("../core/migrations/1550_event_module.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attribution, err := db.LoadFS(fstest.MapFS{"1550_event_module.sql": {Data: attributionSQL}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: attribution}); err != nil {
 		t.Fatal(err)
 	}
 	_ = plain.Close()

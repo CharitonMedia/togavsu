@@ -21,6 +21,7 @@ var shellMarks = []string{`<body class="shell`, `<aside class="sidebar"`, `<head
 // HTMX swaps into a screen. A new GET route must be listed in staffScreens below or here,
 // so a page added without the shell fails this test.
 var notScreens = map[string]string{
+	"/modules/{module_id}/contact-phone-items/{item}": "requires an installed module and phone; TestCoreUpdate2DReadsWallsMailSettingsAndPhone verifies the composed shell and sandbox",
 	"/{$}":                                  "the home screen, checked as /",
 	"/home":                                 "redirects to /",
 	"/trust":                                "redirects to /trust/ledger",
