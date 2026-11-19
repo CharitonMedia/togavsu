@@ -375,7 +375,7 @@ func (h *Handler) partiesJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, omitted, err := h.Svc.listParties(r.Context(), p, domain.ID(r.URL.Query().Get("matter_id")), domain.ID(r.URL.Query().Get("contact_id")))
+	rows, err := h.Svc.ListParties(r.Context(), p, domain.ID(r.URL.Query().Get("matter_id")), domain.ID(r.URL.Query().Get("contact_id")))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -384,11 +384,7 @@ func (h *Handler) partiesJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, partyDoc(row))
 	}
-	envelope := listEnvelope(items, len(items), "")
-	if omitted {
-		envelope["walled_omitted"] = true
-	}
-	writeJSON(w, http.StatusOK, envelope)
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) partyJSON(w http.ResponseWriter, r *http.Request) {

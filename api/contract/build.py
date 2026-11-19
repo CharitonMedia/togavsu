@@ -327,7 +327,7 @@ def _webhooks() -> dict:
                     "An attorney-only conflict record is not serialized. "
                     "A module that fails any check receives no POST and no record id or summary. "
                     "The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. "
-                    "X-Togavsu-Signature is sha256=<hex>, HMAC-SHA256 of the raw body, keyed with a nonempty module webhook secret. Verify the timestamp within five minutes. A plain SHA-256 of the body is not accepted. "
+                    "X-Togavsu-Signature is t=<unix>,v1=<hex>, HMAC-SHA256 of decimal timestamp + dot + raw body, keyed with a nonempty module webhook secret. X-Togavsu-Timestamp repeats the signed timestamp. Verify within five minutes using constant-time comparison. The kit also accepts batch 2 sha256=<hex> raw-body HMAC, checking its unsigned X-Togavsu-Timestamp when present; that form has no timestamp replay protection. Deduplicate event ids for both forms. A plain SHA-256 of the body is not accepted. "
                     "X-Togavsu-Timestamp contains decimal Unix seconds. Walled records require an inside-wall delegated viewer. Retries follow webhooks.retry_attempts "
                     "across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. "
                     "For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. "
@@ -362,8 +362,8 @@ def _webhooks() -> dict:
                         "name": "X-Togavsu-Signature",
                         "in": "header",
                         "required": True,
-                        "description": "sha256=<hex> HMAC-SHA256 of the raw body; five minute timestamp window and nonempty secret.",
-                        "schema": {"type": "string", "pattern": "^sha256=[a-f0-9]{64}$"},
+                        "description": "Core sends t=<unix>,v1=<hex> HMAC-SHA256 of timestamp + dot + raw body; five-minute window, constant-time comparison and nonempty secret. Kit also accepts sha256=<hex> raw-body HMAC with optional unsigned timestamp.",
+                        "schema": {"type": "string", "pattern": "^t=-?[0-9]+,v1=[a-f0-9]{64}$"},
                     },
                     {
                         "name": "X-Togavsu-Timestamp",

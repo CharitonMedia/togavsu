@@ -3093,18 +3093,27 @@ def attach_matter_marker(store: dict, call: dict) -> dict:
 
 
 def webhook_signature(secret: bytes | str, body: bytes | str, timestamp: int = 1800000000) -> str:
-    """Batch 1 raw-body HMAC; timestamp is supplied in a separate header."""
+    """Core v1.0.0 signature: timestamp + dot + exact raw body."""
     key = secret.encode("utf-8") if isinstance(secret, str) else secret
     payload = body.encode("utf-8") if isinstance(body, str) else body
-    return "sha256=" + hmac.new(key, payload, hashlib.sha256).hexdigest() if key else ""
+    signed = str(timestamp).encode("ascii") + b"." + payload
+    return f"t={timestamp},v1=" + hmac.new(key, signed, hashlib.sha256).hexdigest() if key else ""
 
 
 def webhook_signature_matches(secret: bytes | str, body: bytes | str, header: str, now: int = 1800000000, tolerance: int = 300, timestamp: int | None = None) -> bool:
-    if not secret or timestamp is None or not isinstance(header, str) or not re.fullmatch(r"sha256=[a-f0-9]{64}", header) or tolerance < 0 or tolerance > 300:
+    if not secret or not isinstance(header, str) or tolerance < 0 or tolerance > 300:
         return False
-    if abs(now - timestamp) > tolerance:
+    match = re.fullmatch(r"t=(-?(?:0|[1-9][0-9]*)),v1=([a-f0-9]{64})", header)
+    if match:
+        signed_timestamp = int(match[1])
+        if str(signed_timestamp) != match[1] or (timestamp is not None and timestamp != signed_timestamp):
+            return False
+        return abs(now - signed_timestamp) <= tolerance and hmac.compare_digest(webhook_signature(secret, body, signed_timestamp), header)
+    if not re.fullmatch(r"sha256=[a-f0-9]{64}", header) or (timestamp is not None and abs(now - timestamp) > tolerance):
         return False
-    return hmac.compare_digest(webhook_signature(secret, body), header)
+    key = secret.encode("utf-8") if isinstance(secret, str) else secret
+    payload = body.encode("utf-8") if isinstance(body, str) else body
+    return hmac.compare_digest("sha256=" + hmac.new(key, payload, hashlib.sha256).hexdigest(), header)
 
 
 def event_read_scopes(event_type: str, record_type: str | None = None) -> list[str]:

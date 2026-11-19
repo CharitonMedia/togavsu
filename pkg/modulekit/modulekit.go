@@ -181,12 +181,17 @@ func CheckSignedPublicCSRF(secret []byte, moduleID, cookie, submitted string, no
 	return modules.CheckSignedPublicCSRF(secret, moduleID, cookie, submitted, now)
 }
 
-// SignWebhook and VerifyWebhook retain the batch 1 raw signature API.
+// SignWebhook retains the batch 2 raw-body signature API; VerifyWebhook accepts both formats.
 func SignWebhook(secret string, at time.Time, body []byte) string {
 	return modules.SignWebhook(secret, at, body)
 }
 func VerifyWebhook(secret, header string, body []byte, now time.Time, tolerance time.Duration) error {
 	return modules.VerifyWebhook(secret, header, body, now, tolerance)
+}
+
+// SignTimestampedWebhook returns t=<unix>,v1=<hex HMAC-SHA256 of timestamp + "." + body>.
+func SignTimestampedWebhook(secret string, at time.Time, body []byte) string {
+	return modules.SignTimestampedWebhook(secret, at, body)
 }
 
 // SignWebhookHeaders / VerifyWebhookHeaders are the HMAC scheme contract calls share with events.

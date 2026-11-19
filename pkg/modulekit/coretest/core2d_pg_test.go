@@ -275,8 +275,9 @@ func TestCoreUpdate2DContractForwardingTargetAndLimit(t *testing.T) {
 			if err := modulekit.VerifyWebhookHeaders(m.WebhookSecret, r.Header, raw, time.Now(), 0); err != nil {
 				t.Errorf("signature %v", err)
 			}
-			if r.Header.Get(modulekit.TimestampHeader) == "" {
-				t.Error("missing contract timestamp")
+			stamp := r.Header.Get(modulekit.TimestampHeader)
+			if stamp == "" || !strings.HasPrefix(r.Header.Get(modulekit.SignatureHeader), "t="+stamp+",v1=") {
+				t.Error("contract calls must use the timestamp-authenticated v1.0.0 signature")
 			}
 			tok := r.Header.Get(modulekit.ContextHeader)
 			if r.URL.Path == "/large" {
@@ -562,20 +563,20 @@ func TestCoreUpdate2DServiceWallsEveryRecord(t *testing.T) {
 	}
 	contactMatters := "/api/v1/matter-parties?contact_id=" + contact
 	omitted := bot.Do("GET", contactMatters, nil)
-	if omitted.Code != http.StatusOK || omitted.JSON["walled_omitted"] != true || strings.Contains(omitted.Body, matter) {
+	if omitted.Code != http.StatusOK || strings.Contains(omitted.Body, matter) || len(omitted.JSON) != 2 || len(omitted.JSON["data"].([]any)) != 0 || omitted.JSON["page"] == nil {
 		t.Fatalf("contact matters wall omission: %d %s", omitted.Code, omitted.Body)
 	}
 	delegatedMatters := bot.Do("GET", contactMatters, nil, modulekit.ContextHeader, inside)
-	if _, present := delegatedMatters.JSON["walled_omitted"]; present || delegatedMatters.Code != http.StatusOK || !strings.Contains(delegatedMatters.Body, matter) {
+	if delegatedMatters.Code != http.StatusOK || !strings.Contains(delegatedMatters.Body, matter) {
 		t.Fatalf("delegated contact matters: %d %s", delegatedMatters.Code, delegatedMatters.Body)
 	}
 	omittedMCP := bot.Do("POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "listMatterParty", "arguments": map[string]any{"query": map[string]any{"contact_id": contact}}}})
-	if omittedMCP.Code != http.StatusOK || !strings.Contains(omittedMCP.Body, `"walled_omitted":true`) {
+	if omittedMCP.Code != http.StatusOK || strings.Contains(omittedMCP.Body, matter) || !strings.Contains(omittedMCP.Body, `"data":[]`) || strings.Contains(omittedMCP.Body, `"isError":true`) {
 		t.Fatalf("MCP contact wall omission: %d %s", omittedMCP.Code, omittedMCP.Body)
 	}
 	c.Wall(matter)
 	lifted := bot.Do("GET", contactMatters, nil)
-	if _, present := lifted.JSON["walled_omitted"]; present || lifted.Code != http.StatusOK || !strings.Contains(lifted.Body, matter) {
+	if lifted.Code != http.StatusOK || !strings.Contains(lifted.Body, matter) {
 		t.Fatalf("contact matters next read after lifting wall: %d %s", lifted.Code, lifted.Body)
 	}
 	for record, collection := range records {

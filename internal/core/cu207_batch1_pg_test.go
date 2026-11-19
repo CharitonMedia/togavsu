@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/testkit"
 )
@@ -63,6 +65,7 @@ func TestCU207Batch1ModulesUnchanged(t *testing.T) {
 	// Do not use a stub Default: every module under test registers its own out-of-process
 	// binary via Serve before install/approve.
 	x.rt.Default = nil
+	_, contact := x.matter("CU2-07 synthetic matter", "", nil)
 
 	dbHost, dbName := cu207DBHostName(t, x.cfg.DatabaseURL)
 	binDir := t.TempDir()
@@ -112,20 +115,68 @@ func TestCU207Batch1ModulesUnchanged(t *testing.T) {
 		if strings.Contains(page.body, "ok:"+id) {
 			t.Fatalf("%s still answered with stub body", id)
 		}
-		// Send the core's wire format to the unchanged receiver, then a forged one.
-		// A real receiver must authenticate before storing anything. Report each
-		// incompatible source independently so lifecycle checks still run for all six.
+		// Exercise the installed manifest and real core sender, without changing any
+		// module package. Client-portal deliberately subscribes to nothing (PRD 8.6).
 		t.Run(id+"-signed-event", func(t *testing.T) {
-			body := []byte(`{"id":"cu207-signed-event","action":"cu207.compatibility","record_type":"matter","record_id":"synthetic-record"}`)
+			ctx := context.Background()
+			installed, err := x.app.Modules.Installed(ctx, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			action := "matter.created"
+			if len(installed.Manifest.Events) > 0 {
+				action = strings.ReplaceAll(installed.Manifest.Events[0], "*", "updated")
+			} else if id != "client-portal" {
+				t.Fatal("expected module event subscription")
+			}
+			recordType, recordID := "matter", "synthetic-record"
+			if modules.Subscribed(installed.Manifest.Events, "contact.updated") {
+				action, recordType, recordID = "contact.updated", "contact", contact
+			}
+			eventID, err := domain.NewID()
+			if err != nil {
+				t.Fatal(err)
+			}
+			queued, err := x.app.Modules.Publish(ctx, domain.Event{Meta: domain.Meta{ID: eventID, CreatedAt: time.Now()}, Action: action, RecordType: recordType, RecordID: domain.ID(recordID)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if id == "client-portal" {
+				if len(installed.Manifest.Events) != 0 || queued != 0 {
+					t.Fatal("client-portal must have no event subscriptions or deliveries")
+				}
+				if _, err := x.app.Modules.Pump(ctx); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := x.app.Modules.Deliver(ctx); err != nil {
+					t.Fatal(err)
+				}
+				if x.count(`SELECT COUNT(*) FROM core.module_deliveries WHERE module_id=$1`, id) != 0 {
+					t.Fatal("core queued an event for unsubscribed client-portal")
+				}
+				for _, request := range x.rt.Requests(id) {
+					if request.Method == http.MethodPost && request.Header.Get(modules.SignatureHeader) != "" {
+						t.Fatal("core sent an event to unsubscribed client-portal")
+					}
+				}
+				return
+			}
+			if queued != 1 {
+				t.Fatalf("expected one subscribed delivery, got %d", queued)
+			}
+			var payload string
+			if err := x.app.Pool.QueryRowContext(ctx, `SELECT payload FROM core.module_deliveries WHERE module_id=$1 AND event_id=$2`, id, string(eventID)).Scan(&payload); err != nil {
+				t.Fatal(err)
+			}
+			body := []byte(payload)
 			secret := x.rt.Last(id).Secrets["togavsu_webhook_secret"]
-			send := func(signature string) int {
+			send := func(secret string) int {
 				req, err := http.NewRequest("POST", x.rt.BaseURL(id)+"/events", bytes.NewReader(body))
 				if err != nil {
 					t.Fatal(err)
 				}
+				req.Header = modules.SignWebhookHeaders(secret, time.Now(), body)
 				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set(modules.SignatureHeader, signature)
-				req.Header.Set(modules.TimestampHeader, modules.WebhookTimestamp(time.Now()))
 				resp, err := http.DefaultClient.Do(req)
 				if err != nil {
 					t.Fatal(err)
@@ -134,15 +185,26 @@ func TestCU207Batch1ModulesUnchanged(t *testing.T) {
 				_, _ = io.Copy(io.Discard, resp.Body)
 				return resp.StatusCode
 			}
-			if code := send(modules.SignWebhook("wrong-secret", time.Now(), body)); code != http.StatusUnauthorized {
-				t.Errorf("%s must refuse a forged event: HTTP %d", id, code)
+			stored := func() int {
+				return x.count(fmt.Sprintf(`SELECT COUNT(*) FROM %s.received_events WHERE event_id = $1`, schema), string(eventID))
 			}
-			if code := send(modules.SignWebhook(secret, time.Now(), body)); code < 200 || code >= 300 {
-				t.Errorf("%s rejects the core sha256= signed event: HTTP %d", id, code)
-				return
+			if code := send("wrong-secret"); code != http.StatusUnauthorized || stored() != 0 {
+				t.Fatalf("%s must refuse a forged event without storing it: HTTP %d", id, code)
 			}
-			if n := x.count(fmt.Sprintf(`SELECT COUNT(*) FROM %s.received_events WHERE event_id = $1`, schema), "cu207-signed-event"); n != 1 {
-				t.Errorf("%s did not store exactly one verified event: %d", id, n)
+			if sent, err := x.app.Modules.Deliver(ctx); err != nil || sent != 1 {
+				t.Fatalf("%s core signed event delivery: sent %d, error %v", id, sent, err)
+			}
+			if stored() != 1 {
+				t.Fatalf("%s did not store exactly one verified event", id)
+			}
+			requests := x.rt.Requests(id)
+			header := requests[len(requests)-1].Header
+			stamp := header.Get(modules.TimestampHeader)
+			if stamp == "" || !strings.HasPrefix(header.Get(modules.SignatureHeader), "t="+stamp+",v1=") {
+				t.Fatal("core event did not use matching timestamp-authenticated v1.0.0 headers")
+			}
+			if code := send(secret); code < 200 || code >= 300 || stored() != 1 {
+				t.Fatalf("%s duplicate event must succeed and remain stored once: HTTP %d", id, code)
 			}
 		})
 		uninstallDelete(t, x, id)

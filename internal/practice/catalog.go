@@ -172,44 +172,29 @@ func (s *Service) UpdateReferral(ctx context.Context, p domain.Principal, id dom
 }
 
 func (s *Service) ListParties(ctx context.Context, p domain.Principal, matter domain.ID, contacts ...domain.ID) ([]domain.MatterParty, error) {
-	rows, _, err := s.listParties(ctx, p, matter, contacts...)
-	return rows, err
-}
-
-// listParties reports only whether a service contact-matters read omitted a wall.
-// It never discloses the omitted records, their count, or wall membership.
-func (s *Service) listParties(ctx context.Context, p domain.Principal, matter domain.ID, contacts ...domain.ID) ([]domain.MatterParty, bool, error) {
 	var contact domain.ID
 	if len(contacts) > 0 {
 		contact = contacts[0]
 	}
 	if !matter.IsZero() {
 		if err := s.gateMatter(ctx, p, matter, domain.ActionRead); err != nil {
-			return nil, false, err
+			return nil, err
 		}
-		return s.db.Parties(matter, contact), false, nil
+		return s.db.Parties(matter, contact), nil
 	}
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	var out []domain.MatterParty
-	var omitted bool
 	for _, row := range s.db.Parties(domain.ID(""), contact) {
 		if !s.visibleMatter(ctx, p, row.MatterID) {
-			if p.Source == domain.SourceService && p.ModuleID != "" && !contact.IsZero() {
-				wall, err := s.Policy.Walls.View(ctx, p, row.MatterID)
-				if err != nil {
-					return nil, false, err
-				}
-				omitted = omitted || wall.Walled
-			}
 			continue
 		}
 		if s.readableContact(ctx, p, row.ContactID) == nil {
 			out = append(out, row)
 		}
 	}
-	return out, omitted, nil
+	return out, nil
 }
 
 func (s *Service) GetParty(ctx context.Context, p domain.Principal, id domain.ID) (domain.MatterParty, error) {

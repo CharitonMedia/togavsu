@@ -40,8 +40,12 @@ func TestCORE05SystemMailRouting(t *testing.T) {
 		posts = append(posts, msg)
 		keys = append(keys, r.Header.Get("Idempotency-Key"))
 		mu.Unlock()
-		if r.Header.Get(modules.SignatureHeader) == "" {
-			t.Error("missing X-Togavsu-Signature")
+		stamp := r.Header.Get(modules.TimestampHeader)
+		if stamp == "" || !strings.HasPrefix(r.Header.Get(modules.SignatureHeader), "t="+stamp+",v1=") {
+			t.Error("system mail must use the timestamp-authenticated v1.0.0 signature")
+		}
+		if err := modules.VerifyWebhookHeaders(x.rt.Last("mail-router").Secrets["togavsu_webhook_secret"], r.Header, body, time.Now(), 0); err != nil {
+			t.Errorf("system mail signature: %v", err)
 		}
 		switch status {
 		case http.StatusServiceUnavailable:

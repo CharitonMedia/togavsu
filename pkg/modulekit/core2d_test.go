@@ -2,8 +2,6 @@ package modulekit_test
 
 import (
 	"bytes"
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"net/http"
@@ -26,33 +24,69 @@ func TestTimestampedWebhookAndProviderHelpers(t *testing.T) {
 	var sign func(string, time.Time, []byte) string = modulekit.SignWebhook
 	var verify func(string, string, []byte, time.Time, time.Duration) error = modulekit.VerifyWebhook
 	signature := sign("secret", now, body)
-	if signature != headers.Get(modulekit.SignatureHeader) || verify("secret", signature, body, now, 0) != nil {
-		t.Fatal("legacy string API does not verify the wire signature")
+	const legacy = "sha256=12ea60e053a3adc9636e7d410f5b8fb051a12a73b9324cae1cc51bbc84d0b209"
+	const timestamped = "t=1800000000,v1=2e4d115f18000c6f8a02dab44b555a7f3ebd75da5371bc8d589b848d21f41180"
+	if signature != legacy || headers.Get(modulekit.SignatureHeader) != timestamped || headers.Get(modulekit.TimestampHeader) != "1800000000" || modulekit.SignTimestampedWebhook("secret", now, body) != timestamped {
+		t.Fatal("pinned webhook wire vectors differ")
 	}
-	if sign("", now, body) != "" || verify("", signature, body, now, 0) == nil || verify("secret", signature, []byte("tampered"), now, 0) == nil {
-		t.Fatal("legacy API accepted empty key or changed body")
+	for _, signature := range []string{legacy, timestamped} {
+		if verify("secret", signature, body, now, 0) != nil || verify("", signature, body, now, 0) == nil || verify("secret", signature, []byte("tampered"), now, 0) == nil {
+			t.Fatal("string API rejected valid signature or accepted empty key/changed body")
+		}
 	}
-	// Independent batch-1 verifier: HMAC of raw body, sha256=hex, separate timestamp.
-	mac := hmac.New(sha256.New, []byte("secret"))
-	mac.Write(body)
-	if headers.Get(modulekit.SignatureHeader) != "sha256="+hex.EncodeToString(mac.Sum(nil)) || headers.Get(modulekit.TimestampHeader) != "1800000000" {
-		t.Fatalf("batch 1 wire format: %v", headers)
+	if sign("", now, body) != "" || modulekit.SignTimestampedWebhook("", now, body) != "" {
+		t.Fatal("empty secret signed")
 	}
-	stamp, err := strconv.ParseInt(headers.Get(modulekit.TimestampHeader), 10, 64)
-	if err != nil || now.Sub(time.Unix(stamp, 0)) > 5*time.Minute {
-		t.Fatal("batch 1 timestamp refused")
+	// Batch 2 callers have only a signature string. Both forms remain accepted;
+	// the signed timestamp is checked without needing the separate header.
+	withoutStamp := headers.Clone()
+	withoutStamp.Del(modulekit.TimestampHeader)
+	if modulekit.VerifyWebhookHeaders("secret", withoutStamp, body, now, 0) != nil {
+		t.Fatal("authenticated timestamp needs no separate header")
+	}
+	for _, withStamp := range []bool{false, true} {
+		h := http.Header{modulekit.SignatureHeader: {legacy}}
+		if withStamp {
+			h.Set(modulekit.TimestampHeader, "1800000000")
+		}
+		if modulekit.VerifyWebhookHeaders("secret", h, body, now, 0) != nil {
+			t.Fatal("batch 2 signature refused")
+		}
+		if withStamp && modulekit.VerifyWebhookHeaders("secret", h, body, now.Add(301*time.Second), 0) == nil {
+			t.Fatal("expired batch 2 timestamp accepted")
+		}
+	}
+	for _, at := range []time.Time{now.Add(301 * time.Second), now.Add(-301 * time.Second)} {
+		if verify("secret", timestamped, body, at, 0) == nil {
+			t.Fatal("string API ignored authenticated timestamp window")
+		}
+		// Replacing both visible timestamps cannot refresh an old valid MAC.
+		refreshed := strings.Replace(timestamped, "1800000000", strconv.FormatInt(at.Unix(), 10), 1)
+		if verify("secret", refreshed, body, at, 0) == nil {
+			t.Fatal("timestamp substitution extended replay window")
+		}
+	}
+	if verify("secret", timestamped, body, now.Add(time.Minute), 30*time.Second) == nil || verify("secret", timestamped, body, now.Add(300*time.Second), 0) != nil {
+		t.Fatal("timestamp window boundary or shorter tolerance ignored")
+	}
+	for _, malformed := range []string{"t=,v1=", "t=01800000000,v1=" + strings.Split(timestamped, "v1=")[1], timestamped + ",v1=bad", "sha256=00", "t=1800000000,v1=" + strings.Repeat("z", 64)} {
+		if verify("secret", malformed, body, now, 0) == nil {
+			t.Fatal("malformed signature accepted")
+		}
 	}
 	badSig := headers.Clone()
 	badSig.Set(modulekit.SignatureHeader, "sha256=deadbeef")
 	missing := headers.Clone()
-	missing.Del(modulekit.TimestampHeader)
+	missing.Set(modulekit.TimestampHeader, "")
+	mismatch := headers.Clone()
+	mismatch.Set(modulekit.TimestampHeader, "1800000001")
 	for name, tc := range map[string]struct {
 		secret  string
 		headers http.Header
 		body    []byte
 		at      time.Time
 	}{
-		"empty key": {"", headers, body, now}, "missing timestamp": {"secret", missing, body, now},
+		"empty key": {"", headers, body, now}, "empty timestamp": {"secret", missing, body, now}, "mismatched timestamp": {"secret", mismatch, body, now},
 		"expired": {"secret", headers, body, now.Add(5*time.Minute + time.Second)}, "future": {"secret", headers, body, now.Add(-5*time.Minute - time.Second)},
 		"changed body": {"secret", headers, []byte("tampered"), now}, "bad signature": {"secret", badSig, body, now},
 	} {

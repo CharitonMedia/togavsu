@@ -44,7 +44,7 @@ Modules may link to `fee_agreement`, `payment_refund` and `trust_account`. Payme
 
 ## Contributor gap fixes and wider service calls (CORE-36, CORE-30)
 
-CORE-36 closes the public-kit gaps this batch hits: `/m/` forwards `X-Togavsu-Context-Token`; `GET /api/v1/me` accepts a context token as the viewer; a missing scope answers `scope_denied` naming the scope; webhook signatures authenticate the raw body (`sha256=<hex>`) with a separate timestamp checked within five minutes; notes land in `core.notes`; invoices, payments and expenses dual-write into `core.invoices` / `core.payments` / `core.expenses`; conflict decisions emit `conflict_check.decided`; `getConflictCheck` accepts a service principal; `Accepts().core_items` lists built CORE items; coretest supplies Markdown renditions and an in-process converter stand-in.
+CORE-36 closes the public-kit gaps this batch hits: `/m/` forwards `X-Togavsu-Context-Token`; `GET /api/v1/me` accepts a context token as the viewer; a missing scope answers `scope_denied` naming the scope; webhook signatures authenticate the timestamp and raw body (`t=<unix>,v1=<hex>`) within a five-minute window; notes land in `core.notes`; invoices, payments and expenses dual-write into `core.invoices` / `core.payments` / `core.expenses`; conflict decisions emit `conflict_check.decided`; `getConflictCheck` accepts a service principal; `Accepts().core_items` lists built CORE items; coretest supplies Markdown renditions and an in-process converter stand-in.
 
 CORE-30 marks the wider service-call set `delegated_viewer_or_service_principal` (contacts, matters, conflicts, calendar, deadlines, notes, timeline, markdown renditions). Each has `modules.service_call_limit.<operationId>` (default 120/minute). `listContact` supports exact `email` and `phone` filters. Service-principal writes record the module as author with audit source `service`. Walls still omit walled matters from lists and answer `not_found` on gets.
 
@@ -97,9 +97,10 @@ when the module has an approved contract permission.
 Forwarded context is signed for the selected provider and invalidated by unlinking.
 Provider events use the [targeted envelope](#core-brokered-contract-events), preserving values
 and event id, with no implicit broadcast. Oversized provider responses are 413
-`too_large`. Events, contract calls and routed system mail use `sha256=<hex>` HMAC-SHA256
-over the raw body, plus `X-Togavsu-Timestamp` (Unix seconds). Receivers require both
-headers and a timestamp within five minutes; empty secrets and unsigned sends fail.
+`too_large`. Events, contract calls and routed system mail use
+`X-Togavsu-Signature: t=<unix>,v1=<hex>`: HMAC-SHA256 of `"<unix>." + raw body`,
+plus `X-Togavsu-Timestamp` with the same Unix seconds. Receivers check the authenticated
+timestamp within five minutes and compare the HMAC in constant time; empty secrets fail.
 Inbound hooks forward Authorization only with their per-hook `forward_authorization`
 flag and approved `webhooks:authorization`. Provider Authorization is never core auth.
 
@@ -148,17 +149,16 @@ to `docs/contracts/`, but that directory was absent from its base revision. Inte
 must compare any separately held provider/consumer contract definitions before claiming
 compatibility with them.
 
-A service-principal `GET /api/v1/matter-parties?contact_id=…` returns optional
-`walled_omitted: true` when a wall omitted one or more of that contact's matters.
-It discloses no omitted ids, count or wall membership. The property is absent when
-nothing was omitted; lifting the wall lists the matter on the next read and removes
-the property. Delegated reads apply the viewer's access and do not return this flag.
+A service-principal `GET /api/v1/matter-parties?contact_id=…` simply leaves out walled
+matters, with no indication that a wall omitted anything. Lifting the wall returns the
+matter on the next read. Delegated reads apply the viewer's current access.
 
-The raw-body webhook HMAC does not authenticate the timestamp. The five-minute window
-is not replay protection; modules must durably deduplicate event ids. The original
-`SignWebhook`/`VerifyWebhook` string API stays compatible; `SignWebhookHeaders` and
-`VerifyWebhookHeaders` add both-header timestamp checks.
-
-The Activities Agents tab and `GET /api/v1/events?actor_kind=module` include writes
-with `module_id`, including delegated staff/client actors. Staff/client and person
-filters retain these same actions with the person as actor.
+The kit keeps every batch 2 exported name and signature. `SignWebhook` keeps its
+`sha256=<hex>` raw-body output; `SignTimestampedWebhook` signs the core's `t=,v1=` form.
+`SignWebhookHeaders` returns that timestamped form and its matching timestamp header.
+`VerifyWebhook` accepts both forms, checking the authenticated timestamp in `t=,v1=`.
+`VerifyWebhookHeaders` also checks `X-Togavsu-Timestamp` when present; with `t=,v1=` it
+must match the signed timestamp. Both use the same five-minute window and constant-time
+HMAC comparison. The compatibility `sha256=` form has an unsigned optional timestamp and
+cannot provide timestamp replay protection. Durably deduplicate event ids for both forms,
+including retries and repetitions within the window.

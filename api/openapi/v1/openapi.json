@@ -13385,7 +13385,7 @@
       "get": {
         "operationId": "listMatterParty",
         "summary": "List matter parties",
-        "description": "Cursor-paginated matter parties the caller is allowed to see. With contact_id, a service-principal call also returns walled_omitted: true when a wall omitted one or more matters; no ids, count or membership. The property is absent when nothing was omitted, including after the wall lifts.",
+        "description": "Cursor-paginated matter parties the caller is allowed to see.",
         "tags": [
           "Matters"
         ],
@@ -13465,11 +13465,6 @@
                     },
                     "page": {
                       "$ref": "#/components/schemas/Page"
-                    },
-                    "walled_omitted": {
-                      "type": "boolean",
-                      "const": true,
-                      "description": "Only on service contact-matters reads when a wall omitted matters. No ids or count."
                     }
                   }
                 }
@@ -69255,7 +69250,7 @@
       "post": {
         "operationId": "deliverModuleEvent",
         "summary": "Deliver a signed event to a subscribed module.",
-        "description": "Before any WebhookEvent body is serialized, the core checks that the module is installed, subscribed to the event type, approved for that event's read scope, and allowed through the matter wall. An attorney-only conflict record is not serialized. A module that fails any check receives no POST and no record id or summary. The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256=<hex>, HMAC-SHA256 of the raw body, keyed with a nonempty module webhook secret. Verify the timestamp within five minutes. A plain SHA-256 of the body is not accepted. X-Togavsu-Timestamp contains decimal Unix seconds. Walled records require an inside-wall delegated viewer. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the opaque X-Togavsu-Task-Authorization credential on those later calls. The core verifies that credential. A caller-supplied claim object is not a grant. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. file.background_authorized delivers background_file_authorization to the installed module that holds files:write. That grant is one matter the service principal can access, the publication sequence, and an expiry. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment. payment.refund_authorized delivers refund_authorization to the payment source module the same way for updatePaymentRefundStatus.",
+        "description": "Before any WebhookEvent body is serialized, the core checks that the module is installed, subscribed to the event type, approved for that event's read scope, and allowed through the matter wall. An attorney-only conflict record is not serialized. A module that fails any check receives no POST and no record id or summary. The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is t=<unix>,v1=<hex>, HMAC-SHA256 of decimal timestamp + dot + raw body, keyed with a nonempty module webhook secret. X-Togavsu-Timestamp repeats the signed timestamp. Verify within five minutes using constant-time comparison. The kit also accepts batch 2 sha256=<hex> raw-body HMAC, checking its unsigned X-Togavsu-Timestamp when present; that form has no timestamp replay protection. Deduplicate event ids for both forms. A plain SHA-256 of the body is not accepted. X-Togavsu-Timestamp contains decimal Unix seconds. Walled records require an inside-wall delegated viewer. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the opaque X-Togavsu-Task-Authorization credential on those later calls. The core verifies that credential. A caller-supplied claim object is not a grant. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. file.background_authorized delivers background_file_authorization to the installed module that holds files:write. That grant is one matter the service principal can access, the publication sequence, and an expiry. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment. payment.refund_authorized delivers refund_authorization to the payment source module the same way for updatePaymentRefundStatus.",
         "x-togavsu-task-delivery": {
           "event_type": "file.version_created",
           "delivered_on": "moduleEvent",
@@ -69653,10 +69648,10 @@
             "name": "X-Togavsu-Signature",
             "in": "header",
             "required": true,
-            "description": "sha256=<hex> HMAC-SHA256 of the raw body; five minute timestamp window and nonempty secret.",
+            "description": "Core sends t=<unix>,v1=<hex> HMAC-SHA256 of timestamp + dot + raw body; five-minute window, constant-time comparison and nonempty secret. Kit also accepts sha256=<hex> raw-body HMAC with optional unsigned timestamp.",
             "schema": {
               "type": "string",
-              "pattern": "^sha256=[a-f0-9]{64}$"
+              "pattern": "^t=-?[0-9]+,v1=[a-f0-9]{64}$"
             }
           },
           {
@@ -82020,7 +82015,7 @@
           "record_id",
           "summary"
         ],
-        "description": "Signed webhook body. X-Togavsu-Signature is sha256=<hex> HMAC-SHA256 of the raw body with a separate X-Togavsu-Timestamp checked within five minutes, keyed with the module's webhook secret. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read."
+        "description": "Signed webhook body. X-Togavsu-Signature is t=<unix>,v1=<hex> HMAC-SHA256 of timestamp + dot + raw body, keyed with the module's webhook secret; X-Togavsu-Timestamp repeats the signed timestamp, checked within five minutes with constant-time comparison. The kit also accepts sha256=<hex> raw-body HMAC with an optional unsigned timestamp, which offers no timestamp replay protection. Deduplicate event ids for both forms. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read."
       },
       "Backup": {
         "type": "object",

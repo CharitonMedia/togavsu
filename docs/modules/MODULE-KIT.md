@@ -562,25 +562,30 @@ provider response returns HTTP 413 with code `too_large`.
 
 ### Timestamped core webhooks and provider callbacks
 
-Events, contract calls and routed system mail keep the batch 1 wire format:
-`X-Togavsu-Signature: sha256=<hex HMAC-SHA256>` over the exact raw body, plus a separate
-`X-Togavsu-Timestamp` header containing decimal Unix seconds. Receivers require both
-headers, compare the HMAC in constant time, and refuse timestamps more than five minutes
-from their clock in either direction. Deduplicate event ids; retries change the timestamp,
-while the event id stays the same. Empty secrets refuse both signing and delivery.
+The core signs every event, contract call and routed system mail in the v1.0.0 format:
+`X-Togavsu-Signature: t=<unix>,v1=<hex>`, where the lowercase hex digest is
+HMAC-SHA256 of the decimal timestamp, a dot, and the exact raw body bytes. It also sends
+`X-Togavsu-Timestamp` with the same Unix seconds. Receivers compare the HMAC in constant
+time and reject timestamps more than five minutes from their clock in either direction.
+The authenticated timestamp prevents refreshing an expired signature. Deduplicate event
+ids durably before applying effects: a valid request can repeat within the window, and
+retries change the timestamp while keeping the event id. Empty secrets refuse signing,
+verification and delivery.
 
-`headers := modulekit.SignWebhookHeaders(secret, now, body)` returns both headers (`http.Header`),
-or nil for an empty secret. Copy these headers onto the request. Call
-`modulekit.VerifyWebhookHeaders(secret, request.Header, body, now, 0)` to verify both. Zero
-means the documented five-minute window; a positive tolerance can only shorten it.
-The original `SignWebhook` still returns the signature string, and `VerifyWebhook`
-still accepts that string. Those source-compatible functions verify only the raw-body
-HMAC; their time arguments do not check a timestamp. Use the additive header helpers
-to check both headers.
+`modulekit.SignTimestampedWebhook(secret, now, body)` returns the timestamped signature.
+`headers := modulekit.SignWebhookHeaders(secret, now, body)` returns both headers
+(`http.Header`), or nil for an empty secret. Copy them onto the request.
+`modulekit.VerifyWebhook(secret, signature, body, now, 0)` accepts both `t=,v1=` and the
+batch 2 `sha256=<hex>` raw-body HMAC. The timestamp in `t=,v1=` is checked and authenticated.
+`modulekit.VerifyWebhookHeaders(secret, request.Header, body, now, 0)` also checks
+`X-Togavsu-Timestamp` when present; it must match the signed timestamp for `t=,v1=`.
+Zero tolerance means five minutes; a positive tolerance can only shorten it.
 
-The timestamp is not covered by the HMAC. The five-minute window is **not replay
-protection**: an attacker can replace the unsigned timestamp. Modules must deduplicate
-event ids in durable storage before applying effects, including across retries.
+Every existing exported name and signature remains available. `SignWebhook` keeps its
+batch 2 `sha256=<hex>` output. That compatibility form has no authenticated time; the
+header-aware verifier checks its separate timestamp when present, but changing that
+unsigned timestamp can bypass its freshness check. Use the timestamped form for new
+senders. A bare `sha256=` signature remains accepted for existing string-API callers.
 
 Provider webhooks use their provider's own scheme. `ProviderHMAC(secret, body)` and
 `VerifyProviderHMAC(secret, body, decodedSignature)` compute/check HMAC-SHA256.

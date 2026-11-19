@@ -4474,9 +4474,16 @@ class ContractTest(unittest.TestCase):
         secret = b"top-secret"
         payload = b'{"type":"matter.created"}'
         signature = webhook_signature(secret, payload)
-        self.assertEqual(signature, "sha256=e9464e954a1b5f9acf9da3a55d8f0a31d00090a745fa83e3591fe7d2afcbae88")
+        self.assertEqual(signature, "t=1800000000,v1=a4c62ca1c0c64efe8564cb0f7413c1d5cb952cd733635121d4cd6a6a8990c4e8")
+        legacy = "sha256=e9464e954a1b5f9acf9da3a55d8f0a31d00090a745fa83e3591fe7d2afcbae88"
+        self.assertTrue(webhook_signature_matches(secret, payload, legacy))
+        self.assertTrue(webhook_signature_matches(secret, payload, legacy, timestamp=1800000000))
+        self.assertFalse(webhook_signature_matches(secret, payload, legacy, now=1800000301, timestamp=1800000000))
+        self.assertFalse(webhook_signature_matches(secret, payload + b" ", legacy))
+        self.assertFalse(webhook_signature_matches(secret, payload, signature, timestamp=1800000001))
+        self.assertFalse(webhook_signature_matches(secret, payload, signature.replace("1800000000", "1800000301"), now=1800000301))
         self.assertTrue(webhook_signature_matches(secret, payload, signature, timestamp=1800000000))
-        self.assertFalse(webhook_signature_matches(secret, payload, signature))
+        self.assertTrue(webhook_signature_matches(secret, payload, signature))
         self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1800000301, timestamp=1800000000))
         self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1799999699, timestamp=1800000000))
         self.assertFalse(webhook_signature_matches(b"", payload, signature, timestamp=1800000000))
