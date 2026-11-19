@@ -1,112 +1,135 @@
 {
   "task_id": "core-update-2d",
   "status": "pending",
-  "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422",
+  "tested_revision": "800ab766806d955ae205999adad0d5013e94c312",
+  "report_state_reason": "All five assigned criteria pass, including CU2-07. Overall merge evidence remains pending required CI host checks; failed local checks are not relabeled as passes.",
   "tests": [
     {
-      "name": "Full repository race run (includes the full composed-core suite)",
+      "name": "Full repository race run",
       "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 2 -timeout 25m ./...",
       "exit_code": 1,
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422",
-      "result": "33 test package groups pass; core fails only TestCU207Batch1ModulesUnchanged (four receiver cases). Supervisor fails the three host-facility tests listed below. Core completes in 761.782 seconds; supervisor in 263.557 seconds. No race-detector findings. The 25-minute per-package ceiling already exists in scripts/ci/test-core.sh. Existing availability gates remain; this is not Docker/browser acceptance."
+      "result": "34 package groups pass; only internal/supervisor fails for local host facilities listed below. The composed core and CU2-07 pass. No race-detector findings. The 25-minute per-package ceiling already exists in scripts/ci/test-core.sh. Existing availability gates remain; this is not Docker/browser acceptance.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
     },
     {
-      "name": "Assignment acceptance regressions",
-      "command": "go test -race -count=1 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals'",
+      "name": "Final assignment acceptance regressions",
+      "command": "TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TMPDIR=/out/tmp TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 2 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals|TestCORE05|TestCORE30|TestCU207'",
       "exit_code": 0,
-      "result": "Public-kit service reads, walls/lifting, scopes/audit, settings/mail/phone, contracts, purge/converter, hooks, runtime pending, attribution/feed and webhook helpers pass.",
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
-    },
-    {
-      "name": "CORE-30 service calls",
-      "command": "go test -race -count=1 -v ./internal/core -run '^TestCORE30'",
-      "exit_code": 0,
-      "result": "Five tests pass: walls/next-read recovery, denied scopes, per-operation limits, exact contact matching and fail-closed limits.",
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
-    },
-    {
-      "name": "Batch 1 unchanged source lifecycle and signed events",
-      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -v ./internal/core -run '^TestCU207Batch1ModulesUnchanged$'",
-      "exit_code": 1,
-      "result": "All six build/install/real-page/uninstall lifecycles complete. Matter Clock and lawpay-docuseal reject forged events and store a valid event once. documents/email/quickbooks reject valid sha256= signatures (HTTP 401); client-portal has no event receiver (HTTP 405).",
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
+      "result": "Pass on second synthetic Postgres server: background reads, REST/MCP/scopes/audit, walls and next-read recovery, mail/settings/phone, CORE-30, contracts, purge/converter, hooks, runtime pending, activity attribution, pinned signatures, and all six CU2-07 module cases. Real sender headers are asserted for events, mail and provider calls.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
     },
     {
       "name": "API contracts and regeneration",
       "command": "PATH=/out/venv/bin:$PATH sh api/check.sh",
       "exit_code": 0,
-      "result": "130 tests pass, both OpenAPI validators pass, broken reference refused, regeneration byte-identical. Runtime simulator fixtures are not executed.",
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
-    },
-    {
-      "name": "Setup metadata",
-      "command": "python3 scripts/check_setup.py",
-      "exit_code": 0,
-      "result": "52 core and 23 batch 2 criteria indexed. Metadata only.",
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
+      "result": "130 tests and both OpenAPI validators pass; broken reference refused; generated bytes match. Simulator runtime fixtures are not executed.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
     },
     {
       "name": "Go vet",
       "command": "go vet ./...",
       "exit_code": 0,
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
+      "result": "All packages pass.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
     },
     {
-      "name": "Script regression",
+      "name": "Script tests",
       "command": "PATH=/out/venv/bin:$PATH python3 -m unittest discover -s scripts -p 'test_*.py'",
       "exit_code": 0,
       "result": "228 tests pass.",
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
+    },
+    {
+      "name": "QA corpus and harness tests",
+      "command": "TMPDIR=/out/tmp /out/venv/bin/python -m unittest discover -s tests -p 'test_*.py'",
+      "exit_code": 1,
+      "result": "85 of 86 tests pass. The scanned-page OCR sampling test fails because the local Tesseract executable is absent; unchanged test remains enabled.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
+    },
+    {
+      "name": "QA harness integrity",
+      "command": "TMPDIR=/out/tmp /out/venv/bin/python -m tests.harness",
+      "exit_code": 0,
+      "result": "No integrity errors; existing 52 product criteria remain pending in this general harness.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
+    },
+    {
+      "name": "Backup integration",
+      "command": "python3 /out/run-backup-check.py",
+      "exit_code": 0,
+      "result": "Runs unmodified sh scripts/ci/test-backup-integration.sh against separately allocated synthetic databases on the two supplied Postgres 17 servers. All 17 named top-level restore/swap/rollback/ownership/seal tests pass; databases cleaned up.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
+    },
+    {
+      "name": "Unchanged batch 1 source provenance",
+      "command": "TMPDIR=/out/tmp python3 /out/check-batch1-sources.py",
+      "exit_code": 0,
+      "result": "All five snapshots match their pinned Go dependency archives byte for byte, including archive sums and file counts. No module repository was edited.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
+    },
+    {
+      "name": "Setup metadata",
+      "command": "python3 scripts/check_setup.py",
+      "exit_code": 0,
+      "result": "52 core and 23 batch 2 criteria indexed; metadata only.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
     },
     {
       "name": "Pending gate",
       "command": "sh scripts/ci/pending-gate.sh",
       "exit_code": 0,
-      "result": "Existing AC-001, AC-016, AC-018 remain pending.",
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
+      "result": "Existing AC-001/016/018 remain pending.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
     },
     {
-      "name": "Static Compose",
+      "name": "Compose static check",
       "command": "python3 scripts/ci/check-compose.py",
       "exit_code": 0,
-      "result": "Static validation only; Docker not run.",
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
+      "result": "Static validation only.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
     },
     {
       "name": "Debt ledger",
       "command": "python3 scripts/release/check_debt.py",
       "exit_code": 0,
-      "result": "111 repository markers; 69 ledger entries.",
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
+      "result": "111 markers; 69 ledger entries.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
     },
     {
-      "name": "Formatting and patch hygiene",
+      "name": "Formatting and whitespace",
       "command": "test -z \"$(gofmt -l cmd internal pkg api web examples)\" && git diff --check",
       "exit_code": 0,
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
+      "result": "Pass.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
+    },
+    {
+      "name": "Protected paths and file modes",
+      "command": "python3 /out/audit-core-update.py",
+      "exit_code": 0,
+      "result": "No protected/control-plane changes, added symlinks or submodules. Dependency pins, approved scope and examples unchanged. Only retained migration 1550 in assigned range.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
     },
     {
       "name": "Controller report acceptance check",
       "command": "python3 /out/check-core-update-report.py",
       "exit_code": 1,
-      "result": "Report shape/acceptance inventory passes; unmodified Controller.validate_evidence rejects the pending report: Integration report absent or not passing. CU2-07 is not falsely marked passed.",
-      "tested_revision": "e8ae052e25fc2b5627a690d711c4098cc8b2c422"
+      "result": "Shape, exact acceptance partition and report-only revision check pass; unmodified Controller.validate_evidence refuses the pending overall report. Failed host checks are retained honestly; no passing checkpoint is claimed.",
+      "tested_revision": "800ab766806d955ae205999adad0d5013e94c312"
     }
   ],
   "passed_acceptance_ids": [
     "CU2-01",
     "CU2-02",
     "CU2-03",
-    "CU2-05"
-  ],
-  "pending_acceptance_ids": [
+    "CU2-05",
     "CU2-07"
   ],
+  "pending_acceptance_ids": [],
   "phase_cases": [
     {
       "id": "api-mcp-scopes",
       "status": "pass",
-      "command": "go test -race -count=1 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals'",
+      "command": "TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TMPDIR=/out/tmp TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 2 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals|TestCORE05|TestCORE30|TestCU207'",
       "exit_code": 0,
       "acceptance_ids": [
         "CU2-01"
@@ -115,7 +138,7 @@
     {
       "id": "service-call-walls",
       "status": "pass",
-      "command": "go test -race -count=1 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals'",
+      "command": "TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TMPDIR=/out/tmp TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 2 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals|TestCORE05|TestCORE30|TestCU207'",
       "exit_code": 0,
       "acceptance_ids": [
         "CU2-02"
@@ -124,7 +147,7 @@
     {
       "id": "contracts",
       "status": "pass",
-      "command": "go test -race -count=1 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals'",
+      "command": "TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TMPDIR=/out/tmp TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 2 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals|TestCORE05|TestCORE30|TestCU207'",
       "exit_code": 0,
       "acceptance_ids": [
         "CU2-03"
@@ -133,7 +156,7 @@
     {
       "id": "gap-rows-closed",
       "status": "pass",
-      "command": "go test -race -count=1 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals'",
+      "command": "TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TMPDIR=/out/tmp TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 2 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals|TestCORE05|TestCORE30|TestCU207'",
       "exit_code": 0,
       "acceptance_ids": [
         "CU2-05"
@@ -141,20 +164,20 @@
     },
     {
       "id": "batch1-unchanged",
-      "status": "fail",
-      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -v ./internal/core -run '^TestCU207Batch1ModulesUnchanged$'",
-      "exit_code": 1,
+      "status": "pass",
+      "command": "TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TMPDIR=/out/tmp TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 2 -v ./pkg/modulekit/... ./internal/core ./internal/modules ./internal/domain ./internal/practice ./internal/settings -run 'TestCoreUpdate2D|TestCORE2BOpenAPIAndMCP|TestCORE2BCU201ScopeDenied|TestCORE31|TestTimestampedWebhookAndProviderHelpers|TestRuntimePendingCriteriaAndGooseUpInventory|TestWebhookAuthorizationOptInRequiresScope|TestServicePrincipalNeverCrossesWall|TestEventAttributionKeepsDelegatedPerson|TestDelegatedModule|TestEventsFeedAndAppend|TestScanSource|TestWebhookProtocolLiterals|TestCORE05|TestCORE30|TestCU207'",
+      "exit_code": 0,
       "acceptance_ids": [
         "CU2-07"
       ]
     }
   ],
   "base_revision": "e7c4c99496db54dab8f403b6fa48070517cb6e85",
-  "checkpoint_revision": "35081dea36a3b1b9e157ccee3bb59cf1f379b168",
+  "checkpoint_revision": "cf2c435d3691b256109606bdb4ffd96e6ff08d0f",
   "target_branch": "batch2",
-  "revision_note": "The tested revision is the final implementation/documentation commit. Only this evidence report changes afterward, following the tasks.json report-only successor rule. The PR body names the final candidate separately; a report cannot embed the SHA of the commit containing its own SHA.",
+  "revision_note": "This SHA is the final implementation/documentation commit tested. Only this evidence report changes afterward, following the tasks.json report-only successor rule. The final candidate SHA is named separately in the PR body.",
   "batch1_compatibility": {
-    "source_note": "Direct repository network access is prohibited in this lane. Used the supplied read-only /out/batch1-compat snapshots, verified byte for byte against the Go dependency proxy's main resolutions. No module repository was edited.",
+    "source_note": "Direct repository network access is prohibited in this lane. Supplied read-only /out/batch1-compat snapshots reverified byte for byte against their Go dependency proxy main-resolution archives. No module repository or package changed.",
     "sources": [
       {
         "module": "documents",
@@ -202,38 +225,40 @@
         "files_verified": 60
       }
     ],
-    "lifecycle": "All six packages built, installed, served real pages and uninstalled with schema/route deletion.",
+    "lifecycle": "All six packages build, install, serve real module routes and uninstall with schema/route deletion.",
     "signed_event_pass": [
       "matter-clock",
+      "documents",
+      "email",
+      "quickbooks",
       "lawpay-docuseal"
     ],
-    "signed_event_failures": {
-      "documents": "HTTP 401: expects t=...,v1=... signature",
-      "email": "HTTP 401: expects t=...,v1=... signature",
-      "quickbooks": "HTTP 401: expects t=...,v1=... signature",
-      "client-portal": "HTTP 405: no event receiver; initial modules PRD section 8.6 subscribes to nothing"
-    },
-    "resolution_required": "Supplied module receivers must support the required sha256= core format; client-portal would need an event receiver to meet the checkpoint requirement that every module verify an event. This lane must not edit module repositories or change the required core format."
+    "signed_event_result": "Each subscribed module refuses a forged signature without storing it, receives an event from the real core sender with matching timestamped headers, and stores it once after a duplicate delivery.",
+    "client_portal": "PASS: unchanged manifest subscribes to no events (initial modules PRD 8.6). Publish/Pump/Deliver leave no queued delivery and send it no signed event POST; no nonexistent event route is invoked."
   },
   "changes": [
-    "Restore approved CORE-CHANGES-2.md and all examples to batch2; delete unowned docs/contracts/README.md and place envelope documentation in docs/api/modules.md.",
-    "Preserve string SignWebhook/VerifyWebhook API and batch 1 sha256= raw-body HMAC; add header-aware helpers for separate five-minute timestamp checks. Empty secrets refuse signing and verification.",
-    "Document that the unsigned timestamp window is not replay protection and receivers must durably deduplicate event ids.",
-    "Service contact-matters reads expose only optional walled_omitted: true; Postgres REST/MCP tests cover while-walled omission and absence/listed matter on the next read after the wall lifts. No ids/count/membership in the flag.",
-    "Agents tab/count and module filters also match module_id, preserving delegated staff/client actor and person filters; regression tests cover both kinds and the API.",
-    "Restore the pinned literal Python HMAC golden. Remove obsolete event-credential policy comment. Retain the phone-item notScreens entry.",
-    "No event_records:read exact-record grants. Service principals remain outside every wall; delegated inside-wall viewers retain access."
+    "Preserve scoped service-principal reads for deadlines/calendar, matter parties/contact matters, firm zone, addresses, roles, custom-field definitions and work-email directory; all module calls remain audited under the module id.",
+    "Service principals remain outside every wall: omit records without disclosing omission or membership; gets are not_found. Retain REST/MCP Postgres omission, delegated inside-wall access and next-read recovery after wall lifting.",
+    "Preserve matter-party mail under mail:send, own settings reads/admin setup writes and applicable contract runtime settings; modules:write stays forbidden.",
+    "Preserve forwarded provider context delegation, targeted/deduplicated contract envelopes and too_large provider-response errors.",
+    "All core webhook senders use v1.0.0 t=<unix>,v1=<hex> signatures over timestamp + dot + raw body, with matching X-Togavsu-Timestamp. Add SignTimestampedWebhook; retain every batch 2 public name/signature and SignWebhook output. VerifyWebhook accepts both forms with constant-time HMAC comparison and applicable skew checks; header-aware helper also checks a supplied timestamp.",
+    "Pin independent literal vectors for both signature forms; test substitution, expiry/future/window bounds, malformed/mismatched timestamps, empty secrets and tampering. Update API conventions, modules guide, OpenAPI, kit docs and gap rows.",
+    "Preserve approved per-hook Authorization opt-in, provider CRC/HMAC helpers, RESTRICT-safe purge, shared timeline/Activities Feed module attribution and delegated person actors.",
+    "Preserve Goose Up-only inventory, documented runtime pending criteria with strict retirement, the converter stand-in and contact phone-row item slot."
   ],
   "pending_checks": [
-    "CU2-07 signed-event compatibility fails for the supplied sources; the regression remains enabled.",
-    "Full repository race run exits 1: CU2-07 receiver failures and the three unavailable supervisor host facilities below. No test was disabled or weakened to make the suite pass.",
-    "Docker unavailable: image builds, supervisor image, Compose, smoke and image-pinned editor cases not run locally. Existing CI must run them.",
-    "Browser screenshot/console QC, clean Docker Desktop install/update acceptance and independent exact-base/head checkpoint remain pending.",
-    "Integration must compare separately held provider/consumer contract definitions, if any, with the envelope in docs/api/modules.md."
+    "Full repository and QA checks require their existing CI host facilities; see local_environment_limits. All assigned phase cases already pass.",
+    "Docker image builds, supervisor image, Compose, smoke and image-pinned editor cases were not run locally; existing CI must run them.",
+    "Browser screenshot/console QC for the branch phone UI, clean Docker Desktop install/update acceptance and independent exact-base/head checkpoint remain pending.",
+    "Integration must compare any separately held provider/consumer contract definitions with the documented envelope in docs/api/modules.md."
   ],
+  "local_environment_limits": {
+    "supervisor": "TestTwoComposeProjectsStaySeparate needs sudo/Docker; TestStalledSSHHandshakeRestartsWriters cannot resolve UID 1000 for ssh-keygen; TestOpenSSHNamespaceFirstUseAndStoreDelete needs real sshd. All three tests remain enabled and run in CI.",
+    "qa": "test_scanned_pdf_has_120_pages_and_a_page_49_resume_point needs Tesseract, absent locally. The unchanged CI QA image provides it; no test was disabled or weakened in this pass."
+  },
   "simplification": {
-    "net_lines_excluding_report": 3323,
-    "fix_pass_net_lines_excluding_report": 160,
+    "net_lines_excluding_report": 3466,
+    "fix_pass_net_lines_excluding_report": 143,
     "debt_ledger_entries": 69,
     "repository_ponytail_markers": 111,
     "new_dependencies": 0,
@@ -242,7 +267,7 @@
     "retained_migrations": [
       "1550_event_module.sql"
     ],
-    "review": "Reuse existing signer, walls, scope gate, event storage and list envelope; additive helpers preserve callers. No unnecessary abstraction or dependency."
+    "review": "Reuse the single existing signing path for events/mail/contracts and the existing wall filter. Remove the omission-tracking wrapper and extra wall lookup. Keep public compatibility through one verifier; no new abstraction, dependency or deliberate shortcut."
   },
   "protected_path_audit": {
     "control_plane_changes": false,
@@ -253,23 +278,18 @@
     "examples_unchanged": true,
     "phone_route_exclusion_retained": true
   },
-  "proposed_ci_change": "None. Existing product and independent review gates need their required host facilities.",
+  "proposed_ci_change": "None. Existing product and independent review gates must run with their required host facilities.",
   "failures_and_fixes": [
-    "API check initially caught a stale generated OpenAPI inventory hash; regenerated stage1 inventory and literal-golden scenario, committed, and api/check.sh passes.",
-    "A superseded overlapping diagnostic Go run was stopped after discovering fixed fixture database names. The complete final run finished with no database-fixture errors; only the named compatibility and host-facility failures remain."
+    "The prior CU2-07 failure identified a real wire-format regression: restored main v1.0.0 timestamp-authenticated signing while retaining batch 2 kit acceptance.",
+    "Removed the contact-matters omission indicator because it disclosed a contact relationship to a walled matter. Normal empty-list shape is now asserted.",
+    "The extended real-sender compatibility test initially used a nonexistent invoice id; QuickBooks correctly refused its required foreign-key queue link. Use its subscribed contact.updated event for a real synthetic client contact; no receiver behavior or module package changed."
   ],
-  "release": "Local lane commits only. Integration lead publishes; no push, PR operation, merge, release, tag or public version bump.",
-  "supervisor_host_failures": {
-    "TestTwoComposeProjectsStaySeparate": "Cannot execute sudo docker compose: sudo and Docker unavailable.",
-    "TestStalledSSHHandshakeRestartsWriters": "ssh-keygen fails: no user exists for UID 1000.",
-    "TestOpenSSHNamespaceFirstUseAndStoreDelete": "Required real /usr/sbin/sshd unavailable."
-  },
+  "release": "Local lane commits only; the integration lead publishes. No push, PR operation, merge, release, tag or public version bump.",
   "local_validation": {
-    "passing_test_package_groups": 33,
-    "failing_test_package_groups": 2,
+    "passing_test_package_groups": 34,
+    "failing_test_package_groups": 1,
     "full_go_exit_code": 1,
     "failed_packages": [
-      "internal/core",
       "internal/supervisor"
     ],
     "race_detector_findings": 0
