@@ -399,7 +399,8 @@ type Accepted struct {
 	CoreRecords   []string `json:"core_records"`
 	CoreRelations []string `json:"core_relations"`
 	// CoreItems are the CORE-NN items this binary has built (CORE-36).
-	CoreItems []string `json:"core_items"`
+	CoreItems       []string `json:"core_items"`
+	RuntimeCriteria []string `json:"runtime_criteria"`
 }
 
 // Accepts reports what this core accepts, from the same tables its checks use.
@@ -420,7 +421,7 @@ func Accepts() Accepted {
 	return Accepted{
 		ManifestSchema: "sha256:" + hex.EncodeToString(sum[:]), ManifestFields: fields,
 		Scopes: identity.Scopes(), ScopePatterns: []string{ViewScope("<module>", "<view>")}, ForbiddenScopes: forbidden,
-		CoreRecords: records, CoreRelations: relations, CoreItems: CoreItems(),
+		CoreRecords: records, CoreRelations: relations, CoreItems: CoreItems(), RuntimeCriteria: RuntimeCriteria(),
 	}
 }
 

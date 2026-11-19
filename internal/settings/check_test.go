@@ -209,3 +209,18 @@ func TestModuleSupervisorBoundary(t *testing.T) {
 		})
 	}
 }
+
+func TestWebhookProtocolLiteralsStayFixedAndFunctionScoped(t *testing.T) {
+	for _, tc := range []struct {
+		function string
+		bad      bool
+	}{
+		{"VerifyWebhookHeaders", false}, {"WebhookTimestamp", false}, {"verifyWebhook", false}, {"webhookTime", false}, {"OtherWebhookConfiguration", true},
+	} {
+		src := "package modules\nimport \"time\"\nfunc " + tc.function + "() time.Duration { return 5*time.Minute }\n"
+		got := settings.ScanSource(filepath.Join("internal", "modules", "events.go"), src)
+		if (len(got) > 0) != tc.bad {
+			t.Fatalf("%s: %v", tc.function, got)
+		}
+	}
+}

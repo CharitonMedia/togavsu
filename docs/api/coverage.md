@@ -51,6 +51,7 @@ It does not claim the handlers or the MCP server are implemented.
 | books | `GET` | `/api/v1/books/profile` | `getBooksProfile` | required:getBooksProfile | admin, attorney, staff, accountant | books:read |
 | books | `GET` | `/api/v1/books/matters/{matter_id}` | `getBooksMatter` | required:getBooksMatter | admin, attorney, staff, accountant | books:read |
 | books | `GET` | `/api/v1/books/contacts/{contact_id}` | `getBooksContact` | required:getBooksContact | admin, attorney, staff, accountant | books:read |
+| modules | `GET` | `/api/v1/modules/contact-phone-items` | `listContactPhoneItems` | required:listContactPhoneItems | admin, attorney, staff | contacts:read |
 | user-directory | `GET` | `/api/v1/user-directory` | `listUserDirectory` | required:listUserDirectory | admin, attorney, staff, client | users:directory |
 | client-access | `GET` | `/api/v1/client-access` | `getClientAccess` | required:getClientAccess | admin, attorney, staff | client_access:read |
 | client-access | `POST` | `/api/v1/client-access` | `grantClientAccess` | required:grantClientAccess | admin, attorney, staff | client_access:write |
@@ -450,6 +451,7 @@ It does not claim the handlers or the MCP server are implemented.
 | modules | `POST` | `/api/v1/modules/{module_id}/update` | `updateModule` | required:updateModule | admin | modules:write |
 | modules | `GET` | `/api/v1/modules/{module_id}/settings` | `getModuleSettings` | required:getModuleSettings | admin | modules:read |
 | modules | `PUT` | `/api/v1/modules/{module_id}/settings` | `putModuleSettings` | required:putModuleSettings | admin | modules:write |
+| modules | `PUT` | `/api/v1/modules/{module_id}/own-settings` | `putOwnModuleSettings` | required:putOwnModuleSettings | admin | module_settings:write |
 | modules, profile | `POST` | `/api/v1/me/module-devices` | `createModuleDeviceGrant` | required:createModuleDeviceGrant | admin, attorney, staff | none |
 | modules, profile | `GET` | `/api/v1/me/module-devices` | `listModuleDeviceGrants` | required:listModuleDeviceGrants | admin, attorney, staff | profile:read |
 | modules, profile | `DELETE` | `/api/v1/me/module-devices/{device_id}` | `revokeModuleDeviceGrant` | required:revokeModuleDeviceGrant | admin, attorney, staff | profile:write |
@@ -479,4 +481,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 | modules, inbound-webhooks | `POST` | `/hooks/{module_id}/{hook_id}` | `postInboundWebhook` | required:postInboundWebhook | public | none |
 
-Operations: 473.
+Operations: 475.

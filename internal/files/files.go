@@ -907,6 +907,15 @@ func (s *Service) Purge(ctx context.Context, p domain.Principal, id domain.ID, c
 		if confirmName != f.Name {
 			return domain.Invalid("confirm_name", "type the file's name to empty it from the trash")
 		}
+		if s.PurgeHolders != nil {
+			holders, err := s.PurgeHolders(ctx, f.ID)
+			if err != nil {
+				return err
+			}
+			if len(holders) > 0 {
+				return domain.Conflict("file is retained by modules: " + strings.Join(holders, ", "))
+			}
+		}
 		if objs, err = s.objectsOf(ctx, f.ID); err != nil {
 			return err
 		}

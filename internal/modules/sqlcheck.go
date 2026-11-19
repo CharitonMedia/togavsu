@@ -268,7 +268,7 @@ func walk(c *migrationCheck, m Manifest, ms []db.Migration, report func(Refusal)
 	c.schema, c.tables, c.views = m.Schema(), map[string]*tableInfo{}, map[string]bool{}
 	for _, mig := range ms {
 		file := "migrations/" + mig.Name + ".sql"
-		toks, err := tokenize(mig.SQL)
+		toks, err := tokenize(upSQL(mig.SQL))
 		if err != nil {
 			if !report(migrationRefusal(file, zero, err, refuse(CodeMigration, fmt.Sprintf("%s: %v", mig.Name, err)))) {
 				return

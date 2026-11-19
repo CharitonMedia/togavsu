@@ -483,6 +483,10 @@ func fixedSite(path, fn string) bool {
 		case "ApplyReference", "ApplySynthetic", "insertSynthetic", "sid", "bit":
 			return true
 		}
+	case strings.HasSuffix(slash, "internal/modules/events.go"):
+		// Decimal wire encoding and the module specs' fixed five-minute verification
+		// ceiling are protocol rules, never firm tunables. Other functions stay checked.
+		return fn == "VerifyWebhookHeaders" || fn == "WebhookTimestamp" || fn == "verifyWebhook" || fn == "webhookTime"
 	case strings.HasSuffix(slash, "internal/core/mail.go"):
 		// The RFC 2045 base64 line length of a mail attachment. Not a firm limit.
 		return fn == "base64Lines"

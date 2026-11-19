@@ -8,6 +8,7 @@ from contract.metadata import CORE_EXTENSION_TARGETS, CORE_PAGE_TARGETS, MODULE_
 from contract.settings import SETTINGS, setting_keys
 
 PROBLEM_CODES = [
+ "too_large",
     "validation_failed",
     "unauthenticated",
     "csrf_required",
@@ -2433,12 +2434,12 @@ SCHEMAS = _register(
         "UserDirectoryEntry": _obj(
             {
                 "id": _uuid(),
-                "name": {"type": "string"},
+                "name": {"type": "string"}, "work_email":{"type":"string","format":"email"},
                 "roles": _arr(_ROLE),
                 "active": {"type": "boolean"},
             },
             ["id", "name", "roles", "active"],
-            "One directory row. No email, auth or rate fields. A client caller receives only id and name.",
+            "One directory row. Work email for staff and modules; no auth or rate fields. A client caller receives only id and name.",
         ),
         "UserDirectoryClient": _obj(
             {
@@ -2912,7 +2913,9 @@ SCHEMAS = _register(
         "Event": _meta(
             {
                 "actor_kind": _ACTOR,
-                "actor_id": _null(_uuid()),
+                "actor_id": _null({"type":"string","description":"User UUID or module id for a module actor."}),
+                "actor_name":{"type":"string", "description":"User display name when available; never a raw id."},
+                "module_id": {"type":"string", "description":"Module through which the actor acted, or empty for a direct action."},
                 "action": {"type": "string"},
                 "record_type": {"type": "string"},
                 "record_id": {"type": "string"},
@@ -2983,7 +2986,7 @@ SCHEMAS = _register(
                 "balance_scope": _null(_enum(["matter", "client", "account"])),
             },
             ["id", "type", "occurred_at", "actor_kind", "record_type", "record_id", "summary"],
-            "Signed webhook body. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module's webhook secret. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read.",
+            "Signed webhook body. X-Togavsu-Signature is t=<unix>,v1=<hex> HMAC-SHA256 of timestamp + dot + raw body, keyed with the module's webhook secret; X-Togavsu-Timestamp repeats the signed timestamp, checked within five minutes with constant-time comparison. The kit also accepts sha256=<hex> raw-body HMAC with an optional unsigned timestamp, which offers no timestamp replay protection. Deduplicate event ids for both forms. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read.",
         ),
         "Backup": _meta(
             {
@@ -3365,6 +3368,8 @@ SCHEMAS = _register(
                 "price_note": {"type": "string"},
                 "image": _obj({"reference": {"type": "string"}, "digest": {"type": "string"}}, ["reference", "digest"]),
                 "permissions": _arr(_ref("ManifestPermission"), "Requested scopes. A string means required. An object may set required false."),
+                "contact_phone_items": _arr(_obj({"id":{"type":"string"},"title":{"type":"string"},"path":{"type":"string"}},["id","title","path"],"Actions beside contact phone rows; requires contacts:read. Module paths are framed with a viewer context.")),
+                "inbound_webhooks": _arr(_obj({"id":{"type":"string"},"path":{"type":"string"},"forward_authorization":{"type":"boolean","default":False}},["id","path"],"Per-hook Authorization forwarding requires approved webhooks:authorization. Provider credentials are never core auth.")),
                 "widgets": _arr(_ref("ManifestWidget")),
                 "sidebar": _arr(_ref("ManifestSidebarEntry")),
                 "sidebar_panel": _ref("ManifestSidebarPanel"),
@@ -3980,6 +3985,7 @@ def _query(name: str, schema: dict, description: str, required: bool = False) ->
 
 
 QUERY = {
+ "phone_id": _query("phone_id", _ref("Uuid"), "Contact phone id."),
     "cursor": {
         "name": "cursor",
         "in": "query",

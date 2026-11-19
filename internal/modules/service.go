@@ -62,6 +62,7 @@ type Deps struct {
 	// no contact-keyed module row is readable, so a composition that leaves it out fails
 	// closed.
 	Contacts ContactReader
+	Phone    func(context.Context, domain.Principal, domain.ID) (domain.ContactPhone, error)
 	// BooksContactOK reports whether a books:read module may receive contact.updated for
 	// the contact (CORE-02). moduleID is the installed module so the books-reader principal
 	// is authenticated. Nil drops every contact.updated for books:read modules.

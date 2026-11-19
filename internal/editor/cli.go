@@ -60,6 +60,8 @@ var ErrBusy = &domain.APIError{Code: domain.CodeRateLimited, Message: "the edito
 // reach the file system or the network are refused before the process starts
 // (commands.go); the sandbox is the second line.
 type CLI struct {
+	// Converter is an injected conversion transport, used by the public acceptance harness.
+	Converter func(context.Context, []byte, string, string) ([]byte, error)
 	// Path is the wordcraft-cli binary built from the pinned commit.
 	Path string
 	// TempDir is where run folders are made ("" is the system default).
@@ -125,6 +127,9 @@ func (c *CLI) slot(max int) (func(), error) {
 
 // Convert writes doc (in format ext) as format out.
 func (c *CLI) Convert(ctx context.Context, doc []byte, ext, out string) ([]byte, error) {
+	if c.Converter != nil {
+		return c.Converter(ctx, doc, ext, out)
+	}
 	return c.job(ctx, doc, ext, out, nil, func(in, outPath string) ([]string, []byte, error) {
 		return []string{"convert", in, outPath}, nil, nil
 	})

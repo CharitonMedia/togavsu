@@ -51,6 +51,7 @@ func (a *App) routes() {
 	a.meAppointmentsRoutes(m)
 	a.meTrustRoutes(m)
 	a.directoryRoutes(m)
+	m.HandleFunc("GET /api/v1/modules/contact-phone-items", a.contactPhoneItemsJSON)
 	a.booksRoutes(m)
 	a.clientAccessRoutes(m)
 	a.portalRoutes(m)
@@ -394,6 +395,11 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 			}
 		}
 	}
+	if p.ModuleID != "" && !p.UserID.IsZero() {
+		if err := a.auditServiceCall(r, p); err != nil {
+			return p, err
+		}
+	}
 	return p, nil
 }
 
@@ -424,7 +430,7 @@ func (a *App) auditServiceCall(r *http.Request, p domain.Principal) error {
 		return err
 	}
 	_, err = a.Audit.Record(r.Context(), p, audit.Change{
-		Entity: "service_call", EntityID: id, Field: "operation", New: t.Name, Reason: "service.call",
+		Entity: "service_call", EntityID: id, Field: "operation", New: t.Name, Reason: "service.call record=" + r.URL.Path,
 	})
 	return err
 }
@@ -865,8 +871,22 @@ func (a *App) entry(ctx context.Context, key string) (settings.Entry, error) {
 }
 
 func (a *App) settingsJSON(w http.ResponseWriter, r *http.Request) {
-	if _, err := a.admin(r); err != nil {
+	p, err := a.principal(r)
+	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if p.ModuleID != "" {
+		e, err := a.moduleContractSetting(r, p, "modules.contract_call_max_bytes")
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": []map[string]any{settingJSON(e)}, "page": map[string]any{"next_cursor": nil}})
+		return
+	}
+	if !p.HasRole(domain.RoleAdmin) {
+		writeErr(w, domain.Forbidden("admin role is required"))
 		return
 	}
 	list, err := a.Settings.List(r.Context())
@@ -885,8 +905,22 @@ func (a *App) settingsJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) settingJSON(w http.ResponseWriter, r *http.Request) {
-	if _, err := a.admin(r); err != nil {
+	p, err := a.principal(r)
+	if err != nil {
 		writeErr(w, err)
+		return
+	}
+	if p.ModuleID != "" {
+		e, err := a.moduleContractSetting(r, p, r.PathValue("setting_key"))
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, settingJSON(e))
+		return
+	}
+	if !p.HasRole(domain.RoleAdmin) {
+		writeErr(w, domain.Forbidden("admin role is required"))
 		return
 	}
 	e, err := a.entry(r.Context(), r.PathValue("setting_key"))

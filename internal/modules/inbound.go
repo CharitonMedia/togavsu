@@ -131,7 +131,12 @@ func (h *Handler) inboundWebhook(w http.ResponseWriter, r *http.Request) {
 				return io.NopCloser(bytes.NewReader(body)), nil
 			}
 			pr.Out.Header.Del("Cookie")
-			pr.Out.Header.Del("Authorization")
+			if !hook.ForwardAuthorization || !in.Approved["webhooks:authorization"] {
+				pr.Out.Header.Del("Authorization")
+			}
+			pr.Out.Header.Del("X-Togavsu-Event-Authorization")
+			pr.Out.Header.Del(TaskAuthorizationHeader)
+			pr.Out.Header.Del(PublicStepHeader)
 			pr.Out.Header.Del(ContextHeader)
 			pr.Out.Header.Del("X-Csrf-Token")
 			pr.Out.Header.Set("Content-Length", strconv.Itoa(len(body)))

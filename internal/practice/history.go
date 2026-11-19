@@ -2,6 +2,7 @@ package practice
 
 import (
 	"context"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -47,7 +48,10 @@ func (s *Service) Timeline(ctx context.Context, p domain.Principal, matter domai
 	}
 	// A client who can read the shared matter still only sees client-visible events.
 	clientView := s.gateMatterShared(ctx, p, matter, domain.ActionRead, false) != nil
-	events := s.db.Events()
+	events, err := s.sharedEvents(ctx, matter, time.Time{})
+	if err != nil {
+		return nil, err
+	}
 	var out []TimelineEntry
 	for i := len(events) - 1; i >= 0; i-- {
 		row := events[i]
@@ -55,6 +59,9 @@ func (s *Service) Timeline(ctx context.Context, p domain.Principal, matter domai
 			continue
 		}
 		if clientView && !row.ClientVisible {
+			continue
+		}
+		if !s.fileEventAllows(ctx, p, row) {
 			continue
 		}
 		out = append(out, s.timelineRow(ctx, row))
@@ -81,7 +88,10 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 	window := s.intSetting(ctx, "activity.window_days", domain.ActivityWindowDays)
 	limit := s.intSetting(ctx, "activity.page_size", domain.ActivityPageSize)
 	cutoff := s.clock().AddDate(0, 0, -window)
-	events := s.db.Events()
+	events, err := s.sharedEvents(ctx, "", cutoff)
+	if err != nil {
+		return ActivityView{}, err
+	}
 	var all []TimelineEntry
 	for i := len(events) - 1; i >= 0; i-- {
 		row := events[i]
@@ -103,7 +113,8 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 		case "staff":
 			view.Staff++
 			people[row.ActorID]++
-		case "agent", "module":
+		}
+		if row.ActorKind == "agent" || row.ActorKind == "module" || row.ModuleID != "" {
 			view.Agents++
 		}
 	}
@@ -116,7 +127,7 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 	}
 	var rows []TimelineEntry
 	for _, row := range all {
-		if !activityTab(q.Tab, row.ActorKind) {
+		if !activityTab(q.Tab, row.ActorKind, row.ModuleID) {
 			continue
 		}
 		if !q.UserID.IsZero() && row.ActorID != q.UserID {
@@ -144,7 +155,7 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 	return view, nil
 }
 
-func activityTab(tab, kind string) bool {
+func activityTab(tab, kind, module string) bool {
 	switch tab {
 	case "", "all":
 		return true
@@ -153,7 +164,9 @@ func activityTab(tab, kind string) bool {
 	case "staff":
 		return kind == "staff"
 	case "agents":
-		return kind == "agent" || kind == "module"
+		return kind == "agent" || kind == "module" || module != ""
+	case "module":
+		return kind == "module" || module != ""
 	default:
 		return kind == tab
 	}
@@ -161,18 +174,24 @@ func activityTab(tab, kind string) bool {
 
 func (s *Service) timelineRow(ctx context.Context, row domain.Event) TimelineEntry {
 	name := row.ActorKind
+	if row.ActorKind == "module" {
+		name = string(row.ActorID)
+	}
 	if user, err := s.db.User(ctx, row.ActorID); err == nil && user.Name != "" {
 		name = user.Name
 	}
 	return TimelineEntry{
-		ID: row.ID, At: row.CreatedAt, ActorKind: row.ActorKind, ActorID: row.ActorID,
-		ActorName: name, Action: row.Action, Summary: row.Summary, ClientVisible: row.ClientVisible,
+		ID: row.ID, CreatedBy: row.CreatedBy, At: row.CreatedAt, ActorKind: row.ActorKind, ActorID: row.ActorID,
+		ActorName: name, ModuleID: row.ModuleID, Action: row.Action, Summary: row.Summary, ClientVisible: row.ClientVisible,
 		RecordType: row.RecordType, RecordID: row.RecordID, MatterID: row.MatterID,
 	}
 }
 
-// feedAllows hides a walled matter and a contact who exists only on walled matters.
+// feedAllows hides walled matters, unreadable contacts and attorney-only files.
 func (s *Service) feedAllows(ctx context.Context, p domain.Principal, row domain.Event) bool {
+	if !s.fileEventAllows(ctx, p, row) {
+		return false
+	}
 	if !row.MatterID.IsZero() && !s.visibleMatter(ctx, p, row.MatterID) {
 		return false
 	}
@@ -184,6 +203,23 @@ func (s *Service) feedAllows(ctx context.Context, p domain.Principal, row domain
 		return false
 	}
 	return true
+}
+
+// fileEventAllows applies the same file rule to timelines, Activities and listEvents.
+// Resolve the current flag on every read, including events written before a file
+// became attorney-only. A lookup failure must not expose a file's summary.
+func (s *Service) fileEventAllows(ctx context.Context, p domain.Principal, row domain.Event) bool {
+	if row.RecordType != "file" || p.HasRole(domain.RoleAdmin) || p.HasRole(domain.RoleAttorney) {
+		return true
+	}
+	reader, ok := s.db.(interface {
+		FileAttorneyOnly(context.Context, domain.ID) (bool, error)
+	})
+	if !ok {
+		return false
+	}
+	only, err := reader.FileAttorneyOnly(ctx, row.RecordID)
+	return err == nil && !only
 }
 
 func (s *Service) eventContact(ctx context.Context, row domain.Event) (domain.ID, bool) {
@@ -294,8 +330,19 @@ func (s *Service) DeleteEvent(ctx context.Context, id domain.ID) (err error) {
 }
 
 // FeedAllows reports whether p may see row in the Activities feed: not on a walled
-// matter p is not on, and not about a contact p cannot read. The core's event list
+// matter p is not on, not about a contact p cannot read, and not naming an
+// attorney-only file unless p is an attorney or admin. The core's event list
 // (listEvents) applies it to every row of core.events.
 func (s *Service) FeedAllows(ctx context.Context, p domain.Principal, row domain.Event) bool {
 	return s.feedAllows(ctx, p, row)
+}
+
+// sharedEvents reads the core stream in composed installs, including module events.
+func (s *Service) sharedEvents(ctx context.Context, matter domain.ID, since time.Time) ([]domain.Event, error) {
+	if reader, ok := s.db.(interface {
+		ReadEvents(context.Context, domain.ID, time.Time) ([]domain.Event, error)
+	}); ok {
+		return reader.ReadEvents(ctx, matter, since)
+	}
+	return s.db.Events(), nil
 }

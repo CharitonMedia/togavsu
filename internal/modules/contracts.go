@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -36,8 +37,12 @@ type ContractLinkWrite struct {
 
 // ContractEventWrite is a provider-pushed contract event (CORE-31).
 type ContractEventWrite struct {
-	Action  string          `json:"action"`
-	Payload json.RawMessage `json:"payload"`
+	ID         string          `json:"id"`
+	ConsumerID string          `json:"consumer_id"`
+	Contract   string          `json:"contract"`
+	OccurredAt string          `json:"occurred_at"`
+	Action     string          `json:"action"`
+	Payload    json.RawMessage `json:"payload"`
 }
 
 // ListContractLinks returns every approved contract link (admin).
@@ -313,6 +318,9 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 	if err != nil || !consumer.Enabled {
 		return 0, nil, nil, domain.NotFound("module")
 	}
+	if !consumer.Approved["contracts:call"] {
+		return 0, nil, nil, scopeDenied("contracts:call")
+	}
 	if !consumer.Manifest.ConsumesContract(contract) {
 		return 0, nil, nil, domain.Forbidden("module does not consume " + contract)
 	}
@@ -326,6 +334,9 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 	provider, err := s.Installed(ctx, providerID)
 	if err != nil || !provider.Enabled {
 		return 0, nil, nil, &domain.APIError{Code: "contract_unlinked", Message: "provider for " + contract + " is not available"}
+	}
+	if !provider.Approved["contracts:provide"] {
+		return 0, nil, nil, scopeDenied("contracts:provide")
 	}
 	op, ok := provider.Manifest.ProvideOperation(contract, operation)
 	if !ok {
@@ -348,12 +359,33 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 		return 0, nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(SignatureHeader, SignWebhook(secret, s.now(), body))
+	at := s.now()
+	headers := SignWebhookHeaders(secret, at, body)
+	if headers == nil {
+		return 0, nil, nil, errors.New("modules: empty webhook secret")
+	}
+	for key, values := range headers {
+		req.Header[key] = values
+	}
 	req.Header.Set("X-Togavsu-Contract", contract)
 	req.Header.Set("X-Togavsu-Contract-Operation", operation)
 	req.Header.Set("X-Togavsu-Contract-Consumer", consumerID)
 	if contextToken != "" {
-		req.Header.Set(ContextHeader, contextToken)
+		claims, err := s.VerifyContext(ctx, contextToken)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		if claims.Module != consumerID || claims.Provider != "" {
+			return 0, nil, nil, domain.Forbidden("context token does not belong to the consumer")
+		}
+		claims.Provider = providerID
+		claims.Contract = contract
+		raw, err := json.Marshal(claims)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		payload := base64.RawURLEncoding.EncodeToString(raw)
+		req.Header.Set(ContextHeader, payload+"."+s.contextMAC(payload))
 	}
 	resp, err := s.d.HTTP.Do(req)
 	if err != nil {
@@ -372,7 +404,7 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 		if aerr := s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, resp.StatusCode, "response_too_large"); aerr != nil {
 			return 0, nil, nil, aerr
 		}
-		return 0, nil, nil, &domain.APIError{Code: "payload_too_large", Message: "provider response exceeds modules.contract_call_max_bytes"}
+		return 0, nil, nil, &domain.APIError{Code: "too_large", Message: "provider response exceeds modules.contract_call_max_bytes"}
 	}
 	// Strip any address-bearing headers so the consumer never learns the provider URL.
 	outHeader := http.Header{}
@@ -401,7 +433,7 @@ func (s *Service) auditContractCall(ctx context.Context, p domain.Principal, con
 	return err
 }
 
-// PushContractEvent delivers a provider-pushed contract event to every linked consumer
+// PushContractEvent delivers the provider envelope to its named linked consumer
 // like a core event webhook (CORE-31). The payload never carries another module's address.
 func (s *Service) PushContractEvent(ctx context.Context, p domain.Principal, contract string, in ContractEventWrite) error {
 	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) {
@@ -415,65 +447,37 @@ func (s *Service) PushContractEvent(ctx context.Context, p domain.Principal, con
 	if contract == "" || in.Action == "" {
 		return domain.Invalid("action", "contract and action are required")
 	}
-	// Always namespace under the contract; refuse actions that look like other namespaces
-	// (e.g. matter.created) so a provider cannot forge core event names.
-	if in.Action != contract && !strings.HasPrefix(in.Action, contract+".") {
-		if strings.Contains(in.Action, ".") {
-			return domain.Invalid("action", "contract event action must be scoped under "+contract)
-		}
-		in.Action = contract + "." + in.Action
+	if !strings.HasPrefix(in.Action, contract+".") {
+		return domain.Invalid("action", "contract event action must be scoped under "+contract)
 	}
 	provider, err := s.Installed(ctx, p.ModuleID)
 	if err != nil || !provider.Enabled {
 		return domain.NotFound("module")
 	}
+	if !provider.Approved["contracts:provide"] {
+		return scopeDenied("contracts:provide")
+	}
 	if _, ok := provider.Manifest.Provide(contract); !ok {
 		return domain.Forbidden("module does not provide " + contract)
 	}
-	rows, err := s.q(ctx).QueryContext(ctx, `SELECT consumer_id FROM core.module_contract_links WHERE contract = $1 AND provider_id = $2`,
-		contract, p.ModuleID)
+	if in.ConsumerID == "" || in.ID == "" || in.Contract != contract || in.OccurredAt == "" {
+		return domain.Invalid("event", "id, contract, consumer_id and occurred_at are required")
+	}
+	if _, err := time.Parse(time.RFC3339Nano, in.OccurredAt); err != nil {
+		return domain.Invalid("occurred_at", "use an RFC3339 timestamp")
+	}
+	linked, err := s.linkedProvider(ctx, contract, in.ConsumerID, p.ModuleID)
+	if err != nil || linked != p.ModuleID {
+		return domain.Forbidden("event consumer is not linked to this provider")
+	}
+	consumer, err := s.Installed(ctx, in.ConsumerID)
+	if err != nil || !consumer.Enabled || !consumer.Approved["contracts:call"] {
+		return domain.NotFound("consumer")
+	}
+	consumers := []string{in.ConsumerID}
+	payload, err := json.Marshal(in)
 	if err != nil {
 		return err
-	}
-	var consumers []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return err
-		}
-		consumers = append(consumers, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	payload, err := json.Marshal(EventPayload{
-		ID:         string(mustID()),
-		Action:     in.Action,
-		RecordType: "contract",
-		RecordID:   contract,
-		OccurredAt: s.now().UTC().Format(time.RFC3339Nano),
-		Module:     p.ModuleID,
-	})
-	if err != nil {
-		return err
-	}
-	if len(in.Payload) > 0 && string(in.Payload) != "null" {
-		// Attach provider payload under "data" without leaking addresses.
-		var wrap map[string]any
-		if err := json.Unmarshal(payload, &wrap); err != nil {
-			return err
-		}
-		var data any
-		if err := json.Unmarshal(in.Payload, &data); err != nil {
-			return domain.Invalid("payload", "payload must be JSON")
-		}
-		wrap["data"] = data
-		payload, err = json.Marshal(wrap)
-		if err != nil {
-			return err
-		}
 	}
 	now := s.now().UnixMicro()
 	return s.commit(ctx, func(ctx context.Context) error {
@@ -483,8 +487,8 @@ func (s *Service) PushContractEvent(ctx context.Context, p domain.Principal, con
 				return err
 			}
 			if _, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_deliveries (id, created_at, updated_at, created_by, module_id, event_id, action, payload, status, attempts, next_attempt_at, last_error, delivered_at, task_authorization)
-VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'')`,
-				string(id), now, p.ModuleID, consumer, string(id), in.Action, string(payload)); err != nil {
+VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'') ON CONFLICT (module_id,event_id) DO NOTHING`,
+				string(id), now, p.ModuleID, consumer, in.ID, in.Action, string(payload)); err != nil {
 				return err
 			}
 		}
@@ -499,14 +503,6 @@ VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'')`,
 		})
 		return err
 	})
-}
-
-func mustID() domain.ID {
-	id, err := domain.NewID()
-	if err != nil {
-		return domain.ID("00000000000000000000000000")
-	}
-	return id
 }
 
 // SyncPublicPages refreshes the public page registry for an installed module (CORE-32).

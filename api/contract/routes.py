@@ -1000,14 +1000,18 @@ def _identity(api: Contract) -> None:
         writes=False,
         extra_access=BOOKS_SERVICE,
     )
+    api.add("get", "/api/v1/modules/contact-phone-items", operation_id="listContactPhoneItems",
+        summary="List module actions for a contact phone", description="Viewer-only click-to-call items for enabled modules with approved contacts:read. Phone and contact wall access are checked before items are returned.",
+        tag="Modules", features=["modules"], roles=STAFF, scopes=["contacts:read"], query=["phone_id"], paginate=True,
+        response_schema={"type":"object","properties":{"data":{"type":"array","items":{"type":"object"}},"page":{"$ref":"#/components/schemas/Page"}},"required":["data","page"]}, writes=False, extra_access=VIEWER)
     api.add(
         "get",
         "/api/v1/user-directory",
         operation_id="listUserDirectory",
         summary="List the user directory",
         description=(
-            "Cursor-paginated directory rows: id, name, roles and active. No email, auth or rate fields. "
-            "Filters: ids (up to 100), role, active. A client caller receives only id and name for active users "
+            "Cursor-paginated directory rows: id, name, roles and active. Work email is returned to staff and modules; no auth or rate fields. "
+            "Filters: ids (up to 100), role, active, matter_id (only users allowed by the matter wall). A client caller receives only id and name for active users "
             "who hold a staff, attorney or admin role."
         ),
         tag="Identity",
@@ -1016,7 +1020,7 @@ def _identity(api: Contract) -> None:
         scopes=["users:directory"],
         response_schema=_page("UserDirectoryEntry"),
         paginate=True,
-        query=["ids", "role", "active"],
+        query=["ids", "role", "active", "matter_id"],
         writes=False,
         extra_access={**VIEWER, "client": "own", "client_schema": "UserDirectoryClient"},
     )
@@ -1810,7 +1814,7 @@ def _admin_lists(api: Contract) -> None:
         "getCustomFieldDefinition",
     ):
         method, path = api.operation_ids[operation_id].split(" ", 1)
-        api.spec["paths"][path][method]["x-togavsu-access"]["module_delegation"] = "delegated_viewer"
+        api.spec["paths"][path][method]["x-togavsu-access"]["module_delegation"] = ("delegated_viewer_or_service_principal" if operation_id in ("listPartyRole", "getPartyRole", "listCustomFieldDefinition", "getCustomFieldDefinition") else "delegated_viewer")
     api.add(
         "post",
         "/api/v1/custom-field-definitions/{definition_id}/retire",
@@ -4373,7 +4377,7 @@ def _shell(api: Contract) -> None:
         "/api/v1/events",
         operation_id="listEvents",
         summary="Activities feed",
-        description="The event stream for the firm, newest first. The default window is activity.window_days and the default page size is activity.page_size. Matter walls apply.",
+        description="The event stream for the firm, newest first. The default window is activity.window_days and the default page size is activity.page_size. Matter walls apply. actor_kind=module includes delegated staff/client writes with module_id; person filters keep them too.",
         tag="Shell",
         features=["activity", "events"],
         roles=STAFF,
@@ -4465,7 +4469,7 @@ def _admin(api: Contract) -> None:
         "/api/v1/settings",
         operation_id="listSettings",
         summary="List settings",
-        description="Every registry setting with its tab, value, default, and help. Secret values are not returned; configured is.",
+        description="Admins see every registry setting. A module with settings:read and approved contracts:call or contracts:provide sees only its contract runtime settings, including modules.contract_call_max_bytes. Secrets are never returned.",
         tag="Settings",
         features=["settings"],
         roles=ADMIN,
@@ -4479,7 +4483,7 @@ def _admin(api: Contract) -> None:
         "/api/v1/settings/{setting_key}",
         operation_id="getSetting",
         summary="Get one setting",
-        description="One registry row.",
+        description="One registry row for admins; module service principals may read modules.contract_call_max_bytes only with settings:read and an approved contract permission.",
         tag="Settings",
         features=["settings"],
         roles=ADMIN,
@@ -5080,7 +5084,7 @@ def _modules(api: Contract) -> None:
         features=["modules"],
         roles=ADMIN,
         scopes=["modules:read"],
-        response_schema={"type": "object", "additionalProperties": True},
+        response_schema={"type":"array","items":{"type":"object","additionalProperties":True}},
         writes=False,
     )
     api.add(
@@ -5088,7 +5092,7 @@ def _modules(api: Contract) -> None:
         "/api/v1/modules/{module_id}/settings",
         operation_id="putModuleSettings",
         summary="Update module settings",
-        description="Validates the body against the manifest settings schema and applies it without a restart.",
+        description="Validates module settings and applies live. Admins use modules:write. The owning module uses module_settings:write plus an admin viewer context; modules:write is forbidden to modules.",
         tag="Modules",
         features=["modules"],
         roles=ADMIN,
@@ -5096,6 +5100,21 @@ def _modules(api: Contract) -> None:
         body_schema={"type": "object", "additionalProperties": True},
         response_schema={"type": "object", "additionalProperties": True},
         events=["setting.updated"],
+    )
+    api.add(
+        "put",
+        "/api/v1/modules/{module_id}/own-settings",
+        operation_id="putOwnModuleSettings",
+        summary="Update module settings",
+        description="Validates module settings and applies live. Admins use modules:write. The owning module uses module_settings:write plus an admin viewer context; modules:write is forbidden to modules.",
+        tag="Modules",
+        features=["modules"],
+        roles=ADMIN,
+        scopes=["module_settings:write"],
+        body_schema={"type": "object", "additionalProperties": True},
+        response_schema={"type": "object", "additionalProperties": True},
+        events=["setting.updated"],
+        extra_access={"module_delegation":"delegated_viewer"},
     )
     api.add(
         "post",
@@ -5417,7 +5436,7 @@ def _modules(api: Contract) -> None:
                 "description": "Linked provider module id on a many-provider contract (CORE-31). Module id only; never an address.",
             }
         ],
-        error_codes=["scope_denied", "contract_unlinked", "not_found", "payload_too_large", "forbidden"],
+        error_codes=["scope_denied", "contract_unlinked", "not_found", "payload_too_large", "too_large", "forbidden"],
         extra_access={"module_delegation": "service_principal"},
     )
     api.add(
@@ -5426,7 +5445,7 @@ def _modules(api: Contract) -> None:
         operation_id="pushModuleContractEvent",
         summary="Push a contract event to linked consumers",
         description=(
-            "The provider module's bearer with contracts:provide queues a contract event for every "
+            "The provider module's bearer with contracts:provide queues a contract event for the named "
             "linked consumer, delivered like core events (CORE-31)."
         ),
         tag="Modules",
@@ -5436,8 +5455,9 @@ def _modules(api: Contract) -> None:
         body_schema={
             "type": "object",
             "additionalProperties": False,
-            "required": ["action"],
+            "required": ["id", "contract", "consumer_id", "occurred_at", "action"],
             "properties": {
+                "id": {"type":"string"}, "contract":{"type":"string"}, "consumer_id":{"type":"string"}, "occurred_at":{"type":"string","format":"date-time"},
                 "action": {"type": "string"},
                 "payload": {},
             },

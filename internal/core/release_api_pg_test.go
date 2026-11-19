@@ -240,7 +240,7 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	mod := newClient(t, x.srv.URL)
 	mod.bearer = x.rt.Last("matter-clock").Secrets["togavsu_api_token"]
 	byModule := mod.must(http.StatusCreated, "POST", "/api/v1/events", ev(open, "matter-clock.target_met", "Target met"))
-	if byModule.json["actor_kind"] != "module" || byModule.json["actor_id"] != nil {
+	if byModule.json["actor_kind"] != "module" || byModule.json["actor_id"] != "matter-clock" || byModule.json["module_id"] != "matter-clock" || byModule.json["actor_name"] != nil {
 		t.Fatalf("module event: %s", byModule.body)
 	}
 	if r := mod.do("POST", "/api/v1/events", ev(walled, "matter-clock.target_met", "Walled")); r.code != http.StatusNotFound {
@@ -248,6 +248,17 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	}
 	if r := mod.do("GET", "/api/v1/events", nil); r.code != http.StatusForbidden {
 		t.Fatalf("module read the feed with no viewer: %d %s", r.code, r.body)
+	}
+	delegatedContext := x.staff.must(http.StatusCreated, "POST", "/api/v1/modules/matter-clock/context-tokens", map[string]any{})
+	delegatedEvent := mod.do("POST", "/api/v1/events", ev(open, "matter-clock.delegated", "Staff via module"), modules.ContextHeader, str(t, delegatedContext.json, "token"))
+	if delegatedEvent.code != http.StatusCreated {
+		t.Fatalf("delegated event: %d %s", delegatedEvent.code, delegatedEvent.body)
+	}
+	for _, query := range []string{"actor_kind=module", "actor_kind=staff", "actor_id=" + x.staffID} {
+		feed := x.staff.must(http.StatusOK, "GET", "/api/v1/events?"+query, nil)
+		if !strings.Contains(feed.body, str(t, delegatedEvent.json, "id")) {
+			t.Fatalf("delegated module event missing for %s: %s", query, feed.body)
+		}
 	}
 	// A module subscribed to event.appended is queued a delivery naming the appended row.
 	later := x.staff.must(http.StatusCreated, "POST", "/api/v1/events", ev(open, "intake.subscribed", "Delivered to subscribers"))

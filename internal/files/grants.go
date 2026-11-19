@@ -236,7 +236,7 @@ func (s *Service) IssueGrant(ctx context.Context, p domain.Principal, in GrantRe
 			return err
 		}
 		return s.st.appendEvent(ctx, domain.Event{
-			Meta: m, ActorKind: actorKind(p), ActorID: actor(p, domain.SystemUserID), Action: "file.background_authorized",
+			Meta: m, ActorKind: actorKind(p), ActorID: p.EventActor(), ModuleID: p.ModuleID, Action: "file.background_authorized",
 			RecordType: "file_publication_grant", RecordID: g.ID, MatterID: g.MatterID,
 			Summary: "Authorized " + g.ModuleID + " to publish " + g.Source + " files",
 		})

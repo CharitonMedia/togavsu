@@ -40,13 +40,12 @@ func TestCORE31ContractCall(t *testing.T) {
 	const contract = "phone.provider.v1"
 
 	var gotBody []byte
-	var gotSig, gotConsumer string
+	var gotConsumer string
 	x.rt.Serve("phone-provider", func(m testkit.Module) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			gotSig = r.Header.Get(modules.SignatureHeader)
 			gotConsumer = r.Header.Get("X-Togavsu-Contract-Consumer")
 			gotBody, _ = io.ReadAll(r.Body)
-			if err := modules.VerifyWebhook(m.WebhookSecret, gotSig, gotBody, time.Now().UTC(), 0); err != nil {
+			if err := modules.VerifyWebhookHeaders(m.WebhookSecret, r.Header, gotBody, time.Now().UTC(), 0); err != nil {
 				t.Errorf("provider verify: %v", err)
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -102,7 +101,7 @@ func TestCORE31ContractCall(t *testing.T) {
 	provTok := newClient(t, x.srv.URL)
 	provTok.bearer = x.rt.Last("phone-provider").Secrets["togavsu_api_token"]
 	if r := provTok.do("POST", "/api/v1/modules/contracts/"+contract+"/events", map[string]any{
-		"action": "ring", "payload": map[string]any{"from": "test"},
+		"id": "synthetic-ring", "contract": contract, "consumer_id": "phone-consumer", "occurred_at": time.Now().UTC().Format(time.RFC3339Nano), "action": contract + ".ring", "payload": map[string]any{"from": "test"},
 	}); r.code != http.StatusNoContent && r.code != http.StatusOK {
 		t.Fatalf("push contract event: %d %s", r.code, r.body)
 	}

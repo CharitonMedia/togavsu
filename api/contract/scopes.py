@@ -5,6 +5,8 @@ Dynamic view scopes use the pattern views:{module_id}.{view}:read and are grante
 """
 
 SCOPES = {
+ "webhooks:authorization": "Receive provider Authorization on only inbound hooks explicitly opting in; never core authentication.",
+ "module_settings:write": "Save only the calling module settings, with an admin setup viewer.",
     "profile:read": "Read the caller's profile and shell preferences.",
     "profile:write": "Update the caller's profile, password, and personal settings.",
     "sessions:read": "List sessions.",

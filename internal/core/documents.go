@@ -187,11 +187,12 @@ VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,0)`, string(id), at, string(domain.SystemUser
 
 // documentsConfig is what openDocuments needs beyond the shared services.
 type documentsConfig struct {
-	DataDir      string // for editor run folders
-	WordcraftCLI string
-	EditorDist   string
-	ProviderURLs map[string]string
-	Worker       string
+	DataDir           string // for editor run folders
+	DocumentConverter func(context.Context, []byte, string, string) ([]byte, error)
+	WordcraftCLI      string
+	EditorDist        string
+	ProviderURLs      map[string]string
+	Worker            string
 }
 
 // openFiles wires the one file store on the core pool before finance, so billing keeps
@@ -245,7 +246,7 @@ func openDocuments(ctx context.Context, d *documents, pool *sql.DB, aud *audit.S
 		return err
 	}
 	d.Calendar = cal
-	cli := &editor.CLI{Path: cfg.WordcraftCLI, TempDir: filepath.Join(cfg.DataDir, "runs")}
+	cli := &editor.CLI{Converter: cfg.DocumentConverter, Path: cfg.WordcraftCLI, TempDir: filepath.Join(cfg.DataDir, "runs")}
 	if err := os.MkdirAll(cli.TempDir, os.ModePerm&0o700); err != nil {
 		return err
 	}

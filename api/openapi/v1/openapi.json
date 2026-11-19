@@ -33,6 +33,9 @@
       "name": "Billing"
     },
     {
+      "name": "Modules"
+    },
+    {
       "name": "Contacts"
     },
     {
@@ -82,9 +85,6 @@
     },
     {
       "name": "Updates"
-    },
-    {
-      "name": "Modules"
     }
   ],
   "paths": {
@@ -4674,7 +4674,7 @@
           "public": false,
           "matter_wall": false,
           "client": "own",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_service_principal"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -4690,6 +4690,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -5041,11 +5048,158 @@
         ]
       }
     },
+    "/api/v1/modules/contact-phone-items": {
+      "get": {
+        "operationId": "listContactPhoneItems",
+        "summary": "List module actions for a contact phone",
+        "description": "Viewer-only click-to-call items for enabled modules with approved contacts:read. Phone and contact wall access are checked before items are returned.",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque cursor from page.next_cursor."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000,
+              "default": 50
+            },
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
+          },
+          {
+            "name": "phone_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Contact phone id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "page": {
+                      "$ref": "#/components/schemas/Page"
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "modules"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "contacts:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "listContactPhoneItems",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/user-directory": {
       "get": {
         "operationId": "listUserDirectory",
         "summary": "List the user directory",
-        "description": "Cursor-paginated directory rows: id, name, roles and active. No email, auth or rate fields. Filters: ids (up to 100), role, active. A client caller receives only id and name for active users who hold a staff, attorney or admin role.",
+        "description": "Cursor-paginated directory rows: id, name, roles and active. Work email is returned to staff and modules; no auth or rate fields. Filters: ids (up to 100), role, active, matter_id (only users allowed by the matter wall). A client caller receives only id and name for active users who hold a staff, attorney or admin role.",
         "tags": [
           "Identity"
         ],
@@ -5111,6 +5265,15 @@
               "type": "boolean"
             },
             "description": "Active filter."
+          },
+          {
+            "name": "matter_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Matter filter."
           }
         ],
         "responses": {
@@ -5177,7 +5340,7 @@
           "public": false,
           "matter_wall": false,
           "client": "own",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "client_schema": "UserDirectoryClient",
           "client_projection": "allowlist",
           "client_fields": [
@@ -5201,6 +5364,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -7960,7 +8130,7 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -7983,6 +8153,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -8222,7 +8399,7 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -8243,6 +8420,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -13320,7 +13504,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -13343,6 +13527,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -13593,7 +13784,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -13614,6 +13805,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -17170,7 +17368,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -17192,6 +17390,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -17443,7 +17648,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -17464,6 +17669,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -20920,7 +21132,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -20933,13 +21145,32 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "result": {
               "encoding": "json",
               "media_type": "application/json"
             },
             "arguments": [
               "path",
-              "query"
+              "query",
+              "context_token"
             ]
           }
         },
@@ -21134,7 +21365,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_service_principal"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -21145,13 +21376,32 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "result": {
               "encoding": "json",
               "media_type": "application/json"
             },
             "arguments": [
               "path",
-              "query"
+              "query",
+              "context_token"
             ]
           }
         },
@@ -22811,7 +23061,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -22824,13 +23074,32 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "result": {
               "encoding": "json",
               "media_type": "application/json"
             },
             "arguments": [
               "path",
-              "query"
+              "query",
+              "context_token"
             ]
           }
         },
@@ -23025,7 +23294,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_service_principal"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -23036,13 +23305,32 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "result": {
               "encoding": "json",
               "media_type": "application/json"
             },
             "arguments": [
               "path",
-              "query"
+              "query",
+              "context_token"
             ]
           }
         },
@@ -38072,7 +38360,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -38093,6 +38381,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -38732,7 +39027,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -38755,6 +39050,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -39007,7 +39309,7 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -39028,6 +39330,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -40508,7 +40817,7 @@
             }
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -40531,6 +40840,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -58344,7 +58660,7 @@
       "get": {
         "operationId": "listEvents",
         "summary": "Activities feed",
-        "description": "The event stream for the firm, newest first. The default window is activity.window_days and the default page size is activity.page_size. Matter walls apply.",
+        "description": "The event stream for the firm, newest first. The default window is activity.window_days and the default page size is activity.page_size. Matter walls apply. actor_kind=module includes delegated staff/client writes with module_id; person filters keep them too.",
         "tags": [
           "Shell"
         ],
@@ -59281,7 +59597,7 @@
       "get": {
         "operationId": "listSettings",
         "summary": "List settings",
-        "description": "Every registry setting with its tab, value, default, and help. Secret values are not returned; configured is.",
+        "description": "Admins see every registry setting. A module with settings:read and approved contracts:call or contracts:provide sees only its contract runtime settings, including modules.contract_call_max_bytes. Secrets are never returned.",
         "tags": [
           "Settings"
         ],
@@ -59369,6 +59685,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -59381,13 +59698,32 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "result": {
               "encoding": "json",
               "media_type": "application/json"
             },
             "arguments": [
               "path",
-              "query"
+              "query",
+              "context_token"
             ]
           }
         },
@@ -59405,7 +59741,7 @@
       "get": {
         "operationId": "getSetting",
         "summary": "Get one setting",
-        "description": "One registry row.",
+        "description": "One registry row for admins; module service principals may read modules.contract_call_max_bytes only with settings:read and an approved contract permission.",
         "tags": [
           "Settings"
         ],
@@ -59464,7 +59800,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer_or_service_principal"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -59475,13 +59812,32 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "result": {
               "encoding": "json",
               "media_type": "application/json"
             },
             "arguments": [
               "path",
-              "query"
+              "query",
+              "context_token"
             ]
           }
         },
@@ -64697,8 +65053,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
                 }
               }
             }
@@ -64731,7 +65090,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer_or_service_principal"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -64742,13 +65102,32 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "result": {
               "encoding": "json",
               "media_type": "application/json"
             },
             "arguments": [
               "path",
-              "query"
+              "query",
+              "context_token"
             ]
           }
         },
@@ -64764,7 +65143,7 @@
       "put": {
         "operationId": "putModuleSettings",
         "summary": "Update module settings",
-        "description": "Validates the body against the manifest settings schema and applies it without a restart.",
+        "description": "Validates module settings and applies live. Admins use modules:write. The owning module uses module_settings:write plus an admin viewer context; modules:write is forbidden to modules.",
         "tags": [
           "Modules"
         ],
@@ -64865,6 +65244,149 @@
               "path",
               "query",
               "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/modules/{module_id}/own-settings": {
+      "put": {
+        "operationId": "putOwnModuleSettings",
+        "summary": "Update module settings",
+        "description": "Validates module settings and applies live. Admins use modules:write. The owning module uses module_settings:write plus an admin viewer context; modules:write is forbidden to modules.",
+        "tags": [
+          "Modules"
+        ],
+        "parameters": [
+          {
+            "name": "module_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "description": "Path parameter module_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "modules"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin"
+          ],
+          "scopes": [
+            "module_settings:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "setting.updated"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "putOwnModuleSettings",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token",
               "body"
             ]
           }
@@ -66911,6 +67433,7 @@
           "contract_unlinked",
           "not_found",
           "payload_too_large",
+          "too_large",
           "forbidden"
         ],
         "requestBody": {
@@ -66930,7 +67453,7 @@
       "post": {
         "operationId": "pushModuleContractEvent",
         "summary": "Push a contract event to linked consumers",
-        "description": "The provider module's bearer with contracts:provide queues a contract event for every linked consumer, delivered like core events (CORE-31).",
+        "description": "The provider module's bearer with contracts:provide queues a contract event for the named linked consumer, delivered like core events (CORE-31).",
         "tags": [
           "Modules"
         ],
@@ -67060,9 +67583,26 @@
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
+                  "id",
+                  "contract",
+                  "consumer_id",
+                  "occurred_at",
                   "action"
                 ],
                 "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "contract": {
+                    "type": "string"
+                  },
+                  "consumer_id": {
+                    "type": "string"
+                  },
+                  "occurred_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
                   "action": {
                     "type": "string"
                   },
@@ -68710,7 +69250,7 @@
       "post": {
         "operationId": "deliverModuleEvent",
         "summary": "Deliver a signed event to a subscribed module.",
-        "description": "Before any WebhookEvent body is serialized, the core checks that the module is installed, subscribed to the event type, approved for that event's read scope, and allowed through the matter wall. An attorney-only conflict record is not serialized. A module that fails any check receives no POST and no record id or summary. The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module webhook secret. A plain SHA-256 of the body is not accepted. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the opaque X-Togavsu-Task-Authorization credential on those later calls. The core verifies that credential. A caller-supplied claim object is not a grant. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. file.background_authorized delivers background_file_authorization to the installed module that holds files:write. That grant is one matter the service principal can access, the publication sequence, and an expiry. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment. payment.refund_authorized delivers refund_authorization to the payment source module the same way for updatePaymentRefundStatus.",
+        "description": "Before any WebhookEvent body is serialized, the core checks that the module is installed, subscribed to the event type, approved for that event's read scope, and allowed through the matter wall. An attorney-only conflict record is not serialized. A module that fails any check receives no POST and no record id or summary. The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is t=<unix>,v1=<hex>, HMAC-SHA256 of decimal timestamp + dot + raw body, keyed with a nonempty module webhook secret. X-Togavsu-Timestamp repeats the signed timestamp. Verify within five minutes using constant-time comparison. The kit also accepts batch 2 sha256=<hex> raw-body HMAC, checking its unsigned X-Togavsu-Timestamp when present; that form has no timestamp replay protection. Deduplicate event ids for both forms. A plain SHA-256 of the body is not accepted. X-Togavsu-Timestamp contains decimal Unix seconds. Walled records require an inside-wall delegated viewer. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the opaque X-Togavsu-Task-Authorization credential on those later calls. The core verifies that credential. A caller-supplied claim object is not a grant. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. file.background_authorized delivers background_file_authorization to the installed module that holds files:write. That grant is one matter the service principal can access, the publication sequence, and an expiry. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment. payment.refund_authorized delivers refund_authorization to the payment source module the same way for updatePaymentRefundStatus.",
         "x-togavsu-task-delivery": {
           "event_type": "file.version_created",
           "delivered_on": "moduleEvent",
@@ -69108,10 +69648,10 @@
             "name": "X-Togavsu-Signature",
             "in": "header",
             "required": true,
-            "description": "sha256= plus lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module webhook secret.",
+            "description": "Core sends t=<unix>,v1=<hex> HMAC-SHA256 of timestamp + dot + raw body; five-minute window, constant-time comparison and nonempty secret. Kit also accepts sha256=<hex> raw-body HMAC with optional unsigned timestamp.",
             "schema": {
               "type": "string",
-              "pattern": "^sha256=[a-f0-9]{64}$"
+              "pattern": "^t=-?[0-9]+,v1=[a-f0-9]{64}$"
             }
           },
           {
@@ -69331,6 +69871,7 @@
           "code": {
             "type": "string",
             "enum": [
+              "too_large",
               "validation_failed",
               "unauthenticated",
               "csrf_required",
@@ -78991,6 +79532,21 @@
           "modules.replace_time",
           "modules.replace_trust",
           "modules.replace_calendar",
+          "modules.service_call_limit.getDeadline",
+          "modules.service_call_limit.listDeadline",
+          "modules.service_call_limit.getCalendarEvent",
+          "modules.service_call_limit.listMatterParty",
+          "modules.service_call_limit.getMatterParty",
+          "modules.service_call_limit.getFirmProfile",
+          "modules.service_call_limit.listUserDirectory",
+          "modules.service_call_limit.listContactAddress",
+          "modules.service_call_limit.getContactAddress",
+          "modules.service_call_limit.listPartyRole",
+          "modules.service_call_limit.getPartyRole",
+          "modules.service_call_limit.listCustomFieldDefinition",
+          "modules.service_call_limit.getCustomFieldDefinition",
+          "modules.service_call_limit.listSettings",
+          "modules.service_call_limit.getSetting",
           "modules.service_call_limit.createContact",
           "modules.service_call_limit.getContact",
           "modules.service_call_limit.listContact",
@@ -79380,6 +79936,10 @@
           "name": {
             "type": "string"
           },
+          "work_email": {
+            "type": "string",
+            "format": "email"
+          },
           "roles": {
             "type": "array",
             "items": {
@@ -79404,7 +79964,7 @@
           "roles",
           "active"
         ],
-        "description": "One directory row. No email, auth or rate fields. A client caller receives only id and name."
+        "description": "One directory row. Work email for staff and modules; no auth or rate fields. A client caller receives only id and name."
       },
       "UserDirectoryClient": {
         "type": "object",
@@ -81102,13 +81662,20 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "description": "UUIDv7."
+                "description": "User UUID or module id for a module actor."
               },
               {
                 "type": "null"
               }
             ]
+          },
+          "actor_name": {
+            "type": "string",
+            "description": "User display name when available; never a raw id."
+          },
+          "module_id": {
+            "type": "string",
+            "description": "Module through which the actor acted, or empty for a direct action."
           },
           "action": {
             "type": "string"
@@ -81448,7 +82015,7 @@
           "record_id",
           "summary"
         ],
-        "description": "Signed webhook body. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module's webhook secret. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read."
+        "description": "Signed webhook body. X-Togavsu-Signature is t=<unix>,v1=<hex> HMAC-SHA256 of timestamp + dot + raw body, keyed with the module's webhook secret; X-Togavsu-Timestamp repeats the signed timestamp, checked within five minutes with constant-time comparison. The kit also accepts sha256=<hex> raw-body HMAC with an optional unsigned timestamp, which offers no timestamp replay protection. Deduplicate event ids for both forms. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read."
       },
       "Backup": {
         "type": "object",
@@ -82899,6 +83466,54 @@
               "$ref": "#/components/schemas/ManifestPermission"
             },
             "description": "Requested scopes. A string means required. An object may set required false."
+          },
+          "contact_phone_items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "path"
+              ],
+              "description": "Actions beside contact phone rows; requires contacts:read. Module paths are framed with a viewer context."
+            }
+          },
+          "inbound_webhooks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "forward_authorization": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "required": [
+                "id",
+                "path"
+              ],
+              "description": "Per-hook Authorization forwarding requires approved webhooks:authorization. Provider credentials are never core auth."
+            }
           },
           "widgets": {
             "type": "array",
@@ -89035,29 +89650,48 @@
         "createNotification",
         "deleteCalendarEvent",
         "downloadFileRendition",
+        "getCalendarEvent",
         "getConflictCheck",
         "getContact",
+        "getContactAddress",
         "getContactEmail",
         "getContactPhone",
+        "getCustomFieldDefinition",
+        "getDeadline",
         "getExpense",
+        "getFirmProfile",
         "getInvoice",
         "getMatter",
+        "getMatterParty",
+        "getModuleSettings",
+        "getNote",
+        "getPartyRole",
         "getPayment",
+        "getSetting",
         "getTrustAccount",
         "getTrustBalances",
         "getTrustEntry",
         "listCalendarEvent",
         "listContact",
+        "listContactAddress",
         "listContactEmail",
         "listContactPhone",
+        "listCustomFieldDefinition",
+        "listDeadline",
         "listExpense",
+        "listFile",
         "listFileRenditions",
         "listInvoice",
         "listMatter",
+        "listMatterParty",
         "listMatterTimeline",
+        "listNote",
+        "listPartyRole",
         "listPayment",
+        "listSettings",
         "listTrustAccount",
         "listTrustEntry",
+        "listUserDirectory",
         "markFileStatus",
         "matchMail",
         "previewAvailableDates",
@@ -91380,6 +92014,156 @@
       "help": "Module id that handles the calendar domain. Empty means the core."
     },
     {
+      "key": "modules.service_call_limit.getDeadline",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to getDeadline allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.listDeadline",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to listDeadline allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.getCalendarEvent",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to getCalendarEvent allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.listMatterParty",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to listMatterParty allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.getMatterParty",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to getMatterParty allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.getFirmProfile",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to getFirmProfile allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.listUserDirectory",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to listUserDirectory allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.listContactAddress",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to listContactAddress allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.getContactAddress",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to getContactAddress allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.listPartyRole",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to listPartyRole allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.getPartyRole",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to getPartyRole allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.listCustomFieldDefinition",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to listCustomFieldDefinition allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.getCustomFieldDefinition",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to getCustomFieldDefinition allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.listSettings",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to listSettings allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.getSetting",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to getSetting allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
       "key": "modules.service_call_limit.createContact",
       "type": "integer",
       "tab": "modules_and_marketplace",
@@ -92013,6 +92797,10 @@
       "description": "Store and read the calling module's own sealed secrets."
     },
     {
+      "scope": "module_settings:write",
+      "description": "Save only the calling module settings, with an admin setup viewer."
+    },
+    {
       "scope": "modules:read",
       "description": "Read modules, marketplace listings, and domain handlers."
     },
@@ -92123,6 +92911,10 @@
     {
       "scope": "users:write",
       "description": "Create or change users."
+    },
+    {
+      "scope": "webhooks:authorization",
+      "description": "Receive provider Authorization on only inbound hooks explicitly opting in; never core authentication."
     },
     {
       "scope": "webhooks:read",

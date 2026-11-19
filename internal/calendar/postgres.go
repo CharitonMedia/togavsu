@@ -517,9 +517,9 @@ func (p *Postgres) AppendEvent(ctx context.Context, row domain.Event) error {
 		kind = "staff"
 	}
 	_, err := p.q(ctx).ExecContext(ctx, `INSERT INTO events (id, created_at, updated_at, created_by, actor_kind, actor_id, action, record_type,
-record_id, matter_id, summary, client_visible) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,(SELECT id FROM matters WHERE id = $10),$11,$12)`,
+record_id, matter_id, summary, client_visible, module_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,(SELECT id FROM matters WHERE id = $10),$11,$12,$13)`,
 		string(row.ID), domain.UnixMicroUTC(row.CreatedAt), domain.UnixMicroUTC(row.UpdatedAt), string(row.CreatedBy), kind, string(row.ActorID),
-		row.Action, row.RecordType, string(row.RecordID), nullID(row.MatterID), row.Summary, bit(row.ClientVisible))
+		row.Action, row.RecordType, string(row.RecordID), nullID(row.MatterID), row.Summary, bit(row.ClientVisible), row.ModuleID)
 	return err
 }
 

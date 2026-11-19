@@ -258,6 +258,7 @@
     "listContactAddress",
     "listContactEmail",
     "listContactPhone",
+    "listContactPhoneItems",
     "listContactTag",
     "listCounty",
     "listCourtProfile",
@@ -358,6 +359,7 @@
     "putModuleSecret",
     "putModuleSettings",
     "putNotificationPreferences",
+    "putOwnModuleSettings",
     "putRoleLayout",
     "putSidebarState",
     "putSmtpPassword",
@@ -610,14 +612,14 @@
       "prd": [
         "7"
       ],
-      "source": "api/tests/test_contract.py:4371-4486",
+      "source": "api/tests/test_contract.py:4372-4499",
       "source_line_basis": "current_worktree",
       "kind": "both",
-      "assertion_call_sites": 40,
+      "assertion_call_sites": 51,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 4380,
+          "line": 4381,
           "literal_rows": 6,
           "rows": [
             [
@@ -700,12 +702,23 @@
         "self.assertEqual(event_read_scopes(\"not.a.real.event\"), [])",
         "self.assertEqual(event_read_scopes(\"custom_field.updated\", None), [])",
         "self.assertEqual(event_read_scopes(\"custom_field.updated\", \"time_entry\"), [\"time:read\"])",
-        "self.assertEqual(signature, \"sha256=e9464e954a1b5f9acf9da3a55d8f0a31d00090a745fa83e3591fe7d2afcbae88\")",
+        "self.assertEqual(signature, \"t=1800000000,v1=a4c62ca1c0c64efe8564cb0f7413c1d5cb952cd733635121d4cd6a6a8990c4e8\")",
+        "self.assertTrue(webhook_signature_matches(secret, payload, legacy))",
+        "self.assertTrue(webhook_signature_matches(secret, payload, legacy, timestamp=1800000000))",
+        "self.assertFalse(webhook_signature_matches(secret, payload, legacy, now=1800000301, timestamp=1800000000))",
+        "self.assertFalse(webhook_signature_matches(secret, payload + b\" \", legacy))",
+        "self.assertFalse(webhook_signature_matches(secret, payload, signature, timestamp=1800000001))",
+        "self.assertFalse(webhook_signature_matches(secret, payload, signature.replace(\"1800000000\", \"1800000301\"), now=1800000301))",
+        "self.assertTrue(webhook_signature_matches(secret, payload, signature, timestamp=1800000000))",
         "self.assertTrue(webhook_signature_matches(secret, payload, signature))",
-        "self.assertFalse(webhook_signature_matches(secret, payload + b\" \", signature))",
-        "self.assertFalse(webhook_signature_matches(b\"other-secret\", payload, signature))",
+        "self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1800000301, timestamp=1800000000))",
+        "self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1799999699, timestamp=1800000000))",
+        "self.assertFalse(webhook_signature_matches(b\"\", payload, signature, timestamp=1800000000))",
+        "self.assertEqual(webhook_signature(b\"\", payload), \"\")",
+        "self.assertFalse(webhook_signature_matches(secret, payload + b\" \", signature, timestamp=1800000000))",
+        "self.assertFalse(webhook_signature_matches(b\"other-secret\", payload, signature, timestamp=1800000000))",
         "self.assertNotEqual(plain, signature)",
-        "self.assertFalse(webhook_signature_matches(secret, payload, plain))",
+        "self.assertFalse(webhook_signature_matches(secret, payload, plain, timestamp=1800000000))",
         "self.assertIn(\"HMAC-SHA256\", self.spec[\"components\"][\"schemas\"][\"WebhookEvent\"][\"description\"])",
         "self.assertIn(\"keyed\", self.spec[\"webhooks\"][\"moduleEvent\"][\"post\"][\"description\"])",
         "self.assertEqual(published[event_type], scopes, event_type)",
@@ -738,7 +751,7 @@
         "7",
         "9.3"
       ],
-      "source": "api/tests/test_contract.py:7200-7244",
+      "source": "api/tests/test_contract.py:7213-7257",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 4,
@@ -935,7 +948,7 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:2387-2499",
+      "source": "api/tests/test_contract.py:2388-2500",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 20,
@@ -978,14 +991,14 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:2808-2967",
+      "source": "api/tests/test_contract.py:2809-2968",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 34,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 2872,
+          "line": 2873,
           "literal_rows": 3,
           "rows": [
             [
@@ -1076,14 +1089,14 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:3456-3768",
+      "source": "api/tests/test_contract.py:3457-3769",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 109,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 3520,
+          "line": 3521,
           "literal_rows": 4,
           "rows": [
             [
@@ -1166,7 +1179,7 @@
           "is_scenario": false
         },
         {
-          "line": 3614,
+          "line": 3615,
           "literal_rows": 14,
           "rows": [
             [
@@ -1570,14 +1583,14 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:3770-3938",
+      "source": "api/tests/test_contract.py:3771-3939",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 33,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 3832,
+          "line": 3833,
           "literal_rows": 3,
           "rows": [
             [
@@ -1623,7 +1636,7 @@
           "is_scenario": false
         },
         {
-          "line": 3866,
+          "line": 3867,
           "literal_rows": 6,
           "rows": [
             [
@@ -1786,14 +1799,14 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:4117-4165",
+      "source": "api/tests/test_contract.py:4118-4166",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 21,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 4143,
+          "line": 4144,
           "literal_rows": 9,
           "rows": [
             [
@@ -1962,14 +1975,14 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:5638-5715",
+      "source": "api/tests/test_contract.py:5651-5728",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 25,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 5701,
+          "line": 5714,
           "literal_rows": 9,
           "rows": [
             [
@@ -2226,14 +2239,14 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:2701-2776",
+      "source": "api/tests/test_contract.py:2702-2777",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 20,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 2744,
+          "line": 2745,
           "literal_rows": 4,
           "rows": [
             [
@@ -2282,7 +2295,7 @@
           "is_scenario": false
         },
         {
-          "line": 2757,
+          "line": 2758,
           "literal_rows": 14,
           "rows": [
             [
@@ -2622,14 +2635,14 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:2778-2806",
+      "source": "api/tests/test_contract.py:2779-2807",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 11,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 2790,
+          "line": 2791,
           "literal_rows": 6,
           "rows": [
             [
@@ -2763,7 +2776,7 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:4199-4236",
+      "source": "api/tests/test_contract.py:4200-4237",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 11,
@@ -2797,7 +2810,7 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:5717-5766",
+      "source": "api/tests/test_contract.py:5730-5779",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 17,
@@ -2837,14 +2850,14 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:6146-6311",
+      "source": "api/tests/test_contract.py:6159-6324",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 77,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 6244,
+          "line": 6257,
           "literal_rows": 6,
           "rows": [
             [
@@ -3001,14 +3014,14 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:7860-8020",
+      "source": "api/tests/test_contract.py:7873-8033",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 64,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 7946,
+          "line": 7959,
           "literal_rows": 3,
           "rows": [
             [
@@ -3161,14 +3174,14 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:9941-10079",
+      "source": "api/tests/test_contract.py:9954-10092",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 19,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 10060,
+          "line": 10073,
           "literal_rows": 6,
           "rows": [
             [
@@ -3255,7 +3268,7 @@
           "is_scenario": false
         },
         {
-          "line": 10038,
+          "line": 10051,
           "literal_rows": 12,
           "rows": [
             [
@@ -3510,7 +3523,7 @@
       "prd": [
         "6"
       ],
-      "source": "api/tests/test_contract.py:3129-3234",
+      "source": "api/tests/test_contract.py:3130-3235",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 33,
@@ -3566,14 +3579,14 @@
       "prd": [
         "6"
       ],
-      "source": "api/tests/test_contract.py:5522-5636",
+      "source": "api/tests/test_contract.py:5535-5649",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 26,
       "loop_count": 5,
       "literal_rows": [
         {
-          "line": 5577,
+          "line": 5590,
           "literal_rows": 11,
           "rows": [
             [
@@ -3692,7 +3705,7 @@
           "is_scenario": false
         },
         {
-          "line": 5596,
+          "line": 5609,
           "literal_rows": 3,
           "rows": [
             [
@@ -3776,7 +3789,7 @@
       "prd": [
         "6"
       ],
-      "source": "api/tests/test_contract.py:8453-8545",
+      "source": "api/tests/test_contract.py:8466-8558",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 47,
@@ -3846,14 +3859,14 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:7139-7198",
+      "source": "api/tests/test_contract.py:7152-7211",
       "source_line_basis": "current_worktree",
       "kind": "simulator_behavior",
       "assertion_call_sites": 21,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 7177,
+          "line": 7190,
           "literal_rows": 5,
           "rows": [
             [
@@ -4351,7 +4364,7 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:2564-2650",
+      "source": "api/tests/test_contract.py:2565-2651",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 23,
@@ -4398,7 +4411,7 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:2652-2699",
+      "source": "api/tests/test_contract.py:2653-2700",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 14,
@@ -4435,14 +4448,14 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:4298-4369",
+      "source": "api/tests/test_contract.py:4299-4370",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 22,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 4321,
+          "line": 4322,
           "literal_rows": 5,
           "rows": [
             [
@@ -4552,7 +4565,7 @@
           "is_scenario": false
         },
         {
-          "line": 4353,
+          "line": 4354,
           "literal_rows": 3,
           "rows": [
             [
@@ -4681,14 +4694,14 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:4488-4697",
+      "source": "api/tests/test_contract.py:4501-4710",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 49,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 4489,
+          "line": 4502,
           "literal_rows": 40,
           "rows": [
             [
@@ -5444,14 +5457,14 @@
         "5",
         "9"
       ],
-      "source": "api/tests/test_contract.py:4784-4918",
+      "source": "api/tests/test_contract.py:4797-4931",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 12,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 4910,
+          "line": 4923,
           "literal_rows": 3,
           "rows": [
             [
@@ -5517,7 +5530,7 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:5071-5273",
+      "source": "api/tests/test_contract.py:5084-5286",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 39,
@@ -5579,14 +5592,14 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:6361-6522",
+      "source": "api/tests/test_contract.py:6374-6535",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 75,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 6439,
+          "line": 6452,
           "literal_rows": 6,
           "rows": [
             [
@@ -5992,7 +6005,7 @@
         "8",
         "9"
       ],
-      "source": "api/tests/test_contract.py:2969-3069",
+      "source": "api/tests/test_contract.py:2970-3070",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 30,
@@ -6047,7 +6060,7 @@
         "8.3",
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:3071-3127",
+      "source": "api/tests/test_contract.py:3072-3128",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 11,
@@ -6083,7 +6096,7 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:4020-4115",
+      "source": "api/tests/test_contract.py:4021-4116",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 23,
@@ -6130,14 +6143,14 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:4167-4197",
+      "source": "api/tests/test_contract.py:4168-4198",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 6,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 4176,
+          "line": 4177,
           "literal_rows": 18,
           "rows": [
             [
@@ -6530,14 +6543,14 @@
         "8.19",
         "8.21"
       ],
-      "source": "api/tests/test_contract.py:4920-4997",
+      "source": "api/tests/test_contract.py:4933-5010",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 8,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 4953,
+          "line": 4966,
           "literal_rows": 4,
           "rows": [
             [
@@ -6656,14 +6669,14 @@
         "7",
         "9"
       ],
-      "source": "api/tests/test_contract.py:5275-5520",
+      "source": "api/tests/test_contract.py:5288-5533",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 31,
       "loop_count": 4,
       "literal_rows": [
         {
-          "line": 5469,
+          "line": 5482,
           "literal_rows": 2,
           "rows": [
             [
@@ -6750,14 +6763,14 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:5815-5882",
+      "source": "api/tests/test_contract.py:5828-5895",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 18,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 5861,
+          "line": 5874,
           "literal_rows": 6,
           "rows": [
             [
@@ -6892,14 +6905,14 @@
         "7",
         "9"
       ],
-      "source": "api/tests/test_contract.py:7246-7604",
+      "source": "api/tests/test_contract.py:7259-7617",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 23,
       "loop_count": 4,
       "literal_rows": [
         {
-          "line": 7359,
+          "line": 7372,
           "literal_rows": 15,
           "rows": [
             [
@@ -7104,14 +7117,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:8022-8211",
+      "source": "api/tests/test_contract.py:8035-8224",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 61,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 8127,
+          "line": 8140,
           "literal_rows": 2,
           "rows": [
             [
@@ -7229,14 +7242,14 @@
         "7",
         "9"
       ],
-      "source": "api/tests/test_contract.py:8213-8451",
+      "source": "api/tests/test_contract.py:8226-8464",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 41,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 8276,
+          "line": 8289,
           "literal_rows": 6,
           "rows": [
             [
@@ -7330,7 +7343,7 @@
           "is_scenario": false
         },
         {
-          "line": 8344,
+          "line": 8357,
           "literal_rows": 8,
           "rows": [
             [
@@ -7566,14 +7579,14 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:8547-8759",
+      "source": "api/tests/test_contract.py:8560-8772",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 43,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 8679,
+          "line": 8692,
           "literal_rows": 6,
           "rows": [
             [
@@ -7720,14 +7733,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:8761-8995",
+      "source": "api/tests/test_contract.py:8774-9008",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 57,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 8808,
+          "line": 8821,
           "literal_rows": 6,
           "rows": [
             [
@@ -7813,7 +7826,7 @@
           "is_scenario": false
         },
         {
-          "line": 8858,
+          "line": 8871,
           "literal_rows": 5,
           "rows": [
             [
@@ -7944,14 +7957,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:8997-9176",
+      "source": "api/tests/test_contract.py:9010-9189",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 36,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 9034,
+          "line": 9047,
           "literal_rows": 6,
           "rows": [
             [
@@ -8124,14 +8137,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:9178-9302",
+      "source": "api/tests/test_contract.py:9191-9315",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 21,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 9206,
+          "line": 9219,
           "literal_rows": 5,
           "rows": [
             [
@@ -8267,14 +8280,14 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:9304-9606",
+      "source": "api/tests/test_contract.py:9317-9619",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 61,
       "loop_count": 5,
       "literal_rows": [
         {
-          "line": 9361,
+          "line": 9374,
           "literal_rows": 6,
           "rows": [
             [
@@ -8382,7 +8395,7 @@
           "is_scenario": false
         },
         {
-          "line": 9448,
+          "line": 9461,
           "literal_rows": 3,
           "rows": [
             [
@@ -8440,7 +8453,7 @@
           "is_scenario": false
         },
         {
-          "line": 9507,
+          "line": 9520,
           "literal_rows": 2,
           "rows": [
             [
@@ -8469,7 +8482,7 @@
           "is_scenario": false
         },
         {
-          "line": 9589,
+          "line": 9602,
           "literal_rows": 5,
           "rows": [
             [
@@ -8641,14 +8654,14 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:9608-9939",
+      "source": "api/tests/test_contract.py:9621-9952",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 47,
       "loop_count": 4,
       "literal_rows": [
         {
-          "line": 9655,
+          "line": 9668,
           "literal_rows": 5,
           "rows": [
             [
@@ -8739,7 +8752,7 @@
           "is_scenario": false
         },
         {
-          "line": 9773,
+          "line": 9786,
           "literal_rows": 3,
           "rows": [
             [
@@ -8788,7 +8801,7 @@
           "is_scenario": false
         },
         {
-          "line": 9830,
+          "line": 9843,
           "literal_rows": 8,
           "rows": [
             [
@@ -8902,7 +8915,7 @@
           "is_scenario": false
         },
         {
-          "line": 9852,
+          "line": 9865,
           "literal_rows": 2,
           "rows": [
             [
@@ -9081,14 +9094,14 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:3940-4018",
+      "source": "api/tests/test_contract.py:3941-4019",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 11,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 3976,
+          "line": 3977,
           "literal_rows": 7,
           "rows": [
             [
@@ -9213,7 +9226,7 @@
           "is_scenario": false
         },
         {
-          "line": 4009,
+          "line": 4010,
           "literal_rows": 4,
           "rows": [
             [
@@ -9290,7 +9303,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:5768-5813",
+      "source": "api/tests/test_contract.py:5781-5826",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 24,
@@ -9337,7 +9350,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:5993-6144",
+      "source": "api/tests/test_contract.py:6006-6157",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 14,
@@ -9374,7 +9387,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:7034-7137",
+      "source": "api/tests/test_contract.py:7047-7150",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 32,
@@ -9429,7 +9442,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:7606-7669",
+      "source": "api/tests/test_contract.py:7619-7682",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 34,
@@ -9486,7 +9499,7 @@
       "prd": [
         "8.12"
       ],
-      "source": "api/tests/test_contract.py:7671-7749",
+      "source": "api/tests/test_contract.py:7684-7762",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 42,
@@ -9551,7 +9564,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:7813-7858",
+      "source": "api/tests/test_contract.py:7826-7871",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 14,
@@ -9620,14 +9633,14 @@
       "prd": [
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:3289-3454",
+      "source": "api/tests/test_contract.py:3290-3455",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 40,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 3311,
+          "line": 3312,
           "literal_rows": 7,
           "rows": [
             [
@@ -9808,7 +9821,7 @@
           "is_scenario": false
         },
         {
-          "line": 3435,
+          "line": 3436,
           "literal_rows": 12,
           "rows": [
             [
@@ -10172,7 +10185,7 @@
       "prd": [
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:5884-5991",
+      "source": "api/tests/test_contract.py:5897-6004",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 18,
@@ -10214,14 +10227,14 @@
       "prd": [
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:6313-6359",
+      "source": "api/tests/test_contract.py:6326-6372",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 14,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 6342,
+          "line": 6355,
           "literal_rows": 6,
           "rows": [
             [
@@ -10364,14 +10377,14 @@
       "prd": [
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:6524-7032",
+      "source": "api/tests/test_contract.py:6537-7045",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 107,
       "loop_count": 6,
       "literal_rows": [
         {
-          "line": 6625,
+          "line": 6638,
           "literal_rows": 3,
           "rows": [
             [
@@ -10545,7 +10558,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:4999-5069",
+      "source": "api/tests/test_contract.py:5012-5082",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 20,
@@ -10584,7 +10597,7 @@
     "api": {
       "go_owner": "api",
       "methods": 4,
-      "assertion_call_sites": 117,
+      "assertion_call_sites": 128,
       "literal_rows": 6,
       "method_names": [
         "test_mcp_public_bootstrap_tools_need_no_credential",

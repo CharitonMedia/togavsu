@@ -209,6 +209,9 @@ type moduleMailAttach struct {
 }
 
 func (m *systemMailer) postModule(ctx context.Context, route modules.SystemMailRoute, msg systemMail) error {
+	if route.Secret == "" {
+		return errors.New("modules: empty webhook secret")
+	}
 	atts := make([]moduleMailAttach, 0, len(msg.Attachments))
 	for _, a := range msg.Attachments {
 		ctype := a.ContentType
@@ -230,7 +233,14 @@ func (m *systemMailer) postModule(ctx context.Context, route modules.SystemMailR
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", msg.ID)
-	req.Header.Set(modules.SignatureHeader, modules.SignWebhook(route.Secret, m.now(), raw))
+	at := m.now()
+	headers := modules.SignWebhookHeaders(route.Secret, at, raw)
+	if headers == nil {
+		return errors.New("modules: empty webhook secret")
+	}
+	for key, values := range headers {
+		req.Header[key] = values
+	}
 	resp, err := m.client().Do(req)
 	if err != nil {
 		return err

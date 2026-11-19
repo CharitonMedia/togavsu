@@ -209,6 +209,8 @@ func (a *App) appendEvents(ctx context.Context, p domain.Principal, items []even
 		if it.MatterID != nil {
 			ev.MatterID = *it.MatterID
 		}
+		ev.ActorID = p.EventActor()
+		ev.ModuleID = p.ModuleID
 		if err := db.PublishEvent(ctx, tx, ev); err != nil {
 			return nil, err
 		}
@@ -222,7 +224,7 @@ func (a *App) appendEvents(ctx context.Context, p domain.Principal, items []even
 		}
 		notice := domain.Event{
 			Meta:      domain.Meta{ID: nid, CreatedAt: now, UpdatedAt: now, CreatedBy: actor},
-			ActorKind: kind, ActorID: actor, Action: "event.appended", RecordType: "event",
+			ActorKind: kind, ActorID: p.EventActor(), ModuleID: p.ModuleID, Action: "event.appended", RecordType: "event",
 			RecordID: id, MatterID: ev.MatterID, Summary: "Event appended: " + it.Action,
 		}
 		if err := db.PublishEvent(ctx, tx, notice); err != nil {
@@ -237,17 +239,7 @@ func (a *App) appendEvents(ctx context.Context, p domain.Principal, items []even
 }
 
 // eventActorKind is set from the token, never from the body.
-func eventActorKind(p domain.Principal) string {
-	switch p.Source {
-	case domain.SourceSystem:
-		return "system"
-	case domain.SourceModule, domain.SourceService:
-		return "module"
-	case domain.SourceAPIToken:
-		return "agent"
-	}
-	return "staff"
-}
+func eventActorKind(p domain.Principal) string { return p.EventActorKind() }
 
 func eventJSON(ev domain.Event) map[string]any {
 	var actor, matter any
@@ -263,7 +255,7 @@ func eventJSON(ev domain.Event) map[string]any {
 	}
 	return map[string]any{
 		"id": ev.ID, "created_at": ev.CreatedAt.UTC().Format(time.RFC3339Nano), "created_by": by,
-		"actor_kind": ev.ActorKind, "actor_id": actor, "action": ev.Action, "record_type": ev.RecordType,
+		"actor_kind": ev.ActorKind, "actor_id": actor, "module_id": ev.ModuleID, "action": ev.Action, "record_type": ev.RecordType,
 		"record_id": ev.RecordID, "matter_id": matter, "summary": ev.Summary, "client_visible": ev.ClientVisible,
 	}
 }
@@ -503,14 +495,13 @@ func (a *App) listEventsJSON(w http.ResponseWriter, r *http.Request) {
 
 // feed reads pages of core.events until it has q.Limit rows the caller may see.
 func (a *App) feed(ctx context.Context, p domain.Principal, q eventQuery) ([]map[string]any, *eventCursor, error) {
-	attorney := p.HasRole(domain.RoleAdmin) || p.HasRole(domain.RoleAttorney)
 	out := []map[string]any{}
 	after := q.After
 	batch := q.Limit + 1
 	for {
 		sql := `SELECT e.id, e.created_at, e.created_by, e.actor_kind, e.actor_id, e.action, e.record_type, e.record_id,
-COALESCE(e.matter_id, ''), e.summary, e.client_visible, COALESCE(f.attorney_only, 0)
-FROM events e LEFT JOIN files f ON e.record_type = 'file' AND f.id = e.record_id
+COALESCE(e.matter_id, ''), e.summary, e.client_visible, e.module_id
+FROM events e
 WHERE e.created_at >= $1`
 		args := []any{q.From}
 		add := func(cond string, v any) {
@@ -520,7 +511,9 @@ WHERE e.created_at >= $1`
 		if q.To != nil {
 			add("e.created_at < ?", *q.To)
 		}
-		if q.ActorKind != "" {
+		if q.ActorKind == "module" {
+			sql += " AND (e.actor_kind = 'module' OR e.module_id <> '')"
+		} else if q.ActorKind != "" {
 			add("e.actor_kind = ?", q.ActorKind)
 		}
 		if !q.ActorID.IsZero() {
@@ -541,28 +534,26 @@ WHERE e.created_at >= $1`
 			return nil, nil, err
 		}
 		var page []domain.Event
-		var hidden []bool
 		for rows.Next() {
 			var ev domain.Event
 			var at int64
-			var visible, attorneyOnly int
+			var visible int
 			if err := rows.Scan(&ev.ID, &at, &ev.CreatedBy, &ev.ActorKind, &ev.ActorID, &ev.Action, &ev.RecordType, &ev.RecordID,
-				&ev.MatterID, &ev.Summary, &visible, &attorneyOnly); err != nil {
+				&ev.MatterID, &ev.Summary, &visible, &ev.ModuleID); err != nil {
 				rows.Close()
 				return nil, nil, err
 			}
 			ev.CreatedAt, ev.UpdatedAt = domain.FromUnixMicro(at), domain.FromUnixMicro(at)
 			ev.ClientVisible = visible != none
 			page = append(page, ev)
-			hidden = append(hidden, attorneyOnly != none && !attorney)
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
 			return nil, nil, err
 		}
-		for i, ev := range page {
+		for _, ev := range page {
 			last := &eventCursor{At: domain.UnixMicroUTC(ev.CreatedAt), ID: ev.ID}
-			if hidden[i] || !a.Practice.FeedAllows(ctx, p, ev) {
+			if !a.Practice.FeedAllows(ctx, p, ev) {
 				after = last
 				continue
 			}

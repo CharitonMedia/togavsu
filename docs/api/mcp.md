@@ -55,3 +55,9 @@ Every operation carries `x-togavsu-mcp`:
 | `transport` | Only `postMcp`. |
 
 A feature in the coverage matrix is reachable on `/api/v1` (or the public path the product scope names) and through one of these tools. The matrix is `docs/api/coverage.md`. Generating that file is part of `python3 -m contract.build`. Handlers and the MCP server are later work. This document is the mapping they have to match.
+
+Module record reads use the same scopes and service-layer walls as REST. Walled gets
+require a context token for a user inside the wall; service calls answer `not_found`.
+Events grant no extra access. `tools/list` exposes the headers declared by each operation.
+`tools/call` rejects unknown header keys, Authorization and Host and never takes bearer
+credentials from arguments. Context-token arguments are verified like the context header.

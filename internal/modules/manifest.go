@@ -16,24 +16,25 @@ const ManifestFile = "togavsu-module.yaml"
 
 // Manifest is togavsu-module.yaml (PRD 9.2).
 type Manifest struct {
-	ID              string             `json:"id"`
-	Name            string             `json:"name"`
-	Version         string             `json:"version"`
-	Author          string             `json:"author"`
-	Homepage        string             `json:"homepage"`
-	License         string             `json:"license"`
-	Price           ManifestPrice      `json:"price"`
-	Container       Container          `json:"container"`
-	Permissions     []Permission       `json:"permissions"`
-	Widgets         []Widget           `json:"widgets"`
-	Help            HelpGuide          `json:"help"`
-	Tabs            []Tab              `json:"tabs"`
-	MatterItems     []MatterItem       `json:"matter_items"`
-	Sidebar         []Link             `json:"sidebar"`
-	QuickCreate     []Link             `json:"quick_create"`
-	Search          []Link             `json:"search_scopes"`
-	Notifications   []NotificationKind `json:"notifications"`
-	InboundWebhooks []InboundWebhook   `json:"inbound_webhooks"`
+	ID                string             `json:"id"`
+	Name              string             `json:"name"`
+	Version           string             `json:"version"`
+	Author            string             `json:"author"`
+	Homepage          string             `json:"homepage"`
+	License           string             `json:"license"`
+	Price             ManifestPrice      `json:"price"`
+	Container         Container          `json:"container"`
+	Permissions       []Permission       `json:"permissions"`
+	Widgets           []Widget           `json:"widgets"`
+	Help              HelpGuide          `json:"help"`
+	Tabs              []Tab              `json:"tabs"`
+	ContactPhoneItems []PhoneItem        `json:"contact_phone_items"`
+	MatterItems       []MatterItem       `json:"matter_items"`
+	Sidebar           []Link             `json:"sidebar"`
+	QuickCreate       []Link             `json:"quick_create"`
+	Search            []Link             `json:"search_scopes"`
+	Notifications     []NotificationKind `json:"notifications"`
+	InboundWebhooks   []InboundWebhook   `json:"inbound_webhooks"`
 	// ClientHome names one of this module's client tabs as the portal landing tab (CORE-10).
 	ClientHome string `json:"client_home"`
 	// DeviceConnect is the module path the device-connect page redirects to with #grant= (CORE-28).
@@ -102,8 +103,9 @@ type NotificationKind struct {
 
 // InboundWebhook is one provider webhook at POST /hooks/{module_id}/{id} (CORE-07).
 type InboundWebhook struct {
-	ID   string `json:"id"`
-	Path string `json:"path"`
+	ForwardAuthorization bool   `json:"forward_authorization"`
+	ID                   string `json:"id"`
+	Path                 string `json:"path"`
 }
 
 // Container is the image the supervisor runs, pinned by digest.
@@ -181,6 +183,13 @@ type Tab struct {
 
 // TabNav reports whether the tab appears in client portal navigation (default true).
 func (t Tab) TabNav() bool { return t.Nav == nil || *t.Nav }
+
+// PhoneItem is an action beside each contact phone, framed through the core.
+type PhoneItem struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Path  string `json:"path"`
+}
 
 // MatterItem is a matter-screen panel or action.
 type MatterItem struct {
@@ -849,6 +858,30 @@ func (m Manifest) validatePages(ok func(error) bool) bool {
 			}
 		}
 	}
+	seenPhones := map[string]bool{}
+	for i, it := range m.ContactPhoneItems {
+		f := fmt.Sprintf("contact_phone_items[%d]", i)
+		if !slug.MatchString(it.ID) || seenPhones[it.ID] || strings.TrimSpace(it.Title) == "" {
+			if !ok(invalid(f, "phone items need a unique id and title")) {
+				return false
+			}
+		}
+		seenPhones[it.ID] = true
+		if !ok(modulePath(f+".path", it.Path)) {
+			return false
+		}
+		declared := false
+		for _, permission := range m.Permissions {
+			if permission.Scope == "contacts:read" {
+				declared = true
+			}
+		}
+		if !declared {
+			if !ok(invalid(f, "phone items require contacts:read")) {
+				return false
+			}
+		}
+	}
 	for i, it := range m.MatterItems {
 		f := fmt.Sprintf("matter_items[%d]", i)
 		if !slug.MatchString(it.ID) || (it.Kind != "panel" && it.Kind != "action") || strings.TrimSpace(it.Title) == "" {
@@ -1147,6 +1180,19 @@ func (m Manifest) validateInboundWebhooks(ok func(error) bool) bool {
 				return false
 			}
 			continue
+		}
+		if h.ForwardAuthorization {
+			declared := false
+			for _, permission := range m.Permissions {
+				if permission.Scope == "webhooks:authorization" {
+					declared = true
+				}
+			}
+			if !declared {
+				if !ok(invalid(f, "forward_authorization requires webhooks:authorization")) {
+					return false
+				}
+			}
 		}
 		seen[h.ID] = true
 		if !ok(modulePath(f+".path", h.Path)) {

@@ -27,7 +27,8 @@ type Handler struct {
 	// Panels adds the matter screen's module items (PRD 9.4, 9.9): enabled modules' matter
 	// tabs as framed pages and their extension rows for this matter, read as the viewer.
 	// The core sets it when it wires the module runtime; nil shows none.
-	Panels func(r *http.Request, p domain.Principal, matter domain.ID) ([]ModulePanel, error)
+	PhoneItems func(*http.Request, domain.Principal, domain.ID) ([]PhoneRow, error)
+	Panels     func(r *http.Request, p domain.Principal, matter domain.ID) ([]ModulePanel, error)
 	// Relink moves module rows onto a merge's survivor inside the merge's transaction
 	// (PRD 9.9). The core sets it to the module runtime's Schemas.Relink; nil moves none.
 	Relink Relinker
@@ -182,6 +183,7 @@ type page struct {
 	NoteTo        string
 	Contacts      []domain.Contact
 	Contact       domain.Contact
+	PhoneRows     []PhoneRow
 	Activity      []ActivityGroup
 	Feed          ActivityView
 	Needs         []domain.Matter
@@ -583,7 +585,15 @@ func (h *Handler) contactPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, r, "contact.html", page{Title: row.FullName, CSRF: h.csrf(w, r), Contact: row, History: history, ContactFields: fields})
+	var phones []PhoneRow
+	if h.PhoneItems != nil {
+		phones, err = h.PhoneItems(r, p, id)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
+	h.render(w, r, "contact.html", page{Title: row.FullName, CSRF: h.csrf(w, r), Contact: row, History: history, ContactFields: fields, PhoneRows: phones})
 }
 
 func (h *Handler) activityPage(w http.ResponseWriter, r *http.Request) {

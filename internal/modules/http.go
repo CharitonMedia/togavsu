@@ -74,6 +74,7 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("POST /api/v1/modules/{module_id}/uninstall", h.write("modules:write", h.uninstall))
 	m.HandleFunc("POST /api/v1/modules/{module_id}/update", h.write("modules:write", h.update))
 	m.HandleFunc("GET /api/v1/modules/{module_id}/settings", h.scoped("", h.getSettings))
+	m.HandleFunc("PUT /api/v1/modules/{module_id}/own-settings", h.write("module_settings:write", h.putSettings))
 	m.HandleFunc("PUT /api/v1/modules/{module_id}/settings", h.write("modules:write", h.putSettings))
 	// {name...} so names may contain / (qbo/client_secret, account/<id>/kind).
 	m.HandleFunc("PUT /api/v1/modules/{module_id}/secrets/{name...}", h.write("module_secrets:write", h.putSecret))
@@ -101,6 +102,7 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("GET /modules/{module_id}/tabs/{tab}/context-token", h.scoped("", h.staffTabContextToken))
 	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}", h.scoped("", h.widgetPage))
 	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}/context-token", h.scoped("", h.staffWidgetContextToken))
+	m.HandleFunc("GET /modules/{module_id}/contact-phone-items/{item}", h.scoped("", h.phoneItemPage))
 	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}", h.scoped("", h.matterItemPage))
 	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}/context-token", h.scoped("", h.staffMatterItemContextToken))
 	m.HandleFunc("GET /modules/{module_id}/banner", h.scoped("", h.bannerPage))
@@ -159,7 +161,7 @@ func statusOf(err error) int {
 		return http.StatusBadGateway
 	case "contract_unlinked":
 		return http.StatusConflict
-	case "payload_too_large":
+	case "payload_too_large", "too_large":
 		return http.StatusRequestEntityTooLarge
 	case "scope_denied":
 		return http.StatusForbidden
@@ -497,6 +499,14 @@ func (h *Handler) getSettings(w http.ResponseWriter, r *http.Request, c Caller) 
 }
 
 func (h *Handler) putSettings(w http.ResponseWriter, r *http.Request, c Caller) {
+	scope := "modules:write"
+	if c.Principal.ModuleID != "" {
+		scope = "module_settings:write"
+	}
+	if c.Bearer && !hasScope(c.Scopes, scope) {
+		writeErr(w, scopeDenied(scope))
+		return
+	}
 	var body map[string]string
 	if err := decode(r, &body); err != nil {
 		writeErr(w, err)

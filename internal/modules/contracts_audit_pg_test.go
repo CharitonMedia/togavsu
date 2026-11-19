@@ -147,4 +147,13 @@ func TestCallContractFailsClosedWhenAuditFails(t *testing.T) {
 	if err != nil || status != http.StatusOK || !strings.Contains(string(body), `"ok":true`) {
 		t.Fatalf("healthy audit path: status=%d body=%s err=%v", status, body, err)
 	}
+	if _, err := e.app.Pool.ExecContext(e.ctx, `UPDATE core.modules SET webhook_secret='' WHERE id='phone-provider'`); err != nil {
+		t.Fatal(err)
+	}
+	before := providerHits
+	status, header, body, err := okSvc.CallContract(e.ctx, caller, contract, "echo", []byte(`{}`), "", "")
+	if err == nil || !strings.Contains(err.Error(), "empty webhook secret") || status != 0 || header != nil || body != nil || providerHits != before {
+		t.Fatalf("unsigned contract sent: status=%d hits=%d err=%v", status, providerHits, err)
+	}
+
 }

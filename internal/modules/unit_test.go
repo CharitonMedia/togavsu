@@ -204,21 +204,21 @@ func TestViewCallFromIsNotARelation(t *testing.T) {
 func TestWebhookSignature(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	body := []byte(`{"id":"e1"}`)
-	sig := modules.SignWebhook("s3cret", now, body)
-	if !strings.HasPrefix(sig, "sha256=") || len(sig) != len("sha256=")+64 {
+	sig := modules.SignWebhookHeaders("s3cret", now, body)
+	if !strings.HasPrefix(sig.Get(modules.SignatureHeader), "t=1800000000,v1=") || sig.Get(modules.TimestampHeader) != "1800000000" {
 		t.Fatalf("contract format: %q", sig)
 	}
-	if err := modules.VerifyWebhook("s3cret", sig, body, now, time.Minute); err != nil {
+	if err := modules.VerifyWebhookHeaders("s3cret", sig, body, now, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if err := modules.VerifyWebhook("other", sig, body, now, time.Minute); err == nil {
+	if err := modules.VerifyWebhookHeaders("other", sig, body, now, time.Minute); err == nil {
 		t.Fatal("wrong secret accepted")
 	}
-	if err := modules.VerifyWebhook("s3cret", sig, []byte(`{"id":"e2"}`), now, time.Minute); err == nil {
+	if err := modules.VerifyWebhookHeaders("s3cret", sig, []byte(`{"id":"e2"}`), now, time.Minute); err == nil {
 		t.Fatal("changed body accepted")
 	}
-	if err := modules.VerifyWebhook("s3cret", "t=1,v1=deadbeef", body, now, time.Minute); err == nil {
-		t.Fatal("legacy t=,v1= format accepted")
+	if err := modules.VerifyWebhookHeaders("s3cret", http.Header{modules.SignatureHeader: {"t=1,v1=deadbeef"}, modules.TimestampHeader: {"1800000000"}}, body, now, time.Minute); err == nil {
+		t.Fatal("malformed t=,v1= signature accepted")
 	}
 }
 

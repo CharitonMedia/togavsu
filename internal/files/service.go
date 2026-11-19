@@ -95,19 +95,21 @@ type Config struct {
 // Service is the one file store. Every method checks the caller in this layer, so the
 // API, MCP, UI, search, widgets and modules get the same answer.
 type Service struct {
-	st        *store
-	audit     *audit.Service
-	settings  Settings
-	dir       Directory
-	policy    domain.Policy
-	mail      Mailer
-	blobKey   []byte
-	configKey []byte
-	staging   string
-	http      *http.Client
-	now       func() time.Time
-	newID     func() (domain.ID, error)
-	onVersion func(ctx context.Context, ev VersionCreated)
+	// PurgeHolders names modules whose RESTRICT links retain a file. Called under its row lock.
+	PurgeHolders func(context.Context, domain.ID) ([]string, error)
+	st           *store
+	audit        *audit.Service
+	settings     Settings
+	dir          Directory
+	policy       domain.Policy
+	mail         Mailer
+	blobKey      []byte
+	configKey    []byte
+	staging      string
+	http         *http.Client
+	now          func() time.Time
+	newID        func() (domain.ID, error)
+	onVersion    func(ctx context.Context, ev VersionCreated)
 	// moduleOn reports whether a module is installed and enabled; nil refuses every
 	// module principal (SetModuleCheck).
 	moduleOn func(ctx context.Context, module string) (bool, error)
@@ -188,20 +190,7 @@ func actor(p domain.Principal, fallback domain.ID) domain.ID {
 	return fallback
 }
 
-func actorKind(p domain.Principal) string {
-	switch {
-	case p.Source == domain.SourceSystem:
-		return "system"
-	case p.Source == domain.SourceModule, p.Source == domain.SourceService:
-		return "module"
-	case p.Source == domain.SourceAPIToken:
-		return "agent"
-	case clientOnly(p):
-		return "client"
-	default:
-		return "staff"
-	}
-}
+func actorKind(p domain.Principal) string { return p.EventActorKind() }
 
 func clientOnly(p domain.Principal) bool {
 	return p.HasRole(domain.RoleClient) && !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) && !p.HasRole(domain.RoleStaff)
@@ -237,7 +226,7 @@ func (s *Service) event(ctx context.Context, p domain.Principal, f fileRow, acti
 		return err
 	}
 	return s.st.appendEvent(ctx, domain.Event{
-		Meta: m, ActorKind: actorKind(p), ActorID: actor(p, domain.SystemUserID), Action: action,
+		Meta: m, ActorKind: actorKind(p), ActorID: p.EventActor(), ModuleID: p.ModuleID, Action: action,
 		RecordType: "file", RecordID: f.ID, MatterID: f.MatterID, Summary: summary,
 		ClientVisible: clientSees(p, f),
 	})

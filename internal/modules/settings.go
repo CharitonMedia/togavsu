@@ -69,13 +69,32 @@ func (s *Service) ModuleSettings(ctx context.Context, p domain.Principal, scopes
 		}
 		out = append(out, sv)
 	}
+	if own {
+		if err := s.audit(ctx, p, module, "settings_read", "", "", "module.settings_read"); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 
 // SetModuleSettings validates and stores values against the manifest's settings schema.
 // Each change goes to the audit log; secret values are sealed and audited as redacted.
 func (s *Service) SetModuleSettings(ctx context.Context, p domain.Principal, module string, values map[string]string) ([]SettingValue, error) {
-	if err := requireAdmin(p); err != nil {
+	if p.ModuleID != "" {
+		if p.ModuleID != module {
+			return nil, domain.Forbidden("only own module settings may be changed")
+		}
+		installed, err := s.Installed(ctx, module)
+		if err != nil {
+			return nil, err
+		}
+		if !installed.Enabled || !installed.Approved["module_settings:write"] {
+			return nil, scopeDenied("module_settings:write")
+		}
+		if !p.HasRole(domain.RoleAdmin) || p.UserID.IsZero() {
+			return nil, domain.Forbidden("module setup requires an admin viewer")
+		}
+	} else if err := requireAdmin(p); err != nil {
 		return nil, err
 	}
 	in, err := s.Installed(ctx, module)

@@ -446,8 +446,7 @@ admin page, the module runtime, the trust root) on a fresh database reached thro
 non-superuser core role, as Compose sets it up. Stand-ins: the supervisor (deploy starts
 the registered handler in process), SMTP mail (`c.Mail`, CORE-29), and Doc Tender markdown
 renditions (`c.SeedMarkdownRendition` / `c.OpenMarkdownRendition`, CORE-36; public
-`coretest.Rendition` / `coretest.Download` return types, no `internal/files` import) without
-converters. The database comes from `TOGAVSU_TEST_DATABASE_URL`, a Postgres superuser URL;
+`coretest.Rendition` / `coretest.Download` return types, no `internal/files` import) and an in-process document-converter stand-in (`c.Converter`, described below). The database comes from `TOGAVSU_TEST_DATABASE_URL`, a Postgres superuser URL;
 `New` skips without it and fails in CI. The database, the core role, the module logins
 and the servers are removed at cleanup.
 
@@ -501,3 +500,167 @@ the sample module, Matter Clock, through the harness.
 
 `who` is a role name: `admin`, `attorney`, `staff`, `client` or `accountant`
 (`coretest.Admin` and the like).
+
+## Core update 2d: background reads and callback work
+
+No release or public version bump accompanies this change. Request permissions in the
+signed manifest; the admin must approve them at install. The bearer remains bounded by
+those approvals on REST and MCP. Background calls have no viewer, are audited under the
+module id with source `service`, and sit outside every matter wall.
+
+| Background read | Approved scope |
+| --- | --- |
+| Calendar event get/list | `calendar:read` |
+| Note get/list | `notes:read` |
+| File list (ordinary file gets retain their existing scope) | `files:read` |
+| Deadline get/list | `deadlines:read` |
+| Matter-party get/list, including `?contact_id=` to find a contact's matters | `matters:read` |
+| Contact-address get/list | `contacts:read` |
+| Firm profile, including `time_zone` | `firm:read` |
+| Party-role and custom-field-definition get/list | `settings:read` |
+| User directory | `users:directory` |
+
+These reads use the existing `/api/v1` endpoints and their MCP tools. Each has a live
+`modules.service_call_limit.<operationId>` setting, initially 120 calls per minute per
+module. Directory rows include `work_email` for staff and modules. Client rows remain
+only `id` and `name`. `?matter_id=` first checks the caller's matter access, then returns
+only active users whose current roles and wall membership permit that matter.
+
+For a walled record, use a context token for a viewer inside the wall. A service
+principal sits outside every wall: gets answer `not_found`, and lists omit the records.
+Delivered events grant no extra record access. No record response discloses wall membership.
+The directory's `matter_id` filter applies the caller's access before selecting users;
+a service principal can use it only for non-walled matters. Every module call, delegated
+or background, is audited under the module id with its operation and requested record.
+Delegated actions keep the user as `actor_id`; `module_id` records the module separately,
+and timeline/feed rows show the person via the module. Background calls name the module
+as the actor.
+
+Under `mail:send`, a service principal can send to `to_contact_ids` with `matter_id`.
+The core resolves only current primary addresses of parties on that accessible matter;
+nonparties and contacts without an address are skipped. A walled matter stays unavailable
+to a service send. Addresses never appear in responses. The audit/outbox records the
+matter, and successful sends add `mail.sent` to its timeline.
+
+Read own settings at `GET /api/v1/modules/{id}/settings`. With `settings:read` and an
+approved `contracts:call` or `contracts:provide`, `GET /api/v1/settings` and
+`GET /api/v1/settings/modules.contract_call_max_bytes` expose the applicable contract
+runtime limit, without exposing other firm settings or secrets. To save setup values,
+request `module_settings:write` and use `PUT /api/v1/modules/{id}/own-settings` with an
+admin viewer context. It validates the manifest schema, audits changes, and refuses
+another module's id or a staff/background caller. The administrative `/settings` write
+still requires `modules:write`, which modules may never request.
+
+Contract calls use a freshly signed forwarded context whose audience is the selected
+provider and whose consumer/contract link is rechecked on delegation. A provider verifies
+it through its own `context-tokens/verify` endpoint and presents it with its own bearer
+on core calls. The consumer's original token is not a provider credential. Unlinking
+invalidates forwarded delegation immediately. Provider events use the targeted envelope
+in [the module API](../api/modules.md#core-brokered-contract-events), retain its id and data, and deliver only to its
+named enabled, linked consumer; repeated ids do not enqueue duplicates. An oversized
+provider response returns HTTP 413 with code `too_large`.
+
+### Timestamped core webhooks and provider callbacks
+
+The core signs every event, contract call and routed system mail in the v1.0.0 format:
+`X-Togavsu-Signature: t=<unix>,v1=<hex>`, where the lowercase hex digest is
+HMAC-SHA256 of the decimal timestamp, a dot, and the exact raw body bytes. It also sends
+`X-Togavsu-Timestamp` with the same Unix seconds. Receivers compare the HMAC in constant
+time and reject timestamps more than five minutes from their clock in either direction.
+The authenticated timestamp prevents refreshing an expired signature. Deduplicate event
+ids durably before applying effects: a valid request can repeat within the window, and
+retries change the timestamp while keeping the event id. Empty secrets refuse signing,
+verification and delivery.
+
+`modulekit.SignTimestampedWebhook(secret, now, body)` returns the timestamped signature.
+`headers := modulekit.SignWebhookHeaders(secret, now, body)` returns both headers
+(`http.Header`), or nil for an empty secret. Copy them onto the request.
+`modulekit.VerifyWebhook(secret, signature, body, now, 0)` accepts both `t=,v1=` and the
+batch 2 `sha256=<hex>` raw-body HMAC. The timestamp in `t=,v1=` is checked and authenticated.
+`modulekit.VerifyWebhookHeaders(secret, request.Header, body, now, 0)` also checks
+`X-Togavsu-Timestamp` when present; it must match the signed timestamp for `t=,v1=`.
+Zero tolerance means five minutes; a positive tolerance can only shorten it.
+
+Every existing exported name and signature remains available. `SignWebhook` keeps its
+batch 2 `sha256=<hex>` output. That compatibility form has no authenticated time; the
+header-aware verifier checks its separate timestamp when present, but changing that
+unsigned timestamp can bypass its freshness check. Use the timestamped form for new
+senders. A bare `sha256=` signature remains accepted for existing string-API callers.
+The legacy `sha256=` form carries no timestamp, so modules must deduplicate event ids durably.
+
+Provider webhooks use their provider's own scheme. `ProviderHMAC(secret, body)` and
+`VerifyProviderHMAC(secret, body, decodedSignature)` compute/check HMAC-SHA256.
+`ProviderCRC(secret, challenge)` returns Zoom's hex HMAC for its `encryptedToken` field.
+`ProviderCRCBase64(secret, challenge)` returns the separate `sha256=<base64>` convention;
+it is not Zoom's format. All refuse an empty secret and leave provider-specific issuer,
+audience and token checks to the receiver.
+
+A Google Pub/Sub push may opt in per hook to receive its provider Authorization header:
+
+```yaml
+permissions:
+  - scope: webhooks:authorization
+    reason: Validate the provider's signed push identity.
+inbound_webhooks:
+  - id: pubsub
+    path: /push
+    forward_authorization: true
+```
+
+Only that declared hook with the approved scope forwards the header. It is never core
+authentication. The module verifies the provider identity itself. Cookies and core
+context, event, task and public-step credentials are stripped. Other hooks continue
+stripping Authorization. Disabled modules receive nothing.
+
+### Runtime pending criteria and test conversion
+
+A manifest may install while a runtime behavior still waits on core. Name that behavior
+explicitly instead of pretending an accepted field or scope was held back:
+
+```yaml
+pending:
+  - runtime: processor.payment_principal
+    core: CORE-23
+    reason: The core does not yet accept this background payment workflow.
+```
+
+`Pending.Runtime`, `WritePending`, `AddPending` and `togavsu-module pending -runtime`
+support this kind. It does not remove code, permissions or migrations. `Installable`
+reports it in `Held` with `runtime_pending`; contributors can report that acceptance
+criterion pending and run everything else. `RuntimeSupported(name)` and
+`Accepts().runtime_criteria` describe granular implemented behaviors (unlike the broader
+`core_items`). Once supported, the entry becomes unused: strict checks refuse it with
+`pending_unused`. Delete it and run the runtime criterion. Unknown dotted names stay
+pending; a misspelling does not prove an unimplemented feature. The kit's manifest and
+migration inventory now reads the same Goose Up section the core applies, ignoring Down.
+
+`coretest.New` supplies `c.Converter`, an in-process document-conversion stand-in. It
+never reads or writes `/usr/local/bin`. `SetResult(extension, syntheticBytes)` supplies
+an output, `Fail(error)` injects a failure (`nil` restores normal behavior), and `Calls()`
+returns copied inputs/from/to. The default synthetic PDF supports conversion/link/access
+acceptance, not rendering fidelity. Real file access, output checks, immutable versions,
+audit and typed `conversion_of` links still run. Pinned LawCraft rendering remains a
+separate integration criterion. Mail and Markdown rendition stand-ins remain available.
+
+File purge retains immutable record/version metadata but refuses to erase bytes while
+module RESTRICT links retain the file, naming each retaining module. Remove those links
+before retrying. Module events now appear in both the matter timeline and Activities
+Feed. For delegated calls the person stays `actor_id` and the module is recorded in
+`module_id`; for background calls the module is the actor.
+
+### Contact phone-row actions
+
+Declare a contact phone-row item under the approved `contacts:read` permission:
+
+```yaml
+contact_phone_items:
+  - id: call
+    title: Call
+    path: /call
+```
+
+The contact screen places it beside each readable phone. The core frames the module
+page with the normal sandbox and viewer context, passing only `phone_id` and `contact_id`. The module reads the phone through the API. Opening the frame rechecks contact access. The agent equivalent is
+`GET /api/v1/modules/contact-phone-items?phone_id=` (`listContactPhoneItems` on MCP),
+with cursor pagination. Disabled or unapproved items disappear immediately. This adds
+no contact claim to context tokens and no documents-list action slot.

@@ -579,6 +579,7 @@ func (AuditEntry) TableName() string { return "audit_log" }
 // Event is one append-only timeline and activity-feed row.
 type Event struct {
 	Meta
+	ModuleID      string `db:"module_id"`
 	ActorKind     string `db:"actor_kind"`
 	ActorID       ID     `db:"actor_id"`
 	Action        string `db:"action"`

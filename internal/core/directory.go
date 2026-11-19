@@ -109,6 +109,13 @@ func (a *App) userDirectoryJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	matter := domain.ID(r.URL.Query().Get("matter_id"))
+	if !matter.IsZero() {
+		if err := a.matterAccess(r.Context(), p, matter, domain.ActionRead); err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
 	clientCaller := p.HasRole(domain.RoleClient) && !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) && !p.HasRole(domain.RoleStaff)
 	rows := make([]map[string]any, 0, len(users))
 	for _, u := range users {
@@ -119,6 +126,17 @@ func (a *App) userDirectoryJSON(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			writeErr(w, err)
 			return
+		}
+		if !matter.IsZero() {
+			candidate := domain.Principal{UserID: u.ID, Roles: roles, Source: domain.SourceUI}
+			dec, err := a.Practice.Policy.Authorize(r.Context(), candidate, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead, ID: matter, MatterID: matter, SharedWithClient: true})
+			if err != nil {
+				writeErr(w, err)
+				return
+			}
+			if !u.Active || !dec.Allow {
+				continue
+			}
 		}
 		if len(ids) > 0 && !ids[u.ID] {
 			continue
@@ -140,7 +158,7 @@ func (a *App) userDirectoryJSON(w http.ResponseWriter, r *http.Request) {
 		for i, r := range roles {
 			roleNames[i] = string(r)
 		}
-		rows = append(rows, map[string]any{"id": u.ID, "name": u.Name, "roles": roleNames, "active": u.Active})
+		rows = append(rows, map[string]any{"id": u.ID, "name": u.Name, "roles": roleNames, "active": u.Active, "work_email": u.Email})
 	}
 	from, limit, err := a.directoryPageArgs(r.Context(), r)
 	if err != nil {

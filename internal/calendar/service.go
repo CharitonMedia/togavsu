@@ -340,23 +340,14 @@ func (s *Service) activity(ctx context.Context, p domain.Principal, entity strin
 	if err != nil {
 		return err
 	}
+	actor := p.EventActor()
 	return s.d.Store.AppendEvent(ctx, domain.Event{
-		Meta: m, ActorKind: actorKind(p), ActorID: m.CreatedBy, Action: action,
+		Meta: m, ActorKind: actorKind(p), ActorID: actor, ModuleID: p.ModuleID, Action: action,
 		RecordType: entity, RecordID: id, MatterID: matter, Summary: summary,
 	})
 }
 
-func actorKind(p domain.Principal) string {
-	switch p.Source {
-	case domain.SourceSystem:
-		return "system"
-	case domain.SourceModule:
-		return "module"
-	case domain.SourceAPIToken:
-		return "agent"
-	}
-	return "staff"
-}
+func actorKind(p domain.Principal) string { return p.EventActorKind() }
 
 func fmtTime(v int64) string {
 	if !isSet(v) {

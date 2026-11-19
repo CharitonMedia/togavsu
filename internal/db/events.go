@@ -36,9 +36,9 @@ func PublishEvent(ctx context.Context, q Execer, ev domain.Event) error {
 	if ev.ClientVisible {
 		visible++
 	}
-	_, err := q.ExecContext(ctx, `INSERT INTO events (id, created_at, updated_at, created_by, actor_kind, actor_id, action, record_type, record_id, matter_id, summary, client_visible)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (id) DO NOTHING`,
+	_, err := q.ExecContext(ctx, `INSERT INTO events (id, created_at, updated_at, created_by, actor_kind, actor_id, action, record_type, record_id, matter_id, summary, client_visible, module_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (id) DO NOTHING`,
 		string(ev.ID), domain.UnixMicroUTC(ev.CreatedAt), domain.UnixMicroUTC(ev.UpdatedAt), string(by), kind, string(ev.ActorID),
-		ev.Action, ev.RecordType, string(ev.RecordID), matter, ev.Summary, visible)
+		ev.Action, ev.RecordType, string(ev.RecordID), matter, ev.Summary, visible, ev.ModuleID)
 	return err
 }

@@ -606,26 +606,13 @@ func (t *txn) event(action, recordType string, recordID, matter domain.ID, summa
 		return err
 	}
 	t.events = append(t.events, domain.Event{
-		Meta: meta, ActorKind: actorKind(t.p), ActorID: actor(t.p), Action: action,
+		Meta: meta, ActorKind: actorKind(t.p), ActorID: t.p.EventActor(), ModuleID: t.p.ModuleID, Action: action,
 		RecordType: recordType, RecordID: recordID, MatterID: matter, Summary: summary, ClientVisible: clientVisible,
 	})
 	return nil
 }
 
-func actorKind(p domain.Principal) string {
-	switch p.Source {
-	case domain.SourceSystem:
-		return "system"
-	case domain.SourceModule, domain.SourceService:
-		return "module"
-	case domain.SourceAPIToken:
-		return "agent"
-	}
-	if p.HasRole(domain.RoleClient) && !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) && !p.HasRole(domain.RoleStaff) && !p.HasRole(domain.RoleAccountant) {
-		return "client"
-	}
-	return "staff"
-}
+func actorKind(p domain.Principal) string { return p.EventActorKind() }
 
 func sourceOf(p domain.Principal, given string) string {
 	if given != "" {

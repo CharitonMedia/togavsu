@@ -97,7 +97,8 @@ type Core struct {
 	Backups     *Backups
 	// Mail is the CORE-29 SMTP stand-in the core is pointed at (client-access mail,
 	// notification email, module mail SMTP fallback).
-	Mail *Mail
+	Mail      *Mail
+	Converter *Converter
 	// SupervisorMailOutbox is the temp-dir path of the supervisor notice file DeliverMail drains.
 	SupervisorMailOutbox string
 
@@ -139,9 +140,10 @@ func New(t *testing.T) *Core {
 	c.Runtime = testkit.NewRuntime(func() string { return c.URL }, c.DatabaseURL)
 	t.Cleanup(c.Runtime.Close)
 	c.Mail = startMail(t)
+	c.Converter = NewConverter()
 	c.SupervisorMailOutbox = filepath.Join(t.TempDir(), "mail-outbox.jsonl")
 	app, err := core.Open(context.Background(), core.Config{DatabaseURL: c.DatabaseURL, Key: testKey, Domain: "firm.example",
-		MailEvery: -time.Nanosecond, DataDir: t.TempDir(), SupervisorMailOutbox: c.SupervisorMailOutbox,
+		WordcraftCLI: filepath.Join(t.TempDir(), "wordcraft-cli-not-installed"), DocumentConverter: c.Converter.Convert, MailEvery: -time.Nanosecond, DataDir: t.TempDir(), SupervisorMailOutbox: c.SupervisorMailOutbox,
 		ModuleRuntime: c.Runtime, ModuleBackups: c.Backups, NoBackground: true})
 	if err != nil {
 		t.Fatal(err)

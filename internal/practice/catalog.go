@@ -171,19 +171,26 @@ func (s *Service) UpdateReferral(ctx context.Context, p domain.Principal, id dom
 	return row, nil
 }
 
-func (s *Service) ListParties(ctx context.Context, p domain.Principal, matter domain.ID) ([]domain.MatterParty, error) {
+func (s *Service) ListParties(ctx context.Context, p domain.Principal, matter domain.ID, contacts ...domain.ID) ([]domain.MatterParty, error) {
+	var contact domain.ID
+	if len(contacts) > 0 {
+		contact = contacts[0]
+	}
 	if !matter.IsZero() {
 		if err := s.gateMatter(ctx, p, matter, domain.ActionRead); err != nil {
 			return nil, err
 		}
-		return s.db.Parties(matter, domain.ID("")), nil
+		return s.db.Parties(matter, contact), nil
 	}
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
 		return nil, err
 	}
 	var out []domain.MatterParty
-	for _, row := range s.db.Parties(domain.ID(""), domain.ID("")) {
-		if s.visibleMatter(ctx, p, row.MatterID) && s.readableContact(ctx, p, row.ContactID) == nil {
+	for _, row := range s.db.Parties(domain.ID(""), contact) {
+		if !s.visibleMatter(ctx, p, row.MatterID) {
+			continue
+		}
+		if s.readableContact(ctx, p, row.ContactID) == nil {
 			out = append(out, row)
 		}
 	}
