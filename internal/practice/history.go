@@ -109,12 +109,9 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 			view.Clients++
 		case "staff":
 			view.Staff++
-
+			people[row.ActorID]++
 		case "agent", "module":
 			view.Agents++
-		}
-		if user, err := s.db.User(ctx, row.ActorID); err == nil && user.ID != domain.SystemUserID {
-			people[row.ActorID]++
 		}
 	}
 	for id, count := range people {

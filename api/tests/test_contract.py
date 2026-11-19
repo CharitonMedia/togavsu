@@ -2340,8 +2340,8 @@ class ContractTest(unittest.TestCase):
         from pathlib import Path
 
         matter = _operation(self.spec, "getMatter")["x-togavsu-mcp"]["transfer"]
-        self.assertEqual(matter["arguments"], ["path", "query", "headers", "context_token"])
-        self.assertIn("X-Togavsu-Event-Authorization", matter["headers"])
+        self.assertEqual(matter["arguments"], ["path", "query", "context_token"])
+        self.assertNotIn("X-Togavsu-Event-Authorization", matter.get("headers", []))
         self.assertNotIn("matter_id", matter["arguments"])
         self.assertEqual(matter["credentials"]["context_token"]["header"], "X-Togavsu-Context-Token")
         self.assertFalse(matter["credentials"]["context_token"]["roles_from_arguments"])
@@ -4475,18 +4475,19 @@ class ContractTest(unittest.TestCase):
         payload = b'{"type":"matter.created"}'
         signature = webhook_signature(secret, payload)
         self.assertEqual(signature, "sha256=" + __import__("hmac").new(secret, payload, __import__("hashlib").sha256).hexdigest())
-        self.assertTrue(webhook_signature_matches(secret, payload, signature), timestamp=1800000000)
-        self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1800000301), timestamp=1800000000)
-        self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1799999699), timestamp=1800000000)
-        self.assertFalse(webhook_signature_matches(b"", payload, signature), timestamp=1800000000)
+        self.assertTrue(webhook_signature_matches(secret, payload, signature, timestamp=1800000000))
+        self.assertFalse(webhook_signature_matches(secret, payload, signature))
+        self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1800000301, timestamp=1800000000))
+        self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1799999699, timestamp=1800000000))
+        self.assertFalse(webhook_signature_matches(b"", payload, signature, timestamp=1800000000))
         self.assertEqual(webhook_signature(b"", payload), "")
-        self.assertFalse(webhook_signature_matches(secret, payload + b" ", signature), timestamp=1800000000)
-        self.assertFalse(webhook_signature_matches(b"other-secret", payload, signature), timestamp=1800000000)
+        self.assertFalse(webhook_signature_matches(secret, payload + b" ", signature, timestamp=1800000000))
+        self.assertFalse(webhook_signature_matches(b"other-secret", payload, signature, timestamp=1800000000))
         import hashlib
 
         plain = "sha256=" + hashlib.sha256(payload).hexdigest()
         self.assertNotEqual(plain, signature)
-        self.assertFalse(webhook_signature_matches(secret, payload, plain), timestamp=1800000000)
+        self.assertFalse(webhook_signature_matches(secret, payload, plain, timestamp=1800000000))
         self.assertIn("HMAC-SHA256", self.spec["components"]["schemas"]["WebhookEvent"]["description"])
         self.assertIn("keyed", self.spec["webhooks"]["moduleEvent"]["post"]["description"])
 

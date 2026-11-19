@@ -230,7 +230,7 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 		}
 		return r
 	}
-	for _, path := range []string{"/api/v1/firm-profile", "/api/v1/deadlines", "/api/v1/calendar-events", "/api/v1/contact-addresses", "/api/v1/party-roles", "/api/v1/custom-field-definitions", "/api/v1/user-directory"} {
+	for _, path := range []string{"/api/v1/firm-profile", "/api/v1/deadlines", "/api/v1/calendar-events", "/api/v1/contact-addresses", "/api/v1/party-roles", "/api/v1/custom-field-definitions", "/api/v1/user-directory", "/api/v1/notes", "/api/v1/files"} {
 		r := mustLimited(http.StatusForbidden, "GET", path, nil)
 		if !strings.Contains(r.Body, "scope_denied") {
 			t.Fatal(r.Body)
@@ -521,6 +521,13 @@ func TestCoreUpdate2DServiceWallsEveryRecord(t *testing.T) {
 	for record, collection := range records {
 		t.Run(collection, func(t *testing.T) {
 			path := "/api/v1/" + collection + "/" + record
+			operation := map[string]string{"matters": "getMatter", "contacts": "getContact", "notes": "getNote", "deadlines": "getDeadline", "calendar-events": "getCalendarEvent", "files": "getFile", "contact-addresses": "getContactAddress", "contact-phones": "getContactPhone", "contact-emails": "getContactEmail", "matter-parties": "getMatterParty"}[collection]
+			query := `SELECT COUNT(*) FROM core.audit_log WHERE entity='service_call' AND source='service' AND field='operation' AND new_value=$1 AND reason='token=' || (SELECT token_id FROM core.modules WHERE id=$3) || ' module=' || $3 || ' service.call record=' || $2`
+			before := c.Count(query, operation, path, id)
+			bot.Do("GET", path, nil)
+			if after := c.Count(query, operation, path, id); after != before+1 {
+				t.Fatalf("exact record audit %s: before %d after %d", operation, before, after)
+			}
 			for _, headers := range [][]string{nil, {"X-Togavsu-Event-Authorization", "legacy-delivered-event-token"}, {modulekit.ContextHeader, outside}} {
 				got := bot.Do("GET", path, nil, headers...)
 				if got.Code != http.StatusNotFound || !strings.Contains(got.Body, "not_found") {
@@ -569,4 +576,35 @@ func listPath2d(collection string) string {
 		return "/api/v1/contacts?email=event-only@synthetic.example"
 	}
 	return "/api/v1/" + collection
+}
+
+func TestCoreUpdate2DDelegatedActorAcrossWriters(t *testing.T) {
+	c := coretest.New(t)
+	const id = "attribution-two-d"
+	c.Handle(id, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	install2d(t, c, id, []string{"contacts:read", "contacts:write", "notes:write", "calendar:write", "time:write", "files:read", "files:write", "mail:send"}, "")
+	bot := c.ModuleClient(id)
+	context := c.ContextFor(coretest.Staff, id, c.Open)
+	assertWrite := func(method, path string, body any, status int, record, action string) {
+		t.Helper()
+		got := bot.Do(method, path, body, modulekit.ContextHeader, context)
+		if got.Code != status {
+			t.Fatalf("delegated %s: %d %s", path, got.Code, got.Body)
+		}
+		if record == "" {
+			record = str(t, got.JSON, "id")
+		}
+		if n := c.Count(`SELECT COUNT(*) FROM core.events WHERE record_id=$1 AND action=$2 AND actor_id=$3 AND actor_kind='staff' AND module_id=$4`, record, action, c.Staff.ID, id); n != 1 {
+			t.Fatalf("delegated event %s actor/via count=%d", action, n)
+		}
+	}
+	assertWrite("POST", "/api/v1/contacts", map[string]any{"kind": "person", "given_name": "Delegated", "family_name": "Synthetic"}, http.StatusCreated, "", "contact.created")
+	assertWrite("POST", "/api/v1/notes", map[string]any{"matter_id": c.Open, "title": "Delegated note", "body": "Synthetic body"}, http.StatusCreated, "", "note.created")
+	at := time.Now().Add(time.Hour).UTC()
+	assertWrite("POST", "/api/v1/calendar-events", map[string]any{"matter_id": c.Open, "title": "Delegated calendar", "kind": "other", "starts_at": at.Format(time.RFC3339), "ends_at": at.Add(time.Hour).Format(time.RFC3339)}, http.StatusCreated, "", "calendar_event.created")
+	assertWrite("POST", "/api/v1/time-entries", map[string]any{"matter_id": c.Open, "worked_on": time.Now().UTC().Format(time.DateOnly), "increments": 1, "description": "Synthetic delegated time", "activity_type_id": c.Activity, "billable": true}, http.StatusCreated, "", "time_entry.created")
+	file := upload2d(t, c.Staff, c.Open)
+	fileID := str(t, file, "id")
+	assertWrite("PATCH", "/api/v1/files/"+fileID, map[string]any{"name": "delegated.txt"}, http.StatusOK, fileID, "file.updated")
+	assertWrite("POST", "/api/v1/mail/messages", map[string]any{"matter_id": c.Open, "to_contact_ids": []string{c.ClientContact}, "subject": "Synthetic delegated mail", "text": "Example only"}, http.StatusOK, c.Open, "mail.sent")
 }
