@@ -664,3 +664,58 @@ page with the normal sandbox and viewer context, passing only `phone_id` and `co
 `GET /api/v1/modules/contact-phone-items?phone_id=` (`listContactPhoneItems` on MCP),
 with cursor pagination. Disabled or unapproved items disappear immediately. This adds
 no contact claim to context tokens and no documents-list action slot.
+
+## Core update 2e: authenticated delivery sender
+
+Every core-to-module event, contract call and routed system mail now carries the
+header field `X-Togavsu-Sender`: the pushing provider's module id for contract
+events, the calling consumer's module id for contract calls, and `core` for
+core-emitted events (including grants) and system mail. This is separate from
+payload fields: `module` in a core event still names the recipient. Payload
+`sender` or `provider_id` values are untrusted claims.
+
+The core reads queued senders from `core.module_deliveries.created_by`, recorded
+when the push was accepted. Historical empty values mean `core`. Retries retain
+that identity and body even after provider links change. An unlink prevents new
+pushes/calls; it does not reattribute a queued delivery to another provider.
+
+The existing headers and exact v1 signature remain unchanged:
+
+```text
+X-Togavsu-Timestamp: <unix>
+X-Togavsu-Signature: t=<unix>,v1=<hex>
+X-Togavsu-Sender: <sender>
+X-Togavsu-Sender-Signature: t=<unix>,v2=<hex>
+```
+
+Both digests are lowercase hex HMAC-SHA256 keyed by the recipient module's
+nonempty webhook secret. Input bytes are UTF-8/ASCII prefixes followed by the
+exact raw body, without a trailing newline:
+
+- v1: `<unix>.<raw body>` (unchanged).
+- v2: `v2.<unix>.<sender>.<raw body>` (the literal `v2.` separates signature versions).
+
+`<unix>` is canonical decimal Unix seconds, identical in all three timestamp
+positions. `<sender>` is `core` or a module id matching
+`^[a-z0-9][a-z0-9-]{0,63}$`; it cannot contain a dot. The v2 signature lives in a
+separate header because the 2d verifier requires exactly `t=…,v1=…` in the
+original header. Modules pinned to 2d continue verifying that same delivery.
+
+New receivers use
+`sender, err := modulekit.VerifyWebhookSender(secret, request.Header, body, now, 0)`.
+It requires valid timestamped v1 and v2 signatures, compares MACs in constant time,
+and returns an identity only on success. Missing/duplicate sender or signature
+headers, legacy signatures without binding, changed identity/body/timestamps,
+empty secrets and expired signatures fail. Zero tolerance means five minutes in
+either direction; a positive tolerance can only shorten that window.
+`VerifyWebhookHeaders` keeps its existing behavior and does not authenticate
+sender identity. Do not use an unverified sender to select a provider, matter or
+record. Sender identity grants no access to core records. Deduplicate event ids
+durably, including across retries, which receive fresh timestamps/signatures.
+
+For synthetic sender-aware requests, use
+`modulekit.SignWebhookSenderHeaders(secret, now, sender, body)`; it returns all
+four headers, or nil for an empty secret/invalid id. In `coretest.Serve` handlers,
+`sender, body, err := coretest.ReadDelivery(m, request)` reads and verifies using
+the real deployment secret. `c.DeliverEvents()` uses the production queue and
+sender signer for contract events, core events and retries.

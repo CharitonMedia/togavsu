@@ -450,20 +450,20 @@ func (s *Service) Deliver(ctx context.Context) (sent int, err error) {
 		return 0, err
 	}
 	now := s.now()
-	rows, err := s.q(ctx).QueryContext(ctx, `SELECT d.id, d.module_id, d.payload, d.attempts, m.webhook_secret, d.task_authorization FROM core.module_deliveries d
+	rows, err := s.q(ctx).QueryContext(ctx, `SELECT d.id, d.module_id, d.payload, d.attempts, m.webhook_secret, d.task_authorization, d.created_by FROM core.module_deliveries d
 JOIN core.modules m ON m.id = d.module_id WHERE d.status = 'pending' AND d.next_attempt_at <= $1 AND m.enabled = 1 ORDER BY d.next_attempt_at, d.id LIMIT $2`,
 		now.UnixMicro(), limits().PumpBatch)
 	if err != nil {
 		return 0, err
 	}
 	type due struct {
-		id, module, payload, secret, grant string
-		attempts                           int
+		id, module, payload, secret, grant, sender string
+		attempts                                   int
 	}
 	var list []due
 	for rows.Next() {
 		var d due
-		if err := rows.Scan(&d.id, &d.module, &d.payload, &d.attempts, &d.secret, &d.grant); err != nil {
+		if err := rows.Scan(&d.id, &d.module, &d.payload, &d.attempts, &d.secret, &d.grant, &d.sender); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -479,7 +479,12 @@ JOIN core.modules m ON m.id = d.module_id WHERE d.status = 'pending' AND d.next_
 		if err != nil {
 			return sent, err
 		}
-		derr := s.post(ctx, d.module, secret, grant, []byte(d.payload))
+		// Empty created_by is the historical core-emitted delivery convention.
+		sender := d.sender
+		if sender == "" {
+			sender = "core"
+		}
+		derr := s.post(ctx, d.module, secret, grant, sender, []byte(d.payload))
 		n := d.attempts + 1
 		at := s.now()
 		switch {
@@ -499,7 +504,7 @@ JOIN core.modules m ON m.id = d.module_id WHERE d.status = 'pending' AND d.next_
 	return sent, nil
 }
 
-func (s *Service) post(ctx context.Context, module, secret, grant string, body []byte) error {
+func (s *Service) post(ctx context.Context, module, secret, grant, sender string, body []byte) error {
 	if secret == "" {
 		return errors.New("modules: empty webhook secret")
 	}
@@ -520,7 +525,7 @@ func (s *Service) post(ctx context.Context, module, secret, grant string, body [
 	}
 	req.Header.Set("Content-Type", "application/json")
 	at := s.now()
-	headers := SignWebhookHeaders(secret, at, body)
+	headers := SignWebhookSenderHeaders(secret, at, sender, body)
 	if headers == nil {
 		return errors.New("modules: empty webhook secret")
 	}

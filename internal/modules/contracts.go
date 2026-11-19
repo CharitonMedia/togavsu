@@ -360,7 +360,7 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 	}
 	req.Header.Set("Content-Type", "application/json")
 	at := s.now()
-	headers := SignWebhookHeaders(secret, at, body)
+	headers := SignWebhookSenderHeaders(secret, at, consumerID, body)
 	if headers == nil {
 		return 0, nil, nil, errors.New("modules: empty webhook secret")
 	}
