@@ -480,6 +480,39 @@ func (s *Service) DocumentOfRecordURL(ctx context.Context, p domain.Principal, i
 	return dor.DocumentDownloadPath(ctx, p, inv.DocumentOfRecordFileID)
 }
 
+// DocumentOfRecordPDF streams the original invoice PDF for getInvoicePdf (CORE-37).
+// Returns the same 200 application/pdf shape as a rendered invoice so HTTP and /mcp
+// both deliver the document bytes (no redirect).
+func (s *Service) DocumentOfRecordPDF(ctx context.Context, p domain.Principal, id domain.ID) ([]byte, Invoice, error) {
+	inv, err := s.invoice(ctx, id)
+	if err != nil {
+		return nil, Invoice{}, err
+	}
+	if !inv.Imported || inv.DocumentOfRecordFileID.IsZero() {
+		return nil, Invoice{}, domain.NotFound("document of record")
+	}
+	if err := s.readInvoice(ctx, p, inv); err != nil {
+		return nil, Invoice{}, err
+	}
+	dor := s.dorFiles()
+	if dor == nil {
+		return nil, Invoice{}, domain.NotFound("document of record")
+	}
+	pdf, _, err := dor.ReadDocumentBytes(ctx, p, inv.DocumentOfRecordFileID)
+	if err != nil {
+		return nil, Invoice{}, err
+	}
+	client := ClientOnly(p)
+	err = s.write(ctx, p, func(t *txn) error {
+		t.audit("invoice", id, "download", "", "invoice-"+inv.Number+".pdf", "")
+		return t.event("file.downloaded", "invoice", id, inv.MatterID, "Invoice "+inv.Number+" document of record downloaded", client)
+	})
+	if err != nil {
+		return nil, Invoice{}, err
+	}
+	return pdf, forReader(p, inv), nil
+}
+
 // parseImportNumber extracts an integer from a historical invoice number: the whole
 // string when it is digits, otherwise the last run of digits.
 func parseImportNumber(number string) (int, bool) {

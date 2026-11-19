@@ -84,6 +84,31 @@ func (l *FileLink) DocumentDownloadPath(ctx context.Context, p domain.Principal,
 	return "/api/v1/files/" + string(fileID) + "/versions/" + string(*f.CurrentVersionID) + "/download", nil
 }
 
+// ReadDocumentBytes implements DocumentOfRecordFiles: current version bytes for getInvoicePdf.
+func (l *FileLink) ReadDocumentBytes(ctx context.Context, p domain.Principal, fileID domain.ID) ([]byte, string, error) {
+	f, err := l.Svc.Get(ctx, p, fileID)
+	if err != nil {
+		return nil, "", err
+	}
+	if f.CurrentVersionID == nil || f.CurrentVersionID.IsZero() {
+		return nil, "", domain.NotFound("file version")
+	}
+	d, err := l.Svc.OpenVersion(ctx, p, fileID, *f.CurrentVersionID, false)
+	if err != nil {
+		return nil, "", err
+	}
+	defer d.Close()
+	raw, err := io.ReadAll(d.Body)
+	if err != nil {
+		return nil, "", err
+	}
+	media := d.MediaType
+	if media == "" {
+		media = "application/pdf"
+	}
+	return raw, media, nil
+}
+
 // ResolveMatterFileName implements DocumentOfRecordFiles.
 func (l *FileLink) ResolveMatterFileName(ctx context.Context, p domain.Principal, matter domain.ID, name string) (domain.ID, error) {
 	name = strings.TrimSpace(name)

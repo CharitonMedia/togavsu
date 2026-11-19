@@ -174,6 +174,8 @@ type DocumentOfRecordFiles interface {
 	ShareDocumentOfRecord(ctx context.Context, p domain.Principal, fileID domain.ID) error
 	// DocumentDownloadPath is the versioned download URL the client and staff follow.
 	DocumentDownloadPath(ctx context.Context, p domain.Principal, fileID domain.ID) (string, error)
+	// ReadDocumentBytes returns the current version bytes of the document of record.
+	ReadDocumentBytes(ctx context.Context, p domain.Principal, fileID domain.ID) ([]byte, string, error)
 	// ResolveMatterFileName finds the unique untrashed file on matter with that name.
 	ResolveMatterFileName(ctx context.Context, p domain.Principal, matter domain.ID, name string) (domain.ID, error)
 }

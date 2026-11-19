@@ -810,17 +810,15 @@ func (h *Handler) pdf(w http.ResponseWriter, r *http.Request, p domain.Principal
 		writeErr(w, err)
 		return
 	}
+	var pdf []byte
 	// CORE-37: document of record replaces a rendered invoice for opening imports.
+	// Stream the bytes (200 application/pdf) so /mcp and OpenAPI stay in parity —
+	// a 303 would leave MCP with redirect stub text instead of the PDF.
 	if inv.Imported && !inv.DocumentOfRecordFileID.IsZero() {
-		path, err := h.Svc.DocumentOfRecordURL(r.Context(), p, inv)
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		http.Redirect(w, r, path, http.StatusSeeOther)
-		return
+		pdf, inv, err = h.Svc.DocumentOfRecordPDF(r.Context(), p, inv.ID)
+	} else {
+		pdf, inv, err = h.Svc.InvoicePDF(r.Context(), p, inv.ID)
 	}
-	pdf, inv, err := h.Svc.InvoicePDF(r.Context(), p, inv.ID)
 	if err != nil {
 		writeErr(w, err)
 		return

@@ -190,13 +190,11 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	if !strings.Contains(staffPage.body, "Imported") || !strings.Contains(staffPage.body, "Document of record") || !strings.Contains(staffPage.body, "/billing/invoices/"+dorID+"/pdf") {
 		t.Fatalf("IMP-06 staff billing tab: %s", staffPage.body)
 	}
+	// getInvoicePdf streams the document of record as 200 application/pdf (MCP parity;
+	// no 303 redirect stub).
 	pdf := f.atty.do("GET", "/api/v1/invoices/"+dorID+"/pdf", nil)
-	if pdf.code != http.StatusSeeOther || !strings.Contains(pdf.loc, "/api/v1/files/"+fileID+"/versions/") || !strings.Contains(pdf.loc, "/download") {
-		t.Fatalf("IMP-06 pdf redirect: %d %s", pdf.code, pdf.loc)
-	}
-	staffDL := f.atty.do("GET", pdf.loc, nil)
-	if staffDL.code != http.StatusOK || !bytes.Contains([]byte(staffDL.body), []byte("%PDF")) {
-		t.Fatalf("IMP-06 staff download: %d %s", staffDL.code, staffDL.body[:min(120, len(staffDL.body))])
+	if pdf.code != http.StatusOK || !bytes.Contains([]byte(pdf.body), pdfBytes) {
+		t.Fatalf("IMP-06 staff pdf bytes: %d %s", pdf.code, pdf.body[:min(120, len(pdf.body))])
 	}
 	cliKit, _ := testkit.EnrollUser(t, f.app.Identity, f.srv.URL, f.admin.kit(), "Dor Client", "dor.client@example.com", domain.ID(dorContact), domain.RoleClient)
 	cli := wrapClient(cliKit)
@@ -205,20 +203,23 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 		t.Fatalf("IMP-06 client projection: %s", cliInv.body)
 	}
 	cliPDF := cli.do("GET", "/api/v1/invoices/"+dorID+"/pdf", nil)
-	if cliPDF.code != http.StatusSeeOther || !strings.Contains(cliPDF.loc, "/download") {
-		t.Fatalf("IMP-06 client pdf redirect: %d %s", cliPDF.code, cliPDF.loc)
+	if cliPDF.code != http.StatusOK || !bytes.Contains([]byte(cliPDF.body), pdfBytes) {
+		t.Fatalf("IMP-06 client pdf bytes: %d %s", cliPDF.code, cliPDF.body[:min(200, len(cliPDF.body))])
 	}
-	cliDL := cli.do("GET", cliPDF.loc, nil)
-	if cliDL.code != http.StatusOK || !bytes.Contains([]byte(cliDL.body), []byte("%PDF")) {
-		t.Fatalf("IMP-06 client download: %d %s", cliDL.code, cliDL.body[:min(200, len(cliDL.body))])
+	// MCP getInvoicePdf must return the document bytes, not a redirect stub.
+	mcp := mcpCall(f.atty, toolName(t, "GET", "/api/v1/invoices/{invoice_id}/pdf"), map[string]any{
+		"path": map[string]any{"invoice_id": dorID},
+	})
+	if mcp.code != http.StatusOK || strings.Contains(mcp.body, `"isError":true`) || strings.Contains(mcp.body, "See Other") {
+		t.Fatalf("IMP-06 MCP getInvoicePdf: %d %s", mcp.code, mcp.body[:min(400, len(mcp.body))])
+	}
+	if !strings.Contains(mcp.body, "%PDF-1.4 synthetic opening invoice") {
+		t.Fatalf("IMP-06 MCP missing DoR PDF bytes: %s", mcp.body[:min(400, len(mcp.body))])
 	}
 	otherKit, _ := testkit.EnrollUser(t, f.app.Identity, f.srv.URL, f.admin.kit(), "Other Client", "other.client@example.com", domain.ID(otherContact), domain.RoleClient)
 	other := wrapClient(otherKit)
 	if r := other.do("GET", "/api/v1/invoices/"+dorID+"/pdf", nil); r.code != http.StatusNotFound {
 		t.Fatalf("IMP-06 other-matter client pdf: %d %s", r.code, r.body)
-	}
-	if r := other.do("GET", pdf.loc, nil); r.code != http.StatusNotFound {
-		t.Fatalf("IMP-06 other-matter client file: %d %s", r.code, r.body)
 	}
 	_ = otherMatter
 
@@ -319,7 +320,7 @@ func TestCORE37CSVPreviewAndIdempotentExternalRef(t *testing.T) {
 	issued := time.Now().UTC().Format("2006-01-02")
 	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/billing.invoice_number_start", map[string]any{"value": 9000})
 	pdfBytes := []byte("%PDF-1.4 csv opening\n")
-	_ = f.uploadPDF(matter, "opening-1000.pdf", pdfBytes)
+	openingPDFID := f.uploadPDF(matter, "opening-1000.pdf", pdfBytes)
 
 	// IMP-03: 500-row CSV via Migration tab — preview names the bad row; a commit of that
 	// bad file writes nothing; with the row fixed, all 500 land in one transaction.
@@ -439,6 +440,66 @@ func TestCORE37CSVPreviewAndIdempotentExternalRef(t *testing.T) {
 	badPage := f.admin.must(http.StatusOK, "GET", "/admin?tab=migration"+strings.Replace(bq, "?", "&", 1), nil)
 	if !strings.Contains(strings.ToLower(badPage.body), "contact_email") {
 		t.Fatalf("contact_email refusal missing: %s", badPage.body)
+	}
+
+	// IMP-03 / Codex P2: an unparseable amount_due is a refused preview row with its
+	// index — not a whole-upload abort — and commit writes nothing.
+	var parseBad strings.Builder
+	parseBad.WriteString("matter_id,number,issued_on,amount_due,external_ref\n")
+	fmt.Fprintf(&parseBad, "%s,1800,%s,10.00,parse-ok\n", matter, issued)
+	fmt.Fprintf(&parseBad, "%s,1801,%s,10.0x,parse-bad\n", matter, issued)
+	fmt.Fprintf(&parseBad, "%s,1802,%s,11.00,parse-ok-2\n", matter, issued)
+	parseCSV := []byte(parseBad.String())
+	parsePrev := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}}, parseCSV)
+	if parsePrev.code != http.StatusSeeOther {
+		t.Fatalf("parse preview status: %d %s", parsePrev.code, parsePrev.body)
+	}
+	parseLoc, _ := url.QueryUnescape(parsePrev.loc)
+	if !strings.Contains(parseLoc, "row 2:") || !strings.Contains(strings.ToLower(parseLoc), "amount_due") {
+		t.Fatalf("parse preview must name row 2 amount_due: %s", parsePrev.loc)
+	}
+	pq := ""
+	if i := strings.Index(parsePrev.loc, "?"); i >= 0 {
+		pq = parsePrev.loc[i:]
+	}
+	parsePage := f.admin.must(http.StatusOK, "GET", "/admin?tab=migration"+strings.Replace(pq, "?", "&", 1), nil)
+	if !strings.Contains(parsePage.body, "id=\"csv-preview\"") || !strings.Contains(strings.ToLower(parsePage.body), "amount_due") {
+		t.Fatalf("parse preview table missing amount_due: %s", parsePage.body)
+	}
+	beforeParse := f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`)
+	parseCommit := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, parseCSV)
+	if parseCommit.code == http.StatusSeeOther {
+		ploc, _ := url.QueryUnescape(parseCommit.loc)
+		if strings.Contains(ploc, "Wrote ") && !strings.Contains(ploc, "Wrote 0") {
+			t.Fatalf("parse commit wrote rows: %s", parseCommit.loc)
+		}
+	}
+	if f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`) != beforeParse {
+		t.Fatal("parse-error commit must write nothing")
+	}
+
+	// IMP-04 / Codex P2: after the original PDF is renamed, re-run preview and commit
+	// still report already imported (skip before resolveOpeningFiles).
+	f.atty.must(http.StatusOK, "POST", "/api/v1/files/"+openingPDFID+"/rename", map[string]any{"name": "opening-1000-renamed.pdf"})
+	renamedPrev := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}}, goodCSV)
+	if renamedPrev.code != http.StatusSeeOther {
+		t.Fatalf("renamed PDF preview: %d %s", renamedPrev.code, renamedPrev.body)
+	}
+	rpq := ""
+	if i := strings.Index(renamedPrev.loc, "?"); i >= 0 {
+		rpq = renamedPrev.loc[i:]
+	}
+	renamedPage := f.admin.must(http.StatusOK, "GET", "/admin?tab=migration"+strings.Replace(rpq, "?", "&", 1), nil)
+	if strings.Contains(strings.ToLower(renamedPage.body), "no file named") {
+		t.Fatalf("renamed PDF preview must skip, not resolve files: %s", renamedPage.body)
+	}
+	renamedCommit := f.admin.uploadCSV("/admin/migration/opening-csv", url.Values{"csrf": {csrf}, "commit": {"1"}}, goodCSV)
+	renamedLoc, _ := url.QueryUnescape(renamedCommit.loc)
+	if renamedCommit.code != http.StatusSeeOther || !strings.Contains(renamedLoc, "skipped 500") {
+		t.Fatalf("renamed PDF re-run must skip all: %s", renamedCommit.loc)
+	}
+	if f.count(`SELECT COUNT(*) FROM core.billing_records WHERE kind = 'invoice'`) != after {
+		t.Fatal("renamed PDF re-run wrote new rows")
 	}
 }
 

@@ -107,43 +107,26 @@ func (m *migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error
 	}
 	sum := sha256.Sum256(raw)
 	hash := hex.EncodeToString(sum[:])
-	items, err := parseOpeningCSV(strings.NewReader(string(raw)))
+	parsed, err := parseOpeningCSV(strings.NewReader(string(raw)))
 	if err != nil {
 		return "", err
 	}
 	commit := r.FormValue("commit") == "1"
 	if !commit {
-		results, err := m.app.Billing.BulkInvoicesPreview(r.Context(), p, items)
+		preview, bad, err := m.previewCSV(r, p, parsed)
 		if err != nil {
 			return "", err
-		}
-		preview := make([]dashboard.MigrationPreviewRow, 0, len(results))
-		var bad []string
-		ok := int(0)
-		for _, res := range results {
-			row := dashboard.MigrationPreviewRow{
-				Index: res.Index + 1, OK: res.PreviewOK, Error: res.PreviewError,
-				Skipped: res.Skipped, ExternalRef: res.ExternalRef,
-			}
-			if res.Skipped {
-				row.OK = true
-				ok++
-			} else if res.PreviewOK {
-				ok++
-			} else {
-				bad = append(bad, "row "+strconv.Itoa(res.Index+1)+": "+res.PreviewError)
-			}
-			preview = append(preview, row)
 		}
 		m.mu.Lock()
 		m.ensure()
 		m.previews[p.UserID] = preview
 		m.previewHash[p.UserID] = hash
 		m.mu.Unlock()
+		ok := len(preview) - len(bad)
 		if len(bad) > 0 {
 			return "Preview: " + strconv.Itoa(ok) + " ok, " + strconv.Itoa(len(bad)) + " refused. " + strings.Join(bad, "; "), nil
 		}
-		return "Preview: all " + strconv.Itoa(len(results)) + " rows look good. Check Commit and upload again to write.", nil
+		return "Preview: all " + strconv.Itoa(len(preview)) + " rows look good. Check Commit and upload again to write.", nil
 	}
 	// §6.3: the upload shows every row's result before anything is written. Refuse a
 	// first-pass Commit so an admin cannot write without a matching preview.
@@ -154,7 +137,12 @@ func (m *migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error
 	if !seen {
 		return "", domain.Invalid("commit", "preview this CSV first (upload without Commit checked)")
 	}
-	rows, skipped, err := m.app.Billing.BulkInvoicesDetailed(r.Context(), p, items)
+	// Parse-error rows never reach BulkInvoicesDetailed: refuse the commit so nothing
+	// is written when the preview named a bad amount (IMP-03).
+	if parsed.hasParseErrors() {
+		return "", domain.Invalid("csv", "fix refused rows before committing")
+	}
+	rows, skipped, err := m.app.Billing.BulkInvoicesDetailed(r.Context(), p, parsed.items())
 	if err != nil {
 		return "", err
 	}
@@ -163,6 +151,47 @@ func (m *migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error
 	delete(m.previews, p.UserID)
 	m.mu.Unlock()
 	return "Wrote " + strconv.Itoa(len(rows)) + " invoices; skipped " + strconv.Itoa(len(skipped)) + " already imported.", nil
+}
+
+// previewCSV builds one MigrationPreviewRow per CSV data row. Rows that failed amount
+// parsing are refused with their index; the rest go through BulkInvoicesPreview.
+func (m *migrationAdmin) previewCSV(r *http.Request, p domain.Principal, parsed openingCSV) ([]dashboard.MigrationPreviewRow, []string, error) {
+	preview := make([]dashboard.MigrationPreviewRow, len(parsed.rows))
+	var items []billing.InvoiceImport
+	var itemIdx []int
+	for i, row := range parsed.rows {
+		if row.ParseError != "" {
+			preview[i] = dashboard.MigrationPreviewRow{Index: i + 1, OK: false, Error: row.ParseError}
+			continue
+		}
+		items = append(items, row.Item)
+		itemIdx = append(itemIdx, i)
+	}
+	if len(items) > 0 {
+		results, err := m.app.Billing.BulkInvoicesPreview(r.Context(), p, items)
+		if err != nil {
+			return nil, nil, err
+		}
+		for j, res := range results {
+			i := itemIdx[j]
+			row := dashboard.MigrationPreviewRow{
+				Index: i + 1, OK: res.PreviewOK, Error: res.PreviewError,
+				Skipped: res.Skipped, ExternalRef: res.ExternalRef,
+			}
+			if res.Skipped {
+				row.OK = true
+			}
+			preview[i] = row
+		}
+	}
+	var bad []string
+	for _, row := range preview {
+		if row.OK {
+			continue
+		}
+		bad = append(bad, "row "+strconv.Itoa(row.Index)+": "+row.Error)
+	}
+	return preview, bad, nil
 }
 
 func parseMoneyForm(s string) (domain.Cents, error) {
@@ -178,12 +207,44 @@ func parseMoneyForm(s string) (domain.Cents, error) {
 	return c, nil
 }
 
-func parseOpeningCSV(r io.Reader) ([]billing.InvoiceImport, error) {
+// openingCSVRow is one data row from an opening-import CSV. ParseError is set when
+// amount_due or amount_paid cannot be parsed; those rows still appear in the preview
+// with their index (IMP-03) instead of aborting the whole upload.
+type openingCSVRow struct {
+	Item       billing.InvoiceImport
+	ParseError string
+}
+
+type openingCSV struct {
+	rows []openingCSVRow
+}
+
+func (c openingCSV) items() []billing.InvoiceImport {
+	out := make([]billing.InvoiceImport, 0, len(c.rows))
+	for _, row := range c.rows {
+		if row.ParseError != "" {
+			continue
+		}
+		out = append(out, row.Item)
+	}
+	return out
+}
+
+func (c openingCSV) hasParseErrors() bool {
+	for _, row := range c.rows {
+		if row.ParseError != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func parseOpeningCSV(r io.Reader) (openingCSV, error) {
 	cr := csv.NewReader(r)
 	cr.TrimLeadingSpace = true
 	header, err := cr.Read()
 	if err != nil {
-		return nil, domain.Invalid("csv", "could not read header: "+err.Error())
+		return openingCSV{}, domain.Invalid("csv", "could not read header: "+err.Error())
 	}
 	idx := map[string]int{}
 	for i, h := range header {
@@ -192,7 +253,7 @@ func parseOpeningCSV(r io.Reader) ([]billing.InvoiceImport, error) {
 	need := []string{"matter_id", "number", "issued_on", "amount_due"}
 	for _, n := range need {
 		if _, ok := idx[n]; !ok {
-			return nil, domain.Invalid("csv", "missing column "+n)
+			return openingCSV{}, domain.Invalid("csv", "missing column "+n)
 		}
 	}
 	col := func(row []string, name string) string {
@@ -202,22 +263,26 @@ func parseOpeningCSV(r io.Reader) ([]billing.InvoiceImport, error) {
 		}
 		return strings.TrimSpace(row[i])
 	}
-	var out []billing.InvoiceImport
+	var out openingCSV
 	for {
 		row, err := cr.Read()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, domain.Invalid("csv", err.Error())
+			return openingCSV{}, domain.Invalid("csv", err.Error())
 		}
-		amountDue, err := parseMoneyForm(col(row, "amount_due"))
-		if err != nil {
-			return nil, domain.Invalid("csv", "amount_due: "+err.Error())
-		}
-		amountPaid, err := parseMoneyForm(col(row, "amount_paid"))
-		if err != nil {
-			return nil, domain.Invalid("csv", "amount_paid: "+err.Error())
+		amountDue, dueErr := parseMoneyForm(col(row, "amount_due"))
+		amountPaid, paidErr := parseMoneyForm(col(row, "amount_paid"))
+		if dueErr != nil || paidErr != nil {
+			msg := ""
+			if dueErr != nil {
+				msg = "amount_due: " + dueErr.Error()
+			} else {
+				msg = "amount_paid: " + paidErr.Error()
+			}
+			out.rows = append(out.rows, openingCSVRow{ParseError: msg})
+			continue
 		}
 		ref := col(row, "external_ref")
 		if ref == "" {
@@ -229,10 +294,10 @@ func parseOpeningCSV(r io.Reader) ([]billing.InvoiceImport, error) {
 		)
 		item.ContactEmail = col(row, "contact_email")
 		item.DocumentFileName = col(row, "document_file_name")
-		out = append(out, item)
+		out.rows = append(out.rows, openingCSVRow{Item: item})
 	}
-	if len(out) == 0 {
-		return nil, domain.Invalid("csv", "no data rows")
+	if len(out.rows) == 0 {
+		return openingCSV{}, domain.Invalid("csv", "no data rows")
 	}
 	return out, nil
 }

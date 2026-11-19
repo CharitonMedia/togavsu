@@ -117,6 +117,10 @@ func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, 
 	if s.overBulkMax(ctx, len(items)) {
 		return nil, nil, domain.Invalid("items", "batch is larger than api.bulk_batch_max")
 	}
+	// Authorize and wall-check every row first. Do not resolve document_file_name /
+	// contact_email yet: already-imported external_refs must skip before that step
+	// so a renamed/trashed PDF or changed email on re-run still reports skipped (IMP-04),
+	// matching BulkInvoicesPreview.
 	resolved := make([]InvoiceImport, len(items))
 	for i, in := range items {
 		if in.MatterID.IsZero() {
@@ -127,13 +131,6 @@ func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, 
 		}
 		if _, err := s.matter(ctx, in.MatterID); err != nil {
 			return nil, nil, err
-		}
-		if in.OpeningImport() {
-			got, err := s.resolveOpeningFiles(ctx, p, in, i)
-			if err != nil {
-				return nil, nil, err
-			}
-			in = got
 		}
 		resolved[i] = in
 	}
@@ -163,6 +160,11 @@ func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, 
 					skipped = append(skipped, BulkInvoiceResult{Index: i, Skipped: true, ExternalRef: ref, SkipReason: "already imported by external_ref"})
 					continue
 				}
+				got, err := s.resolveOpeningFiles(t.ctx, t.p, in, i)
+				if err != nil {
+					return batchRejected(err)
+				}
+				in = got
 				if err := s.checkOpeningImport(t.ctx, in, i, numbers, existingRefs, seenRefs, false); err != nil {
 					return batchRejected(err)
 				}
