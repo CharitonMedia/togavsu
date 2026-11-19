@@ -177,6 +177,9 @@ func TestCoreUpdate2EReservedSender(t *testing.T) {
 	if r := c.TryInstall(signed); r.Code != http.StatusBadRequest || !strings.Contains(r.Body, "reserved") {
 		t.Fatalf("reserved install: %d %s", r.Code, r.Body)
 	}
+	if r := c.Admin.Do("POST", "/api/v1/modules", map[string]any{"source": "marketplace", "listing_id": "core", "version": "1.0.0"}); r.Code != http.StatusBadRequest || !strings.Contains(r.Body, "reserved") {
+		t.Fatalf("reserved marketplace install: %d %s", r.Code, r.Body)
+	}
 	if c.Count(`SELECT COUNT(*) FROM core.modules WHERE id='core'`) != 0 {
 		t.Fatal("reserved module was persisted")
 	}

@@ -138,6 +138,16 @@ func TestReservedModuleID(t *testing.T) {
 	if ValidModuleID("core") || !ValidModuleID("core-tools") {
 		t.Fatal("core must be reserved without reserving ordinary module ids")
 	}
+	client := &Client{Address: func(context.Context) string {
+		t.Fatal("reserved ids must be refused before a catalog lookup")
+		return ""
+	}}
+	if _, err := client.Listing(context.Background(), "core"); !errors.Is(err, ErrReservedModuleID) {
+		t.Fatalf("reserved listing lookup: %v", err)
+	}
+	if _, err := client.Package(context.Background(), "core", "1.0.0"); !errors.Is(err, ErrReservedModuleID) {
+		t.Fatalf("reserved package lookup: %v", err)
+	}
 	for _, body := range []string{
 		`{"id":"core","name":"Core impostor","version":"1.0.0"}`,
 		"id: core\nname: Core impostor\nversion: 1.0.0\n",
