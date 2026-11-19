@@ -123,7 +123,7 @@ func (s *Service) GetDeadline(ctx context.Context, p domain.Principal, id domain
 	if err != nil {
 		return Deadline{}, missing(err, "deadline")
 	}
-	if (!s.visible(ctx, p, row.MatterID)) && !p.EventRecord("deadline", id, row.MatterID) {
+	if !s.visible(ctx, p, row.MatterID) {
 		return Deadline{}, domain.NotFound("deadline")
 	}
 	return row, nil

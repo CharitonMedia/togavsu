@@ -467,7 +467,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	inner := ui.Handler()
 	app.handler = app.holdGate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = memoCaller(r)
-		app.moduleReadResponses(inner).ServeHTTP(w, r.WithContext(practice.WithRequestMemo(r.Context())))
+		inner.ServeHTTP(w, r.WithContext(practice.WithRequestMemo(r.Context())))
 	}))
 	if err := ext.start(ctx); err != nil {
 		return fail(err)

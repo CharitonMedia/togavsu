@@ -208,8 +208,6 @@ _BACKUP_ID = {"type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$", 
 
 def _meta(extra: dict, required: list[str], description: str = "", mutable: bool = True) -> dict:
     properties = {
-        "walled": {"type":"boolean", "description":"True on module responses restricted by a matter wall."},
-        "wall_member_user_ids": _arr(_uuid()),
         "id": _uuid(),
         "created_at": _dt(),
         "created_by": _uuid("User who created the row, or the nil id for System."),
@@ -2916,7 +2914,8 @@ SCHEMAS = _register(
             {
                 "actor_kind": _ACTOR,
                 "actor_id": _null({"type":"string","description":"User UUID or module id for a module actor."}),
-                "actor_name":{"type":"string"},
+                "actor_name":{"type":"string", "description":"User display name when available; never a raw id."},
+                "module_id": {"type":"string", "description":"Module through which the actor acted, or empty for a direct action."},
                 "action": {"type": "string"},
                 "record_type": {"type": "string"},
                 "record_id": {"type": "string"},
@@ -2987,7 +2986,7 @@ SCHEMAS = _register(
                 "balance_scope": _null(_enum(["matter", "client", "account"])),
             },
             ["id", "type", "occurred_at", "actor_kind", "record_type", "record_id", "summary"],
-            "Signed webhook body. X-Togavsu-Signature is t=unix,v1=hex HMAC-SHA256 of unix + dot + raw body, keyed with the module's webhook secret. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read.",
+            "Signed webhook body. X-Togavsu-Signature is sha256=<hex> HMAC-SHA256 of the raw body with a separate X-Togavsu-Timestamp checked within five minutes, keyed with the module's webhook secret. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read.",
         ),
         "Backup": _meta(
             {

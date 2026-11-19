@@ -67,7 +67,7 @@ func (h *Handler) phoneItemPage(w http.ResponseWriter, r *http.Request, c Caller
 		}
 		for _, spec := range mod.Manifest.ContactPhoneItems {
 			if spec.ID == it.ID {
-				writeFrame(w, r, true, it.Title, FramePath(it.Module, spec.Path, tok.Token, url.Values{"phone_id": {string(phone.ID)}, "contact_id": {string(phone.ContactID)}, "phone": {phone.PhoneE164}}), it.Module)
+				writeFrame(w, r, true, it.Title, FramePath(it.Module, spec.Path, tok.Token, url.Values{"phone_id": {string(phone.ID)}, "contact_id": {string(phone.ContactID)}}), it.Module)
 				return
 			}
 		}

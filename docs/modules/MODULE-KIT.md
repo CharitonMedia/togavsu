@@ -524,17 +524,15 @@ module. Directory rows include `work_email` for staff and modules. Client rows r
 only `id` and `name`. `?matter_id=` first checks the caller's matter access, then returns
 only active users whose current roles and wall membership permit that matter.
 
-For a walled record, use a context token for a viewer inside the wall, or a record grant
-from an event the core delivered. To receive the latter, request `event_records:read`
-as well as `events:read` and the record's ordinary read scope. Delivery includes
-`X-Togavsu-Event-Authorization`; present that header on the named record's get. It expires
-five minutes after delivery, names one module, event, record type, record id and matter,
-and permits no list, write, sibling record, include row, or attorney-only field. Named matter-party and contact-address/email/phone gets use the same exact-record rule. Core
-record events, rather than module-appended events or contract payloads, mint grants.
-MCP forwards the same header. Disabled modules and changed/expired credentials fail
-closed. A successful read is audited even with a delegated viewer. Walled record
-responses include `walled: true` and `wall_member_user_ids`; show module-owned results
-only to those users, checking fresh core access whenever a user opens them.
+For a walled record, use a context token for a viewer inside the wall. A service
+principal sits outside every wall: gets answer `not_found`, and lists omit the records.
+Delivered events grant no extra record access. No record response discloses wall membership.
+The directory's `matter_id` filter applies the caller's access before selecting users;
+a service principal can use it only for non-walled matters. Every module call, delegated
+or background, is audited under the module id with its operation and requested record.
+Delegated actions keep the user as `actor_id`; `module_id` records the module separately,
+and timeline/feed rows show the person via the module. Background calls name the module
+as the actor.
 
 Under `mail:send`, a service principal can send to `to_contact_ids` with `matter_id`.
 The core resolves only current primary addresses of parties on that accessible matter;
@@ -562,19 +560,25 @@ provider response returns HTTP 413 with code `too_large`.
 
 ### Timestamped core webhooks and provider callbacks
 
-Events, contract calls and routed system mail now use one signature:
-`X-Togavsu-Signature: t=<unix>,v1=<hex HMAC-SHA256>` over
-`<unix>.<raw body>`. `X-Togavsu-Timestamp` repeats the authenticated timestamp. Use
-`modulekit.SignWebhook` and `VerifyWebhook`; an empty secret produces no signature and
-never verifies. A zero verification tolerance means five minutes; timestamps outside
-the window in either direction fail. The former body-only `sha256=` format is refused.
-Continue deduplicating event ids. The timestamp changes on a retry; the event id stays.
+Events, contract calls and routed system mail keep the batch 1 wire format:
+`X-Togavsu-Signature: sha256=<hex HMAC-SHA256>` over the exact raw body, plus a separate
+`X-Togavsu-Timestamp` header containing decimal Unix seconds. Receivers require both
+headers, compare the HMAC in constant time, and refuse timestamps more than five minutes
+from their clock in either direction. Deduplicate event ids; retries change the timestamp,
+while the event id stays the same. Empty secrets refuse both signing and delivery.
 
-Provider webhooks use their provider's own verification scheme. Public helpers
-`ProviderHMAC(secret, body)`, `VerifyProviderHMAC(secret, body, decodedSignature)` and
-`ProviderCRC(secret, challenge)` implement HMAC-SHA256 and `sha256=<base64>` challenge
-responses without importing internal packages; all refuse an empty secret. They do not
-replace provider-specific issuer, audience or token validation.
+`headers := modulekit.SignWebhook(secret, now, body)` returns both headers (`http.Header`),
+or nil for an empty secret. Copy these headers onto the request. Call
+`modulekit.VerifyWebhook(secret, request.Header, body, now, 0)` to verify both. Zero
+means the documented five-minute window; a positive tolerance can only shorten it.
+The helpers now take/return both headers so a receiver cannot omit the timestamp check.
+
+Provider webhooks use their provider's own scheme. `ProviderHMAC(secret, body)` and
+`VerifyProviderHMAC(secret, body, decodedSignature)` compute/check HMAC-SHA256.
+`ProviderCRC(secret, challenge)` returns Zoom's hex HMAC for its `encryptedToken` field.
+`ProviderCRCBase64(secret, challenge)` returns the separate `sha256=<base64>` convention;
+it is not Zoom's format. All refuse an empty secret and leave provider-specific issuer,
+audience and token checks to the receiver.
 
 A Google Pub/Sub push may opt in per hook to receive its provider Authorization header:
 
@@ -640,8 +644,7 @@ contact_phone_items:
 ```
 
 The contact screen places it beside each readable phone. The core frames the module
-page with the normal sandbox and viewer context, passing `phone_id`, `contact_id` and
-`phone`. Opening the frame rechecks contact access. The agent equivalent is
+page with the normal sandbox and viewer context, passing only `phone_id` and `contact_id`. The module reads the phone through the API. Opening the frame rechecks contact access. The agent equivalent is
 `GET /api/v1/modules/contact-phone-items?phone_id=` (`listContactPhoneItems` on MCP),
 with cursor pagination. Disabled or unapproved items disappear immediately. This adds
 no contact claim to context tokens and no documents-list action slot.

@@ -2086,9 +2086,6 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
-        "headers": [
-          "X-Togavsu-Event-Authorization"
-        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -2114,7 +2111,6 @@
         "arguments": [
           "path",
           "query",
-          "headers",
           "context_token"
         ]
       }
@@ -2431,9 +2427,6 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
-        "headers": [
-          "X-Togavsu-Event-Authorization"
-        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -2459,7 +2452,6 @@
         "arguments": [
           "path",
           "query",
-          "headers",
           "context_token"
         ]
       }
@@ -2691,9 +2683,6 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
-        "headers": [
-          "X-Togavsu-Event-Authorization"
-        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -2719,7 +2708,6 @@
         "arguments": [
           "path",
           "query",
-          "headers",
           "context_token"
         ]
       }
@@ -2958,9 +2946,6 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
-        "headers": [
-          "X-Togavsu-Event-Authorization"
-        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -2986,7 +2971,6 @@
         "arguments": [
           "path",
           "query",
-          "headers",
           "context_token"
         ]
       }
@@ -3519,9 +3503,6 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
-        "headers": [
-          "X-Togavsu-Event-Authorization"
-        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -3547,7 +3528,6 @@
         "arguments": [
           "path",
           "query",
-          "headers",
           "context_token"
         ]
       }
@@ -4168,9 +4148,6 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
-        "headers": [
-          "X-Togavsu-Event-Authorization"
-        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -4196,7 +4173,6 @@
         "arguments": [
           "path",
           "query",
-          "headers",
           "context_token"
         ]
       }
@@ -5227,7 +5203,7 @@
         "attorney",
         "staff"
       ],
-      "module_delegation": "delegated_viewer",
+      "module_delegation": "delegated_viewer_or_service_principal",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -5243,6 +5219,13 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [
@@ -5330,19 +5313,23 @@
         "attorney",
         "staff"
       ],
-      "module_delegation": "delegated_viewer",
+      "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
-        "headers": [
-          "X-Togavsu-Event-Authorization"
-        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [
@@ -5356,7 +5343,6 @@
         "arguments": [
           "path",
           "query",
-          "headers",
           "context_token"
         ]
       }
@@ -11222,9 +11208,6 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
-        "headers": [
-          "X-Togavsu-Event-Authorization"
-        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -11250,7 +11233,6 @@
         "arguments": [
           "path",
           "query",
-          "headers",
           "context_token"
         ]
       }
@@ -11538,9 +11520,6 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
-        "headers": [
-          "X-Togavsu-Event-Authorization"
-        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -11566,7 +11545,6 @@
         "arguments": [
           "path",
           "query",
-          "headers",
           "context_token"
         ]
       }
@@ -11951,7 +11929,7 @@
         "accountant",
         "client"
       ],
-      "module_delegation": "delegated_viewer",
+      "module_delegation": "delegated_viewer_or_service_principal",
       "limit": {
         "type": "integer",
         "minimum": 1,
@@ -11967,6 +11945,13 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [
@@ -12070,9 +12055,6 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
-        "headers": [
-          "X-Togavsu-Event-Authorization"
-        ],
         "credentials": {
           "context_token": {
             "header": "X-Togavsu-Context-Token",
@@ -12101,7 +12083,6 @@
         "arguments": [
           "path",
           "query",
-          "headers",
           "context_token",
           "task_authorization"
         ]

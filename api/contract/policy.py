@@ -3093,23 +3093,18 @@ def attach_matter_marker(store: dict, call: dict) -> dict:
 
 
 def webhook_signature(secret: bytes | str, body: bytes | str, timestamp: int = 1800000000) -> str:
-    """HMAC over decimal timestamp, dot, and exact body; empty keys are refused."""
+    """Batch 1 raw-body HMAC; timestamp is supplied in a separate header."""
     key = secret.encode("utf-8") if isinstance(secret, str) else secret
     payload = body.encode("utf-8") if isinstance(body, str) else body
-    if not key:
-        return ""
-    stamp = str(timestamp)
-    return "t=" + stamp + ",v1=" + hmac.new(key, stamp.encode() + b"." + payload, hashlib.sha256).hexdigest()
+    return "sha256=" + hmac.new(key, payload, hashlib.sha256).hexdigest() if key else ""
 
 
-def webhook_signature_matches(secret: bytes | str, body: bytes | str, header: str, now: int = 1800000000, tolerance: int = 300) -> bool:
-    match = re.fullmatch(r"t=([0-9]+),v1=([a-f0-9]{64})", header) if isinstance(header, str) else None
-    if not secret or not match or tolerance < 0:
+def webhook_signature_matches(secret: bytes | str, body: bytes | str, header: str, now: int = 1800000000, tolerance: int = 300, timestamp: int | None = None) -> bool:
+    if not secret or timestamp is None or not isinstance(header, str) or not re.fullmatch(r"sha256=[a-f0-9]{64}", header) or tolerance < 0 or tolerance > 300:
         return False
-    stamp = int(match.group(1))
-    if abs(now - stamp) > tolerance:
+    if abs(now - timestamp) > tolerance:
         return False
-    return hmac.compare_digest(webhook_signature(secret, body, stamp), header)
+    return hmac.compare_digest(webhook_signature(secret, body), header)
 
 
 def event_read_scopes(event_type: str, record_type: str | None = None) -> list[str]:

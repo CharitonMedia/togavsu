@@ -106,21 +106,7 @@ func actorID(p domain.Principal) domain.ID {
 	return p.UserID
 }
 
-func actorKind(p domain.Principal) string {
-	switch p.Source {
-	case domain.SourceSystem:
-		return "system"
-	case domain.SourceModule, domain.SourceService:
-		// CORE-30: service-principal writes record the module as author.
-		return "module"
-	case domain.SourceAPIToken:
-		return "agent"
-	}
-	if p.HasRole(domain.RoleClient) && !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) && !p.HasRole(domain.RoleStaff) && !p.HasRole(domain.RoleAccountant) {
-		return "client"
-	}
-	return "staff"
-}
+func actorKind(p domain.Principal) string { return p.EventActorKind() }
 
 // tokenReason keeps the token id on the row the way audit.provenance does for identity,
 // so the shared audit_log has one convention: source api_token, reason "token=<id> ...".
@@ -459,9 +445,9 @@ func (s *Service) record(ctx context.Context, p domain.Principal, rows []change)
 			summary = row.Field + " changed"
 		}
 		events = append(events, domain.Event{
-			Meta:          em,
-			ActorKind:     actorKind(p),
-			ActorID:       p.EventActor(),
+			Meta:      em,
+			ActorKind: actorKind(p),
+			ActorID:   p.EventActor(), ModuleID: p.ModuleID,
 			Action:        action,
 			RecordType:    row.Entity,
 			RecordID:      row.EntityID,

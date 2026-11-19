@@ -196,12 +196,12 @@ names are in [MODULE-KIT.md](MODULE-KIT.md), with REST/MCP behavior in
 | Assignment item | Implemented behavior | Executable regression evidence |
 | --- | --- | --- |
 | 1, CORE-30/36 | Scoped service get/list of deadlines, calendar events, matter parties filtered by contact, firm time zone, addresses, roles, field definitions and user directory/work email; live per-operation limits | `TestCoreUpdate2DReadsWallsMailSettingsAndPhone` |
-| 2 | Viewer-inside-wall reads or delivered single-record grants; member metadata, no lists/writes/sibling access; directory checks each candidate | Same test; `TestCoreUpdate2DEventRecordKinds`; `TestEventReadRejectsExpiredChangedAndOtherModule` |
+| 2 | Service gets answer not_found and lists omit walled records; only inside-wall delegated viewers read them; no membership disclosure; directory checks caller before candidates | Same test; `TestCoreUpdate2DServiceWallsEveryRecord` |
 | 3, CORE-04 | Service mail to matter parties, resolved by core, matter recorded/audited | Same public-kit test; existing module-mail tests |
 | 4, CORE-20/31/36 | Own settings reads and admin-delegated own-settings writes; contract limit allowlist; modules:write remains forbidden | Same public-kit test |
 | 5, CORE-31 | Audience-bound forwarded contexts with live links; stable targeted event envelope/idempotency; response `too_large` | `TestCoreUpdate2DContractForwardingTargetAndLimit` |
-| 6, CORE-07/36 | Timestamp HMAC and delivery header, empty-secret/window checks, per-hook approved Authorization forwarding, provider CRC/HMAC helpers | `TestCoreUpdate2DInboundAuthorizationOptIn`, `TestTimestampedWebhookAndProviderHelpers`, `TestWebhookAuthorizationOptInRequiresScope` |
-| 7, CORE-36 | Purge blocked by retaining module FKs; shared module timeline/feed with module actor | Public-kit read/mail/settings/phone and purge/converter tests |
+| 6, CORE-07/36 | Batch 1 raw-body HMAC and separate timestamp header, empty-secret/five-minute checks, per-hook approved Authorization forwarding, provider CRC/HMAC helpers | `TestCoreUpdate2DInboundAuthorizationOptIn`, `TestTimestampedWebhookAndProviderHelpers`, `TestWebhookAuthorizationOptInRequiresScope` |
+| 7, CORE-36 | Purge blocked by retaining module FKs; shared timeline/feed preserves delegated user actor and records module separately | Public-kit read/mail/settings/phone and purge/converter tests |
 | 8, CORE-29/36 | Goose Up-only inventory; explicit runtime pending criteria with strict retirement; in-process converter stand-in | `TestRuntimePendingCriteriaAndGooseUpInventory`, `TestRuntimePendingCLI`, `TestCoreUpdate2DPurgeRestrictAndConverter` |
 | 9 | Contact phone-row item manifest, sandboxed viewer frame and paginated REST/MCP discovery | Public-kit read/mail/settings/phone test |
 

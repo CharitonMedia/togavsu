@@ -109,9 +109,12 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 			view.Clients++
 		case "staff":
 			view.Staff++
-			people[row.ActorID]++
+
 		case "agent", "module":
 			view.Agents++
+		}
+		if user, err := s.db.User(ctx, row.ActorID); err == nil && user.ID != domain.SystemUserID {
+			people[row.ActorID]++
 		}
 	}
 	for id, count := range people {
@@ -176,7 +179,7 @@ func (s *Service) timelineRow(ctx context.Context, row domain.Event) TimelineEnt
 	}
 	return TimelineEntry{
 		ID: row.ID, CreatedBy: row.CreatedBy, At: row.CreatedAt, ActorKind: row.ActorKind, ActorID: row.ActorID,
-		ActorName: name, Action: row.Action, Summary: row.Summary, ClientVisible: row.ClientVisible,
+		ActorName: name, ModuleID: row.ModuleID, Action: row.Action, Summary: row.Summary, ClientVisible: row.ClientVisible,
 		RecordType: row.RecordType, RecordID: row.RecordID, MatterID: row.MatterID,
 	}
 }

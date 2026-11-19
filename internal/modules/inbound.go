@@ -134,7 +134,7 @@ func (h *Handler) inboundWebhook(w http.ResponseWriter, r *http.Request) {
 			if !hook.ForwardAuthorization || !in.Approved["webhooks:authorization"] {
 				pr.Out.Header.Del("Authorization")
 			}
-			pr.Out.Header.Del(EventAuthorizationHeader)
+			pr.Out.Header.Del("X-Togavsu-Event-Authorization")
 			pr.Out.Header.Del(TaskAuthorizationHeader)
 			pr.Out.Header.Del(PublicStepHeader)
 			pr.Out.Header.Del(ContextHeader)

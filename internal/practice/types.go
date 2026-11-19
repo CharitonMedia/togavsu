@@ -302,6 +302,7 @@ type HistoryRow struct {
 
 // TimelineEntry is one case-timeline row.
 type TimelineEntry struct {
+	ModuleID      string
 	CreatedBy     domain.ID
 	ID            domain.ID
 	At            time.Time

@@ -98,12 +98,7 @@ func (s *Service) GetNote(ctx context.Context, p domain.Principal, id domain.ID)
 	if err != nil {
 		return domain.Note{}, missing(err, "note")
 	}
-	if p.EventRecord("note", id, row.MatterID) {
-		if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResNote, Action: domain.ActionRead}); err != nil {
-			return domain.Note{}, err
-		}
-	}
-	if err := s.gateNote(ctx, p, row.MatterID, row.ContactID, domain.ActionRead); err != nil && !p.EventRecord("note", id, row.MatterID) {
+	if err := s.gateNote(ctx, p, row.MatterID, row.ContactID, domain.ActionRead); err != nil {
 		return domain.Note{}, err
 	}
 	return row, nil

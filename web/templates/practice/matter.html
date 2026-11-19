@@ -134,7 +134,7 @@
   <h2>Case timeline</h2>
   <ol>
   {{range .Timeline}}
-    <li {{if .ClientVisible}}class="client"{{end}}>{{.At.Format "2006-01-02 15:04"}} · {{if .ActorName}}{{.ActorName}}{{else}}{{.ActorKind}}{{end}} · {{.Summary}}</li>
+    <li {{if .ClientVisible}}class="client"{{end}}>{{.At.Format "2006-01-02 15:04"}} · {{if .ActorName}}{{.ActorName}}{{else}}{{.ActorKind}}{{end}}{{if .ModuleID}} via {{.ModuleID}}{{end}} · {{.Summary}}</li>
   {{else}}<li>No events yet.</li>{{end}}
   </ol>
 </section>

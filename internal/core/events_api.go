@@ -210,6 +210,7 @@ func (a *App) appendEvents(ctx context.Context, p domain.Principal, items []even
 			ev.MatterID = *it.MatterID
 		}
 		ev.ActorID = p.EventActor()
+		ev.ModuleID = p.ModuleID
 		if err := db.PublishEvent(ctx, tx, ev); err != nil {
 			return nil, err
 		}
@@ -223,7 +224,7 @@ func (a *App) appendEvents(ctx context.Context, p domain.Principal, items []even
 		}
 		notice := domain.Event{
 			Meta:      domain.Meta{ID: nid, CreatedAt: now, UpdatedAt: now, CreatedBy: actor},
-			ActorKind: kind, ActorID: actor, Action: "event.appended", RecordType: "event",
+			ActorKind: kind, ActorID: p.EventActor(), ModuleID: p.ModuleID, Action: "event.appended", RecordType: "event",
 			RecordID: id, MatterID: ev.MatterID, Summary: "Event appended: " + it.Action,
 		}
 		if err := db.PublishEvent(ctx, tx, notice); err != nil {
@@ -238,17 +239,7 @@ func (a *App) appendEvents(ctx context.Context, p domain.Principal, items []even
 }
 
 // eventActorKind is set from the token, never from the body.
-func eventActorKind(p domain.Principal) string {
-	switch p.Source {
-	case domain.SourceSystem:
-		return "system"
-	case domain.SourceModule, domain.SourceService:
-		return "module"
-	case domain.SourceAPIToken:
-		return "agent"
-	}
-	return "staff"
-}
+func eventActorKind(p domain.Principal) string { return p.EventActorKind() }
 
 func eventJSON(ev domain.Event) map[string]any {
 	var actor, matter any
@@ -264,7 +255,7 @@ func eventJSON(ev domain.Event) map[string]any {
 	}
 	return map[string]any{
 		"id": ev.ID, "created_at": ev.CreatedAt.UTC().Format(time.RFC3339Nano), "created_by": by,
-		"actor_kind": ev.ActorKind, "actor_id": actor, "actor_name": string(ev.ActorID), "action": ev.Action, "record_type": ev.RecordType,
+		"actor_kind": ev.ActorKind, "actor_id": actor, "module_id": ev.ModuleID, "action": ev.Action, "record_type": ev.RecordType,
 		"record_id": ev.RecordID, "matter_id": matter, "summary": ev.Summary, "client_visible": ev.ClientVisible,
 	}
 }
@@ -510,7 +501,7 @@ func (a *App) feed(ctx context.Context, p domain.Principal, q eventQuery) ([]map
 	batch := q.Limit + 1
 	for {
 		sql := `SELECT e.id, e.created_at, e.created_by, e.actor_kind, e.actor_id, e.action, e.record_type, e.record_id,
-COALESCE(e.matter_id, ''), e.summary, e.client_visible, COALESCE(f.attorney_only, 0)
+COALESCE(e.matter_id, ''), e.summary, e.client_visible, e.module_id, COALESCE(f.attorney_only, 0)
 FROM events e LEFT JOIN files f ON e.record_type = 'file' AND f.id = e.record_id
 WHERE e.created_at >= $1`
 		args := []any{q.From}
@@ -548,7 +539,7 @@ WHERE e.created_at >= $1`
 			var at int64
 			var visible, attorneyOnly int
 			if err := rows.Scan(&ev.ID, &at, &ev.CreatedBy, &ev.ActorKind, &ev.ActorID, &ev.Action, &ev.RecordType, &ev.RecordID,
-				&ev.MatterID, &ev.Summary, &visible, &attorneyOnly); err != nil {
+				&ev.MatterID, &ev.Summary, &visible, &ev.ModuleID, &attorneyOnly); err != nil {
 				rows.Close()
 				return nil, nil, err
 			}

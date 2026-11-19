@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -144,14 +145,13 @@ func KnownScope(scope string) bool { return identity.KnownScope(scope) }
 
 // CORE-32 public-page step tokens and CSRF helpers (also used by CORE-31 HMAC signing).
 const (
-	ContextHeader            = modules.ContextHeader
-	PublicStepHeader         = modules.PublicStepHeader
-	PublicCSRFCookie         = modules.PublicCSRFCookie
-	PublicCSRFHeader         = modules.PublicCSRFHeader
-	PublicCSRFPassHeader     = modules.PublicCSRFPassHeader
-	SignatureHeader          = modules.SignatureHeader
-	TimestampHeader          = modules.TimestampHeader
-	EventAuthorizationHeader = modules.EventAuthorizationHeader
+	ContextHeader        = modules.ContextHeader
+	PublicStepHeader     = modules.PublicStepHeader
+	PublicCSRFCookie     = modules.PublicCSRFCookie
+	PublicCSRFHeader     = modules.PublicCSRFHeader
+	PublicCSRFPassHeader = modules.PublicCSRFPassHeader
+	SignatureHeader      = modules.SignatureHeader
+	TimestampHeader      = modules.TimestampHeader
 )
 
 // StepToken is a verified public-page step token (CORE-32).
@@ -182,10 +182,10 @@ func CheckSignedPublicCSRF(secret []byte, moduleID, cookie, submitted string, no
 }
 
 // SignWebhook / VerifyWebhook are the HMAC scheme contract calls share with events.
-func SignWebhook(secret string, at time.Time, body []byte) string {
+func SignWebhook(secret string, at time.Time, body []byte) http.Header {
 	return modules.SignWebhook(secret, at, body)
 }
-func VerifyWebhook(secret, header string, body []byte, now time.Time, tolerance time.Duration) error {
+func VerifyWebhook(secret string, header http.Header, body []byte, now time.Time, tolerance time.Duration) error {
 	return modules.VerifyWebhook(secret, header, body, now, tolerance)
 }
 

@@ -44,7 +44,7 @@ Modules may link to `fee_agreement`, `payment_refund` and `trust_account`. Payme
 
 ## Contributor gap fixes and wider service calls (CORE-36, CORE-30)
 
-CORE-36 closes the public-kit gaps this batch hits: `/m/` forwards `X-Togavsu-Context-Token`; `GET /api/v1/me` accepts a context token as the viewer; a missing scope answers `scope_denied` naming the scope; webhook signatures authenticate timestamp and raw body (`t=unix,v1=hex`); notes land in `core.notes`; invoices, payments and expenses dual-write into `core.invoices` / `core.payments` / `core.expenses`; conflict decisions emit `conflict_check.decided`; `getConflictCheck` accepts a service principal; `Accepts().core_items` lists built CORE items; coretest supplies Markdown renditions and an in-process converter stand-in.
+CORE-36 closes the public-kit gaps this batch hits: `/m/` forwards `X-Togavsu-Context-Token`; `GET /api/v1/me` accepts a context token as the viewer; a missing scope answers `scope_denied` naming the scope; webhook signatures authenticate the raw body (`sha256=<hex>`) with a separate timestamp checked within five minutes; notes land in `core.notes`; invoices, payments and expenses dual-write into `core.invoices` / `core.payments` / `core.expenses`; conflict decisions emit `conflict_check.decided`; `getConflictCheck` accepts a service principal; `Accepts().core_items` lists built CORE items; coretest supplies Markdown renditions and an in-process converter stand-in.
 
 CORE-30 marks the wider service-call set `delegated_viewer_or_service_principal` (contacts, matters, conflicts, calendar, deadlines, notes, timeline, markdown renditions). Each has `modules.service_call_limit.<operationId>` (default 120/minute). `listContact` supports exact `email` and `phone` filters. Service-principal writes record the module as author with audit source `service`. Walls still omit walled matters from lists and answer `not_found` on gets.
 
@@ -83,11 +83,10 @@ Each retains its existing read scope, gains a per-operation service-call limit, 
 writes an audit row under the module id. `user-directory?matter_id=` checks caller and
 candidate access; non-client rows include `work_email`.
 
-Walled gets require an inside-wall viewer or the one-record
-`X-Togavsu-Event-Authorization` delivered under approved `event_records:read` plus the
-ordinary read scope. It expires after five minutes and opens no list, write, sibling or
-attorney-only data. REST/MCP responses add `walled` and `wall_member_user_ids` for module
-reads. `mail:send` allows service sends to contact parties on an unwalled named matter.
+Walled gets require a context token for a viewer inside the wall. A service principal
+gets `not_found` and its lists omit those records, including after event delivery.
+Events confer no extra read access, and responses disclose no wall membership.
+`mail:send` allows service sends to contact parties on a non-walled named matter.
 
 Module own-settings setup writes use `PUT /api/v1/modules/{id}/own-settings`
 (`putOwnModuleSettings`, `module_settings:write`, admin viewer). `modules:write` stays
@@ -98,8 +97,9 @@ when the module has an approved contract permission.
 Forwarded context is signed for the selected provider and invalidated by unlinking.
 Provider events use the [targeted envelope](../contracts/README.md), preserving values
 and event id, with no implicit broadcast. Oversized provider responses are 413
-`too_large`. Events, contract calls and routed system mail use `t=unix,v1=hex` HMAC over
-`unix.raw-body` with `X-Togavsu-Timestamp`; body-only signatures and empty keys fail.
+`too_large`. Events, contract calls and routed system mail use `sha256=<hex>` HMAC-SHA256
+over the raw body, plus `X-Togavsu-Timestamp` (Unix seconds). Receivers require both
+headers and a timestamp within five minutes; empty secrets and unsigned sends fail.
 Inbound hooks forward Authorization only with their per-hook `forward_authorization`
 flag and approved `webhooks:authorization`. Provider Authorization is never core auth.
 
@@ -108,3 +108,7 @@ paginated viewer-only actions. Manifest `contact_phone_items` requires `contacts
 contact screens and sandboxed action frames check the same service access. Module events
 are named in the shared matter timeline and Activities Feed. Purge refuses retained
 module file links while keeping immutable version/audit metadata.
+
+Every module call, including delegated calls, is audited under the module id. Delegated
+actions keep the user as actor; `module_id` records the module and timeline/feed rows
+show the person via the module. Background actions use the module as actor.

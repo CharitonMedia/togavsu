@@ -850,9 +850,9 @@ func (s *store) alerts(ctx context.Context) ([]Alert, error) {
 }
 
 func (s *store) appendEvent(ctx context.Context, e domain.Event) error {
-	return s.exec(ctx, `INSERT INTO events (id, created_at, updated_at, created_by, actor_kind, actor_id, action, record_type, record_id, matter_id, summary, client_visible) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+	return s.exec(ctx, `INSERT INTO events (id, created_at, updated_at, created_by, actor_kind, actor_id, action, record_type, record_id, matter_id, summary, client_visible, module_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		e.ID, us(e.CreatedAt), us(e.UpdatedAt), e.CreatedBy, e.ActorKind, e.ActorID, e.Action, e.RecordType, e.RecordID,
-		nullID(e.MatterID), e.Summary, flag(e.ClientVisible))
+		nullID(e.MatterID), e.Summary, flag(e.ClientVisible), e.ModuleID)
 }
 
 func (s *store) categoryExists(ctx context.Context, name string) (bool, error) {

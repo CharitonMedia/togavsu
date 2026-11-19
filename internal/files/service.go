@@ -190,20 +190,7 @@ func actor(p domain.Principal, fallback domain.ID) domain.ID {
 	return fallback
 }
 
-func actorKind(p domain.Principal) string {
-	switch {
-	case p.Source == domain.SourceSystem:
-		return "system"
-	case p.Source == domain.SourceModule, p.Source == domain.SourceService:
-		return "module"
-	case p.Source == domain.SourceAPIToken:
-		return "agent"
-	case clientOnly(p):
-		return "client"
-	default:
-		return "staff"
-	}
-}
+func actorKind(p domain.Principal) string { return p.EventActorKind() }
 
 func clientOnly(p domain.Principal) bool {
 	return p.HasRole(domain.RoleClient) && !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) && !p.HasRole(domain.RoleStaff)
@@ -239,7 +226,7 @@ func (s *Service) event(ctx context.Context, p domain.Principal, f fileRow, acti
 		return err
 	}
 	return s.st.appendEvent(ctx, domain.Event{
-		Meta: m, ActorKind: actorKind(p), ActorID: p.EventActor(), Action: action,
+		Meta: m, ActorKind: actorKind(p), ActorID: p.EventActor(), ModuleID: p.ModuleID, Action: action,
 		RecordType: "file", RecordID: f.ID, MatterID: f.MatterID, Summary: summary,
 		ClientVisible: clientSees(p, f),
 	})
@@ -292,9 +279,6 @@ func (s *Service) moduleDecision(ctx context.Context, p domain.Principal, in dom
 	only, client := moduleOnly(p), clientViaModule(p)
 	if !only && !(client && in.Action == domain.ActionWrite) {
 		return domain.Decision{}, false, nil
-	}
-	if p.EventRead != nil && in.Action != domain.ActionRead {
-		return domain.Decision{Allow: false, Reason: domain.ReasonRole}, true, nil
 	}
 	on := false
 	if s.moduleOn != nil {
@@ -350,9 +334,6 @@ func (s *Service) decide(ctx context.Context, p domain.Principal, f fileRow, act
 			return domain.Decision{}, err
 		}
 		in.ClientMatter = own != "" && own == f.ContactID
-	}
-	if action == domain.ActionRead && p.EventRecord("file", f.ID, f.MatterID) {
-		in.WallAllows = true
 	}
 	if own, err := s.ownUnassigned(ctx, p, f, action); err != nil || own {
 		return domain.Decision{Allow: own}, err

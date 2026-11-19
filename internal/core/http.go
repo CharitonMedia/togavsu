@@ -387,18 +387,6 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 		// CORE-30: non-books service calls need a staff role so Decide allows them; UserID
 		// stays zero so the principal is on no wall (walled matters stay omitted / not_found).
 		a.elevateServiceStaff(&p, r)
-		if tok := r.Header.Get(modules.EventAuthorizationHeader); tok != "" {
-			g, err := a.ext.Modules.VerifyEventRead(r.Context(), p.ModuleID, tok)
-			if err != nil {
-				return p, err
-			}
-			t, ok := a.toolFor(r.Method, r.URL.Path)
-			record := map[string]string{"getMatter": "matter", "getContact": "contact", "getCalendarEvent": "calendar_event", "getDeadline": "deadline", "getFile": "file", "getNote": "note", "getMatterParty": "matter_party", "getContactAddress": "contact_address", "getContactPhone": "contact_phone", "getContactEmail": "contact_email"}[t.Name]
-			if !ok || r.Method != http.MethodGet || record != g.RecordType || !strings.HasSuffix(r.URL.Path, "/"+string(g.RecordID)) {
-				return p, domain.Forbidden("event authorization is restricted to its named record get")
-			}
-			p.EventRead = g
-		}
 		// CORE-01: every service call writes an audit row (module, operation, source service),
 		// including reads that would otherwise leave no write-side audit.
 		if !runtime {
@@ -407,7 +395,7 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 			}
 		}
 	}
-	if p.ModuleID != "" && !p.UserID.IsZero() && r.Method == http.MethodGet {
+	if p.ModuleID != "" && !p.UserID.IsZero() {
 		if err := a.auditServiceCall(r, p); err != nil {
 			return p, err
 		}
@@ -422,7 +410,7 @@ func (a *App) elevateServiceStaff(p *domain.Principal, r *http.Request) {
 		return
 	}
 	t, ok := a.toolFor(r.Method, r.URL.Path)
-	if !ok || (!serviceDelegation[t.Delegation] && r.Header.Get(modules.EventAuthorizationHeader) == "") {
+	if !ok || !serviceDelegation[t.Delegation] {
 		return
 	}
 	p.Roles = []domain.Role{domain.RoleStaff}
@@ -442,7 +430,7 @@ func (a *App) auditServiceCall(r *http.Request, p domain.Principal) error {
 		return err
 	}
 	_, err = a.Audit.Record(r.Context(), p, audit.Change{
-		Entity: "service_call", EntityID: id, Field: "operation", New: t.Name, Reason: "service.call",
+		Entity: "service_call", EntityID: id, Field: "operation", New: t.Name, Reason: "service.call record=" + r.URL.Path,
 	})
 	return err
 }
@@ -472,12 +460,6 @@ func (a *App) allowServiceCall(r *http.Request, p domain.Principal) error {
 	}
 	if r.Header.Get(modules.TaskAuthorizationHeader) != "" && t.Delegation == "delegated_viewer_or_noninteractive" {
 		return nil
-	}
-	if r.Header.Get(modules.EventAuthorizationHeader) != "" {
-		switch t.Name {
-		case "getMatter", "getContact", "getCalendarEvent", "getDeadline", "getFile", "getNote", "getMatterParty", "getContactAddress", "getContactPhone", "getContactEmail":
-			return a.enforceServiceCallLimit(r.Context(), p, t.Name)
-		}
 	}
 	if !serviceDelegation[t.Delegation] {
 		return &domain.APIError{Code: "scope_denied", Message: "operation does not allow a module service call"}

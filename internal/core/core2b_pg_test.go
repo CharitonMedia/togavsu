@@ -40,13 +40,12 @@ func TestCORE31ContractCall(t *testing.T) {
 	const contract = "phone.provider.v1"
 
 	var gotBody []byte
-	var gotSig, gotConsumer string
+	var gotConsumer string
 	x.rt.Serve("phone-provider", func(m testkit.Module) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			gotSig = r.Header.Get(modules.SignatureHeader)
 			gotConsumer = r.Header.Get("X-Togavsu-Contract-Consumer")
 			gotBody, _ = io.ReadAll(r.Body)
-			if err := modules.VerifyWebhook(m.WebhookSecret, gotSig, gotBody, time.Now().UTC(), 0); err != nil {
+			if err := modules.VerifyWebhook(m.WebhookSecret, r.Header, gotBody, time.Now().UTC(), 0); err != nil {
 				t.Errorf("provider verify: %v", err)
 			}
 			w.Header().Set("Content-Type", "application/json")

@@ -80,22 +80,12 @@ func (s *Service) UpdateMatter(ctx context.Context, p domain.Principal, id domai
 
 // GetMatter returns a matter the caller can see.
 func (s *Service) GetMatter(ctx context.Context, p domain.Principal, id domain.ID) (MatterView, error) {
-	if p.EventRecord("matter", id, id) {
-		if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
-			return MatterView{}, err
-		}
-	}
-	if !p.EventRecord("matter", id, id) {
-		if err := s.gateMatter(ctx, p, id, domain.ActionRead); err != nil {
-			return MatterView{}, err
-		}
+	if err := s.gateMatter(ctx, p, id, domain.ActionRead); err != nil {
+		return MatterView{}, err
 	}
 	row, err := s.db.Matter(ctx, id)
 	if err != nil {
 		return MatterView{}, missing(err, "matter")
-	}
-	if p.EventRecord("matter", id, id) {
-		return MatterView{Matter: row}, nil
 	}
 	return s.matterView(ctx, p, row)
 }

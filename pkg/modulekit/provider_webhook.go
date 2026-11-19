@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 )
 
@@ -30,9 +31,19 @@ func VerifyProviderHMAC(secret string, body, signature []byte) error {
 	return nil
 }
 
-// ProviderCRC answers a provider's challenge-response check (for example Zoom).
+// ProviderCRC returns Zoom's hex HMAC for the encryptedToken response field.
 // The provider's token is the HMAC key; the challenge is the message.
 func ProviderCRC(secret, challenge string) (string, error) {
+	sum, err := ProviderHMAC(secret, []byte(challenge))
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(sum), nil
+}
+
+// ProviderCRCBase64 returns the sha256=<base64> challenge-response convention.
+// This is not Zoom's encryptedToken format.
+func ProviderCRCBase64(secret, challenge string) (string, error) {
 	sum, err := ProviderHMAC(secret, []byte(challenge))
 	if err != nil {
 		return "", err

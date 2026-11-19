@@ -240,7 +240,7 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	mod := newClient(t, x.srv.URL)
 	mod.bearer = x.rt.Last("matter-clock").Secrets["togavsu_api_token"]
 	byModule := mod.must(http.StatusCreated, "POST", "/api/v1/events", ev(open, "matter-clock.target_met", "Target met"))
-	if byModule.json["actor_kind"] != "module" || byModule.json["actor_id"] != "matter-clock" || byModule.json["actor_name"] != "matter-clock" {
+	if byModule.json["actor_kind"] != "module" || byModule.json["actor_id"] != "matter-clock" || byModule.json["module_id"] != "matter-clock" || byModule.json["actor_name"] != nil {
 		t.Fatalf("module event: %s", byModule.body)
 	}
 	if r := mod.do("POST", "/api/v1/events", ev(walled, "matter-clock.target_met", "Walled")); r.code != http.StatusNotFound {

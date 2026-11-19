@@ -368,9 +368,6 @@ func shownDocs(fields []ShownField) []map[string]string {
 }
 
 func (h *Handler) contactDocument(ctx context.Context, p domain.Principal, row domain.Contact) (map[string]any, error) {
-	if p.EventRecord("contact", row.ID, "") {
-		return contactDoc(row, nil), nil
-	}
 	fields, err := h.Svc.CustomFields(ctx, p, RecordContact, row.ID, domain.ID(""))
 	if err != nil {
 		return nil, err
@@ -531,7 +528,7 @@ func checkDoc(run ConflictRun) map[string]any {
 func eventDoc(row TimelineEntry) map[string]any {
 	return map[string]any{
 		"id": row.ID, "created_at": when(row.At), "created_by": row.CreatedBy, "actor_kind": row.ActorKind,
-		"actor_id": idOrNil(row.ActorID), "actor_name": row.ActorName, "action": row.Action, "record_type": row.RecordType,
+		"actor_id": idOrNil(row.ActorID), "actor_name": row.ActorName, "module_id": row.ModuleID, "action": row.Action, "record_type": row.RecordType,
 		"record_id": row.RecordID, "matter_id": idOrNil(row.MatterID), "summary": row.Summary,
 		"client_visible": row.ClientVisible,
 	}

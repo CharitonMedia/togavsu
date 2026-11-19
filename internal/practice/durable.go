@@ -672,7 +672,7 @@ func (d *Durable) ReadEvents(ctx context.Context, matter domain.ID, since time.T
 		return d.Memory.Events(), nil
 	}
 
-	q := `SELECT id,created_at,updated_at,created_by,actor_kind,actor_id,action,record_type,record_id,COALESCE(matter_id,''),summary,client_visible FROM core.events WHERE created_at >= $1`
+	q := `SELECT id,created_at,updated_at,created_by,actor_kind,actor_id,action,record_type,record_id,COALESCE(matter_id,''),summary,client_visible,module_id FROM core.events WHERE created_at >= $1`
 	args := []any{domain.UnixMicroUTC(since)}
 	if !matter.IsZero() {
 		q += ` AND matter_id=$2`
@@ -688,7 +688,7 @@ func (d *Durable) ReadEvents(ctx context.Context, matter domain.ID, since time.T
 		var ev domain.Event
 		var at, updated int64
 		var visible int
-		if err := rows.Scan(&ev.ID, &at, &updated, &ev.CreatedBy, &ev.ActorKind, &ev.ActorID, &ev.Action, &ev.RecordType, &ev.RecordID, &ev.MatterID, &ev.Summary, &visible); err != nil {
+		if err := rows.Scan(&ev.ID, &at, &updated, &ev.CreatedBy, &ev.ActorKind, &ev.ActorID, &ev.Action, &ev.RecordType, &ev.RecordID, &ev.MatterID, &ev.Summary, &visible, &ev.ModuleID); err != nil {
 			return nil, err
 		}
 		ev.CreatedAt = domain.FromUnixMicro(at)

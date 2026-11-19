@@ -199,10 +199,6 @@ func (s *Service) GetParty(ctx context.Context, p domain.Principal, id domain.ID
 	if err != nil {
 		return domain.MatterParty{}, missing(err, "party")
 	}
-	if p.EventRecord("matter_party", id, row.MatterID) {
-		_, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead})
-		return row, err
-	}
 	if err := s.gateMatter(ctx, p, row.MatterID, domain.ActionRead); err != nil {
 		return domain.MatterParty{}, err
 	}
@@ -543,10 +539,6 @@ func (s *Service) GetPhone(ctx context.Context, p domain.Principal, id domain.ID
 	if err != nil {
 		return domain.ContactPhone{}, missing(err, "phone")
 	}
-	if p.EventRecord("contact_phone", id, "") {
-		_, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResContact, Action: domain.ActionRead})
-		return row, err
-	}
 	if err := s.readableContact(ctx, p, row.ContactID); err != nil {
 		return domain.ContactPhone{}, err
 	}
@@ -560,10 +552,6 @@ func (s *Service) ListPhones(ctx context.Context, p domain.Principal, contact do
 func (s *Service) GetEmail(ctx context.Context, p domain.Principal, id domain.ID) (domain.ContactEmail, error) {
 	for _, row := range s.db.Emails(domain.ID("")) {
 		if row.ID == id {
-			if p.EventRecord("contact_email", id, "") {
-				_, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResContact, Action: domain.ActionRead})
-				return row, err
-			}
 			if err := s.readableContact(ctx, p, row.ContactID); err != nil {
 				return domain.ContactEmail{}, err
 			}
@@ -580,10 +568,6 @@ func (s *Service) ListEmails(ctx context.Context, p domain.Principal, contact do
 func (s *Service) GetAddress(ctx context.Context, p domain.Principal, id domain.ID) (domain.ContactAddress, error) {
 	for _, row := range s.db.Addresses(domain.ID("")) {
 		if row.ID == id {
-			if p.EventRecord("contact_address", id, "") {
-				_, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResContact, Action: domain.ActionRead})
-				return row, err
-			}
 			if err := s.readableContact(ctx, p, row.ContactID); err != nil {
 				return domain.ContactAddress{}, err
 			}

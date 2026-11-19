@@ -165,6 +165,9 @@ var definitions = []Definition{
 	{Key: "modules.replace_trust", Kind: KindString, Tab: TabModules, Help: "Module id that replaces trust. Empty keeps the core."},
 	{Key: "modules.replace_calendar", Kind: KindString, Tab: TabModules, Help: "Module id that replaces calendar. Empty keeps the core."},
 	// CORE-30: per-operation service-call limits (default 120/minute).
+	{Key: "modules.service_call_limit.getNote", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal getNote calls per minute per module. Default 120.", PRD: true},
+	{Key: "modules.service_call_limit.listNote", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal listNote calls per minute per module. Default 120.", PRD: true},
+	{Key: "modules.service_call_limit.listFile", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal listFile calls per minute per module. Default 120.", PRD: true},
 	{Key: "modules.service_call_limit.getDeadline", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal getDeadline calls per minute per module. Default 120.", PRD: true},
 	{Key: "modules.service_call_limit.listDeadline", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal listDeadline calls per minute per module. Default 120.", PRD: true},
 	{Key: "modules.service_call_limit.getCalendarEvent", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal getCalendarEvent calls per minute per module. Default 120.", PRD: true},

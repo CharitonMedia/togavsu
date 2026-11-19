@@ -17,7 +17,7 @@
   {{range .Rows}}
     <li {{if .ClientVisible}}class="client"{{end}}>
       <time>{{.At.Format "15:04"}}</time>
-      {{.ActorName}} {{.Action}} {{.Summary}}
+      {{.ActorName}}{{if .ModuleID}} via {{.ModuleID}}{{end}} {{.Action}} {{.Summary}}
       {{if .MatterID}}<a href="/practice/matters/{{.MatterID}}">matter</a>{{end}}
     </li>
   {{end}}

@@ -2,7 +2,12 @@ package modulekit_test
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,47 +18,72 @@ import (
 func TestTimestampedWebhookAndProviderHelpers(t *testing.T) {
 	now := time.Unix(1800000000, 0)
 	body := []byte(`{"id":"synthetic"}`)
-	sig := modulekit.SignWebhook("secret", now, body)
-	if err := modulekit.VerifyWebhook("secret", sig, body, now, 0); err != nil {
+	headers := modulekit.SignWebhook("secret", now, body)
+	if err := modulekit.VerifyWebhook("secret", headers, body, now, 0); err != nil {
 		t.Fatal(err)
 	}
+	// Independent batch-1 verifier: HMAC of raw body, sha256=hex, separate timestamp.
+	mac := hmac.New(sha256.New, []byte("secret"))
+	mac.Write(body)
+	if headers.Get(modulekit.SignatureHeader) != "sha256="+hex.EncodeToString(mac.Sum(nil)) || headers.Get(modulekit.TimestampHeader) != "1800000000" {
+		t.Fatalf("batch 1 wire format: %v", headers)
+	}
+	stamp, err := strconv.ParseInt(headers.Get(modulekit.TimestampHeader), 10, 64)
+	if err != nil || now.Sub(time.Unix(stamp, 0)) > 5*time.Minute {
+		t.Fatal("batch 1 timestamp refused")
+	}
+	badSig := headers.Clone()
+	badSig.Set(modulekit.SignatureHeader, "sha256=deadbeef")
+	missing := headers.Clone()
+	missing.Del(modulekit.TimestampHeader)
 	for name, tc := range map[string]struct {
-		secret, sig string
-		body        []byte
-		at          time.Time
+		secret  string
+		headers http.Header
+		body    []byte
+		at      time.Time
 	}{
-		"empty key": {"", sig, body, now}, "changed timestamp": {"secret", modulekit.SignWebhook("secret", now.Add(time.Second), body), body, now.Add(-5 * time.Minute)},
-		"expired": {"secret", sig, body, now.Add(5*time.Minute + time.Second)}, "future": {"secret", sig, body, now.Add(-5*time.Minute - time.Second)},
-		"changed body": {"secret", sig, []byte("tampered"), now}, "legacy body only": {"secret", "sha256=deadbeef", body, now},
+		"empty key": {"", headers, body, now}, "missing timestamp": {"secret", missing, body, now},
+		"expired": {"secret", headers, body, now.Add(5*time.Minute + time.Second)}, "future": {"secret", headers, body, now.Add(-5*time.Minute - time.Second)},
+		"changed body": {"secret", headers, []byte("tampered"), now}, "bad signature": {"secret", badSig, body, now},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if modulekit.VerifyWebhook(tc.secret, tc.sig, tc.body, tc.at, 0) == nil {
-				t.Fatal("invalid signature accepted")
+			if modulekit.VerifyWebhook(tc.secret, tc.headers, tc.body, tc.at, 0) == nil {
+				t.Fatal("invalid webhook accepted")
 			}
 		})
 	}
-	if modulekit.SignWebhook("", now, body) != "" {
+	if modulekit.SignWebhook("", now, body) != nil {
 		t.Fatal("empty secret signed")
 	}
-	if err := modulekit.VerifyWebhook("secret", sig, body, now, -time.Second); err == nil {
+	if modulekit.VerifyWebhook("secret", headers, body, now, -time.Second) == nil {
 		t.Fatal("negative tolerance")
 	}
-	mac, err := modulekit.ProviderHMAC("provider", []byte("challenge"))
+	if modulekit.VerifyWebhook("secret", headers, body, now, 6*time.Minute) == nil {
+		t.Fatal("expanded window")
+	}
+	sum, err := modulekit.ProviderHMAC("provider", []byte("challenge"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	crc, err := modulekit.ProviderCRC("provider", "challenge")
-	if err != nil || crc != "sha256="+base64.StdEncoding.EncodeToString(mac) {
-		t.Fatalf("CRC %s %v", crc, err)
+	if err != nil || crc != hex.EncodeToString(sum) {
+		t.Fatalf("Zoom encryptedToken: %s %v", crc, err)
 	}
-	if err := modulekit.VerifyProviderHMAC("provider", []byte("challenge"), mac); err != nil {
-		t.Fatal(err)
+	base64CRC, err := modulekit.ProviderCRCBase64("provider", "challenge")
+	if err != nil || base64CRC != "sha256="+base64.StdEncoding.EncodeToString(sum) {
+		t.Fatalf("base64 CRC: %s %v", base64CRC, err)
 	}
-	if modulekit.VerifyProviderHMAC("provider", []byte("tampered"), mac) == nil {
+	if modulekit.VerifyProviderHMAC("provider", []byte("challenge"), sum) != nil {
+		t.Fatal("provider signature refused")
+	}
+	if modulekit.VerifyProviderHMAC("provider", []byte("tampered"), sum) == nil {
 		t.Fatal("tampered provider body accepted")
 	}
 	if _, err := modulekit.ProviderCRC("", "challenge"); err == nil {
 		t.Fatal("empty CRC key")
+	}
+	if _, err := modulekit.ProviderCRCBase64("", "challenge"); err == nil {
+		t.Fatal("empty base64 CRC key")
 	}
 	if _, err := modulekit.ProviderHMAC("", body); err == nil {
 		t.Fatal("empty provider key")

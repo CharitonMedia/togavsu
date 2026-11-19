@@ -360,8 +360,13 @@ func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract
 	}
 	req.Header.Set("Content-Type", "application/json")
 	at := s.now()
-	req.Header.Set(SignatureHeader, SignWebhook(secret, at, body))
-	req.Header.Set(TimestampHeader, WebhookTimestamp(at))
+	headers := SignWebhook(secret, at, body)
+	if headers == nil {
+		return 0, nil, nil, errors.New("modules: empty webhook secret")
+	}
+	for key, values := range headers {
+		req.Header[key] = values
+	}
 	req.Header.Set("X-Togavsu-Contract", contract)
 	req.Header.Set("X-Togavsu-Contract-Operation", operation)
 	req.Header.Set("X-Togavsu-Contract-Consumer", consumerID)

@@ -60,7 +60,7 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 	c.Serve(id, func(m coretest.Module) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			b, _ := io.ReadAll(r.Body)
-			if err := modulekit.VerifyWebhook(m.WebhookSecret, r.Header.Get(modulekit.SignatureHeader), b, time.Now(), 0); err != nil {
+			if err := modulekit.VerifyWebhook(m.WebhookSecret, r.Header, b, time.Now(), 0); err != nil {
 				t.Errorf("event signature: %v", err)
 			}
 			if r.Header.Get(modulekit.TimestampHeader) == "" {
@@ -74,7 +74,7 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		})
 	})
-	scopes := []string{"contacts:read", "contacts:write", "calendar:read", "deadlines:read", "notes:read", "settings:read", "firm:read", "users:directory", "mail:send", "events:write", "event_records:read", "module_settings:write", "contracts:call"}
+	scopes := []string{"contacts:read", "contacts:write", "calendar:read", "deadlines:read", "notes:read", "settings:read", "firm:read", "users:directory", "mail:send", "events:write", "module_settings:write", "contracts:call"}
 	install2d(t, c, id, scopes, "consumes:\n  - contract: phone.provider.v1\ncontact_phone_items:\n  - id: call\n    title: Call\n    path: /call\n")
 	bot := c.ModuleClient(id)
 	mustBot := func(status int, method, path string, body any, headers ...string) coretest.Resp {
@@ -95,7 +95,7 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 	}
 	openEvent := event(c.Admin, c.Open, "Open event")
 	wallEvent := event(c.Attorney, c.Walled, "WALL-EVENT-SECRET")
-	sibling := event(c.Attorney, c.Walled, "WALL-SIBLING-SECRET")
+	_ = event(c.Attorney, c.Walled, "WALL-SIBLING-SECRET")
 	openDeadline := deadline(c.Admin, c.Open, "Open deadline")
 	wallDeadline := deadline(c.Attorney, c.Walled, "WALL-DEADLINE-SECRET")
 	address := c.Admin.Must(http.StatusCreated, "POST", "/api/v1/contact-addresses", map[string]any{"contact_id": c.ClientContact, "label": "work", "line1": "1 Synthetic St"})
@@ -114,7 +114,7 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 		mustBot(http.StatusNotFound, "GET", path, nil)
 		mustBot(http.StatusNotFound, "GET", path, nil, modulekit.ContextHeader, c.ContextFor(coretest.Staff, id, ""))
 		r := mustBot(http.StatusOK, "GET", path, nil, modulekit.ContextHeader, c.ContextFor(coretest.Attorney, id, c.Walled))
-		if r.JSON["walled"] != true || !strings.Contains(r.Body, c.Attorney.ID) {
+		if strings.Contains(r.Body, "wall_member_user_ids") || strings.Contains(r.Body, `"walled"`) {
 			t.Fatalf("wall metadata: %s", r.Body)
 		}
 	}
@@ -132,35 +132,21 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 		t.Fatal("client work email leak")
 	}
 	c.DeliverEvents()
-	var grant string
+	// Events confer no record credentials, and legacy credentials cannot change access.
 	mu.Lock()
 	for _, d := range deliveries {
-		if d.body["record_id"] == wallEvent {
-			grant = d.headers.Get(modulekit.EventAuthorizationHeader)
+		if d.headers.Get("X-Togavsu-Event-Authorization") != "" {
+			t.Error("event minted a record grant")
 		}
 	}
 	mu.Unlock()
-	if grant == "" {
-		t.Fatal("no event record grant")
+	grant := "legacy-or-forged-event-token"
+	mustBot(http.StatusNotFound, "GET", "/api/v1/calendar-events/"+wallEvent, nil, "X-Togavsu-Event-Authorization", grant)
+	rpc := mustBot(http.StatusOK, "POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "getCalendarEvent", "arguments": map[string]any{"path": map[string]any{"calendar_event_id": wallEvent}}}}, "X-Togavsu-Event-Authorization", grant)
+	if !strings.Contains(rpc.Body, "not_found") {
+		t.Fatalf("MCP crossed wall: %s", rpc.Body)
 	}
-	read := mustBot(http.StatusOK, "GET", "/api/v1/calendar-events/"+wallEvent, nil, modulekit.EventAuthorizationHeader, grant)
-	if read.JSON["walled"] != true {
-		t.Fatal("event read missing wall metadata")
-	}
-	mustBot(http.StatusForbidden, "GET", "/api/v1/calendar-events/"+sibling, nil, modulekit.EventAuthorizationHeader, grant)
-	mustBot(http.StatusForbidden, "GET", "/api/v1/calendar-events", nil, modulekit.EventAuthorizationHeader, grant)
-	mustBot(http.StatusForbidden, "GET", "/api/v1/calendar-events/"+wallEvent, nil, modulekit.EventAuthorizationHeader, grant+"tamper")
-	mustBot(http.StatusForbidden, "POST", "/api/v1/calendar-events", map[string]any{}, modulekit.EventAuthorizationHeader, grant)
-	// MCP must forward the same grant and return the same wall metadata.
-	rpc := mustBot(http.StatusOK, "POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "getCalendarEvent", "arguments": map[string]any{"path": map[string]any{"calendar_event_id": wallEvent}}}}, modulekit.EventAuthorizationHeader, grant)
-	if !strings.Contains(rpc.Body, `"walled":true`) || strings.Contains(rpc.Body, `"isError":true`) {
-		t.Fatalf("MCP event read: %s", rpc.Body)
-	}
-	rpcArgs := mustBot(http.StatusOK, "POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "getCalendarEvent", "arguments": map[string]any{"path": map[string]any{"calendar_event_id": wallEvent}, "headers": map[string]string{modulekit.EventAuthorizationHeader: grant}}}})
-	if strings.Contains(rpcArgs.Body, `"isError":true`) || !strings.Contains(rpcArgs.Body, `"walled":true`) {
-		t.Fatalf("MCP header argument: %s", rpcArgs.Body)
-	}
-	badHeader := mustBot(http.StatusOK, "POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": map[string]any{"name": "getCalendarEvent", "arguments": map[string]any{"path": map[string]any{"calendar_event_id": wallEvent}, "headers": map[string]string{"Authorization": "spoofed"}}}})
+	badHeader := mustBot(http.StatusOK, "POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": map[string]any{"name": "getCalendarEvent", "arguments": map[string]any{"path": map[string]any{"calendar_event_id": wallEvent}, "headers": map[string]string{"Authorization": "spoofed"}}}})
 	if !strings.Contains(badHeader.Body, "header is not allowed") {
 		t.Fatal("MCP accepted credential override")
 	}
@@ -179,6 +165,31 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 	mustBot(http.StatusOK, "GET", "/api/v1/settings/modules.contract_call_max_bytes", nil)
 	mustBot(http.StatusOK, "GET", "/api/v1/settings", nil)
 	mustBot(http.StatusForbidden, "GET", "/api/v1/settings/smtp.password", nil)
+	// Install approval cannot substitute for this bearer's settings:read.
+	token := c.Admin.Must(http.StatusCreated, "POST", "/api/v1/api-tokens", map[string]any{"name": "narrow contract token", "module_id": id, "scopes": []string{"contracts:call"}, "approved_scopes": []string{"contracts:call", "settings:read"}})
+	narrow := c.NewClient()
+	narrow.Bearer = str(t, token.JSON, "secret")
+	for _, path := range []string{"/api/v1/settings", "/api/v1/settings/modules.contract_call_max_bytes"} {
+		for _, headers := range [][]string{nil, {modulekit.ContextHeader, c.ContextFor(coretest.Admin, id, "")}} {
+			got := narrow.Do("GET", path, nil, headers...)
+			if got.Code != http.StatusForbidden || !strings.Contains(got.Body, "scope_denied") {
+				t.Fatalf("settings scope: %d %s", got.Code, got.Body)
+			}
+		}
+	}
+	// Delegated changes retain the user and carry module attribution separately.
+	delegated := mustBot(http.StatusCreated, "POST", "/api/v1/events", map[string]any{"action": id + ".delegated", "record_type": "matter", "record_id": c.Open, "matter_id": c.Open, "summary": "Synthetic delegated call"}, modulekit.ContextHeader, c.ContextFor(coretest.Staff, id, c.Open))
+	if delegated.JSON["actor_id"] != c.Staff.ID || delegated.JSON["module_id"] != id || delegated.JSON["actor_kind"] != "staff" || delegated.JSON["actor_name"] != nil {
+		t.Fatalf("delegated actor: %s", delegated.Body)
+	}
+	feed := c.Staff.Must(http.StatusOK, "GET", "/practice/activity?tab=staff&user="+c.Staff.ID, nil)
+	if !strings.Contains(feed.Body, "Synthetic delegated call") || !strings.Contains(feed.Body, "via "+id) {
+		t.Fatalf("person feed: %s", feed.Body)
+	}
+	timeline := c.Staff.Must(http.StatusOK, "GET", "/api/v1/matters/"+c.Open+"/timeline", nil)
+	if !strings.Contains(timeline.Body, `"actor_id":"`+c.Staff.ID+`"`) || !strings.Contains(timeline.Body, `"module_id":"`+id+`"`) {
+		t.Fatalf("timeline attribution: %s", timeline.Body)
+	}
 	// Mail resolves contact addresses from core parties and records the matter.
 	before := len(c.Mail.Messages())
 	mail := mustBot(http.StatusOK, "POST", "/api/v1/mail/messages", map[string]any{"subject": "Synthetic service mail", "text": "Example only", "matter_id": c.Open, "to_contact_ids": []string{c.ClientContact}})
@@ -204,10 +215,10 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 		t.Fatal(list.Body)
 	}
 	frame := c.Staff.Must(http.StatusOK, "GET", "/modules/"+id+"/contact-phone-items/call?phone_id="+phoneID, nil)
-	if !strings.Contains(frame.Body, "sandbox") || !strings.Contains(frame.Body, "phone_id=") {
+	if !strings.Contains(frame.Body, "sandbox") || !strings.Contains(frame.Body, "phone_id=") || strings.Contains(frame.Body, "phone=") || strings.Contains(frame.Body, "15555550123") {
 		t.Fatal(frame.Body)
 	}
-	// A module with no new scopes is refused, and cannot steal a delivered grant.
+	// A module with no read scopes is refused even with a legacy credential.
 	c.Handle("limited-two-d", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
 	install2d(t, c, "limited-two-d", nil, "")
 	limited := c.ModuleClient("limited-two-d")
@@ -225,12 +236,26 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 			t.Fatal(r.Body)
 		}
 	}
-	mustLimited(http.StatusForbidden, "GET", "/api/v1/matters/"+c.Walled, nil, modulekit.EventAuthorizationHeader, grant)
-	if c.Count(`SELECT COUNT(*) FROM core.audit_log WHERE source IN ('service','module') AND reason LIKE '%' || $1 || '%'`, id) == 0 {
-		t.Fatal("module call audit missing")
+	mustLimited(http.StatusNotFound, "GET", "/api/v1/matters/"+c.Walled, nil, "X-Togavsu-Event-Authorization", grant)
+	// Assert each service read adds exactly one operation/path/module audit row.
+	for _, tc := range []struct{ path, operation string }{
+		{"/api/v1/calendar-events/" + openEvent, "getCalendarEvent"},
+		{"/api/v1/deadlines/" + openDeadline, "getDeadline"},
+		{"/api/v1/contact-addresses/" + str(t, address.JSON, "id"), "getContactAddress"},
+		{"/api/v1/party-roles", "listPartyRole"}, {"/api/v1/custom-field-definitions", "listCustomFieldDefinition"},
+		{"/api/v1/firm-profile", "getFirmProfile"}, {"/api/v1/user-directory", "listUserDirectory"},
+		{"/api/v1/matter-parties", "listMatterParty"},
+	} {
+		query := `SELECT COUNT(*) FROM core.audit_log WHERE entity='service_call' AND source='service' AND field='operation' AND new_value=$1 AND reason='token=' || (SELECT token_id FROM core.modules WHERE id=$3) || ' module=' || $3 || ' service.call record=' || $2`
+		record := tc.path
+		before := c.Count(query, tc.operation, record, id)
+		mustBot(http.StatusOK, "GET", tc.path, nil)
+		if after := c.Count(query, tc.operation, record, id); after != before+1 {
+			t.Fatalf("exact audit row %s: before %d after %d", tc.operation, before, after)
+		}
 	}
 	c.Admin.Must(http.StatusOK, "POST", "/api/v1/modules/"+id+"/disable", nil)
-	mustBot(http.StatusUnauthorized, "GET", "/api/v1/calendar-events/"+wallEvent, nil, modulekit.EventAuthorizationHeader, grant)
+	mustBot(http.StatusUnauthorized, "GET", "/api/v1/calendar-events/"+wallEvent, nil, "X-Togavsu-Event-Authorization", grant)
 }
 
 func TestCoreUpdate2DContractForwardingTargetAndLimit(t *testing.T) {
@@ -242,7 +267,7 @@ func TestCoreUpdate2DContractForwardingTargetAndLimit(t *testing.T) {
 	provider := func(m coretest.Module) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			raw, _ := io.ReadAll(r.Body)
-			if err := modulekit.VerifyWebhook(m.WebhookSecret, r.Header.Get(modulekit.SignatureHeader), raw, time.Now(), 0); err != nil {
+			if err := modulekit.VerifyWebhook(m.WebhookSecret, r.Header, raw, time.Now(), 0); err != nil {
 				t.Errorf("signature %v", err)
 			}
 			if r.Header.Get(modulekit.TimestampHeader) == "" {
@@ -417,7 +442,7 @@ func TestCoreUpdate2DInboundAuthorizationOptIn(t *testing.T) {
 	install2d(t, c, "push-two-d", []string{"webhooks:authorization"}, "inbound_webhooks:\n  - id: pubsub\n    path: /push\n    forward_authorization: true\n  - id: ordinary\n    path: /push\n")
 	cli := c.NewClient()
 	for _, hook := range []string{"pubsub", "ordinary"} {
-		r := cli.Do("POST", "/hooks/push-two-d/"+hook, map[string]any{"synthetic": "push"}, "Authorization", "Bearer synthetic-provider", "Cookie", "synthetic-cookie=value", modulekit.ContextHeader, "spoofed", modulekit.EventAuthorizationHeader, "spoofed")
+		r := cli.Do("POST", "/hooks/push-two-d/"+hook, map[string]any{"synthetic": "push"}, "Authorization", "Bearer synthetic-provider", "Cookie", "synthetic-cookie=value", modulekit.ContextHeader, "spoofed", "X-Togavsu-Event-Authorization", "spoofed")
 		if r.Code != http.StatusAccepted {
 			t.Fatalf("public webhook treated provider bearer as core auth: %d %s", r.Code, r.Body)
 		}
@@ -429,7 +454,7 @@ func TestCoreUpdate2DInboundAuthorizationOptIn(t *testing.T) {
 		t.Fatalf("authorization opt-in %v", got)
 	}
 	for _, h := range got {
-		if h.Get("Cookie") != "" || h.Get(modulekit.ContextHeader) != "" || h.Get(modulekit.EventAuthorizationHeader) != "" || h.Get("X-Togavsu-Inbound-Hook") == "" {
+		if h.Get("Cookie") != "" || h.Get(modulekit.ContextHeader) != "" || h.Get("X-Togavsu-Event-Authorization") != "" || h.Get("X-Togavsu-Inbound-Hook") == "" {
 			t.Fatal("hook forwarded core credentials or missed hook marker")
 		}
 	}
@@ -442,57 +467,106 @@ func TestCoreUpdate2DInboundAuthorizationOptIn(t *testing.T) {
 	}
 }
 
-func TestCoreUpdate2DEventRecordKinds(t *testing.T) {
+func TestCoreUpdate2DServiceWallsEveryRecord(t *testing.T) {
 	c := coretest.New(t)
 	const id = "event-kinds-two-d"
 	var mu sync.Mutex
-	grants := map[string]string{}
+	var delivered int
 	c.Serve(id, func(m coretest.Module) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			raw, _ := io.ReadAll(r.Body)
-			if err := modulekit.VerifyWebhook(m.WebhookSecret, r.Header.Get(modulekit.SignatureHeader), raw, time.Now(), 0); err != nil {
+			if err := modulekit.VerifyWebhook(m.WebhookSecret, r.Header, raw, time.Now(), 0); err != nil {
 				t.Error(err)
 			}
-			var event map[string]any
-			_ = json.Unmarshal(raw, &event)
-			if record, ok := event["record_id"].(string); ok {
-				mu.Lock()
-				grants[record] = r.Header.Get(modulekit.EventAuthorizationHeader)
-				mu.Unlock()
+			if r.Header.Get("X-Togavsu-Event-Authorization") != "" {
+				t.Error("event created a grant")
 			}
+			mu.Lock()
+			delivered++
+			mu.Unlock()
 			w.WriteHeader(204)
 		})
 	})
-	install2d(t, c, id, []string{"contacts:read", "calendar:read", "deadlines:read", "notes:read", "files:read", "event_records:read"}, "")
+	install2d(t, c, id, []string{"contacts:read", "calendar:read", "deadlines:read", "notes:read", "files:read", "events:write", "users:directory"}, "")
 	matter, contact := c.Matter("Walled event records", "event-only@synthetic.example", nil)
-	c.Wall(matter, c.Attorney)
-	note := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/notes", map[string]any{"title": "Named walled note", "body": "Synthetic note body", "matter_id": matter})
-	deadline := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/deadlines", map[string]any{"title": "Named deadline", "due_on": time.Now().AddDate(0, 0, 1).UTC().Format("2006-01-02"), "responsible_user_id": c.Attorney.ID, "matter_id": matter})
+	// Emit records while open, then wall them before the module reads delivered events.
+	note := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/notes", map[string]any{"title": "WALL-NOTE", "body": "Synthetic note body", "matter_id": matter})
+	deadline := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/deadlines", map[string]any{"title": "WALL-DEADLINE", "due_on": time.Now().AddDate(0, 0, 1).UTC().Format("2006-01-02"), "responsible_user_id": c.Attorney.ID, "matter_id": matter})
+	at := time.Now().Add(time.Hour).UTC()
+	event := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/calendar-events", map[string]any{"title": "WALL-EVENT", "kind": "other", "starts_at": at.Format(time.RFC3339), "ends_at": at.Add(time.Hour).Format(time.RFC3339), "matter_id": matter})
 	file := upload2d(t, c.Attorney, matter)
-	address := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/contact-addresses", map[string]any{"contact_id": contact, "label": "work", "line1": "Synthetic address"})
+	address := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/contact-addresses", map[string]any{"contact_id": contact, "label": "work", "line1": "WALL-ADDRESS"})
 	phone := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/contact-phones", map[string]any{"contact_id": contact, "label": "work", "e164": "+15555550128", "effective_from": "2026-01-01"})
 	email := c.Attorney.Must(http.StatusCreated, "POST", "/api/v1/contact-emails", map[string]any{"contact_id": contact, "label": "work", "email": "named@synthetic.example"})
 	parties := c.Attorney.Must(http.StatusOK, "GET", "/api/v1/matter-parties?matter_id="+matter, nil)
 	party := parties.JSON["data"].([]any)[0].(map[string]any)["id"].(string)
-
 	c.DeliverEvents()
-	records := map[string]string{matter: "matters", contact: "contacts", str(t, note.JSON, "id"): "notes", str(t, deadline.JSON, "id"): "deadlines", str(t, file, "id"): "files", str(t, address.JSON, "id"): "contact-addresses", str(t, phone.JSON, "id"): "contact-phones", str(t, email.JSON, "id"): "contact-emails", party: "matter-parties"}
+	mu.Lock()
+	count := delivered
+	mu.Unlock()
+	if count == 0 {
+		t.Fatal("no event delivered before wall")
+	}
+	c.Wall(matter, c.Attorney)
 	bot := c.ModuleClient(id)
+	// A module-appended event naming a walled contact without a matter grants nothing.
+	appended := bot.Do("POST", "/api/v1/events", map[string]any{"action": id + ".contact_named", "record_type": "contact", "record_id": contact, "summary": "Synthetic reference"})
+	if appended.Code != http.StatusCreated {
+		t.Fatal(appended.Body)
+	}
+	c.DeliverEvents()
+	records := map[string]string{matter: "matters", contact: "contacts", str(t, note.JSON, "id"): "notes", str(t, deadline.JSON, "id"): "deadlines", str(t, event.JSON, "id"): "calendar-events", str(t, file, "id"): "files", str(t, address.JSON, "id"): "contact-addresses", str(t, phone.JSON, "id"): "contact-phones", str(t, email.JSON, "id"): "contact-emails", party: "matter-parties"}
+	inside := c.ContextFor(coretest.Attorney, id, matter)
+	outside := c.ContextFor(coretest.Staff, id, "")
 	for record, collection := range records {
-		mu.Lock()
-		grant := grants[record]
-		mu.Unlock()
-		if grant == "" {
-			t.Fatalf("no grant for %s/%s", collection, record)
-		}
-		path := "/api/v1/" + collection + "/" + record
-		before := bot.Do("GET", path, nil)
-		if before.Code < 400 {
-			t.Fatalf("walled %s read without grant: %s", collection, before.Body)
-		}
-		got := bot.Do("GET", path, nil, modulekit.EventAuthorizationHeader, grant)
-		if got.Code != http.StatusOK || got.JSON["walled"] != true || !strings.Contains(got.Body, c.Attorney.ID) {
-			t.Fatalf("event record %s: %d %s", collection, got.Code, got.Body)
+		t.Run(collection, func(t *testing.T) {
+			path := "/api/v1/" + collection + "/" + record
+			for _, headers := range [][]string{nil, {"X-Togavsu-Event-Authorization", "legacy-delivered-event-token"}, {modulekit.ContextHeader, outside}} {
+				got := bot.Do("GET", path, nil, headers...)
+				if got.Code != http.StatusNotFound || !strings.Contains(got.Body, "not_found") {
+					t.Fatalf("wall get %s: %d %s", collection, got.Code, got.Body)
+				}
+			}
+			got := bot.Do("GET", path, nil, modulekit.ContextHeader, inside)
+			if got.Code != http.StatusOK {
+				t.Fatalf("inside get %s: %d %s", collection, got.Code, got.Body)
+			}
+			if strings.Contains(got.Body, "wall_member_user_ids") || strings.Contains(got.Body, `"walled"`) {
+				t.Fatalf("membership disclosed: %s", got.Body)
+			}
+			for _, headers := range [][]string{nil, {"X-Togavsu-Event-Authorization", "legacy-delivered-event-token"}, {modulekit.ContextHeader, outside}} {
+				list := bot.Do("GET", listPath2d(collection), nil, headers...)
+				if list.Code != http.StatusOK || strings.Contains(list.Body, record) {
+					t.Fatalf("wall list %s: %d %s", collection, list.Code, list.Body)
+				}
+			}
+		})
+	}
+	for _, headers := range [][]string{nil, {modulekit.ContextHeader, outside}} {
+		got := bot.Do("GET", "/api/v1/user-directory?matter_id="+matter, nil, headers...)
+		if got.Code != http.StatusNotFound {
+			t.Fatalf("directory wall: %d %s", got.Code, got.Body)
 		}
 	}
+	c.Wall(matter)
+	for record, collection := range records {
+		got := bot.Do("GET", "/api/v1/"+collection+"/"+record, nil)
+		if got.Code != http.StatusOK {
+			t.Fatalf("lifted get %s: %d %s", collection, got.Code, got.Body)
+		}
+		list := bot.Do("GET", listPath2d(collection), nil)
+		if list.Code != http.StatusOK || !strings.Contains(list.Body, record) {
+			t.Fatalf("lifted list %s: %d %s", collection, list.Code, list.Body)
+		}
+	}
+	if got := bot.Do("GET", "/api/v1/user-directory?matter_id="+matter, nil); got.Code != http.StatusOK {
+		t.Fatalf("lifted directory: %d %s", got.Code, got.Body)
+	}
+}
+
+func listPath2d(collection string) string {
+	if collection == "contacts" {
+		return "/api/v1/contacts?email=event-only@synthetic.example"
+	}
+	return "/api/v1/" + collection
 }

@@ -217,15 +217,7 @@ func (s *Service) appendMailSent(ctx context.Context, who domain.Principal, matt
 	}
 	now := s.now()
 	actor := actorID(who)
-	kind := "staff"
-	switch who.Source {
-	case domain.SourceSystem:
-		kind = "system"
-	case domain.SourceAPIToken:
-		kind = "agent"
-	case domain.SourceModule, domain.SourceService:
-		kind = "module"
-	}
+	kind := who.EventActorKind()
 	ev := domain.Event{
 		Meta:          domain.Meta{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: actor},
 		ActorKind:     kind,
@@ -238,6 +230,7 @@ func (s *Service) appendMailSent(ctx context.Context, who domain.Principal, matt
 		ClientVisible: false,
 	}
 	ev.ActorID = who.EventActor()
+	ev.ModuleID = who.ModuleID
 	if err := db.PublishEvent(ctx, audit.Conn(ctx, s.db), ev); err != nil {
 		return err
 	}

@@ -19,8 +19,8 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
-// SignatureHeader carries t=unix,v1=hex: HMAC-SHA256 over the timestamp,
-// a dot, and raw body bytes, keyed with the module webhook secret.
+// SignatureHeader carries sha256=<hex>: HMAC-SHA256 of the raw body bytes,
+// keyed with the nonempty module webhook secret.
 const SignatureHeader = "X-Togavsu-Signature"
 
 // EventPayload is what a module receives for one event. It names the record; the module
@@ -324,45 +324,52 @@ func (s *Service) intSetting(ctx context.Context, key string) (int, error) {
 	return strconv.Atoi(v)
 }
 
-// TimestampHeader carries the same Unix timestamp authenticated by SignatureHeader.
+// TimestampHeader carries the decimal Unix delivery time (batch 1 wire format).
 const TimestampHeader = "X-Togavsu-Timestamp"
 
-// SignWebhook authenticates timestamp + "." + raw body. Empty secrets are refused.
-// The timestamp is embedded so VerifyWebhook needs no separate untrusted header.
-func SignWebhook(secret string, at time.Time, body []byte) string {
+// SignWebhook returns the raw-body HMAC and separate timestamp headers.
+// An empty secret returns no headers; senders must refuse delivery.
+func SignWebhook(secret string, at time.Time, body []byte) http.Header {
 	if secret == "" {
-		return ""
+		return nil
 	}
-	stamp := WebhookTimestamp(at)
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(stamp + "."))
 	mac.Write(body)
-	return "t=" + stamp + ",v1=" + hex.EncodeToString(mac.Sum(nil))
+	return http.Header{SignatureHeader: {"sha256=" + hex.EncodeToString(mac.Sum(nil))}, TimestampHeader: {WebhookTimestamp(at)}}
 }
 
-// VerifyWebhook checks the HMAC and the timestamp window in either direction.
-// A zero tolerance uses the context-token lifetime (five minutes).
-func VerifyWebhook(secret, header string, body []byte, now time.Time, tolerance time.Duration) error {
+// VerifyWebhook checks both headers, the raw-body HMAC in constant time, and
+// the documented five-minute window. A shorter positive tolerance is allowed.
+func VerifyWebhook(secret string, headers http.Header, body []byte, now time.Time, tolerance time.Duration) error {
 	if secret == "" {
 		return errors.New("modules: empty webhook secret")
 	}
-	stamp, sig, ok := strings.Cut(strings.TrimPrefix(header, "t="), ",v1=")
+	stamp := headers.Get(TimestampHeader)
 	at, err := strconv.ParseInt(stamp, 10, 64)
-	if !ok || err != nil || !strings.HasPrefix(header, "t=") || len(sig) != sha256.Size+sha256.Size {
-		return errors.New("modules: malformed webhook signature")
+	if err != nil || strconv.FormatInt(at, 10) != stamp {
+		return errors.New("modules: missing or malformed webhook timestamp")
 	}
-	if tolerance == time.Duration(zero) {
-		tolerance = eventReadTTL()
+	if tolerance == 0 {
+		tolerance = 5 * time.Minute
 	}
-	if tolerance < time.Duration(zero) {
+	if tolerance < 0 || tolerance > 5*time.Minute {
 		return errors.New("modules: invalid webhook tolerance")
 	}
 	delta := now.Sub(time.Unix(at, 0))
 	if delta > tolerance || delta < -tolerance {
 		return errors.New("modules: webhook timestamp outside window")
 	}
-	want := SignWebhook(secret, time.Unix(at, 0), body)
-	if !hmac.Equal([]byte(want), []byte(header)) {
+	signature := headers.Get(SignatureHeader)
+	if !strings.HasPrefix(signature, "sha256=") {
+		return errors.New("modules: malformed webhook signature")
+	}
+	got, err := hex.DecodeString(strings.TrimPrefix(signature, "sha256="))
+	if err != nil {
+		return errors.New("modules: malformed webhook signature")
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	if !hmac.Equal(mac.Sum(nil), got) {
 		return errors.New("modules: webhook signature doesn't match")
 	}
 	return nil
@@ -435,6 +442,9 @@ JOIN core.modules m ON m.id = d.module_id WHERE d.status = 'pending' AND d.next_
 }
 
 func (s *Service) post(ctx context.Context, module, secret, grant string, body []byte) error {
+	if secret == "" {
+		return errors.New("modules: empty webhook secret")
+	}
 	in, err := s.Installed(ctx, module)
 	if err != nil {
 		return err
@@ -450,17 +460,15 @@ func (s *Service) post(ctx context.Context, module, secret, grant string, body [
 	if err != nil {
 		return err
 	}
-	eventRead, err := s.eventReadToken(ctx, module, body)
-	if err != nil {
-		return err
-	}
-	if eventRead != "" {
-		req.Header.Set(EventAuthorizationHeader, eventRead)
-	}
 	req.Header.Set("Content-Type", "application/json")
 	at := s.now()
-	req.Header.Set(SignatureHeader, SignWebhook(secret, at, body))
-	req.Header.Set(TimestampHeader, WebhookTimestamp(at))
+	headers := SignWebhook(secret, at, body)
+	if headers == nil {
+		return errors.New("modules: empty webhook secret")
+	}
+	for key, values := range headers {
+		req.Header[key] = values
+	}
 	if grant != "" {
 		req.Header.Set(TaskAuthorizationHeader, grant)
 	}
@@ -532,10 +540,4 @@ func (s *Service) Run(ctx context.Context, every time.Duration, logf func(string
 }
 
 // WebhookTimestamp is the canonical decimal timestamp used in both webhook headers.
-func WebhookTimestamp(at time.Time) string { return strconv.FormatInt(at.Unix(), webhookRadix) }
-
-var webhookRadix = (two + two + one) * two // decimal wire format, not a tunable
-func eventReadTTL() time.Duration {
-	ttl, _ := time.ParseDuration(strconv.Itoa(int(limits().ContextTTLSecond)) + "s")
-	return ttl
-}
+func WebhookTimestamp(at time.Time) string { return strconv.FormatInt(at.Unix(), 10) }

@@ -140,9 +140,6 @@ func Decide(p Principal, in AccessInput) Decision {
 	}
 	// An event credential only authorizes reads, including when another service
 	// composes calls directly instead of entering through the HTTP operation gate.
-	if p.EventRead != nil && in.Action != ActionRead {
-		return Decision{Allow: false, Reason: ReasonRole}
-	}
 	// A module service principal with roles (the books reader, CORE-02) has no user id
 	// and sits outside every wall. Any other caller still needs a user.
 	if len(p.Roles) == 0 {
