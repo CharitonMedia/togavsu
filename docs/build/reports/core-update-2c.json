@@ -1,7 +1,7 @@
 {
   "task_id": "core-update-2c",
   "status": "pass",
-  "tested_revision": "159214e6bf396037eccf99b5bdc087b5e83a6030",
+  "tested_revision": "5f5e007aa10250c76086d1adda778cf20c2bdbc8",
   "tests": [
     {
       "name": "gofmt gate (test-core.sh entry)",
@@ -14,7 +14,7 @@
       "exit_code": 0
     },
     {
-      "name": "billing package (includes preview wall parity)",
+      "name": "billing package",
       "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/billing/ -count=1 -timeout 300s",
       "exit_code": 0
     },
@@ -30,12 +30,12 @@
     },
     {
       "name": "CORE-35/37 and CU2 focused",
-      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_BATCH1_MODS=… go test ./internal/core/ -count=1 -timeout 20m -run 'TestCORE37|TestCORE35|TestCU208FreshInstallNoModules|TestCORE30ServiceCallsWalls|TestCORE31ContractCall|TestCORE32PublicPages|TestCORE2B'",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 20m -run 'TestCORE37|TestCORE35|TestCU208FreshInstallNoModules|TestCORE30ServiceCallsWalls|TestCORE31ContractCall|TestCORE32PublicPages|TestCORE2B'",
       "exit_code": 0
     },
     {
       "name": "CU2-07 batch1 modules unchanged",
-      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_BATCH1_MODS=… go test ./internal/core/ -count=1 -timeout 30m -run 'TestCU207Batch1ModulesUnchanged' -v",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 30m -run 'TestCU207Batch1ModulesUnchanged' -v",
       "exit_code": 0
     },
     {
@@ -129,7 +129,7 @@
     {
       "id": "batch1-unchanged",
       "status": "pass",
-      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_BATCH1_MODS=… go test ./internal/core/ -count=1 -timeout 30m -run 'TestCU207Batch1ModulesUnchanged' -v",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 30m -run 'TestCU207Batch1ModulesUnchanged' -v",
       "exit_code": 0,
       "acceptance_ids": ["CU2-07"]
     },
