@@ -333,4 +333,3 @@ func cu207StartProcess(t *testing.T, bin string, m testkit.Module, dbHost, dbNam
 		proxy.ServeHTTP(w, r)
 	})
 }
-

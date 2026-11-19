@@ -233,8 +233,11 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	}
 
 	// IMP-08: collections panel, aging buckets and invoice lists (statements) include imports.
+	// Use a firm-local past issued_on: first-run sets America/Chicago, so UTC "today" can be
+	// after the firm as-of date near UTC midnight and drop the row from AR aging.
+	agingIssued := "2026-01-15"
 	openImport := f.atty.must(http.StatusCreated, "POST", "/api/v1/invoices:bulk", map[string]any{
-		"items": []map[string]any{openingItem(matter, "3300", issued, 200_00, 0, "form", "ref-aging")},
+		"items": []map[string]any{openingItem(matter, "3300", agingIssued, 200_00, 0, "form", "ref-aging")},
 	})
 	openID := str(t, openImport.json["data"].([]any)[0].(map[string]any), "id")
 	colPage := f.atty.must(http.StatusOK, "GET", "/billing/invoices/"+openID, nil)

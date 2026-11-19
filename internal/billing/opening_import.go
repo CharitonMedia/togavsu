@@ -46,10 +46,29 @@ func (s *Service) BulkInvoicesPreview(ctx context.Context, p domain.Principal, i
 	}
 	for i, in := range items {
 		r := BulkInvoiceResult{Index: i, PreviewOK: true}
+		// Match commit (BulkInvoicesDetailed): authorizeImport + matter/wall for every
+		// row before any skip. A walled or unauthorized already-imported ref must refuse
+		// with the same not_found/forbidden as commit, never "already imported".
+		if in.MatterID.IsZero() {
+			r.PreviewOK = false
+			r.PreviewError = previewErr(domain.Invalid(fmt.Sprintf("items/%d/matter_id", i), "is required"))
+			out = append(out, r)
+			continue
+		}
+		if err := s.authorizeImport(ctx, p, in); err != nil {
+			r.PreviewOK = false
+			r.PreviewError = previewErr(err)
+			out = append(out, r)
+			continue
+		}
+		if _, err := s.matter(ctx, in.MatterID); err != nil {
+			r.PreviewOK = false
+			r.PreviewError = previewErr(err)
+			out = append(out, r)
+			continue
+		}
 		if in.OpeningImport() {
 			ref := strings.TrimSpace(in.ExternalRef)
-			// Match commit: skip already-seen external_ref before other checks so preview
-			// and commit agree on within-file duplicates.
 			if ref != "" && (existingRefs[ref] || seenRefs[ref]) {
 				r.Skipped = true
 				r.ExternalRef = ref
