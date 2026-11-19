@@ -293,6 +293,9 @@ func (s *Service) moduleDecision(ctx context.Context, p domain.Principal, in dom
 	if !only && !(client && in.Action == domain.ActionWrite) {
 		return domain.Decision{}, false, nil
 	}
+	if p.EventRead != nil && in.Action != domain.ActionRead {
+		return domain.Decision{Allow: false, Reason: domain.ReasonRole}, true, nil
+	}
 	on := false
 	if s.moduleOn != nil {
 		var err error

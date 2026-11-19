@@ -106,3 +106,18 @@ func TestAuthorize(t *testing.T) {
 		t.Fatal(d, err)
 	}
 }
+
+func TestEventReadNeverAuthorizesAWrite(t *testing.T) {
+	p := Principal{Source: SourceService, ModuleID: "synthetic", Roles: []Role{RoleStaff}, EventRead: &EventRead{Module: "synthetic", RecordType: "contact", RecordID: "contact"}}
+	for _, action := range []Action{ActionWrite, ActionTrustWithdraw, ActionTrustDeposit, ActionConflictDecide, ActionApproveInvoice} {
+		if d := Decide(p, AccessInput{Resource: ResContact, Action: action}); d.Allow {
+			t.Fatalf("event read permitted %s", action)
+		}
+	}
+	if d := Decide(p, AccessInput{Resource: ResContact, Action: ActionRead}); !d.Allow {
+		t.Fatal("event read prevented an ordinary authorized read")
+	}
+	if d := Decide(p, AccessInput{Resource: ResSensitiveContact, Action: ActionRead}); !d.Redact {
+		t.Fatal("event principal bypassed attorney-only redaction")
+	}
+}
