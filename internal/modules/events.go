@@ -539,5 +539,5 @@ func (s *Service) Run(ctx context.Context, every time.Duration, logf func(string
 	}
 }
 
-// WebhookTimestamp is the canonical decimal timestamp used in both webhook headers.
+// WebhookTimestamp is the canonical decimal value for the separate timestamp header.
 func WebhookTimestamp(at time.Time) string { return strconv.FormatInt(at.Unix(), 10) }

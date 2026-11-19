@@ -605,6 +605,6 @@ func TestCoreUpdate2DDelegatedActorAcrossWriters(t *testing.T) {
 	assertWrite("POST", "/api/v1/time-entries", map[string]any{"matter_id": c.Open, "worked_on": time.Now().UTC().Format(time.DateOnly), "increments": 1, "description": "Synthetic delegated time", "activity_type_id": c.Activity, "billable": true}, http.StatusCreated, "", "time_entry.created")
 	file := upload2d(t, c.Staff, c.Open)
 	fileID := str(t, file, "id")
-	assertWrite("PATCH", "/api/v1/files/"+fileID, map[string]any{"name": "delegated.txt"}, http.StatusOK, fileID, "file.updated")
+	assertWrite("POST", "/api/v1/files/"+fileID+"/rename", map[string]any{"name": "delegated.txt"}, http.StatusOK, fileID, "file.updated")
 	assertWrite("POST", "/api/v1/mail/messages", map[string]any{"matter_id": c.Open, "to_contact_ids": []string{c.ClientContact}, "subject": "Synthetic delegated mail", "text": "Example only"}, http.StatusOK, c.Open, "mail.sent")
 }
