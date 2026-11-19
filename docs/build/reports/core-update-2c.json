@@ -1,16 +1,26 @@
 {
   "task_id": "core-update-2c",
   "status": "pass",
-  "tested_revision": "82b3fd740ae587fede309926fa4869f443c5cf52",
+  "tested_revision": "159214e6bf396037eccf99b5bdc087b5e83a6030",
   "tests": [
+    {
+      "name": "gofmt gate (test-core.sh entry)",
+      "command": "test -z \"$(gofmt -l cmd internal api web)\"",
+      "exit_code": 0
+    },
     {
       "name": "modules package",
       "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/modules/ -count=1 -timeout 300s",
       "exit_code": 0
     },
     {
-      "name": "billing package",
+      "name": "billing package (includes preview wall parity)",
       "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/billing/ -count=1 -timeout 300s",
+      "exit_code": 0
+    },
+    {
+      "name": "preview wall/unauthorized parity",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/billing/ -count=1 -timeout 60s -run 'TestBulkInvoicesPreviewAlreadyImportedAccessParity' -v",
       "exit_code": 0
     },
     {
@@ -19,13 +29,13 @@
       "exit_code": 0
     },
     {
-      "name": "core package",
-      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 20m",
+      "name": "CORE-35/37 and CU2 focused",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_BATCH1_MODS=… go test ./internal/core/ -count=1 -timeout 20m -run 'TestCORE37|TestCORE35|TestCU208FreshInstallNoModules|TestCORE30ServiceCallsWalls|TestCORE31ContractCall|TestCORE32PublicPages|TestCORE2B'",
       "exit_code": 0
     },
     {
-      "name": "CORE-35/37 and CU2 focused",
-      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_BATCH1_MODS=… go test ./internal/core/ -count=1 -timeout 20m -run 'TestCORE37|TestCORE35|TestCU207|TestCU208|TestCORE30ServiceCallsWalls|TestCORE31ContractCall|TestCORE32PublicPages|TestCORE2B'",
+      "name": "CU2-07 batch1 modules unchanged",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_BATCH1_MODS=… go test ./internal/core/ -count=1 -timeout 30m -run 'TestCU207Batch1ModulesUnchanged' -v",
       "exit_code": 0
     },
     {
@@ -35,7 +45,7 @@
     },
     {
       "name": "Backup integration",
-      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_TEST_DATABASE_URL_B=… TOGAVSU_PG_DUMP=/usr/lib/postgresql/17/bin/pg_dump TOGAVSU_PSQL=/usr/lib/postgresql/17/bin/psql sh scripts/ci/test-backup-integration.sh",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… TOGAVSU_TEST_DATABASE_URL_B=… TOGAVSU_PG_DUMP=/usr/lib/postgresql/18/bin/pg_dump TOGAVSU_PSQL=/usr/lib/postgresql/18/bin/psql sh scripts/ci/test-backup-integration.sh",
       "exit_code": 0
     },
     {
@@ -46,6 +56,11 @@
     {
       "name": "Supervisor package",
       "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/supervisor/ -count=1 -timeout 10m",
+      "exit_code": 0
+    },
+    {
+      "name": "QA harness tests",
+      "command": "sh scripts/ci/test-qa.sh",
       "exit_code": 0
     }
   ],
@@ -128,7 +143,7 @@
     {
       "id": "invoice-import",
       "status": "pass",
-      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE37' -v",
+      "command": "TOGAVSU_TEST_DATABASE_URL=… go test ./internal/core/ -count=1 -timeout 300s -run 'TestCORE37' -v ; TOGAVSU_TEST_DATABASE_URL=… go test ./internal/billing/ -count=1 -timeout 60s -run 'TestBulkInvoicesPreviewAlreadyImportedAccessParity' -v",
       "exit_code": 0,
       "acceptance_ids": ["IMP-01", "IMP-02", "IMP-03", "IMP-04", "IMP-05", "IMP-06", "IMP-07", "IMP-08"]
     }
