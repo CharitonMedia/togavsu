@@ -111,7 +111,7 @@ are named in the shared matter timeline and Activities Feed. Purge refuses retai
 module file links while keeping immutable version/audit metadata.
 
 Every module call, including delegated calls, is audited under the module id. Delegated
-actions keep the user as actor; `module_id` records the module and timeline/feed rows
+actions keep the person as `actor_id`; `module_id` records the module and timeline/feed rows
 show the person via the module. Background actions use the module as actor.
 
 ## Core-brokered contract events

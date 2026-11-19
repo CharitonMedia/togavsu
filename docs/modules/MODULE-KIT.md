@@ -586,6 +586,7 @@ batch 2 `sha256=<hex>` output. That compatibility form has no authenticated time
 header-aware verifier checks its separate timestamp when present, but changing that
 unsigned timestamp can bypass its freshness check. Use the timestamped form for new
 senders. A bare `sha256=` signature remains accepted for existing string-API callers.
+The legacy `sha256=` form carries no timestamp, so modules must deduplicate event ids durably.
 
 Provider webhooks use their provider's own scheme. `ProviderHMAC(secret, body)` and
 `VerifyProviderHMAC(secret, body, decodedSignature)` compute/check HMAC-SHA256.
@@ -644,7 +645,8 @@ separate integration criterion. Mail and Markdown rendition stand-ins remain ava
 File purge retains immutable record/version metadata but refuses to erase bytes while
 module RESTRICT links retain the file, naming each retaining module. Remove those links
 before retrying. Module events now appear in both the matter timeline and Activities
-Feed with the module id as their actor; delegated user attribution remains in the audit.
+Feed. For delegated calls the person stays `actor_id` and the module is recorded in
+`module_id`; for background calls the module is the actor.
 
 ### Contact phone-row actions
 
