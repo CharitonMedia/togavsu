@@ -4474,7 +4474,7 @@ class ContractTest(unittest.TestCase):
         secret = b"top-secret"
         payload = b'{"type":"matter.created"}'
         signature = webhook_signature(secret, payload)
-        self.assertEqual(signature, "sha256=" + __import__("hmac").new(secret, payload, __import__("hashlib").sha256).hexdigest())
+        self.assertEqual(signature, "sha256=e9464e954a1b5f9acf9da3a55d8f0a31d00090a745fa83e3591fe7d2afcbae88")
         self.assertTrue(webhook_signature_matches(secret, payload, signature, timestamp=1800000000))
         self.assertFalse(webhook_signature_matches(secret, payload, signature))
         self.assertFalse(webhook_signature_matches(secret, payload, signature, now=1800000301, timestamp=1800000000))

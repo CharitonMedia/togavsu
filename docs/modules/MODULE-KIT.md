@@ -556,7 +556,7 @@ provider and whose consumer/contract link is rechecked on delegation. A provider
 it through its own `context-tokens/verify` endpoint and presents it with its own bearer
 on core calls. The consumer's original token is not a provider credential. Unlinking
 invalidates forwarded delegation immediately. Provider events use the targeted envelope
-in [contracts](../contracts/README.md), retain its id and data, and deliver only to its
+in [the module API](../api/modules.md#core-brokered-contract-events), retain its id and data, and deliver only to its
 named enabled, linked consumer; repeated ids do not enqueue duplicates. An oversized
 provider response returns HTTP 413 with code `too_large`.
 
@@ -569,11 +569,18 @@ headers, compare the HMAC in constant time, and refuse timestamps more than five
 from their clock in either direction. Deduplicate event ids; retries change the timestamp,
 while the event id stays the same. Empty secrets refuse both signing and delivery.
 
-`headers := modulekit.SignWebhook(secret, now, body)` returns both headers (`http.Header`),
+`headers := modulekit.SignWebhookHeaders(secret, now, body)` returns both headers (`http.Header`),
 or nil for an empty secret. Copy these headers onto the request. Call
-`modulekit.VerifyWebhook(secret, request.Header, body, now, 0)` to verify both. Zero
+`modulekit.VerifyWebhookHeaders(secret, request.Header, body, now, 0)` to verify both. Zero
 means the documented five-minute window; a positive tolerance can only shorten it.
-The helpers now take/return both headers so a receiver cannot omit the timestamp check.
+The original `SignWebhook` still returns the signature string, and `VerifyWebhook`
+still accepts that string. Those source-compatible functions verify only the raw-body
+HMAC; their time arguments do not check a timestamp. Use the additive header helpers
+to check both headers.
+
+The timestamp is not covered by the HMAC. The five-minute window is **not replay
+protection**: an attacker can replace the unsigned timestamp. Modules must deduplicate
+event ids in durable storage before applying effects, including across retries.
 
 Provider webhooks use their provider's own scheme. `ProviderHMAC(secret, body)` and
 `VerifyProviderHMAC(secret, body, decodedSignature)` compute/check HMAC-SHA256.

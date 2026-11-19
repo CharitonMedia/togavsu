@@ -1380,6 +1380,16 @@ def _practice(api: Contract) -> None:
         include=True,
         extra_access=WALL,
     )
+    contact_matters = api.spec["paths"]["/api/v1/matter-parties"]["get"]
+    contact_matters["description"] += (
+        " With contact_id, a service-principal call also returns walled_omitted: true "
+        "when a wall omitted one or more matters; no ids, count or membership. "
+        "The property is absent when nothing was omitted, including after the wall lifts."
+    )
+    contact_matters["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["walled_omitted"] = {
+        "type": "boolean", "const": True,
+        "description": "Only on service contact-matters reads when a wall omitted matters. No ids or count.",
+    }
     api.add(
         "put",
         "/api/v1/matters/{matter_id}/wall",
@@ -4377,7 +4387,7 @@ def _shell(api: Contract) -> None:
         "/api/v1/events",
         operation_id="listEvents",
         summary="Activities feed",
-        description="The event stream for the firm, newest first. The default window is activity.window_days and the default page size is activity.page_size. Matter walls apply.",
+        description="The event stream for the firm, newest first. The default window is activity.window_days and the default page size is activity.page_size. Matter walls apply. actor_kind=module includes delegated staff/client writes with module_id; person filters keep them too.",
         tag="Shell",
         features=["activity", "events"],
         roles=STAFF,

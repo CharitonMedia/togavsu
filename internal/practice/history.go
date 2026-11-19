@@ -110,7 +110,8 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 		case "staff":
 			view.Staff++
 			people[row.ActorID]++
-		case "agent", "module":
+		}
+		if row.ActorKind == "agent" || row.ActorKind == "module" || row.ModuleID != "" {
 			view.Agents++
 		}
 	}
@@ -123,7 +124,7 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 	}
 	var rows []TimelineEntry
 	for _, row := range all {
-		if !activityTab(q.Tab, row.ActorKind) {
+		if !activityTab(q.Tab, row.ActorKind, row.ModuleID) {
 			continue
 		}
 		if !q.UserID.IsZero() && row.ActorID != q.UserID {
@@ -151,7 +152,7 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 	return view, nil
 }
 
-func activityTab(tab, kind string) bool {
+func activityTab(tab, kind, module string) bool {
 	switch tab {
 	case "", "all":
 		return true
@@ -160,7 +161,9 @@ func activityTab(tab, kind string) bool {
 	case "staff":
 		return kind == "staff"
 	case "agents":
-		return kind == "agent" || kind == "module"
+		return kind == "agent" || kind == "module" || module != ""
+	case "module":
+		return kind == "module" || module != ""
 	default:
 		return kind == tab
 	}

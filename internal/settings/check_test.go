@@ -215,7 +215,7 @@ func TestWebhookProtocolLiteralsStayFixedAndFunctionScoped(t *testing.T) {
 		function string
 		bad      bool
 	}{
-		{"VerifyWebhook", false}, {"WebhookTimestamp", false}, {"OtherWebhookConfiguration", true},
+		{"VerifyWebhookHeaders", false}, {"WebhookTimestamp", false}, {"OtherWebhookConfiguration", true},
 	} {
 		src := "package modules\nimport \"time\"\nfunc " + tc.function + "() time.Duration { return 5*time.Minute }\n"
 		got := settings.ScanSource(filepath.Join("internal", "modules", "events.go"), src)

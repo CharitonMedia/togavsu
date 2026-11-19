@@ -60,7 +60,7 @@ func TestCoreUpdate2DReadsWallsMailSettingsAndPhone(t *testing.T) {
 	c.Serve(id, func(m coretest.Module) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			b, _ := io.ReadAll(r.Body)
-			if err := modulekit.VerifyWebhook(m.WebhookSecret, r.Header, b, time.Now(), 0); err != nil {
+			if err := modulekit.VerifyWebhookHeaders(m.WebhookSecret, r.Header, b, time.Now(), 0); err != nil {
 				t.Errorf("event signature: %v", err)
 			}
 			if r.Header.Get(modulekit.TimestampHeader) == "" {
@@ -272,7 +272,7 @@ func TestCoreUpdate2DContractForwardingTargetAndLimit(t *testing.T) {
 	provider := func(m coretest.Module) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			raw, _ := io.ReadAll(r.Body)
-			if err := modulekit.VerifyWebhook(m.WebhookSecret, r.Header, raw, time.Now(), 0); err != nil {
+			if err := modulekit.VerifyWebhookHeaders(m.WebhookSecret, r.Header, raw, time.Now(), 0); err != nil {
 				t.Errorf("signature %v", err)
 			}
 			if r.Header.Get(modulekit.TimestampHeader) == "" {
@@ -480,7 +480,7 @@ func TestCoreUpdate2DServiceWallsEveryRecord(t *testing.T) {
 	c.Serve(id, func(m coretest.Module) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			raw, _ := io.ReadAll(r.Body)
-			if err := modulekit.VerifyWebhook(m.WebhookSecret, r.Header, raw, time.Now(), 0); err != nil {
+			if err := modulekit.VerifyWebhookHeaders(m.WebhookSecret, r.Header, raw, time.Now(), 0); err != nil {
 				t.Error(err)
 			}
 			if r.Header.Get("X-Togavsu-Event-Authorization") != "" {
@@ -560,7 +560,24 @@ func TestCoreUpdate2DServiceWallsEveryRecord(t *testing.T) {
 			t.Fatalf("directory wall: %d %s", got.Code, got.Body)
 		}
 	}
+	contactMatters := "/api/v1/matter-parties?contact_id=" + contact
+	omitted := bot.Do("GET", contactMatters, nil)
+	if omitted.Code != http.StatusOK || omitted.JSON["walled_omitted"] != true || strings.Contains(omitted.Body, matter) {
+		t.Fatalf("contact matters wall omission: %d %s", omitted.Code, omitted.Body)
+	}
+	delegatedMatters := bot.Do("GET", contactMatters, nil, modulekit.ContextHeader, inside)
+	if _, present := delegatedMatters.JSON["walled_omitted"]; present || delegatedMatters.Code != http.StatusOK || !strings.Contains(delegatedMatters.Body, matter) {
+		t.Fatalf("delegated contact matters: %d %s", delegatedMatters.Code, delegatedMatters.Body)
+	}
+	omittedMCP := bot.Do("POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": "listMatterParty", "arguments": map[string]any{"query": map[string]any{"contact_id": contact}}}})
+	if omittedMCP.Code != http.StatusOK || !strings.Contains(omittedMCP.Body, `"walled_omitted":true`) {
+		t.Fatalf("MCP contact wall omission: %d %s", omittedMCP.Code, omittedMCP.Body)
+	}
 	c.Wall(matter)
+	lifted := bot.Do("GET", contactMatters, nil)
+	if _, present := lifted.JSON["walled_omitted"]; present || lifted.Code != http.StatusOK || !strings.Contains(lifted.Body, matter) {
+		t.Fatalf("contact matters next read after lifting wall: %d %s", lifted.Code, lifted.Body)
+	}
 	for record, collection := range records {
 		got := bot.Do("GET", "/api/v1/"+collection+"/"+record, nil)
 		if got.Code != http.StatusOK {

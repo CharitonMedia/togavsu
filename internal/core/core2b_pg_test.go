@@ -45,7 +45,7 @@ func TestCORE31ContractCall(t *testing.T) {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			gotConsumer = r.Header.Get("X-Togavsu-Contract-Consumer")
 			gotBody, _ = io.ReadAll(r.Body)
-			if err := modules.VerifyWebhook(m.WebhookSecret, r.Header, gotBody, time.Now().UTC(), 0); err != nil {
+			if err := modules.VerifyWebhookHeaders(m.WebhookSecret, r.Header, gotBody, time.Now().UTC(), 0); err != nil {
 				t.Errorf("provider verify: %v", err)
 			}
 			w.Header().Set("Content-Type", "application/json")

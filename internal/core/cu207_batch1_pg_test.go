@@ -1,8 +1,10 @@
 package core
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -46,7 +48,8 @@ var cu207RealRoutes = map[string]cu207Route{
 //
 // Each module binary is started out of process through the real testkit module runtime
 // (no stub Default handler). The test hits /m/{id}/healthz and one real route per module
-// and asserts a response from that module's own code, then uninstalls with data deleted
+// and asserts a response from that module's own code, sends signed/forged events,
+// then uninstalls with data deleted
 // and asserts schema and routes are gone. A missing network fails the test by name.
 func TestCU207Batch1ModulesUnchanged(t *testing.T) {
 	if os.Getenv("TOGAVSU_TEST_DATABASE_URL") == "" {
@@ -109,6 +112,39 @@ func TestCU207Batch1ModulesUnchanged(t *testing.T) {
 		if strings.Contains(page.body, "ok:"+id) {
 			t.Fatalf("%s still answered with stub body", id)
 		}
+		// Send the core's wire format to the unchanged receiver, then a forged one.
+		// A real receiver must authenticate before storing anything. Report each
+		// incompatible source independently so lifecycle checks still run for all six.
+		t.Run(id+"-signed-event", func(t *testing.T) {
+			body := []byte(`{"id":"cu207-signed-event","action":"cu207.compatibility","record_type":"matter","record_id":"synthetic-record"}`)
+			secret := x.rt.Last(id).Secrets["togavsu_webhook_secret"]
+			send := func(signature string) int {
+				req, err := http.NewRequest("POST", x.rt.BaseURL(id)+"/events", bytes.NewReader(body))
+				if err != nil {
+					t.Fatal(err)
+				}
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set(modules.SignatureHeader, signature)
+				req.Header.Set(modules.TimestampHeader, modules.WebhookTimestamp(time.Now()))
+				resp, err := http.DefaultClient.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer resp.Body.Close()
+				_, _ = io.Copy(io.Discard, resp.Body)
+				return resp.StatusCode
+			}
+			if code := send(modules.SignWebhook("wrong-secret", time.Now(), body)); code != http.StatusUnauthorized {
+				t.Errorf("%s must refuse a forged event: HTTP %d", id, code)
+			}
+			if code := send(modules.SignWebhook(secret, time.Now(), body)); code < 200 || code >= 300 {
+				t.Errorf("%s rejects the core sha256= signed event: HTTP %d", id, code)
+				return
+			}
+			if n := x.count(fmt.Sprintf(`SELECT COUNT(*) FROM %s.received_events WHERE event_id = $1`, schema), "cu207-signed-event"); n != 1 {
+				t.Errorf("%s did not store exactly one verified event: %d", id, n)
+			}
+		})
 		uninstallDelete(t, x, id)
 		if x.count(`SELECT COUNT(*) FROM pg_namespace WHERE nspname = $1`, schema) != 0 {
 			t.Fatalf("%s schema %s still present after uninstall", id, schema)

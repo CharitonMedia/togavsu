@@ -327,20 +327,46 @@ func (s *Service) intSetting(ctx context.Context, key string) (int, error) {
 // TimestampHeader carries the decimal Unix delivery time (batch 1 wire format).
 const TimestampHeader = "X-Togavsu-Timestamp"
 
-// SignWebhook returns the raw-body HMAC and separate timestamp headers.
-// An empty secret returns no headers; senders must refuse delivery.
-func SignWebhook(secret string, at time.Time, body []byte) http.Header {
+// SignWebhook returns the batch 1 raw-body signature. at is retained for compatibility.
+// The timestamp is sent separately by SignWebhookHeaders.
+func SignWebhook(secret string, at time.Time, body []byte) string {
 	if secret == "" {
-		return nil
+		return ""
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
-	return http.Header{SignatureHeader: {"sha256=" + hex.EncodeToString(mac.Sum(nil))}, TimestampHeader: {WebhookTimestamp(at)}}
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
-// VerifyWebhook checks both headers, the raw-body HMAC in constant time, and
+// VerifyWebhook verifies the batch 1 header string. This form carries no timestamp;
+// now and tolerance are retained for source compatibility. Use VerifyWebhookHeaders
+// to also check the separate timestamp header. Neither form prevents replay.
+func VerifyWebhook(secret, header string, body []byte, now time.Time, tolerance time.Duration) error {
+	if secret == "" {
+		return errors.New("modules: empty webhook secret")
+	}
+	if !strings.HasPrefix(header, "sha256=") || len(header) != len("sha256=")+64 {
+		return errors.New("modules: malformed webhook signature")
+	}
+	if !hmac.Equal([]byte(SignWebhook(secret, now, body)), []byte(header)) {
+		return errors.New("modules: webhook signature doesn't match")
+	}
+	return nil
+}
+
+// SignWebhookHeaders returns the raw-body HMAC and separate timestamp headers.
+// An empty secret returns no headers; senders must refuse delivery.
+func SignWebhookHeaders(secret string, at time.Time, body []byte) http.Header {
+	if secret == "" {
+		return nil
+	}
+	return http.Header{SignatureHeader: {SignWebhook(secret, at, body)}, TimestampHeader: {WebhookTimestamp(at)}}
+}
+
+// VerifyWebhookHeaders checks both headers, the raw-body HMAC in constant time, and
 // the documented five-minute window. A shorter positive tolerance is allowed.
-func VerifyWebhook(secret string, headers http.Header, body []byte, now time.Time, tolerance time.Duration) error {
+// The timestamp is unsigned: the window is not replay protection. Deduplicate event ids.
+func VerifyWebhookHeaders(secret string, headers http.Header, body []byte, now time.Time, tolerance time.Duration) error {
 	if secret == "" {
 		return errors.New("modules: empty webhook secret")
 	}
@@ -359,20 +385,7 @@ func VerifyWebhook(secret string, headers http.Header, body []byte, now time.Tim
 	if delta > tolerance || delta < -tolerance {
 		return errors.New("modules: webhook timestamp outside window")
 	}
-	signature := headers.Get(SignatureHeader)
-	if !strings.HasPrefix(signature, "sha256=") {
-		return errors.New("modules: malformed webhook signature")
-	}
-	got, err := hex.DecodeString(strings.TrimPrefix(signature, "sha256="))
-	if err != nil {
-		return errors.New("modules: malformed webhook signature")
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	if !hmac.Equal(mac.Sum(nil), got) {
-		return errors.New("modules: webhook signature doesn't match")
-	}
-	return nil
+	return VerifyWebhook(secret, headers.Get(SignatureHeader), body, now, tolerance)
 }
 
 // Deliver sends every due delivery once, by signed webhook. A failure is retried on the
@@ -462,7 +475,7 @@ func (s *Service) post(ctx context.Context, module, secret, grant string, body [
 	}
 	req.Header.Set("Content-Type", "application/json")
 	at := s.now()
-	headers := SignWebhook(secret, at, body)
+	headers := SignWebhookHeaders(secret, at, body)
 	if headers == nil {
 		return errors.New("modules: empty webhook secret")
 	}

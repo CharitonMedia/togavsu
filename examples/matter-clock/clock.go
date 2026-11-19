@@ -438,7 +438,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad skew", http.StatusInternalServerError)
 		return
 	}
-	if err := modules.VerifyWebhook(s.c.WebhookSecret, r.Header, body, s.c.Now(), skew); err != nil {
+	if err := modules.VerifyWebhook(s.c.WebhookSecret, r.Header.Get(modules.SignatureHeader), body, s.c.Now(), skew); err != nil {
 		http.Error(w, "bad signature", http.StatusUnauthorized)
 		return
 	}

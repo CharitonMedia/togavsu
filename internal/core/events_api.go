@@ -512,7 +512,9 @@ WHERE e.created_at >= $1`
 		if q.To != nil {
 			add("e.created_at < ?", *q.To)
 		}
-		if q.ActorKind != "" {
+		if q.ActorKind == "module" {
+			sql += " AND (e.actor_kind = 'module' OR e.module_id <> '')"
+		} else if q.ActorKind != "" {
 			add("e.actor_kind = ?", q.ActorKind)
 		}
 		if !q.ActorID.IsZero() {

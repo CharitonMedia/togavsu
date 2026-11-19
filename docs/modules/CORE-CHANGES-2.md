@@ -185,31 +185,3 @@ Every module has unit tests and one Postgres acceptance suite built on pkg/modul
 ### 18.4 Review gate
 
 Every PR gets the Codex checkpoint at its exact base and head SHAs; a missing, failed or stale review blocks the merge. Review-bot comments are fixed by the lane, not passed to Patrick. Fix passes: limit passes to fix the same issue to 3, then raise it with Patrick. When automation stops for any reason, the build controller emails Patrick at the stall-alert address naming the issue, the attempts and what's blocking, and work that doesn't depend on it keeps going.
-
-## Core-update-2d implementation supplement
-
-This PR closes background-work gaps found by batch 2 without a release, tag or public
-version bump. The approved requirements above remain the scope. Public usage and scope
-names are in [MODULE-KIT.md](MODULE-KIT.md), with REST/MCP behavior in
-[the module API](../api/modules.md).
-
-| Assignment item | Implemented behavior | Executable regression evidence |
-| --- | --- | --- |
-| 1, CORE-30/36 | Scoped service get/list of deadlines, calendar events and notes, file lists, matter parties filtered by contact, firm time zone, addresses, roles, field definitions and user directory/work email; live per-operation limits | `TestCoreUpdate2DReadsWallsMailSettingsAndPhone` |
-| 2 | Service gets answer not_found and lists omit walled records; only inside-wall delegated viewers read them; no membership disclosure; directory checks caller before candidates | Same test; `TestCoreUpdate2DServiceWallsEveryRecord` |
-| 3, CORE-04 | Service mail to matter parties, resolved by core, matter recorded/audited | Same public-kit test; existing module-mail tests |
-| 4, CORE-20/31/36 | Own settings reads and admin-delegated own-settings writes; contract limit allowlist; modules:write remains forbidden | Same public-kit test |
-| 5, CORE-31 | Audience-bound forwarded contexts with live links; stable targeted event envelope/idempotency; response `too_large` | `TestCoreUpdate2DContractForwardingTargetAndLimit` |
-| 6, CORE-07/36 | Batch 1 raw-body HMAC and separate timestamp header, empty-secret/five-minute checks, per-hook approved Authorization forwarding, provider CRC/HMAC helpers | `TestCoreUpdate2DInboundAuthorizationOptIn`, `TestTimestampedWebhookAndProviderHelpers`, `TestWebhookAuthorizationOptInRequiresScope` |
-| 7, CORE-36 | Purge blocked by retaining module FKs; shared timeline/feed preserves delegated user actor and records module separately | Public-kit read/mail/settings/phone and purge/converter tests |
-| 8, CORE-29/36 | Goose Up-only inventory; explicit runtime pending criteria with strict retirement; in-process converter stand-in | `TestRuntimePendingCriteriaAndGooseUpInventory`, `TestRuntimePendingCLI`, `TestCoreUpdate2DPurgeRestrictAndConverter` |
-| 9 | Contact phone-row item manifest, sandboxed viewer frame and paginated REST/MCP discovery | Public-kit read/mail/settings/phone test |
-
-The processor payment principal, context contact claim, hook GET answer, fee-agreement
-dual-write, staff banner frames, documents-list action slot and signed file-read
-addresses remain outside this assignment. OCR fidelity, real LawCraft rendering,
-Docker/Compose/image smoke, clean installs and exact-SHA independent review remain
-separate acceptance checks; synthetic converter output does not establish rendering.
-The assignment's separately referenced contract definitions were absent from its base;
-see [contract envelope documentation](../contracts/README.md) for the implemented
-surface and the remaining external-definition comparison.

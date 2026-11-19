@@ -181,12 +181,20 @@ func CheckSignedPublicCSRF(secret []byte, moduleID, cookie, submitted string, no
 	return modules.CheckSignedPublicCSRF(secret, moduleID, cookie, submitted, now)
 }
 
-// SignWebhook / VerifyWebhook are the HMAC scheme contract calls share with events.
-func SignWebhook(secret string, at time.Time, body []byte) http.Header {
+// SignWebhook and VerifyWebhook retain the batch 1 raw signature API.
+func SignWebhook(secret string, at time.Time, body []byte) string {
 	return modules.SignWebhook(secret, at, body)
 }
-func VerifyWebhook(secret string, header http.Header, body []byte, now time.Time, tolerance time.Duration) error {
+func VerifyWebhook(secret, header string, body []byte, now time.Time, tolerance time.Duration) error {
 	return modules.VerifyWebhook(secret, header, body, now, tolerance)
+}
+
+// SignWebhookHeaders / VerifyWebhookHeaders are the HMAC scheme contract calls share with events.
+func SignWebhookHeaders(secret string, at time.Time, body []byte) http.Header {
+	return modules.SignWebhookHeaders(secret, at, body)
+}
+func VerifyWebhookHeaders(secret string, header http.Header, body []byte, now time.Time, tolerance time.Duration) error {
+	return modules.VerifyWebhookHeaders(secret, header, body, now, tolerance)
 }
 
 // Install refusal codes the checks return in a *domain.APIError's Code (see Code).

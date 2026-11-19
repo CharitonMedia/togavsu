@@ -18,9 +18,19 @@ import (
 func TestTimestampedWebhookAndProviderHelpers(t *testing.T) {
 	now := time.Unix(1800000000, 0)
 	body := []byte(`{"id":"synthetic"}`)
-	headers := modulekit.SignWebhook("secret", now, body)
-	if err := modulekit.VerifyWebhook("secret", headers, body, now, 0); err != nil {
+	headers := modulekit.SignWebhookHeaders("secret", now, body)
+	if err := modulekit.VerifyWebhookHeaders("secret", headers, body, now, 0); err != nil {
 		t.Fatal(err)
+	}
+	// Compile-time assignments pin the existing public API's source compatibility.
+	var sign func(string, time.Time, []byte) string = modulekit.SignWebhook
+	var verify func(string, string, []byte, time.Time, time.Duration) error = modulekit.VerifyWebhook
+	signature := sign("secret", now, body)
+	if signature != headers.Get(modulekit.SignatureHeader) || verify("secret", signature, body, now, 0) != nil {
+		t.Fatal("legacy string API does not verify the wire signature")
+	}
+	if sign("", now, body) != "" || verify("", signature, body, now, 0) == nil || verify("secret", signature, []byte("tampered"), now, 0) == nil {
+		t.Fatal("legacy API accepted empty key or changed body")
 	}
 	// Independent batch-1 verifier: HMAC of raw body, sha256=hex, separate timestamp.
 	mac := hmac.New(sha256.New, []byte("secret"))
@@ -47,18 +57,18 @@ func TestTimestampedWebhookAndProviderHelpers(t *testing.T) {
 		"changed body": {"secret", headers, []byte("tampered"), now}, "bad signature": {"secret", badSig, body, now},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if modulekit.VerifyWebhook(tc.secret, tc.headers, tc.body, tc.at, 0) == nil {
+			if modulekit.VerifyWebhookHeaders(tc.secret, tc.headers, tc.body, tc.at, 0) == nil {
 				t.Fatal("invalid webhook accepted")
 			}
 		})
 	}
-	if modulekit.SignWebhook("", now, body) != nil {
+	if modulekit.SignWebhookHeaders("", now, body) != nil {
 		t.Fatal("empty secret signed")
 	}
-	if modulekit.VerifyWebhook("secret", headers, body, now, -time.Second) == nil {
+	if modulekit.VerifyWebhookHeaders("secret", headers, body, now, -time.Second) == nil {
 		t.Fatal("negative tolerance")
 	}
-	if modulekit.VerifyWebhook("secret", headers, body, now, 6*time.Minute) == nil {
+	if modulekit.VerifyWebhookHeaders("secret", headers, body, now, 6*time.Minute) == nil {
 		t.Fatal("expanded window")
 	}
 	sum, err := modulekit.ProviderHMAC("provider", []byte("challenge"))
