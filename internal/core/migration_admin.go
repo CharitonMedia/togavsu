@@ -82,12 +82,12 @@ func (m *migrationAdmin) oneForm(r *http.Request, p domain.Principal) (string, e
 	item := billing.OpeningInvoiceItem(matter, number, issued, due, amountDue, amountPaid, msg, billing.ImportSourceForm, ref, dor)
 	item.DocumentFileName = fileName
 	item.ContactEmail = strings.TrimSpace(r.FormValue("contact_email"))
-	rows, skipped, err := m.app.Billing.BulkInvoicesDetailed(r.Context(), p, []billing.InvoiceImport{item})
+	rows, results, err := m.app.Billing.BulkInvoicesDetailed(r.Context(), p, []billing.InvoiceImport{item})
 	if err != nil {
 		return "", err
 	}
-	if len(skipped) > 0 {
-		return "Already imported (external_ref " + skipped[0].ExternalRef + ").", nil
+	if len(results) > 0 && results[0].Skipped {
+		return "Already imported (external_ref " + results[0].ExternalRef + ").", nil
 	}
 	if len(rows) == 0 {
 		return "Nothing written.", nil
@@ -142,7 +142,7 @@ func (m *migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error
 	if parsed.hasParseErrors() {
 		return "", domain.Invalid("csv", "fix refused rows before committing")
 	}
-	rows, skipped, err := m.app.Billing.BulkInvoicesDetailed(r.Context(), p, parsed.items())
+	rows, results, err := m.app.Billing.BulkInvoicesDetailed(r.Context(), p, parsed.items())
 	if err != nil {
 		return "", err
 	}
@@ -150,7 +150,13 @@ func (m *migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error
 	delete(m.previewHash, p.UserID)
 	delete(m.previews, p.UserID)
 	m.mu.Unlock()
-	return "Wrote " + strconv.Itoa(len(rows)) + " invoices; skipped " + strconv.Itoa(len(skipped)) + " already imported.", nil
+	skipped := 0
+	for _, result := range results {
+		if result.Skipped {
+			skipped++
+		}
+	}
+	return "Wrote " + strconv.Itoa(len(rows)) + " invoices; skipped " + strconv.Itoa(skipped) + " already imported.", nil
 }
 
 // previewCSV builds one MigrationPreviewRow per CSV data row. Rows that failed amount

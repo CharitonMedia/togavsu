@@ -27165,7 +27165,8 @@
             "paid_at",
             "client_message",
             "imported",
-            "document_of_record_file_id"
+            "document_of_record_file_id",
+            "document_of_record_version_id"
           ],
           "client_csv_columns": [
             "id",
@@ -27184,7 +27185,8 @@
             "paid_at",
             "client_message",
             "imported",
-            "document_of_record_file_id"
+            "document_of_record_file_id",
+            "document_of_record_version_id"
           ],
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
@@ -27353,7 +27355,8 @@
             "paid_at",
             "client_message",
             "imported",
-            "document_of_record_file_id"
+            "document_of_record_file_id",
+            "document_of_record_version_id"
           ]
         },
         "x-togavsu-events": [],
@@ -27936,7 +27939,7 @@
       "post": {
         "operationId": "bulkInvoice",
         "summary": "Create invoices in one batch",
-        "description": "Importer write for invoice records. A draft uses the same role and invoices:write scope as createInvoiceDrafts. sent and viewed use sendInvoice. void uses voidInvoice. A write-off uses writeOffInvoice. Amount paid uses createPayment. paid also uses sendInvoice, so staff cannot mark an invoice paid. One item the caller cannot perform rejects the whole batch before any row is written. Validates every item, reconciles integer cents, and checks each matter wall. One validation, reconciliation, role, scope, or wall failure writes nothing. A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. A different body with that key is idempotency_conflict and writes nothing. A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. A client projection keeps only InvoiceClient fields, on JSON and on a later read. Staff fields are not returned. Opening imports (source form/csv/api) also emit invoice.imported, set imported true, and may skip rows already present by external_ref. preview=true validates without writing.",
+        "description": "Importer write for invoice records. A draft uses the same role and invoices:write scope as createInvoiceDrafts. sent and viewed use sendInvoice. void uses voidInvoice. A write-off uses writeOffInvoice. Amount paid uses createPayment. paid also uses sendInvoice, so staff cannot mark an invoice paid. One item the caller cannot perform rejects the whole batch before any row is written. Validates every item, reconciles integer cents, and checks each matter wall. One validation, reconciliation, role, scope, or wall failure writes nothing. A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. A different body with that key is idempotency_conflict and writes nothing. A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. A client projection keeps only InvoiceClient fields, on JSON and on a later read. Staff fields are not returned. Opening imports (source form/csv/api) also emit invoice.imported, set imported true, and may skip rows already present by external_ref. Preview executes the commit path in a transaction and rolls it back. Both modes return every row result; one refusal rolls back the batch. A duplicate external_ref within the file is an error, even when a previous run imported that ref.",
         "tags": [
           "Billing"
         ],
@@ -27962,13 +27965,20 @@
                   "type": "object",
                   "additionalProperties": false,
                   "required": [
-                    "data"
+                    "data",
+                    "results"
                   ],
                   "properties": {
                     "data": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/Invoice"
+                      }
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BulkInvoiceResult"
                       }
                     },
                     "skipped": {
@@ -27999,7 +28009,36 @@
             "$ref": "#/components/responses/Conflict"
           },
           "422": {
-            "$ref": "#/components/responses/Unprocessable"
+            "description": "Batch rejected; results report every row and nothing is written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "code",
+                    "message",
+                    "results"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BulkInvoiceResult"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -28023,32 +28062,7 @@
                     "results": {
                       "type": "array",
                       "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": [
-                          "index",
-                          "ok"
-                        ],
-                        "properties": {
-                          "index": {
-                            "type": "integer"
-                          },
-                          "ok": {
-                            "type": "boolean"
-                          },
-                          "error": {
-                            "type": "string"
-                          },
-                          "skipped": {
-                            "type": "boolean"
-                          },
-                          "external_ref": {
-                            "type": "string"
-                          },
-                          "reason": {
-                            "type": "string"
-                          }
-                        }
+                        "$ref": "#/components/schemas/BulkInvoiceResult"
                       }
                     }
                   }
@@ -28175,7 +28189,8 @@
             "paid_at",
             "client_message",
             "imported",
-            "document_of_record_file_id"
+            "document_of_record_file_id",
+            "document_of_record_version_id"
           ]
         },
         "x-togavsu-events": [
@@ -28684,7 +28699,7 @@
       "get": {
         "operationId": "getInvoicePdf",
         "summary": "Download an invoice PDF",
-        "description": "Renders the PDF from the firm logo and settings. Does not change status. The download is written to the audit log and the case timeline as file.downloaded. A client download is highlighted. A quarantined file requires confirmation.",
+        "description": "Renders the PDF from the firm logo and settings. Imported invoices with a document of record redirect to the pinned version (303). Accept: application/pdf streams that original version instead; MCP uses this negotiation. Does not change status. The download is written to the audit log and the case timeline as file.downloaded. A client download is highlighted. A quarantined file requires confirmation.",
         "tags": [
           "Billing"
         ],
@@ -28739,6 +28754,18 @@
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
+          },
+          "303": {
+            "description": "Imported invoice: see its immutable document of record version.",
+            "headers": {
+              "Location": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Download path for the file version pinned at import."
+              }
+            }
           }
         },
         "x-togavsu-features": [
@@ -72324,6 +72351,12 @@
             "format": "uuid",
             "description": "Original invoice PDF shown instead of a render (CORE-37)."
           },
+          "document_of_record_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true,
+            "description": "Immutable file version pinned when the invoice was imported."
+          },
           "included": {
             "$ref": "#/components/schemas/Included"
           }
@@ -72447,6 +72480,12 @@
             "type": "string",
             "format": "uuid",
             "description": "Original invoice PDF shown instead of a render (CORE-37)."
+          },
+          "document_of_record_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true,
+            "description": "Immutable file version pinned when the invoice was imported."
           }
         },
         "required": [
@@ -72560,6 +72599,41 @@
         ],
         "description": "Replaces the lines on a draft invoice. A line may set fee_item_id. The description and amount stay editable after the catalog fills them in. adjustment_cents and adjustment_reason are the invoice adjustment."
       },
+      "BulkInvoiceResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "row": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "skipped": {
+            "type": "boolean"
+          },
+          "external_ref": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "row",
+          "ok"
+        ],
+        "description": "One row result, identical in preview and commit. Row is one-based; index is zero-based. A failed batch writes nothing, including rows marked ok."
+      },
       "InvoiceWrite": {
         "type": "object",
         "additionalProperties": false,
@@ -72660,6 +72734,12 @@
             "type": "string",
             "format": "uuid",
             "description": "Original invoice PDF shown instead of a render (CORE-37)."
+          },
+          "document_of_record_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true,
+            "description": "Immutable file version pinned when the invoice was imported."
           },
           "source": {
             "type": "string",
@@ -86709,6 +86789,12 @@
             "type": "string",
             "format": "uuid",
             "description": "Original invoice PDF shown instead of a render (CORE-37)."
+          },
+          "document_of_record_version_id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true,
+            "description": "Immutable file version pinned when the invoice was imported."
           },
           "source": {
             "type": "string",

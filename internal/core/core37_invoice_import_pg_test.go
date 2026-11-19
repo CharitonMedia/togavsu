@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"fmt"
 	"mime/multipart"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/files"
 	"github.com/CharitonMedia/togavsu/internal/testkit"
 )
 
@@ -190,22 +192,40 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	if !strings.Contains(staffPage.body, "Imported") || !strings.Contains(staffPage.body, "Document of record") || !strings.Contains(staffPage.body, "/billing/invoices/"+dorID+"/pdf") {
 		t.Fatalf("IMP-06 staff billing tab: %s", staffPage.body)
 	}
-	// getInvoicePdf streams the document of record as 200 application/pdf (MCP parity;
-	// no 303 redirect stub).
-	pdf := f.atty.do("GET", "/api/v1/invoices/"+dorID+"/pdf", nil)
-	if pdf.code != http.StatusOK || !bytes.Contains([]byte(pdf.body), pdfBytes) {
-		t.Fatalf("IMP-06 staff pdf bytes: %d %s", pdf.code, pdf.body[:min(120, len(pdf.body))])
+
+	originalVersion := str(t, dorRow, "document_of_record_version_id")
+	principal := domain.Principal{UserID: domain.ID(f.attyID), Roles: []domain.Role{domain.RoleAttorney}, Source: domain.SourceUI}
+	replacement := []byte("%PDF-1.4 later upload must never replace original invoice")
+	replacementVersion, err := f.app.Files.SaveVersion(context.Background(), principal, domain.ID(fileID), bytes.NewReader(replacement), int64(len(replacement)), files.SaveOptions{How: "upload", MediaType: "application/pdf"})
+	if err != nil {
+		t.Fatal(err)
 	}
+	assertOriginal := func(c *client) {
+		t.Helper()
+		redirect := c.must(http.StatusSeeOther, "GET", "/api/v1/invoices/"+dorID+"/pdf", nil)
+		want := "/api/v1/files/" + fileID + "/versions/" + originalVersion + "/download"
+		if redirect.loc != want {
+			t.Fatalf("DoR redirect changed: %q want %q", redirect.loc, want)
+		}
+		pdf := c.must(http.StatusOK, "GET", redirect.loc, nil)
+		if pdf.body != string(pdfBytes) {
+			t.Fatalf("DoR bytes replaced: %q", pdf.body)
+		}
+	}
+	assertOriginal(f.atty)
+	if _, err := f.app.Files.RestoreVersion(context.Background(), principal, domain.ID(fileID), replacementVersion.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertOriginal(f.atty)
+
 	cliKit, _ := testkit.EnrollUser(t, f.app.Identity, f.srv.URL, f.admin.kit(), "Dor Client", "dor.client@example.com", domain.ID(dorContact), domain.RoleClient)
 	cli := wrapClient(cliKit)
 	cliInv := cli.must(http.StatusOK, "GET", "/api/v1/invoices/"+dorID, nil)
 	if cliInv.json["imported"] != true || str(t, cliInv.json, "document_of_record_file_id") != fileID {
 		t.Fatalf("IMP-06 client projection: %s", cliInv.body)
 	}
-	cliPDF := cli.do("GET", "/api/v1/invoices/"+dorID+"/pdf", nil)
-	if cliPDF.code != http.StatusOK || !bytes.Contains([]byte(cliPDF.body), pdfBytes) {
-		t.Fatalf("IMP-06 client pdf bytes: %d %s", cliPDF.code, cliPDF.body[:min(200, len(cliPDF.body))])
-	}
+	assertOriginal(cli)
+
 	// MCP getInvoicePdf must return the document bytes, not a redirect stub.
 	mcp := mcpCall(f.atty, toolName(t, "GET", "/api/v1/invoices/{invoice_id}/pdf"), map[string]any{
 		"path": map[string]any{"invoice_id": dorID},
@@ -216,6 +236,21 @@ func TestCORE37OpeningInvoiceImport(t *testing.T) {
 	if !strings.Contains(mcp.body, "%PDF-1.4 synthetic opening invoice") {
 		t.Fatalf("IMP-06 MCP missing DoR PDF bytes: %s", mcp.body[:min(400, len(mcp.body))])
 	}
+	// Legacy rows from before pinning are backfilled using import time on reopen.
+	if _, err := f.app.Pool.Exec(`UPDATE core.billing_records SET body = (body::jsonb - 'document_of_record_version_id')::text WHERE kind = 'invoice' AND id = $1`, dorID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.app.Pool.Exec(`UPDATE core.invoices SET document_of_record_version_id = '' WHERE id = $1`, dorID); err != nil {
+		t.Fatal(err)
+	}
+	f.restart()
+	assertOriginal(f.atty)
+	assertOriginal(cli)
+	reopened := f.atty.must(http.StatusOK, "GET", "/api/v1/invoices/"+dorID, nil)
+	if str(t, reopened.json, "document_of_record_version_id") != originalVersion {
+		t.Fatalf("backfill pinned wrong version: %s", reopened.body)
+	}
+
 	otherKit, _ := testkit.EnrollUser(t, f.app.Identity, f.srv.URL, f.admin.kit(), "Other Client", "other.client@example.com", domain.ID(otherContact), domain.RoleClient)
 	other := wrapClient(otherKit)
 	if r := other.do("GET", "/api/v1/invoices/"+dorID+"/pdf", nil); r.code != http.StatusNotFound {

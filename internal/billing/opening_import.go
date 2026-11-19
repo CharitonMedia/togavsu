@@ -10,94 +10,21 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
-// BulkInvoiceResult is one bulkInvoice outcome: a written invoice, or a skipped
-// already-imported external_ref (CORE-37).
+// BulkInvoiceResult describes an accepted, skipped or refused row in preview and commit.
 type BulkInvoiceResult struct {
-	Invoice      *Invoice
 	Skipped      bool
 	ExternalRef  string
 	SkipReason   string
 	Index        int
+	Row          int
 	PreviewOK    bool
 	PreviewError string
 }
 
-// BulkInvoicesPreview validates opening and legacy import items without writing.
+// BulkInvoicesPreview runs the real commit path and rolls its transaction back.
 func (s *Service) BulkInvoicesPreview(ctx context.Context, p domain.Principal, items []InvoiceImport) ([]BulkInvoiceResult, error) {
-	if len(items) == 0 {
-		return nil, domain.Invalid("items", "at least one item is required")
-	}
-	if s.overBulkMax(ctx, len(items)) {
-		return nil, domain.Invalid("items", "batch is larger than api.bulk_batch_max")
-	}
-	out := make([]BulkInvoiceResult, 0, len(items))
-	seenRefs := map[string]bool{}
-	numbers := map[string]bool{}
-	heads, err := invoiceHeads(ctx, s.d.Store, Where{})
-	if err != nil {
-		return nil, err
-	}
-	for _, h := range heads {
-		numbers[h.Number] = true
-	}
-	existingRefs, err := s.existingExternalRefs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for i, in := range items {
-		r := BulkInvoiceResult{Index: i, PreviewOK: true}
-		// Match commit (BulkInvoicesDetailed): authorizeImport + matter/wall for every
-		// row before any skip. A walled or unauthorized already-imported ref must refuse
-		// with the same not_found/forbidden as commit, never "already imported".
-		if in.MatterID.IsZero() {
-			r.PreviewOK = false
-			r.PreviewError = previewErr(domain.Invalid(fmt.Sprintf("items/%d/matter_id", i), "is required"))
-			out = append(out, r)
-			continue
-		}
-		if err := s.authorizeImport(ctx, p, in); err != nil {
-			r.PreviewOK = false
-			r.PreviewError = previewErr(err)
-			out = append(out, r)
-			continue
-		}
-		if _, err := s.matter(ctx, in.MatterID); err != nil {
-			r.PreviewOK = false
-			r.PreviewError = previewErr(err)
-			out = append(out, r)
-			continue
-		}
-		if in.OpeningImport() {
-			ref := strings.TrimSpace(in.ExternalRef)
-			if ref != "" && (existingRefs[ref] || seenRefs[ref]) {
-				r.Skipped = true
-				r.ExternalRef = ref
-				r.SkipReason = "already imported by external_ref"
-				out = append(out, r)
-				continue
-			}
-			got, err := s.resolveOpeningFiles(ctx, p, in, i)
-			if err != nil {
-				r.PreviewOK = false
-				r.PreviewError = previewErr(err)
-				out = append(out, r)
-				continue
-			}
-			in = got
-		}
-		if err := s.previewOne(ctx, p, in, i, numbers, seenRefs, existingRefs); err != nil {
-			r.PreviewOK = false
-			r.PreviewError = previewErr(err)
-		} else if in.OpeningImport() && strings.TrimSpace(in.ExternalRef) != "" {
-			ref := strings.TrimSpace(in.ExternalRef)
-			seenRefs[ref] = true
-			numbers[strings.TrimSpace(in.Number)] = true
-		} else {
-			numbers[strings.TrimSpace(in.Number)] = true
-		}
-		out = append(out, r)
-	}
-	return out, nil
+	_, results, err := s.bulkInvoices(ctx, p, items, true)
+	return results, err
 }
 
 func previewErr(err error) string {
@@ -123,39 +50,7 @@ func asOpeningAPI(err error, dest **domain.APIError) bool {
 	return true
 }
 
-func (s *Service) previewOne(ctx context.Context, p domain.Principal, in InvoiceImport, i int, numbers, seenRefs, existingRefs map[string]bool) error {
-	if in.MatterID.IsZero() {
-		return domain.Invalid(fmt.Sprintf("items/%d/matter_id", i), "is required")
-	}
-	if err := s.authorizeImport(ctx, p, in); err != nil {
-		return err
-	}
-	if _, err := s.matter(ctx, in.MatterID); err != nil {
-		return err
-	}
-	if in.OpeningImport() {
-		if err := s.checkOpeningImport(ctx, in, i, numbers, existingRefs, seenRefs, true); err != nil {
-			return err
-		}
-	} else if err := s.validateImportCommitSide(ctx, in, i); err != nil {
-		// Non-opening bulk rows still share commit-side date/recompute checks in preview.
-		return err
-	}
-	number := strings.TrimSpace(in.Number)
-	if number == "" {
-		return domain.Invalid(fmt.Sprintf("items/%d/number", i), "is required")
-	}
-	if numbers[number] && !(in.OpeningImport() && existingRefs[strings.TrimSpace(in.ExternalRef)]) {
-		return domain.Invalid(fmt.Sprintf("items/%d/number", i), "invoice number "+number+" is already used")
-	}
-	return nil
-}
-
-// validateImportCommitSide runs every check importOne and postImportedPayment apply
-// before write that BulkInvoicesPreview must also apply, so a preview that says OK never
-// fails at commit (IMP-03 / CORE-CHANGES-2 §6.3): parseDate on issued_on and due_on, the
-// recompute and reconciliation of subtotal/total/balance, status/balance rules, and the
-// "matter has no client party" refusal when amount_paid is above zero.
+// validateImportCommitSide checks dates, reconciliation and payment requirements.
 func (s *Service) validateImportCommitSide(ctx context.Context, in InvoiceImport, i int) error {
 	field := func(name string) string { return fmt.Sprintf("items/%d/%s", i, name) }
 	if _, err := parseDate(field("issued_on"), in.IssuedOn); err != nil {
@@ -303,7 +198,7 @@ func errorsIsUndefinedTable(err error) bool {
 }
 
 // checkOpeningImport applies CORE-37 refusals for a sourced import item.
-func (s *Service) checkOpeningImport(ctx context.Context, in InvoiceImport, i int, numbers, existingRefs, seenRefs map[string]bool, preview bool) error {
+func (s *Service) checkOpeningImport(ctx context.Context, in InvoiceImport, i int, numbers map[string]bool) error {
 	field := func(name string) string { return fmt.Sprintf("items/%d/%s", i, name) }
 	if in.MatterID.IsZero() {
 		return domain.Invalid(field("matter_id"), "a matter is required")
@@ -314,10 +209,6 @@ func (s *Service) checkOpeningImport(ctx context.Context, in InvoiceImport, i in
 	number := strings.TrimSpace(in.Number)
 	if number == "" {
 		return domain.Invalid(field("number"), "is required")
-	}
-	ref := strings.TrimSpace(in.ExternalRef)
-	if ref != "" && (existingRefs[ref] || seenRefs[ref]) {
-		return nil // skip path; caller marks skipped
 	}
 	// Floor before duplicate so IMP-02 names the floor even when a normal invoice already
 	// occupies that number. billing.invoice_number_start=0 does not disable the floor:
@@ -349,12 +240,10 @@ func (s *Service) checkOpeningImport(ctx context.Context, in InvoiceImport, i in
 	if err := s.checkContactEmail(ctx, in, field("contact_email")); err != nil {
 		return err
 	}
-	// Preview and commit share the same commit-side checks (IMP-03): dates, recompute /
-	// reconciliation and the imported-payment client-party refusal.
+	// Validate dates, amounts and the imported-payment client-party requirement.
 	if err := s.validateImportCommitSide(ctx, in, i); err != nil {
 		return err
 	}
-	_ = preview
 	return nil
 }
 
@@ -430,7 +319,7 @@ func (s *Service) resolveOpeningFiles(ctx context.Context, p domain.Principal, i
 		in.DocumentOfRecordFileID = id
 	}
 	if !in.DocumentOfRecordFileID.IsZero() {
-		if err := s.attachDocumentOfRecord(ctx, p, in.MatterID, in.DocumentOfRecordFileID, field("document_of_record_file_id"), false); err != nil {
+		if _, err := s.attachDocumentOfRecord(ctx, p, in.MatterID, in.DocumentOfRecordFileID, field("document_of_record_file_id"), false); err != nil {
 			return in, err
 		}
 	}
@@ -449,20 +338,21 @@ func rewriteField(err error, field string) error {
 }
 
 // attachDocumentOfRecord validates the file; when share is set it also marks it client-shared.
-func (s *Service) attachDocumentOfRecord(ctx context.Context, p domain.Principal, matter, fileID domain.ID, field string, share bool) error {
+func (s *Service) attachDocumentOfRecord(ctx context.Context, p domain.Principal, matter, fileID domain.ID, field string, share bool) (domain.ID, error) {
 	dor := s.dorFiles()
 	if dor == nil {
-		return domain.Invalid(field, "document of record needs the file store")
+		return "", domain.Invalid(field, "document of record needs the file store")
 	}
-	if err := dor.CheckDocumentOfRecord(ctx, p, matter, fileID); err != nil {
-		return rewriteField(err, field)
+	version, err := dor.CheckDocumentOfRecord(ctx, p, matter, fileID)
+	if err != nil {
+		return "", rewriteField(err, field)
 	}
 	if share {
 		if err := dor.ShareDocumentOfRecord(ctx, p, fileID); err != nil {
-			return rewriteField(err, field)
+			return "", rewriteField(err, field)
 		}
 	}
-	return nil
+	return version, nil
 }
 
 // DocumentOfRecordURL is the download path for an imported invoice's original PDF.
@@ -477,12 +367,11 @@ func (s *Service) DocumentOfRecordURL(ctx context.Context, p domain.Principal, i
 	if dor == nil {
 		return "", domain.NotFound("document of record")
 	}
-	return dor.DocumentDownloadPath(ctx, p, inv.DocumentOfRecordFileID)
+	return dor.DocumentDownloadPath(ctx, p, inv.DocumentOfRecordFileID, inv.DocumentOfRecordVersionID)
 }
 
 // DocumentOfRecordPDF streams the original invoice PDF for getInvoicePdf (CORE-37).
-// Returns the same 200 application/pdf shape as a rendered invoice so HTTP and /mcp
-// both deliver the document bytes (no redirect).
+// Used by explicit application/pdf requests and MCP to deliver the pinned bytes.
 func (s *Service) DocumentOfRecordPDF(ctx context.Context, p domain.Principal, id domain.ID) ([]byte, Invoice, error) {
 	inv, err := s.invoice(ctx, id)
 	if err != nil {
@@ -498,7 +387,7 @@ func (s *Service) DocumentOfRecordPDF(ctx context.Context, p domain.Principal, i
 	if dor == nil {
 		return nil, Invoice{}, domain.NotFound("document of record")
 	}
-	pdf, _, err := dor.ReadDocumentBytes(ctx, p, inv.DocumentOfRecordFileID)
+	pdf, _, err := dor.ReadDocumentBytes(ctx, p, inv.DocumentOfRecordFileID, inv.DocumentOfRecordVersionID)
 	if err != nil {
 		return nil, Invoice{}, err
 	}

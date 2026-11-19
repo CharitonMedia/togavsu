@@ -35,24 +35,27 @@ var (
 )
 
 // CheckDocumentOfRecord implements DocumentOfRecordFiles.
-func (l *FileLink) CheckDocumentOfRecord(ctx context.Context, p domain.Principal, matter, fileID domain.ID) error {
+func (l *FileLink) CheckDocumentOfRecord(ctx context.Context, p domain.Principal, matter, fileID domain.ID) (domain.ID, error) {
 	if fileID.IsZero() {
-		return domain.Invalid("document_of_record_file_id", "is required")
+		return "", domain.Invalid("document_of_record_file_id", "is required")
 	}
 	f, err := l.Svc.Get(ctx, p, fileID)
 	if err != nil {
-		return domain.Invalid("document_of_record_file_id", "file is missing or not readable")
+		return "", domain.Invalid("document_of_record_file_id", "file is missing or not readable")
 	}
 	if f.TrashedAt != nil {
-		return domain.Invalid("document_of_record_file_id", "file is trashed")
+		return "", domain.Invalid("document_of_record_file_id", "file is trashed")
 	}
 	if f.MatterID == nil || *f.MatterID != matter {
-		return domain.Invalid("document_of_record_file_id", "file is not on the invoice's matter")
+		return "", domain.Invalid("document_of_record_file_id", "file is not on the invoice's matter")
 	}
 	if f.AttorneyOnly {
-		return domain.Invalid("document_of_record_file_id", "an attorney-only file cannot be a document of record")
+		return "", domain.Invalid("document_of_record_file_id", "an attorney-only file cannot be a document of record")
 	}
-	return nil
+	if f.CurrentVersionID == nil || f.CurrentVersionID.IsZero() {
+		return "", domain.NotFound("file version")
+	}
+	return *f.CurrentVersionID, nil
 }
 
 // ShareDocumentOfRecord implements DocumentOfRecordFiles.
@@ -73,40 +76,28 @@ func (l *FileLink) ShareDocumentOfRecord(ctx context.Context, p domain.Principal
 }
 
 // DocumentDownloadPath implements DocumentOfRecordFiles.
-func (l *FileLink) DocumentDownloadPath(ctx context.Context, p domain.Principal, fileID domain.ID) (string, error) {
-	f, err := l.Svc.Get(ctx, p, fileID)
-	if err != nil {
+func (l *FileLink) DocumentDownloadPath(ctx context.Context, p domain.Principal, fileID, versionID domain.ID) (string, error) {
+	if versionID.IsZero() {
+		return "", domain.NotFound("document of record version")
+	}
+	if _, err := l.Svc.Version(ctx, p, fileID, versionID); err != nil {
 		return "", err
 	}
-	if f.CurrentVersionID == nil || f.CurrentVersionID.IsZero() {
-		return "", domain.NotFound("file version")
-	}
-	return "/api/v1/files/" + string(fileID) + "/versions/" + string(*f.CurrentVersionID) + "/download", nil
+	return "/api/v1/files/" + string(fileID) + "/versions/" + string(versionID) + "/download", nil
 }
 
-// ReadDocumentBytes implements DocumentOfRecordFiles: current version bytes for getInvoicePdf.
-func (l *FileLink) ReadDocumentBytes(ctx context.Context, p domain.Principal, fileID domain.ID) ([]byte, string, error) {
-	f, err := l.Svc.Get(ctx, p, fileID)
-	if err != nil {
-		return nil, "", err
+// ReadDocumentBytes implements DocumentOfRecordFiles using the immutable pinned version.
+func (l *FileLink) ReadDocumentBytes(ctx context.Context, p domain.Principal, fileID, versionID domain.ID) ([]byte, string, error) {
+	if versionID.IsZero() {
+		return nil, "", domain.NotFound("document of record version")
 	}
-	if f.CurrentVersionID == nil || f.CurrentVersionID.IsZero() {
-		return nil, "", domain.NotFound("file version")
-	}
-	d, err := l.Svc.OpenVersion(ctx, p, fileID, *f.CurrentVersionID, false)
+	d, err := l.Svc.OpenVersion(ctx, p, fileID, versionID, false)
 	if err != nil {
 		return nil, "", err
 	}
 	defer d.Close()
 	raw, err := io.ReadAll(d.Body)
-	if err != nil {
-		return nil, "", err
-	}
-	media := d.MediaType
-	if media == "" {
-		media = "application/pdf"
-	}
-	return raw, media, nil
+	return raw, d.MediaType, err
 }
 
 // ResolveMatterFileName implements DocumentOfRecordFiles.

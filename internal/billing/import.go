@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
+
+	"github.com/CharitonMedia/togavsu/internal/audit"
 
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -104,41 +107,30 @@ func (s *Service) authorizeImport(ctx context.Context, p domain.Principal, in In
 // and expense lines that name their source bill that row (a void invoice leaves it unbilled).
 // Already-imported external_ref rows are skipped and reported; they do not fail the batch.
 func (s *Service) BulkInvoices(ctx context.Context, p domain.Principal, items []InvoiceImport) ([]Invoice, error) {
-	rows, skipped, err := s.BulkInvoicesDetailed(ctx, p, items)
-	_ = skipped
+	rows, _, err := s.BulkInvoicesDetailed(ctx, p, items)
 	return rows, err
 }
 
-// BulkInvoicesDetailed is BulkInvoices plus the skipped external_ref rows (CORE-37).
+// BulkInvoicesDetailed returns every row's outcome, including errors in a rejected batch.
 func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, items []InvoiceImport) ([]Invoice, []BulkInvoiceResult, error) {
+	return s.bulkInvoices(ctx, p, items, false)
+}
+
+var errImportPreview = errors.New("invoice import preview rollback")
+
+// bulkInvoices is the sole preview and commit path. Preview executes the actual writes
+// inside the transaction, then rolls back before audit publication and invoice mirroring.
+func (s *Service) bulkInvoices(ctx context.Context, p domain.Principal, items []InvoiceImport, preview bool) ([]Invoice, []BulkInvoiceResult, error) {
 	if len(items) == 0 {
 		return nil, nil, domain.Invalid("items", "at least one item is required")
 	}
 	if s.overBulkMax(ctx, len(items)) {
 		return nil, nil, domain.Invalid("items", "batch is larger than api.bulk_batch_max")
 	}
-	// Authorize and wall-check every row first. Do not resolve document_file_name /
-	// contact_email yet: already-imported external_refs must skip before that step
-	// so a renamed/trashed PDF or changed email on re-run still reports skipped (IMP-04),
-	// matching BulkInvoicesPreview.
-	resolved := make([]InvoiceImport, len(items))
-	for i, in := range items {
-		if in.MatterID.IsZero() {
-			return nil, nil, domain.Invalid("items/matter_id", "is required")
-		}
-		if err := s.authorizeImport(ctx, p, in); err != nil {
-			return nil, nil, err
-		}
-		if _, err := s.matter(ctx, in.MatterID); err != nil {
-			return nil, nil, err
-		}
-		resolved[i] = in
-	}
-	var out []Invoice
-	var skipped []BulkInvoiceResult
+	var rejected error
+	var invoices []Invoice
+	results := make([]BulkInvoiceResult, 0, len(items))
 	err := s.write(ctx, p, func(t *txn) error {
-		// Read refs inside the write transaction so a concurrent commit is visible under
-		// stronger isolation; unique-violation on dual-write still maps to a named refusal.
 		existingRefs, err := s.existingExternalRefs(t.ctx)
 		if err != nil {
 			return err
@@ -153,41 +145,126 @@ func (s *Service) BulkInvoicesDetailed(ctx context.Context, p domain.Principal, 
 		}
 		sources := map[domain.ID]bool{}
 		seenRefs := map[string]bool{}
-		for i, in := range resolved {
-			if in.OpeningImport() {
-				ref := strings.TrimSpace(in.ExternalRef)
-				if ref != "" && (existingRefs[ref] || seenRefs[ref]) {
-					skipped = append(skipped, BulkInvoiceResult{Index: i, Skipped: true, ExternalRef: ref, SkipReason: "already imported by external_ref"})
-					continue
+		var firstErr error
+		for i, in := range items {
+			r := BulkInvoiceResult{Index: i, Row: i + 1, PreviewOK: true}
+			rowNumbers, rowSources := maps.Clone(numbers), maps.Clone(sources)
+			rowTxn := &txn{s: s, p: p, mirror: map[domain.ID]Invoice{}}
+			var inv Invoice
+			rowErr := s.importRowAtomic(t.ctx, func(ctx context.Context) error {
+				rowTxn.ctx = ctx
+				var err error
+				inv, r.Skipped, err = s.importRow(rowTxn, in, i, rowNumbers, rowSources, existingRefs, seenRefs)
+				return err
+			})
+			if rowErr != nil {
+				var api *domain.APIError
+				if !errors.As(rowErr, &api) {
+					return rowErr
 				}
-				got, err := s.resolveOpeningFiles(t.ctx, t.p, in, i)
-				if err != nil {
-					return batchRejected(err)
+				if firstErr == nil {
+					firstErr = batchRejected(rowErr)
 				}
-				in = got
-				if err := s.checkOpeningImport(t.ctx, in, i, numbers, existingRefs, seenRefs, false); err != nil {
-					return batchRejected(err)
-				}
+				r.PreviewOK = false
+				r.PreviewError = fmt.Sprintf("row %d: %s", i+1, previewErr(rowErr))
+			} else if r.Skipped {
+				r.ExternalRef = strings.TrimSpace(in.ExternalRef)
+				r.SkipReason = "already imported by external_ref"
+			} else {
+				numbers, sources = rowNumbers, rowSources
+				invoices = append(invoices, inv)
+				t.events = append(t.events, rowTxn.events...)
+				t.changes = append(t.changes, rowTxn.changes...)
+				maps.Copy(t.mirror, rowTxn.mirror)
 			}
-			inv, err := s.importOne(t, in, i, numbers, sources)
-			if err != nil {
-				if ref := strings.TrimSpace(in.ExternalRef); ref != "" && isExternalRefUnique(err) {
-					return batchRejected(domain.Invalid(fmt.Sprintf("items/%d/external_ref", i), "already imported by external_ref"))
-				}
-				return batchRejected(err)
-			}
-			if ref := strings.TrimSpace(in.ExternalRef); ref != "" {
-				seenRefs[ref] = true
-				existingRefs[ref] = true
-			}
-			out = append(out, inv)
+			results = append(results, r)
+		}
+		if firstErr != nil {
+			rejected = firstErr
+			return firstErr
+		}
+		if preview {
+			return errImportPreview
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, nil, err
+	if errors.Is(err, errImportPreview) {
+		return nil, results, nil
 	}
-	return out, skipped, nil
+	// A preview describes row refusals in results; a commit also rejects the batch.
+	if preview && rejected != nil && err == rejected {
+		return nil, results, nil
+	}
+	if err != nil {
+		return nil, results, err
+	}
+	return invoices, results, nil
+}
+
+// importRow applies authorization before external-ref handling, so skips cannot leak
+// a walled or forbidden invoice. Only refs present before this run may be skipped.
+func (s *Service) importRow(t *txn, in InvoiceImport, i int, numbers map[string]bool, sources map[domain.ID]bool, existingRefs, seenRefs map[string]bool) (Invoice, bool, error) {
+	if in.MatterID.IsZero() {
+		return Invoice{}, false, domain.Invalid(fmt.Sprintf("items/%d/matter_id", i), "is required")
+	}
+	if err := s.authorizeImport(t.ctx, t.p, in); err != nil {
+		return Invoice{}, false, err
+	}
+	if _, err := s.matter(t.ctx, in.MatterID); err != nil {
+		return Invoice{}, false, err
+	}
+	if in.OpeningImport() {
+		ref := strings.TrimSpace(in.ExternalRef)
+		if ref != "" {
+			if seenRefs[ref] {
+				return Invoice{}, false, domain.Invalid(fmt.Sprintf("items/%d/external_ref", i), "duplicate external_ref inside this file")
+			}
+			seenRefs[ref] = true
+			if existingRefs[ref] {
+				return Invoice{}, true, nil
+			}
+		}
+		var err error
+		in, err = s.resolveOpeningFiles(t.ctx, t.p, in, i)
+		if err != nil {
+			return Invoice{}, false, err
+		}
+		if err := s.checkOpeningImport(t.ctx, in, i, numbers); err != nil {
+			return Invoice{}, false, err
+		}
+	}
+	inv, err := s.importOne(t, in, i, numbers, sources)
+	if isExternalRefUnique(err) {
+		err = domain.Invalid(fmt.Sprintf("items/%d/external_ref", i), "already imported by external_ref")
+	}
+	return inv, false, err
+}
+
+// importRowAtomic isolates a refused row so later rows still get their real result,
+// including after a database constraint error. The enclosing transaction remains the
+// only commit boundary.
+func (s *Service) importRowAtomic(ctx context.Context, fn func(context.Context) error) error {
+	switch st := s.d.Store.(type) {
+	case *Postgres:
+		conn := audit.Conn(ctx, st.pool)
+		if _, err := conn.ExecContext(ctx, "SAVEPOINT invoice_import_row"); err != nil {
+			return err
+		}
+		rowErr := fn(ctx)
+		if rowErr != nil {
+			if _, err := conn.ExecContext(ctx, "ROLLBACK TO SAVEPOINT invoice_import_row"); err != nil {
+				return err
+			}
+		}
+		if _, err := conn.ExecContext(ctx, "RELEASE SAVEPOINT invoice_import_row"); err != nil {
+			return err
+		}
+		return rowErr
+	case *Memory:
+		return st.Atomic(context.WithValue(ctx, memTx{}, (*Memory)(nil)), fn)
+	default:
+		return errors.New("invoice import requires a transactional store")
+	}
 }
 
 func isExternalRefUnique(err error) bool {
@@ -216,7 +293,7 @@ func (s *Service) importOne(t *txn, in InvoiceImport, i int, numbers map[string]
 		return Invoice{}, domain.Invalid(field("number"), "invoice number "+number+" is already used")
 	}
 	numbers[number] = true
-	// Shared with BulkInvoicesPreview so a preview that says OK never fails here (IMP-03).
+	// Validate dates and reconcile before writing any invoice rows.
 	if err := s.validateImportCommitSide(t.ctx, in, i); err != nil {
 		return Invoice{}, err
 	}
@@ -257,9 +334,11 @@ func (s *Service) importOne(t *txn, in InvoiceImport, i int, numbers map[string]
 		inv.ExternalRef = strings.TrimSpace(in.ExternalRef)
 		inv.DocumentOfRecordFileID = in.DocumentOfRecordFileID
 		if !inv.DocumentOfRecordFileID.IsZero() {
-			if err := s.attachDocumentOfRecord(t.ctx, t.p, inv.MatterID, inv.DocumentOfRecordFileID, field("document_of_record_file_id"), true); err != nil {
+			version, err := s.attachDocumentOfRecord(t.ctx, t.p, inv.MatterID, inv.DocumentOfRecordFileID, field("document_of_record_file_id"), true)
+			if err != nil {
 				return Invoice{}, err
 			}
+			inv.DocumentOfRecordVersionID = version
 		}
 	}
 	now := s.now()

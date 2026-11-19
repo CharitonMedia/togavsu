@@ -135,28 +135,20 @@ func (h *Handler) bulkInvoices(w http.ResponseWriter, r *http.Request, p domain.
 			if err != nil {
 				return 0, nil, err
 			}
-			rows := make([]map[string]any, 0, len(results))
-			for _, res := range results {
-				row := map[string]any{"index": res.Index, "ok": res.PreviewOK}
-				if !res.PreviewOK {
-					row["error"] = res.PreviewError
-				}
-				if res.Skipped {
-					row["skipped"] = true
-					row["external_ref"] = res.ExternalRef
-					row["reason"] = res.SkipReason
-				}
-				rows = append(rows, row)
-			}
-			return http.StatusOK, map[string]any{"preview": true, "results": rows}, nil
+			return http.StatusOK, map[string]any{"preview": true, "results": bulkInvoiceResultsView(results)}, nil
 		}
-		rows, skipped, err := h.Svc.BulkInvoicesDetailed(r.Context(), p, items)
+		rows, results, err := h.Svc.BulkInvoicesDetailed(r.Context(), p, items)
 		if err != nil {
+			var api *domain.APIError
+			if errors.As(err, &api) && len(results) > 0 {
+				return api.HTTPStatus(), map[string]any{"code": api.Code, "message": api.Message, "field": api.Field, "results": bulkInvoiceResultsView(results)}, nil
+			}
 			return 0, nil, err
 		}
 		client := ClientOnly(p)
 		out := map[string]any{"data": anys(rows, func(i Invoice) any { return invoiceView(forReader(p, i), client) })}
-		if len(skipped) > 0 {
+		out["results"] = bulkInvoiceResultsView(results)
+		if skipped := skippedInvoiceResults(results); len(skipped) > 0 {
 			sk := make([]map[string]any, 0, len(skipped))
 			for _, s := range skipped {
 				sk = append(sk, map[string]any{"index": s.Index, "external_ref": s.ExternalRef, "reason": s.SkipReason, "skipped": true})
@@ -165,6 +157,35 @@ func (h *Handler) bulkInvoices(w http.ResponseWriter, r *http.Request, p domain.
 		}
 		return http.StatusCreated, out, nil
 	})
+}
+
+// bulkInvoiceResultsView keeps preview and commit outcomes identical, with both
+// the existing zero-based index and the human-readable one-based row number.
+func bulkInvoiceResultsView(results []BulkInvoiceResult) []map[string]any {
+	out := make([]map[string]any, 0, len(results))
+	for _, r := range results {
+		row := map[string]any{"index": r.Index, "row": r.Row, "ok": r.PreviewOK}
+		if !r.PreviewOK {
+			row["error"] = r.PreviewError
+		}
+		if r.Skipped {
+			row["skipped"] = true
+			row["external_ref"] = r.ExternalRef
+			row["reason"] = r.SkipReason
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func skippedInvoiceResults(results []BulkInvoiceResult) []BulkInvoiceResult {
+	var out []BulkInvoiceResult
+	for _, r := range results {
+		if r.Skipped {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // initiateProcessor is initiateProcessorPayment. A trust destination needs trust:write on

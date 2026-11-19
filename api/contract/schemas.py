@@ -904,6 +904,10 @@ SCHEMAS = _register(
                     "format": "uuid",
                     "description": "Original invoice PDF shown instead of a render (CORE-37).",
                 },
+                "document_of_record_version_id": {
+                    "type": "string", "format": "uuid", "readOnly": True,
+                    "description": "Immutable file version pinned when the invoice was imported.",
+                },
                 "included": _ref("Included"),
             },
             ["matter_id", "number", "issued_on", "status", "lines", "subtotal_cents", "adjustment_cents", "interest_cents", "total_cents", "amount_paid_cents", "balance_due_cents", "write_off_cents"],
@@ -931,6 +935,10 @@ SCHEMAS = _register(
                     "type": "string",
                     "format": "uuid",
                     "description": "Original invoice PDF shown instead of a render (CORE-37).",
+                },
+                "document_of_record_version_id": {
+                    "type": "string", "format": "uuid", "readOnly": True,
+                    "description": "Immutable file version pinned when the invoice was imported.",
                 },
             },
             ["id", "matter_id", "number", "issued_on", "status", "lines", "subtotal_cents", "adjustment_cents", "interest_cents", "total_cents", "amount_paid_cents", "balance_due_cents"],
@@ -966,6 +974,15 @@ SCHEMAS = _register(
             ["lines"],
             "Replaces the lines on a draft invoice. A line may set fee_item_id. The description and amount stay editable after the catalog fills them in. adjustment_cents and adjustment_reason are the invoice adjustment.",
         ),
+        "BulkInvoiceResult": _obj(
+            {"index": {"type": "integer", "minimum": 0},
+             "row": {"type": "integer", "minimum": 1},
+             "ok": {"type": "boolean"}, "error": {"type": "string"},
+             "skipped": {"type": "boolean"}, "external_ref": {"type": "string"},
+             "reason": {"type": "string"}},
+            ["index", "row", "ok"],
+            "One row result, identical in preview and commit. Row is one-based; index is zero-based. A failed batch writes nothing, including rows marked ok.",
+        ),
         "InvoiceWrite": _obj(
             {
                 "matter_id": _uuid(),
@@ -993,6 +1010,10 @@ SCHEMAS = _register(
                     "type": "string",
                     "format": "uuid",
                     "description": "Original invoice PDF shown instead of a render (CORE-37).",
+                },
+                "document_of_record_version_id": {
+                    "type": "string", "format": "uuid", "readOnly": True,
+                    "description": "Immutable file version pinned when the invoice was imported.",
                 },
                 "source": {
                     "type": "string",

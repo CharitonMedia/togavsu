@@ -255,7 +255,11 @@ func (h *Handler) write(w http.ResponseWriter, r *http.Request, p domain.Princip
 		writeErr(w, err)
 		return
 	}
-	_ = h.Svc.d.Store.Put(context.WithoutCancel(r.Context()), kindIdem, id, idemRecord{Fingerprint: fp, Status: code, Body: enc})
+	// A preview must never persist even an idempotency response row.
+	preview, _ := body.(map[string]any)
+	if preview["preview"] != true && code < http.StatusBadRequest {
+		_ = h.Svc.d.Store.Put(context.WithoutCancel(r.Context()), kindIdem, id, idemRecord{Fingerprint: fp, Status: code, Body: enc})
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_, _ = w.Write(append(enc, '\n'))
@@ -812,9 +816,18 @@ func (h *Handler) pdf(w http.ResponseWriter, r *http.Request, p domain.Principal
 	}
 	var pdf []byte
 	// CORE-37: document of record replaces a rendered invoice for opening imports.
-	// Stream the bytes (200 application/pdf) so /mcp and OpenAPI stay in parity —
-	// a 303 would leave MCP with redirect stub text instead of the PDF.
+	// Explicit PDF negotiation (including MCP) streams bytes. Browser/default requests
+	// redirect to the pinned version, checked through the same file access rules.
 	if inv.Imported && !inv.DocumentOfRecordFileID.IsZero() {
+		if r.Header.Get("Accept") != "application/pdf" {
+			path, pathErr := h.Svc.DocumentOfRecordURL(r.Context(), p, inv)
+			if pathErr != nil {
+				writeErr(w, pathErr)
+				return
+			}
+			http.Redirect(w, r, path, http.StatusSeeOther)
+			return
+		}
 		pdf, inv, err = h.Svc.DocumentOfRecordPDF(r.Context(), p, inv.ID)
 	} else {
 		pdf, inv, err = h.Svc.InvoicePDF(r.Context(), p, inv.ID)

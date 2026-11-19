@@ -158,6 +158,8 @@ type Invoice struct {
 	ExternalRef string `json:"external_ref,omitempty"`
 	// DocumentOfRecordFileID is the original invoice PDF shown in place of a render.
 	DocumentOfRecordFileID domain.ID `json:"document_of_record_file_id,omitempty"`
+	// DocumentOfRecordVersionID pins the original bytes at import time.
+	DocumentOfRecordVersionID domain.ID `json:"document_of_record_version_id,omitempty"`
 }
 
 // Open reports whether the invoice is sent or viewed and still owes money.
