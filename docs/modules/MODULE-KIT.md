@@ -511,6 +511,8 @@ module id with source `service`, and sit outside every matter wall.
 | Background read | Approved scope |
 | --- | --- |
 | Calendar event get/list | `calendar:read` |
+| Note get/list | `notes:read` |
+| File list (ordinary file gets retain their existing scope) | `files:read` |
 | Deadline get/list | `deadlines:read` |
 | Matter-party get/list, including `?contact_id=` to find a contact's matters | `matters:read` |
 | Contact-address get/list | `contacts:read` |

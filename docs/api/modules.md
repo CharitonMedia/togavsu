@@ -77,7 +77,7 @@ An imported invoice pins `document_of_record_version_id` at import time; later u
 ## Core-update-2d background work
 
 The public kit's [background-work guide](../modules/MODULE-KIT.md#core-update-2d-background-reads-and-callback-work)
-now documents service-principal deadline/calendar get and lists, contact-filtered matter
+now documents service-principal deadline/calendar/note gets and lists, file lists, contact-filtered matter
 parties, addresses, roles/field definitions, firm time zone and the user directory.
 Each retains its existing read scope, gains a per-operation service-call limit, and
 writes an audit row under the module id. `user-directory?matter_id=` checks caller and

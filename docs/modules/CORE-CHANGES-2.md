@@ -195,7 +195,7 @@ names are in [MODULE-KIT.md](MODULE-KIT.md), with REST/MCP behavior in
 
 | Assignment item | Implemented behavior | Executable regression evidence |
 | --- | --- | --- |
-| 1, CORE-30/36 | Scoped service get/list of deadlines, calendar events, matter parties filtered by contact, firm time zone, addresses, roles, field definitions and user directory/work email; live per-operation limits | `TestCoreUpdate2DReadsWallsMailSettingsAndPhone` |
+| 1, CORE-30/36 | Scoped service get/list of deadlines, calendar events and notes, file lists, matter parties filtered by contact, firm time zone, addresses, roles, field definitions and user directory/work email; live per-operation limits | `TestCoreUpdate2DReadsWallsMailSettingsAndPhone` |
 | 2 | Service gets answer not_found and lists omit walled records; only inside-wall delegated viewers read them; no membership disclosure; directory checks caller before candidates | Same test; `TestCoreUpdate2DServiceWallsEveryRecord` |
 | 3, CORE-04 | Service mail to matter parties, resolved by core, matter recorded/audited | Same public-kit test; existing module-mail tests |
 | 4, CORE-20/31/36 | Own settings reads and admin-delegated own-settings writes; contract limit allowlist; modules:write remains forbidden | Same public-kit test |
