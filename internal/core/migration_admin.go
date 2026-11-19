@@ -150,7 +150,7 @@ func (m *migrationAdmin) csv(r *http.Request, p domain.Principal) (string, error
 	delete(m.previewHash, p.UserID)
 	delete(m.previews, p.UserID)
 	m.mu.Unlock()
-	skipped := 0
+	var skipped int
 	for _, result := range results {
 		if result.Skipped {
 			skipped++
