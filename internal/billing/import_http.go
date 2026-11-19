@@ -38,6 +38,7 @@ type invoiceImportBody struct {
 	MatterID domain.ID `json:"matter_id"`
 	Number   string    `json:"number"`
 	IssuedOn string    `json:"issued_on"`
+	DueOn    string    `json:"due_on"`
 	Status   string    `json:"status"`
 	Lines    []struct {
 		Kind        string        `json:"kind"`
@@ -46,26 +47,33 @@ type invoiceImportBody struct {
 		AmountCents *domain.Cents `json:"amount_cents"`
 		FeeItemID   *domain.ID    `json:"fee_item_id"`
 	} `json:"lines"`
-	SubtotalCents    *domain.Cents `json:"subtotal_cents"`
-	AdjustmentCents  *domain.Cents `json:"adjustment_cents"`
-	AdjustmentReason string        `json:"adjustment_reason"`
-	InterestCents    *domain.Cents `json:"interest_cents"`
-	TotalCents       *domain.Cents `json:"total_cents"`
-	AmountPaidCents  *domain.Cents `json:"amount_paid_cents"`
-	BalanceDueCents  *domain.Cents `json:"balance_due_cents"`
-	WriteOffCents    *domain.Cents `json:"write_off_cents"`
-	WriteOffReason   string        `json:"write_off_reason"`
-	VoidReason       string        `json:"void_reason"`
-	DisputeStatus    string        `json:"dispute_status"`
-	DisputeNotes     string        `json:"dispute_notes"`
-	ClientMessage    string        `json:"client_message"`
-	InternalNotes    string        `json:"internal_notes"`
+	SubtotalCents          *domain.Cents `json:"subtotal_cents"`
+	AdjustmentCents        *domain.Cents `json:"adjustment_cents"`
+	AdjustmentReason       string        `json:"adjustment_reason"`
+	InterestCents          *domain.Cents `json:"interest_cents"`
+	TotalCents             *domain.Cents `json:"total_cents"`
+	AmountPaidCents        *domain.Cents `json:"amount_paid_cents"`
+	BalanceDueCents        *domain.Cents `json:"balance_due_cents"`
+	WriteOffCents          *domain.Cents `json:"write_off_cents"`
+	WriteOffReason         string        `json:"write_off_reason"`
+	VoidReason             string        `json:"void_reason"`
+	DisputeStatus          string        `json:"dispute_status"`
+	DisputeNotes           string        `json:"dispute_notes"`
+	ClientMessage          string        `json:"client_message"`
+	InternalNotes          string        `json:"internal_notes"`
+	Source                 string        `json:"source"`
+	ExternalRef            string        `json:"external_ref"`
+	DocumentOfRecordFileID *domain.ID    `json:"document_of_record_file_id"`
 }
 
 func (b invoiceImportBody) input(i int) (InvoiceImport, error) {
-	in := InvoiceImport{MatterID: b.MatterID, Number: b.Number, IssuedOn: b.IssuedOn, Status: b.Status,
+	in := InvoiceImport{MatterID: b.MatterID, Number: b.Number, IssuedOn: b.IssuedOn, DueOn: b.DueOn, Status: b.Status,
 		AdjustmentReason: b.AdjustmentReason, WriteOffReason: b.WriteOffReason, VoidReason: b.VoidReason,
-		DisputeStatus: b.DisputeStatus, DisputeNotes: b.DisputeNotes, ClientMessage: b.ClientMessage, InternalNotes: b.InternalNotes}
+		DisputeStatus: b.DisputeStatus, DisputeNotes: b.DisputeNotes, ClientMessage: b.ClientMessage, InternalNotes: b.InternalNotes,
+		Source: b.Source, ExternalRef: b.ExternalRef}
+	if b.DocumentOfRecordFileID != nil {
+		in.DocumentOfRecordFileID = *b.DocumentOfRecordFileID
+	}
 	for _, f := range []struct {
 		name string
 		src  *domain.Cents
@@ -96,9 +104,11 @@ func (b invoiceImportBody) input(i int) (InvoiceImport, error) {
 
 // bulkInvoices is bulkInvoice. The token needs each item's own scopes (ImportScopes) before
 // the service checks roles, walls and reconciliation; one failure writes nothing.
+// preview=true validates and returns per-row results without writing (CORE-37 CSV preview).
 func (h *Handler) bulkInvoices(w http.ResponseWriter, r *http.Request, p domain.Principal) {
 	var body struct {
-		Items []invoiceImportBody `json:"items"`
+		Items   []invoiceImportBody `json:"items"`
+		Preview bool                `json:"preview"`
 	}
 	h.write(w, r, p, &body, func() (int, any, error) {
 		items := make([]InvoiceImport, 0, len(body.Items))
@@ -120,10 +130,62 @@ func (h *Handler) bulkInvoices(w http.ResponseWriter, r *http.Request, p domain.
 		if err := h.scopes(r, need...); err != nil {
 			return 0, nil, err
 		}
-		rows, err := h.Svc.BulkInvoices(r.Context(), p, items)
+		if body.Preview {
+			results, err := h.Svc.BulkInvoicesPreview(r.Context(), p, items)
+			if err != nil {
+				return 0, nil, err
+			}
+			return http.StatusOK, map[string]any{"preview": true, "results": bulkInvoiceResultsView(results)}, nil
+		}
+		rows, results, err := h.Svc.BulkInvoicesDetailed(r.Context(), p, items)
+		if err != nil {
+			var api *domain.APIError
+			if errors.As(err, &api) && len(results) > 0 {
+				return api.HTTPStatus(), map[string]any{"code": api.Code, "message": api.Message, "field": api.Field, "results": bulkInvoiceResultsView(results)}, nil
+			}
+			return 0, nil, err
+		}
 		client := ClientOnly(p)
-		return http.StatusCreated, map[string]any{"data": anys(rows, func(i Invoice) any { return invoiceView(forReader(p, i), client) })}, err
+		out := map[string]any{"data": anys(rows, func(i Invoice) any { return invoiceView(forReader(p, i), client) })}
+		out["results"] = bulkInvoiceResultsView(results)
+		if skipped := skippedInvoiceResults(results); len(skipped) > 0 {
+			sk := make([]map[string]any, 0, len(skipped))
+			for _, s := range skipped {
+				sk = append(sk, map[string]any{"index": s.Index, "external_ref": s.ExternalRef, "reason": s.SkipReason, "skipped": true})
+			}
+			out["skipped"] = sk
+		}
+		return http.StatusCreated, out, nil
 	})
+}
+
+// bulkInvoiceResultsView keeps preview and commit outcomes identical, with both
+// the existing zero-based index and the human-readable one-based row number.
+func bulkInvoiceResultsView(results []BulkInvoiceResult) []map[string]any {
+	out := make([]map[string]any, 0, len(results))
+	for _, r := range results {
+		row := map[string]any{"index": r.Index, "row": r.Row, "ok": r.PreviewOK}
+		if !r.PreviewOK {
+			row["error"] = r.PreviewError
+		}
+		if r.Skipped {
+			row["skipped"] = true
+			row["external_ref"] = r.ExternalRef
+			row["reason"] = r.SkipReason
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func skippedInvoiceResults(results []BulkInvoiceResult) []BulkInvoiceResult {
+	var out []BulkInvoiceResult
+	for _, r := range results {
+		if r.Skipped {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // initiateProcessor is initiateProcessorPayment. A trust destination needs trust:write on

@@ -157,6 +157,7 @@ func MountUI(ctx context.Context, app *App, opt UIOptions) (*UI, error) {
 		Audit: app.Audit, WallSvc: app.Practice, Profiles: dashboard.PG{DB: app.Pool}, Now: now,
 	}
 	u.Accounts = dh.Accounts
+	dh.Migration = &migrationAdmin{app: app}
 	if app.ext != nil {
 		dh.Modules = modulesAdmin{x: app.ext}
 		dh.AICalls = func(r *http.Request, p domain.Principal) (any, error) {
@@ -293,7 +294,8 @@ func (u *UI) authenticate(r *http.Request) (domain.Principal, error) {
 		// are read here only on their own routes, whose handlers capped the body with
 		// http.MaxBytesReader first. Other multipart writes are not parsed before sign-in.
 		multipart := strings.HasPrefix(ct, "multipart/form-data") &&
-			(r.URL.Path == dashboard.PicturePath || strings.HasPrefix(r.URL.Path, dashboard.ModulesActionPrefix))
+			(r.URL.Path == dashboard.PicturePath || strings.HasPrefix(r.URL.Path, dashboard.ModulesActionPrefix) ||
+				strings.HasPrefix(r.URL.Path, dashboard.MigrationActionPrefix))
 		if in.CSRF == "" && (strings.HasPrefix(ct, "application/x-www-form-urlencoded") || multipart) {
 			in.CSRF = r.FormValue("csrf")
 		}

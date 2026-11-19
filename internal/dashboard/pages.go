@@ -987,7 +987,8 @@ var adminTabs = []struct{ ID, Label string }{
 	{settings.TabDocTender, "Doc Tender"}, {settings.TabHome, "Home screen"}, {settings.TabSearch, "Lists and search"},
 	{settings.TabMail, "Notifications and mail"}, {settings.TabAppearance, "Appearance"}, {settings.TabAI, "AI and inference"},
 	{"help", "Help"}, {settings.TabModules, "Modules and marketplace"}, {settings.TabUpdates, "Updates"},
-	{settings.TabBackups, "Backups and logs"}, {settings.TabAPI, "Agents and API"}, {"system", "System"},
+	{settings.TabBackups, "Backups and logs"}, {settings.TabAPI, "Agents and API"},
+	{settings.TabMigration, "Migration import"}, {"system", "System"},
 }
 
 // AdminTabIDs lists every admin tab id, for the guide coverage check.
@@ -1021,27 +1022,29 @@ type roleLayoutView struct {
 }
 
 type adminView struct {
-	Tabs       []struct{ ID, Label string }
-	Tab        string
-	Settings   []settingRow
-	Error      string
-	Appearance Appearance
-	Presets    []Preset
-	Fonts      []string
-	Roles      []roleLayoutView
-	Help       []helpSectionView
-	Users      []UserRow
-	Roles5     []domain.Role
-	Tokens     []TokenRow
-	Scopes     []ScopeInfo
-	Issued     *IssuedView
-	Owners     []domain.User
-	Seats      Seats
-	Problems   []ProblemReport
-	Audit      []AuditRow
-	HelpPath   string
-	Modules    any
-	AICalls    any
+	Tabs             []struct{ ID, Label string }
+	Tab              string
+	Settings         []settingRow
+	Error            string
+	Appearance       Appearance
+	Presets          []Preset
+	Fonts            []string
+	Roles            []roleLayoutView
+	Help             []helpSectionView
+	Users            []UserRow
+	Roles5           []domain.Role
+	Tokens           []TokenRow
+	Scopes           []ScopeInfo
+	Issued           *IssuedView
+	Owners           []domain.User
+	Seats            Seats
+	Problems         []ProblemReport
+	Audit            []AuditRow
+	HelpPath         string
+	Modules          any
+	AICalls          any
+	MigrationPreview []MigrationPreviewRow
+	MigrationNotice  string
 }
 
 func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Principal) (string, string, any, error) {
@@ -1103,6 +1106,21 @@ func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Pri
 		if h.Modules != nil {
 			if v.Modules, err = h.Modules.Panel(r, p); err != nil {
 				return "", "", nil, err
+			}
+		}
+	case settings.TabMigration:
+		if h.Migration != nil {
+			panel, perr := h.Migration.Panel(r, p)
+			if perr != nil {
+				return "", "", nil, perr
+			}
+			if mp, ok := panel.(map[string]any); ok {
+				if notice, _ := mp["notice"].(string); notice != "" {
+					v.MigrationNotice = notice
+				}
+				if rows, ok := mp["preview"].([]MigrationPreviewRow); ok {
+					v.MigrationPreview = rows
+				}
 			}
 		}
 	case settings.TabAPI:

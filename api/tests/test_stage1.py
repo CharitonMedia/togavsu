@@ -350,6 +350,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 "ai-call-log-filters",
                 "core-update-2a-service-principal",
                 "module-secret-create-if-absent",
+                "core-update-2c-price-invoice-import",
             },
         )
 

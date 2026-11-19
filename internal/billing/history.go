@@ -58,5 +58,8 @@ func ClientInvoice(i Invoice) Invoice {
 	out.TotalCents, out.AmountPaidCents, out.BalanceDueCents = i.TotalCents, i.AmountPaidCents, i.BalanceDueCents
 	out.SentAt, out.PaidAt, out.ClientMessage = i.SentAt, i.PaidAt, i.ClientMessage
 	out.DueOn, out.MatterName, out.MatterNum = i.DueOn, i.MatterName, i.MatterNum
+	// CORE-37: portal and statements show the document of record for opening imports.
+	out.Imported, out.DocumentOfRecordFileID = i.Imported, i.DocumentOfRecordFileID
+	out.DocumentOfRecordVersionID = i.DocumentOfRecordVersionID
 	return out
 }

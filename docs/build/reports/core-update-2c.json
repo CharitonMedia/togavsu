@@ -1,0 +1,387 @@
+{
+  "task_id": "core-update-2c",
+  "status": "pending",
+  "tested_revision": "567fa566e950b2accd8f0535b677fdda8bf3c322",
+  "tests": [
+    {
+      "name": "Formatting and diff check",
+      "command": "test -z \"$(gofmt -l cmd internal api web)\" && git diff --check",
+      "exit_code": 0
+    },
+    {
+      "name": "Go vet",
+      "command": "TMPDIR=/out/tmp go vet ./...",
+      "exit_code": 0
+    },
+    {
+      "name": "All Go packages, available local checks",
+      "command": "TMPDIR=/out/tmp go test -json ./... -skip '^(TestCU207Batch1ModulesUnchanged|TestTwoComposeProjectsStaySeparate|TestStalledSSHHandshakeRestartsWriters|TestOpenSSHNamespaceFirstUseAndStoreDelete)$' -count=1 -timeout 25m",
+      "exit_code": 0,
+      "explicitly_excluded_tests": [
+        "TestCU207Batch1ModulesUnchanged",
+        "TestTwoComposeProjectsStaySeparate",
+        "TestStalledSSHHandshakeRestartsWriters",
+        "TestOpenSSHNamespaceFirstUseAndStoreDelete"
+      ],
+      "automatic_skips": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGDocxOpensAndSavesAsANewWordCompatibleVersion"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGOtherFormatsSaveAsDocx"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGSaveRefusesExportsAndBrokenPackages"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGSecondUserSeesTheLockUntilItLapses"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGLockTimeoutFollowsTheDocumentEditorTab"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGOnlyTheHolderOrAnAdminReleasesAndAdminReleasesAreAudited"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGEditorAccessFollowsTheFile"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGNewPleadingFillsItsCaptionFromTheMatter"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGNewPleadingFollowsTheMatter"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGDocumentEditorTabShowsThePinnedCommit"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGEditorRunFillsMergeFieldsAsANewVersion"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGEditorRunCanSaveANewFileWithTheSourcesAccess"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGEditorRunThatReadsALocalFileIsRefused"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGEditorRunFailuresAreReportedAndAudited"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGConversionToPDFIsANewLinkedFile"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGConversionsToEveryFormatAndTheirRestrictions"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGTrackChangesAndCommentsSurviveARun"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGPDFPreviewForEachEditableVersion"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/storage",
+          "test": "TestLiveS3Compatible"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPinnedCommandListIsFiltered"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestBrowserEditPageE2E"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGEditorAPIOverHTTP"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGEditPageOpensSavesAndShowsTheLock"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGNewPleadingFormMakesAFileAndOpensIt"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestEditorBuildAtThePinIsServable"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGCourtProfilesStayUnverifiedUntilAPersonApproves"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGCourtProfilesAreCheckedByLawCraft"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGEditorRunsApplyTheFirmsCourtProfiles"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGEditContextGivesLawCraftTheFirmAndTheMatter"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGCourtProfileBodyCannotMakeLawCraftReadAFile"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGEditorRunGivenAnAddressIsRefused"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGRunsAndConversionsThatFailAfterLawCraftAreAudited"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGSaveHoldsTheLockUntilTheVersionIsIn"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGLockHolderIsHiddenFromThoseWhoCannotEdit"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/editor",
+          "test": "TestPGRunIntoAVersionUnderYourOwnEditorIsRefused"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/dashboard/compose",
+          "test": "TestUIVisualQC"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/doctender",
+          "test": "TestWriteCorpus"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "test": "TestModuleContainerOnDocker"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "test": "TestDocumentsLawCraftEditor"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "test": "TestDocumentsScreens"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "test": "TestExtensionsScreens"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "test": "TestReleasePerfP95"
+        }
+      ]
+    },
+    {
+      "name": "Billing race tests",
+      "command": "TMPDIR=/out/tmp go test -race ./internal/billing -count=1 -timeout 10m",
+      "exit_code": 0,
+      "note": "Billing source identical between its race run on f61ffe8 and tested_revision; the later change only replaces a CSV-admin integer initializer."
+    },
+    {
+      "name": "API contract tests",
+      "command": "TMPDIR=/out/tmp TOGAVSU_API_VENV=/out/api-final-venv sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "result": "130 Python tests; both OpenAPI documents validate; runtime mount, scope and first-run tests pass."
+    },
+    {
+      "name": "Backup integration",
+      "command": "TMPDIR=/out/tmp sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0,
+      "result": "All 17 required Postgres 17 cases pass with the supplied database/client variables."
+    },
+    {
+      "name": "QA harness preflight",
+      "command": "TMPDIR=/out/tmp sh scripts/ci/test-qa.sh",
+      "exit_code": 1,
+      "result": "Tesseract is absent; script stops at its required preflight."
+    },
+    {
+      "name": "QA Python unit tests diagnostic",
+      "command": "TMPDIR=/out/tmp /out/api-venv/bin/python -m unittest discover -s tests -p 'test_*.py'",
+      "exit_code": 1,
+      "result": "86 tests, 1 failure: corpus OCR requires missing Tesseract."
+    },
+    {
+      "name": "Supervisor script diagnostic",
+      "command": "TMPDIR=/out/tmp sh scripts/ci/test-supervisor.sh",
+      "exit_code": 1,
+      "result": "Missing sshd and no user record for container uid 1000; later script phases did not run."
+    },
+    {
+      "name": "Initial broad Go diagnostic before settings-counter fix",
+      "command": "TMPDIR=/out/tmp go test ./... -skip '^TestCU207Batch1ModulesUnchanged$' -count=1 -timeout 25m",
+      "exit_code": 1,
+      "result": "Fixed the settings source-check refusal of skipped := 0 using var skipped int. Other failures were unavailable Docker/sudo and sshd/container uid setup. Portable rerun passes after the fix."
+    },
+    {
+      "name": "Debt ledger check",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "result": "111 markers; 69 ledger entries; unchanged."
+    }
+  ],
+  "passed_acceptance_ids": [
+    "CU2-01",
+    "CU2-02",
+    "CU2-03",
+    "CU2-04",
+    "CU2-05",
+    "CU2-06",
+    "IMP-01",
+    "IMP-02",
+    "IMP-03",
+    "IMP-04",
+    "IMP-05",
+    "IMP-06",
+    "IMP-07",
+    "IMP-08"
+  ],
+  "pending_acceptance_ids": [
+    "CU2-07",
+    "CU2-08"
+  ],
+  "phase_cases": [
+    {
+      "id": "api-mcp-scopes",
+      "status": "pass",
+      "command": "TMPDIR=/out/tmp go test -json ./... -skip '^(TestCU207Batch1ModulesUnchanged|TestTwoComposeProjectsStaySeparate|TestStalledSSHHandshakeRestartsWriters|TestOpenSSHNamespaceFirstUseAndStoreDelete)$' -count=1 -timeout 25m",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-01"
+      ],
+      "note": "Covered by the real Postgres package/HTTP/MCP tests in the Go JSON results. API contract script also passed."
+    },
+    {
+      "id": "service-call-walls",
+      "status": "pass",
+      "command": "TMPDIR=/out/tmp go test -json ./... -skip '^(TestCU207Batch1ModulesUnchanged|TestTwoComposeProjectsStaySeparate|TestStalledSSHHandshakeRestartsWriters|TestOpenSSHNamespaceFirstUseAndStoreDelete)$' -count=1 -timeout 25m",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-02"
+      ],
+      "note": "Covered by the real Postgres package/HTTP/MCP tests in the Go JSON results."
+    },
+    {
+      "id": "contracts",
+      "status": "pass",
+      "command": "TMPDIR=/out/tmp go test -json ./... -skip '^(TestCU207Batch1ModulesUnchanged|TestTwoComposeProjectsStaySeparate|TestStalledSSHHandshakeRestartsWriters|TestOpenSSHNamespaceFirstUseAndStoreDelete)$' -count=1 -timeout 25m",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-03"
+      ],
+      "note": "Covered by the real Postgres package/HTTP/MCP tests in the Go JSON results."
+    },
+    {
+      "id": "public-pages",
+      "status": "pass",
+      "command": "TMPDIR=/out/tmp go test -json ./... -skip '^(TestCU207Batch1ModulesUnchanged|TestTwoComposeProjectsStaySeparate|TestStalledSSHHandshakeRestartsWriters|TestOpenSSHNamespaceFirstUseAndStoreDelete)$' -count=1 -timeout 25m",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-04"
+      ],
+      "note": "Covered by the real Postgres package/HTTP/MCP tests in the Go JSON results."
+    },
+    {
+      "id": "gap-rows-closed",
+      "status": "pass",
+      "command": "TMPDIR=/out/tmp go test -json ./... -skip '^(TestCU207Batch1ModulesUnchanged|TestTwoComposeProjectsStaySeparate|TestStalledSSHHandshakeRestartsWriters|TestOpenSSHNamespaceFirstUseAndStoreDelete)$' -count=1 -timeout 25m",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-05"
+      ],
+      "note": "Covered by the real Postgres package/HTTP/MCP tests in the Go JSON results."
+    },
+    {
+      "id": "billing-rows",
+      "status": "pass",
+      "command": "TMPDIR=/out/tmp go test -json ./... -skip '^(TestCU207Batch1ModulesUnchanged|TestTwoComposeProjectsStaySeparate|TestStalledSSHHandshakeRestartsWriters|TestOpenSSHNamespaceFirstUseAndStoreDelete)$' -count=1 -timeout 25m",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-06"
+      ],
+      "note": "Covered by the real Postgres package/HTTP/MCP tests in the Go JSON results."
+    },
+    {
+      "id": "batch1-unchanged",
+      "status": "pending",
+      "command": "go test ./internal/core -count=1 -timeout 30m -run '^TestCU207Batch1ModulesUnchanged$' -v",
+      "exit_code": null,
+      "acceptance_ids": [
+        "CU2-07"
+      ],
+      "note": "Not run: public-main module clones require network outside the allowed Go/Python dependency downloads. Test source is unchanged."
+    },
+    {
+      "id": "update-and-fresh-install",
+      "status": "pending",
+      "command": "sh scripts/ci/update-load.sh",
+      "exit_code": null,
+      "acceptance_ids": [
+        "CU2-08"
+      ],
+      "note": "Docker update/supervisor image/Compose checks were not run locally. TestCU208FreshInstallNoModules passed; complete update acceptance remains pending CI."
+    },
+    {
+      "id": "invoice-import",
+      "status": "pass",
+      "command": "TMPDIR=/out/tmp go test -json ./... -skip '^(TestCU207Batch1ModulesUnchanged|TestTwoComposeProjectsStaySeparate|TestStalledSSHHandshakeRestartsWriters|TestOpenSSHNamespaceFirstUseAndStoreDelete)$' -count=1 -timeout 25m",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "IMP-01",
+        "IMP-02",
+        "IMP-03",
+        "IMP-04",
+        "IMP-05",
+        "IMP-06",
+        "IMP-07",
+        "IMP-08"
+      ],
+      "note": "Covered by the real Postgres package/HTTP/MCP tests in the Go JSON results."
+    }
+  ],
+  "required_checks_pending": [
+    "Core tests including built-image cases",
+    "QA harness tests with Tesseract",
+    "Supervisor tests with sshd/user setup and Docker",
+    "Supervisor image",
+    "CU2-07 unchanged public-main module packages",
+    "CU2-08 update load and Compose fresh install",
+    "Independent exact-base/head review"
+  ],
+  "simplification": {
+    "added_lines": 723,
+    "deleted_lines": 351,
+    "net_lines": 372,
+    "ponytail_markers": 111,
+    "debt_ledger_entries": 69,
+    "new_debt_items": 0
+  },
+  "notes": [
+    "No push, PR mutation or independent passing review was made by this worker.",
+    "The invoice-number floor function and CU2-07 test are unchanged from fdc365c64b3582014ee8370ff3f54894f8dccd33.",
+    "Docker-dependent image, supervisor image, Compose and smoke checks were skipped locally and remain required in CI."
+  ]
+}

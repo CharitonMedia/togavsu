@@ -301,6 +301,9 @@ func (a *App) callTool(w http.ResponseWriter, r *http.Request, req rpcReq) {
 	if body != nil {
 		inner.Header.Set("Content-Type", "application/json")
 	}
+	if t.Name == "getInvoicePdf" {
+		inner.Header.Set("Accept", "application/pdf")
+	}
 	rec := httptest.NewRecorder()
 	a.Handler().ServeHTTP(rec, inner)
 	text := rec.Body.String()

@@ -43,12 +43,14 @@ func upsertCoreInvoice(ctx context.Context, conn audit.Querier, inv Invoice) err
 	if by.IsZero() {
 		by = domain.SystemUserID
 	}
+	imported := expenseBillableFlag(inv.Imported)
 	_, err := conn.ExecContext(ctx, `INSERT INTO invoices (
 id, created_at, updated_at, created_by, matter_id, number, issued_on, status,
 subtotal_cents, adjustment_cents, adjustment_reason, interest_cents, total_cents,
 amount_paid_cents, balance_due_cents, write_off_cents, write_off_reason, void_reason,
-dispute_status, dispute_notes, sent_at, paid_at, client_message, internal_notes)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+dispute_status, dispute_notes, sent_at, paid_at, client_message, internal_notes,
+imported, import_source, external_ref, document_of_record_file_id, document_of_record_version_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
 ON CONFLICT (id) DO UPDATE SET
 updated_at = EXCLUDED.updated_at, matter_id = EXCLUDED.matter_id, number = EXCLUDED.number,
 issued_on = EXCLUDED.issued_on, status = EXCLUDED.status, subtotal_cents = EXCLUDED.subtotal_cents,
@@ -58,13 +60,17 @@ amount_paid_cents = EXCLUDED.amount_paid_cents, balance_due_cents = EXCLUDED.bal
 write_off_cents = EXCLUDED.write_off_cents, write_off_reason = EXCLUDED.write_off_reason,
 void_reason = EXCLUDED.void_reason, dispute_status = EXCLUDED.dispute_status,
 dispute_notes = EXCLUDED.dispute_notes, sent_at = EXCLUDED.sent_at, paid_at = EXCLUDED.paid_at,
-client_message = EXCLUDED.client_message, internal_notes = EXCLUDED.internal_notes`,
+client_message = EXCLUDED.client_message, internal_notes = EXCLUDED.internal_notes,
+imported = EXCLUDED.imported, import_source = EXCLUDED.import_source, external_ref = EXCLUDED.external_ref,
+document_of_record_file_id = EXCLUDED.document_of_record_file_id,
+document_of_record_version_id = EXCLUDED.document_of_record_version_id`,
 		string(inv.ID), inv.CreatedAt.UnixMicro(), inv.UpdatedAt.UnixMicro(), string(by),
 		string(inv.MatterID), inv.Number, inv.IssuedOn, inv.Status,
 		int64(inv.SubtotalCents), int64(inv.AdjustmentCents), inv.AdjustmentReason, int64(inv.InterestCents),
 		int64(inv.TotalCents), int64(inv.AmountPaidCents), int64(inv.BalanceDueCents),
 		int64(inv.WriteOffCents), inv.WriteOffReason, inv.VoidReason, inv.DisputeStatus, inv.DisputeNotes,
-		inv.SentAt, inv.PaidAt, inv.ClientMessage, inv.InternalNotes)
+		inv.SentAt, inv.PaidAt, inv.ClientMessage, inv.InternalNotes,
+		imported, inv.ImportSource, inv.ExternalRef, string(inv.DocumentOfRecordFileID), string(inv.DocumentOfRecordVersionID))
 	if err != nil {
 		return err
 	}
@@ -114,20 +120,21 @@ func upsertCorePayment(ctx context.Context, conn audit.Querier, pay Payment) err
 	if refundState == "" {
 		refundState = "none"
 	}
+	imported := expenseBillableFlag(pay.Imported)
 	_, err := conn.ExecContext(ctx, `INSERT INTO payments (
 id, created_at, updated_at, created_by, contact_id, matter_id, amount_cents, destination, method,
-reference_number, status, invoice_id, trust_entry_id, source, refunded_cents, refund_state)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+reference_number, status, invoice_id, trust_entry_id, source, refunded_cents, refund_state, imported)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 ON CONFLICT (id) DO UPDATE SET
 updated_at = EXCLUDED.updated_at, contact_id = EXCLUDED.contact_id, matter_id = EXCLUDED.matter_id,
 amount_cents = EXCLUDED.amount_cents, destination = EXCLUDED.destination, method = EXCLUDED.method,
 reference_number = EXCLUDED.reference_number, status = EXCLUDED.status, invoice_id = EXCLUDED.invoice_id,
 trust_entry_id = COALESCE(EXCLUDED.trust_entry_id, payments.trust_entry_id), source = EXCLUDED.source,
-refunded_cents = EXCLUDED.refunded_cents, refund_state = EXCLUDED.refund_state`,
+refunded_cents = EXCLUDED.refunded_cents, refund_state = EXCLUDED.refund_state, imported = EXCLUDED.imported`,
 		string(pay.ID), pay.CreatedAt.UnixMicro(), pay.UpdatedAt.UnixMicro(), string(by),
 		string(pay.ContactID), string(pay.MatterID), int64(pay.AmountCents), pay.Destination, pay.Method,
 		pay.ReferenceNumber, pay.Status, nullID(pay.InvoiceID), nullID(pay.TrustEntryID), pay.Source,
-		int64(pay.RefundedCents), refundState)
+		int64(pay.RefundedCents), refundState, imported)
 	return err
 }
 
@@ -174,6 +181,9 @@ func expenseBillableFlag(v bool) int {
 func (p *Postgres) RebuildCoreRows(ctx context.Context) error {
 	return p.Atomic(ctx, func(ctx context.Context) error {
 		conn := audit.Conn(ctx, p.pool)
+		if err := p.pinImportedDocuments(ctx); err != nil {
+			return err
+		}
 		var done int
 		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM billing_core_rows_backfill`).Scan(&done); err != nil {
 			return err
@@ -355,4 +365,30 @@ func reconcileInvoiceLines(ctx context.Context, conn audit.Querier, inv Invoice)
 // ReconcileCoreRowForTest exposes cent reconciliation for Postgres tests (CORE-36).
 func ReconcileCoreRowForTest(ctx context.Context, conn audit.Querier, kind, id string, v any) error {
 	return reconcileCoreRow(ctx, conn, kind, id, v)
+}
+
+// pinImportedDocuments upgrades invoices imported before version pinning existed.
+// Select the last version saved by import time, never the current version at upgrade.
+// Missing historical bytes remain unavailable rather than serving a replacement.
+func (p *Postgres) pinImportedDocuments(ctx context.Context) error {
+	invoices, err := listOf[Invoice](ctx, p, kindInvoice)
+	if err != nil {
+		return err
+	}
+	for _, inv := range invoices {
+		if !inv.Imported || inv.DocumentOfRecordFileID.IsZero() || !inv.DocumentOfRecordVersionID.IsZero() {
+			continue
+		}
+		err := audit.Conn(ctx, p.pool).QueryRowContext(ctx, `SELECT id FROM file_versions WHERE file_id = $1 AND created_at <= $2 ORDER BY number DESC LIMIT 1`, string(inv.DocumentOfRecordFileID), inv.CreatedAt.UnixMicro()).Scan(&inv.DocumentOfRecordVersionID)
+		if err == sql.ErrNoRows {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := p.Put(ctx, kindInvoice, string(inv.ID), inv); err != nil {
+			return err
+		}
+	}
+	return nil
 }

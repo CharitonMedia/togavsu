@@ -2010,18 +2010,77 @@ def _billing(api: Contract) -> None:
             "A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. "
             "A different body with that key is idempotency_conflict and writes nothing. "
             "A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. "
-            "A client projection keeps only InvoiceClient fields, on JSON and on a later read. Staff fields are not returned."
+            "A client projection keeps only InvoiceClient fields, on JSON and on a later read. Staff fields are not returned. "
+            "Opening imports (source form/csv/api) also emit invoice.imported, set imported true, and may skip rows already present by external_ref. "
+            "Preview executes the commit path in a transaction and rolls it back. Both modes return every row result; one refusal rolls back the batch. A duplicate external_ref within the file is an error, even when a previous run imported that ref."
         ),
         tag="Billing",
         features=["invoices", "bulk"],
         roles=STAFF,
         scopes=["invoices:write"],
-        body_schema=_batch("InvoiceWrite"),
-        response_schema=_batch_result("Invoice"),
+        body_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["items"],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"$ref": "#/components/schemas/InvoiceWrite"},
+                },
+                "preview": {
+                    "type": "boolean",
+                    "description": "When true, validate only and return per-row results (CORE-37 CSV preview).",
+                },
+            },
+        },
+        response_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["data", "results"],
+            "properties": {
+                "data": {"type": "array", "items": {"$ref": "#/components/schemas/Invoice"}},
+                "results": {"type": "array", "items": {"$ref": "#/components/schemas/BulkInvoiceResult"}},
+                "skipped": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Already-imported external_ref rows (response only).",
+                },
+            },
+        },
         success="201",
-        events=["invoice.created"],
+        events=["invoice.created", "invoice.imported"],
         error_codes=["batch_rejected", "validation_failed", "not_found", "idempotency_conflict", "forbidden", "scope_denied"],
         replaceable="time",
+        extra_responses={
+            "422": {
+                "description": "Batch rejected; results report every row and nothing is written.",
+                "content": {"application/json": {"schema": {
+                    "type": "object", "required": ["code", "message", "results"],
+                    "properties": {"code": {"type": "string"}, "message": {"type": "string"},
+                        "field": {"type": "string"}, "results": {"type": "array", "items": {"$ref": "#/components/schemas/BulkInvoiceResult"}}},
+                }}},
+            },
+            "200": {
+                "description": "Preview only: per-row validation results; nothing written (preview=true).",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["preview", "results"],
+                            "properties": {
+                                "preview": {"type": "boolean", "const": True},
+                                "results": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/BulkInvoiceResult"},
+                                },
+                            },
+                        }
+                    }
+                },
+            }
+        },
         extra_access={
             **WALL,
             "admin_bypasses_wall": False,
@@ -2092,7 +2151,9 @@ def _billing(api: Contract) -> None:
         "/api/v1/invoices/{invoice_id}/pdf",
         operation_id="getInvoicePdf",
         summary="Download an invoice PDF",
-        description="Renders the PDF from the firm logo and settings. Does not change status.",
+        description="Renders the PDF from the firm logo and settings. Imported invoices with a document of record redirect to the pinned version (303). Accept: application/pdf streams that original version instead; MCP uses this negotiation. Does not change status.",
+        extra_responses={"303": {"description": "Imported invoice: see its immutable document of record version.",
+            "headers": {"Location": {"required": True, "schema": {"type": "string"}, "description": "Download path for the file version pinned at import."}}}},
         tag="Billing",
         features=["invoices"],
         roles=BILLING + ["client"],

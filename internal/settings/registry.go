@@ -31,6 +31,7 @@ const (
 	TabSecurity   = "security"
 	TabPractice   = "practice"
 	TabBilling    = "time_billing"
+	TabMigration  = "migration"
 	TabTrust      = "trust"
 	TabCalendar   = "calendar"
 	TabFiles      = "files_storage"

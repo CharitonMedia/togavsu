@@ -150,6 +150,16 @@ type Invoice struct {
 	// immutable version per distinct rendering; PDFSHA256 is the newest stored version's hash.
 	PDFFileID domain.ID `json:"pdf_file_id,omitempty"`
 	PDFSHA256 string    `json:"pdf_sha256,omitempty"`
+	// Imported marks an opening-balance invoice from migration import (CORE-37).
+	Imported bool `json:"imported,omitempty"`
+	// ImportSource is form, csv or api when Imported is set.
+	ImportSource string `json:"import_source,omitempty"`
+	// ExternalRef is unique per firm for CSV/API re-runs (CORE-37).
+	ExternalRef string `json:"external_ref,omitempty"`
+	// DocumentOfRecordFileID is the original invoice PDF shown in place of a render.
+	DocumentOfRecordFileID domain.ID `json:"document_of_record_file_id,omitempty"`
+	// DocumentOfRecordVersionID pins the original bytes at import time.
+	DocumentOfRecordVersionID domain.ID `json:"document_of_record_version_id,omitempty"`
 }
 
 // Open reports whether the invoice is sent or viewed and still owes money.
@@ -195,6 +205,8 @@ type Payment struct {
 	// TrustSynced marks a fee payment that credits a flat-fee application made on the trust
 	// page. It has no trust entry of its own and is reversed only from the trust page.
 	TrustSynced bool `json:"trust_synced,omitempty"`
+	// Imported marks an amount-paid-to-date payment from opening invoice import (CORE-37).
+	Imported bool `json:"imported,omitempty"`
 }
 
 // FeeItem is a catalog flat-fee item.

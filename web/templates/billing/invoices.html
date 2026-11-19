@@ -17,7 +17,7 @@
 <thead><tr><th>Number</th><th>Matter</th><th>Date</th><th>Status</th><th class="num">Total</th><th class="num">Balance</th></tr></thead>
 <tbody>
 {{range .Invoices}}
-<tr><td><a href="/billing/invoices/{{.ID}}">{{.Number}}</a></td><td>{{.MatterNum}} {{.MatterName}}</td><td>{{.IssuedOn}}</td>
+<tr><td><a href="/billing/invoices/{{.ID}}">{{.Number}}</a>{{if .Imported}} <span class="tag">Imported</span>{{end}}</td><td>{{.MatterNum}} {{.MatterName}}</td><td>{{.IssuedOn}}</td>
 <td><span class="tag tag-{{.Status}}">{{.Status}}{{if and (eq .Status "draft") .Approved}} · approved{{end}}</span></td>
 <td class="num">{{money .TotalCents}}</td><td class="num">{{money .BalanceDueCents}}</td></tr>
 {{end}}
