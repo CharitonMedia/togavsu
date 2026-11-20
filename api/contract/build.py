@@ -20,6 +20,27 @@ COVERAGE_PATH = ROOT / "docs" / "api" / "coverage.md"
 MARKETPLACE_PATH = ROOT / "api" / "openapi" / "marketplace" / "openapi.json"
 
 
+def emitted_actions(source: str) -> set[str]:
+    """Collect direct emits, action assignments/helpers and event constants.
+
+    Constant values cover indirect emits. Historical adapter actions remain in
+    build_spec's protocol aliases even if no current writer emits them.
+    """
+    action = r'"([a-z_]+(?:\.[a-z_]+)+)"'
+    names = set(re.findall(r'\b(?:Action|Name):\s*' + action, source))
+    names.update(re.findall(r'\b(?:Action|action)\s*(?::=|=)\s*' + action, source))
+    references = set()
+    for call in re.findall(r'(?:\.(?:event|emit)|\bchangedFields)\([^;{}]*', source):
+        names.update(re.findall(action, call))
+        references.update(re.findall(r"\b[A-Za-z_]\w*\b", call))
+    references.update(re.findall(r"\b(?:Action|action|Name)\s*(?::|=)\s*([A-Za-z_]\w*)", source))
+    for declaration in re.findall(r'\bconst\s+(?:\([^)]*\)|[^\n]+)', source):
+        for name, value in re.findall(r'\b([A-Za-z_]\w*)(?:\s+string)?\s*=\s*' + action, declaration):
+            if name in references or 'event' in name.lower() or 'action' in name.lower():
+                names.add(value)
+    return names
+
+
 def build_spec() -> dict:
     api = Contract()
     add_routes(api)
@@ -39,22 +60,18 @@ def build_spec() -> dict:
     spec["x-togavsu-scope-patterns"] = SCOPE_PATTERNS
     spec["webhooks"] = _webhooks()
     # One shared registry drives both core append refusal and contract namespaces.
-    # Include literal emit sites as well as contract operations (some internal
+    # Include emit sites, assignments, helpers and constants as well as operations (some internal
     # events, such as conflict.checked, have no operation event annotation).
     # Historical protocol aliases stay reserved even though current emits use
     # calendar_event.* and individual domain roots. Keep them in this one registry.
-    names = {"core.*", "calendar.*"} | set(spec["x-togavsu-event-scopes"])
+    names = {"core.*", "calendar.*", "trust.entry_reversed"} | set(spec["x-togavsu-event-scopes"])
     for item in spec["paths"].values():
         for op in item.values():
             if isinstance(op, dict):
                 names.update(op.get("x-togavsu-events", []))
     for path in sorted((ROOT / "internal").rglob("*.go")):
-        if path.name.endswith("_test.go"):
-            continue
-        source = path.read_text()
-        names.update(re.findall(r'\bAction:\s*"([a-z_]+(?:\.[a-z_]+)+)"', source))
-        for call in re.findall(r'\.(?:event|emit)\([^;{}]*', source):
-            names.update(re.findall(r'"([a-z_]+(?:\.[a-z_]+)+)"', call))
+        if not path.name.endswith("_test.go"):
+            names.update(emitted_actions(path.read_text()))
     spec["x-togavsu-core-events"] = sorted(names)
     _check(spec)
     return spec

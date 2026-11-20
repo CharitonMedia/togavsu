@@ -2813,8 +2813,7 @@ def _calendar(api: Contract) -> None:
         extra_access=WALL,
     )
     busy_read = api.spec["paths"]["/api/v1/calendar-events"]["get"]
-    busy_read["x-togavsu-access"]["view_scopes"] = {"occupancy": ["calendar:occupancy"]}
-    busy_read["description"] += " view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only with the separately declared, admin-approved calendar:occupancy scope; calendar:read alone is refused and is not additionally required for occupancy and returns only starts_at and ends_at for all events including unassigned/walled events. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls."
+    busy_read["description"] += " view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only under calendar:read and returns only starts_at and ends_at for visible assigned or unassigned events. Walled matters are omitted; removing a wall makes their events visible on the next read. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls."
     busy_read["responses"]["200"]["content"]["application/json"]["schema"] = {"anyOf": [_page("CalendarEvent"), _page("CalendarBusyBlock"), _page("CalendarOccupancyBlock")]}
     api.resource(
         collection="/api/v1/deadlines",

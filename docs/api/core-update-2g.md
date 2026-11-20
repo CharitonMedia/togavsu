@@ -7,7 +7,7 @@ This update finishes their remaining batch 2 behaviors without a version bump.
 | --- | --- | --- |
 | Binding event returns 400 | Every contract accepts contract/event/event_id/occurred_at/data. Original fields fan out through the durable signed queue to all enabled, approved linked consumers. Core namespaces, malformed UUID/time/data and mixed envelopes fail. Targeted 2f envelopes retain their rules and delivery. | `TestCoreUpdate2GBindingEnvelope`, retained 2d/2e/2f contract tests |
 | Client frame cannot render session CSRF | Authenticated /m/ GET passes module-bound `X-Togavsu-Session-CSRF`; hidden `csrf` works with a browser cookie jar. Responses are no-store; missing and other-session tokens still fail before POST reaches the module. | `TestCoreUpdate2GFrameSessionCSRF`, retained body-restoration test |
-| Walled event without attendees never appears busy | Service-only calendar `view=occupancy` with separately approved calendar:occupancy returns starts_at/ends_at only for all events, including unassigned/walled events. Existing user busy and detail reads retain their policy. | `TestCoreUpdate2GFirmOccupancy`, retained CU2-02 and busy tests |
+| Firm occupancy for service callers | Service-only calendar `view=occupancy` under approved calendar:read returns starts_at/ends_at only for visible assigned/unassigned events; every walled matter is omitted until its wall is lifted. Existing user busy and detail reads retain their policy. | `TestCoreUpdate2GFirmOccupancy`, retained CU2-02 and busy tests |
 | Approved public charge cannot be recorded without a viewer | Consumer `processor.payment.v1/record` binds its stored approval once to its newly created matter/contact. Stored money fields alone record one completed operating card payment. Atomic binding/payment/audit/events and same-payment replay never call the provider. | `TestCoreUpdate2GProcessorRecording`, `TestCoreUpdate2GProcessorContactAndRefusals`, `TestCoreUpdate2GLegacyReceiptApprovalOrder` |
 
 New runtime criteria: `contract.binding_events`, `module.frame_session_csrf`,
@@ -33,12 +33,13 @@ whole; this assignment uses the next free block, **1600–1649**, allocated to
 core-update-2g. The former unmerged 1551 migration is now 1600. Its Down is a
 comment-only expand-only no-op, consistent with 1550: nullable matter_id and all
 contact-only money records remain on downgrade. The integration lead must retain
-unique numbering. No dedupe migration is needed: contract queue keys have a fixed
-`contract:` prefix that core UUID event IDs cannot carry.
+unique numbering. Contract queue keys have a fixed `contract:` prefix that core UUID event IDs
+cannot carry. Inserts also check provider-created legacy raw keys, preserving
+deduplication for delivered or pending rows from before the upgrade.
 
 Contact-only payment reads, reports, feed/events API, MCP event reads, module
 pump and receipt replay use billing's current payment wall policy. A contact
-joining a walled matter hides its existing payment events immediately. Allowed
+joining a walled matter hides its existing payment and refund events immediately. Allowed
 users retain visibility; viewerless modules remain outside every wall.
 
 `AuditEntry.actor_id` widened from UUID to **string for every module service-principal
@@ -57,7 +58,7 @@ intent, payment, matter (when set) and contact IDs; it no longer repeats an
 - Binding events reserve every core action/root through the shared generated
   `x-togavsu-core-events` registry, including custom_field, conflict, county,
   practice_area and referral_source. The generator includes published operation
-  events and literal core emit sites; an AST regression checks actual emit sites
+  events and core emit sites, assignments, changedFields actions and constants; an AST regression checks actual emit sites
   and every registry name. Legacy `core.*`/`calendar.*` guards remain in the same
   registry. Existing contract event names remain accepted.
 - Binding and targeted deliveries use per-recipient dedupe keys
@@ -65,12 +66,9 @@ intent, payment, matter (when set) and contact IDs; it no longer repeats an
   First acceptance retains its sender and payload across providers/contracts, as
   before. Replays insert no delivery and audit `consumers=0`, using RowsAffected.
   Duplicate top-level JSON keys in either envelope return HTTP 400.
-- Firm occupancy requires its own module-only `calendar:occupancy`, declared
-  in the manifest with a reason and explicitly approved at install. Declining a
-  required grant cancels installation under normal permission rules. Holding only
-  calendar:read returns 403 on REST and MCP. Both memory and Postgres stores apply
-  exact interval overlap before pagination. This capability intentionally reveals
-  start/end intervals across walls; ordinary calendar reads keep their walls.
+- Firm occupancy uses approved `calendar:read` on REST and MCP. Both stores
+  filter walled matters and exact interval overlap before pagination. Removing
+  the wall returns those events immediately, without revealing wall membership.
 
 Regression evidence: `TestCoreUpdate2GContactPaymentPumpWalls`,
 `TestCoreUpdate2GFrameSessionCSRF`, `TestFrameCSRFSessionRotation`,
@@ -78,8 +76,8 @@ Regression evidence: `TestCoreUpdate2GContactPaymentPumpWalls`,
 `TestCoreUpdate2GEventDedupeNamespaces`, `TestCoreUpdate2GOccupancyScopeRefusal`,
 `TestCoreUpdate2GFirmOccupancy`, `TestCoreUpdate2GOccupancyMemoryWindow`,
 `TestCoreUpdate2GMigrationAllocation`, and `TestCoreUpdate2GProcessorRecording`.
-The integration lead still needs to add the absent core-update-2g task binding in
-docs/build; this worker does not change control-plane task/plan files.
+The PR depends on the integration lead's control change adding the core-update-2g
+assignment being merged into batch2. This worker does not change those files.
 
 The implementation is exercised against synthetic Postgres data. The new four
 primary regression tests failed against starting revision
@@ -87,3 +85,13 @@ primary regression tests failed against starting revision
 browser QC, Docker/Compose/supervisor image and clean-install/release checks remain
 separate acceptance. See `docs/build/reports/core-update-2g.json` and the PR body
 for the exact tested code revision, actual check results and pending criteria.
+
+## Fix pass 2
+
+Occupancy follows service-call walls under calendar:read. Refund visibility resolves
+its parent payment for Activities, REST/MCP event reads and module subscriptions.
+Core append refuses every reserved namespace root, including future actions.
+The registry scans action assignments, changedFields calls and constant declarations.
+Contract inserts preserve legacy raw-key deduplication across both envelope formats.
+Frame regressions assert csrf_required on core event writes. Migration 1600 and
+its expand-only no-op Down remain unchanged in the allocated 1600–1649 block.

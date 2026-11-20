@@ -71,8 +71,8 @@ type Deps struct {
 	// including events queued after purge; ordinary file reads still refuse purge.
 	// Nil fails closed for file.* events that identify a file.
 	FileReadable func(ctx context.Context, moduleID string, fileID domain.ID) (bool, error)
-	// PaymentReadable checks contact-only receipt payments at event enqueue.
-	PaymentReadable        func(context.Context, string, domain.ID) (bool, error)
+	// PaymentReadable checks money events against their current parent payment policy.
+	PaymentReadable        func(context.Context, string, domain.Event) (bool, error)
 	RecordProcessorPayment func(context.Context, domain.Principal, ProcessorPaymentRecord, string, ProcessorPaymentResult, json.RawMessage) (json.RawMessage, error)
 	HTTP                   *http.Client
 	Now                    func() time.Time

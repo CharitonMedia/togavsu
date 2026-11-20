@@ -215,12 +215,12 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 		case !m.Approved["events:read"] || !Subscribed(m.Manifest.Events, ev.Action):
 			continue
 		}
-		// Contact-only payment receipts follow the contact's current walls too.
-		if recipient == "" && ev.RecordType == "payment" && ev.MatterID.IsZero() {
+		// Payments and their related money events follow the contact's current walls too.
+		if recipient == "" && ev.PaymentEvent() {
 			if s.d.PaymentReadable == nil {
 				continue
 			}
-			visible, err := s.d.PaymentReadable(ctx, m.ID, ev.RecordID)
+			visible, err := s.d.PaymentReadable(ctx, m.ID, ev)
 			if err != nil {
 				return zero, err
 			}

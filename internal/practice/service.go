@@ -29,7 +29,7 @@ type Service struct {
 	key []byte
 	// moduleOn is the module runtime's installed-and-enabled check (SetModuleCheck).
 	moduleOn        func(ctx context.Context, module string) (bool, error)
-	paymentReadable func(context.Context, domain.Principal, domain.ID) bool
+	paymentReadable func(context.Context, domain.Principal, domain.Event) bool
 	mailFiling      func(ctx context.Context, p domain.Principal, matter domain.ID) error
 }
 

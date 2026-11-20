@@ -115,31 +115,44 @@ func TestCoreUpdate2GFirmOccupancy(t *testing.T) {
 	c := coretest.New(t)
 	const id = "firm-occupancy"
 	c.Handle(id, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
-	install2d(t, c, id, []string{"calendar:occupancy"}, "")
-	install2d(t, c, "calendar-read-only", []string{"calendar:read"}, "")
+	install2d(t, c, id, []string{"calendar:read"}, "")
+	install2d(t, c, "calendar-no-read", []string{"contacts:read"}, "")
 	start := time.Now().UTC().Truncate(time.Second).Add(time.Hour)
 	for _, attendees := range [][]string{nil, {c.Attorney.ID}} {
 		c.Attorney.Must(201, "POST", "/api/v1/calendar-events", map[string]any{"title": "SECRET", "kind": "court_date", "matter_id": c.Walled, "starts_at": start.Format(time.RFC3339), "ends_at": start.Add(time.Hour).Format(time.RFC3339), "attendee_user_ids": attendees})
 	}
+	// An unwalled, unassigned event remains visible; a later event is out of range.
+	for _, offset := range []time.Duration{0, 5 * time.Hour} {
+		c.Attorney.Must(201, "POST", "/api/v1/calendar-events", map[string]any{"title": "Open", "kind": "block", "matter_id": c.Open, "starts_at": start.Add(offset).Format(time.RFC3339), "ends_at": start.Add(offset + time.Hour).Format(time.RFC3339)})
+	}
 	q := url.Values{"view": {"occupancy"}, "from_time": {start.Add(-time.Hour).Format(time.RFC3339)}, "to_time": {start.Add(2 * time.Hour).Format(time.RFC3339)}}
 	bot := c.ModuleClient(id)
-	c.ModuleClient("calendar-read-only").Must(403, "GET", "/api/v1/calendar-events?"+q.Encode(), nil)
-	toolResult2d(t, c.ModuleClient("calendar-read-only"), "listCalendarEvent", map[string]any{"query": map[string]any{"view": "occupancy", "from_time": q.Get("from_time"), "to_time": q.Get("to_time")}}, true)
-	for _, transport := range []string{"REST", "MCP"} {
-		var v map[string]any
-		if transport == "REST" {
-			v = bot.Must(200, "GET", "/api/v1/calendar-events?"+q.Encode(), nil).JSON
-		} else {
-			v = toolResult2d(t, bot, "listCalendarEvent", map[string]any{"query": map[string]any{"view": "occupancy", "from_time": q.Get("from_time"), "to_time": q.Get("to_time")}}, false)
+	c.ModuleClient("calendar-no-read").Must(403, "GET", "/api/v1/calendar-events?"+q.Encode(), nil)
+	toolResult2d(t, c.ModuleClient("calendar-no-read"), "listCalendarEvent", map[string]any{"query": map[string]any{"view": "occupancy", "from_time": q.Get("from_time"), "to_time": q.Get("to_time")}}, true)
+	for _, lifted := range []bool{false, true} {
+		if lifted {
+			c.Wall(c.Walled)
 		}
-		rows := v["data"].([]any)
-		if len(rows) != 2 {
-			t.Fatalf("missing unassigned occupancy: %v", v)
-		}
-		for _, r := range rows {
-			row := r.(map[string]any)
-			if len(row) != 2 || row["starts_at"] != start.Format(time.RFC3339) || row["ends_at"] != start.Add(time.Hour).Format(time.RFC3339) {
-				t.Fatalf("leaked details: %v", row)
+		for _, transport := range []string{"REST", "MCP"} {
+			var v map[string]any
+			if transport == "REST" {
+				v = bot.Must(200, "GET", "/api/v1/calendar-events?"+q.Encode(), nil).JSON
+			} else {
+				v = toolResult2d(t, bot, "listCalendarEvent", map[string]any{"query": map[string]any{"view": "occupancy", "from_time": q.Get("from_time"), "to_time": q.Get("to_time")}}, false)
+			}
+			rows := v["data"].([]any)
+			want := 1
+			if lifted {
+				want = 3
+			}
+			if len(rows) != want {
+				t.Fatalf("wall lifted=%v: %s occupancy want %d: %v", lifted, transport, want, v)
+			}
+			for _, r := range rows {
+				row := r.(map[string]any)
+				if len(row) != 2 || row["starts_at"] != start.Format(time.RFC3339) || row["ends_at"] != start.Add(time.Hour).Format(time.RFC3339) {
+					t.Fatalf("leaked details: %v", row)
+				}
 			}
 		}
 	}

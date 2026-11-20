@@ -11124,11 +11124,6 @@
         "attorney",
         "staff"
       ],
-      "view_scopes": {
-        "occupancy": [
-          "calendar:occupancy"
-        ]
-      },
       "module_delegation": "delegated_viewer_or_service_principal",
       "limit": {
         "type": "integer",

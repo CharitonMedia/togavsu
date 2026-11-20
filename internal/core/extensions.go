@@ -358,13 +358,8 @@ func (a *App) recordProcessorReceipt(ctx context.Context, p domain.Principal, in
 	return a.Billing.RecordApprovedOperatingPayment(ctx, p, billing.PaymentInput{MatterID: in.MatterID, ContactID: in.ContactID, AmountCents: result.AmountCents, Destination: result.Destination, Method: "card", Status: billing.PayCompleted, ReferenceNumber: result.ReferenceNumber, Source: provider})
 }
 
-func (a *App) paymentReadableForModule(ctx context.Context, module string, id domain.ID) (bool, error) {
-	_, err := a.Billing.Payment(ctx, domain.Principal{ModuleID: module, Source: domain.SourceService, Roles: []domain.Role{domain.RoleAccountant}}, id)
-	var api *domain.APIError
-	if errors.As(err, &api) && (api.Code == domain.CodeNotFound || api.Code == domain.CodeForbidden) {
-		return false, nil
-	}
-	return err == nil, err
+func (a *App) paymentReadableForModule(ctx context.Context, module string, ev domain.Event) (bool, error) {
+	return a.Billing.PaymentEventReadable(ctx, domain.Principal{ModuleID: module, Source: domain.SourceService, Roles: []domain.Role{domain.RoleAccountant}}, ev)
 }
 
 func frameModuleID(path string) string {

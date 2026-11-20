@@ -313,22 +313,15 @@ bearer-only or unauthenticated request gets no session CSRF header. Never put th
 token in a URL or shared storage. Frame responses are `Cache-Control: no-store`.
 This does not replace module context verification or public `/p/` CSRF.
 
-A calendar service principal holding separately declared,
-admin-approved **`calendar:occupancy`** can read
+A calendar service principal with approved **`calendar:read`** can read
 `GET /api/v1/calendar-events?view=occupancy&from_time=…&to_time=…`
-(or `listCalendarEvent` on MCP). Every event counts, including unassigned and walled
-events. Each row has **only** `starts_at`, `ends_at`; no all-day flag, ids, titles,
-attendees or wall metadata. Normal pagination and the existing available-dates
-maximum interval apply. User/matter/kind filters are refused. A viewer cannot use
-this view. `calendar:read` alone returns 403, including on MCP. The manifest must
-request `calendar:occupancy` with a nonempty reason; the normal required/optional
-install approval rules apply. Example:
-
-```yaml
-permissions:
-  - scope: calendar:occupancy
-    reason: Show available intake times without revealing calendar details.
-```
+(or `listCalendarEvent` on MCP). Assigned and unassigned events on unwalled
+matters, and events with no matter, are included. Every walled matter is omitted,
+even when the module's installer belongs to that wall. Removing the wall returns
+the events on the next read. Each row has **only** `starts_at`, `ends_at`;
+no ids, titles, attendees, all-day flag or wall metadata. Normal pagination and
+the existing available-dates maximum interval apply. User/matter/kind filters
+are refused. A viewer cannot use this view. No additional scope is required.
 
 `view=busy&user_id=…` and ordinary detail/list wall rules are unchanged.
 
@@ -340,3 +333,5 @@ and records stored money fields atomically. It never calls the processor. Replay
 return the same payment; changed targets, unknown/other-module intents,
 pending/declined/trust receipts and supplied money fields are refused. Normal
 viewer/task processor and arbitrary-payment write checks retain their policy.
+
+See [Core update 2g](core-update-2g.md) for the complete continuation and regression inventory.

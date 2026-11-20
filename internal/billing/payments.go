@@ -61,6 +61,36 @@ func (s *Service) Payment(ctx context.Context, p domain.Principal, id domain.ID)
 	return row, nil
 }
 
+// PaymentEventReadable applies the live payment policy to money event records.
+// Refund IDs differ from payment IDs; never treat a missing parent as visible.
+func (s *Service) PaymentEventReadable(ctx context.Context, p domain.Principal, ev domain.Event) (bool, error) {
+	id := ev.RecordID
+	switch ev.RecordType {
+	case "payment":
+	case "payment_refund":
+		row, err := s.refund(ctx, id)
+		if err != nil {
+			return false, err
+		}
+		id = row.PaymentID
+	case "processor_initialization":
+		var row ProcessorInit
+		if err := s.d.Store.Get(ctx, kindProcessorInit, string(id), &row); err != nil {
+			return false, err
+		}
+		// Initialization may precede creation of the reserved payment.
+		return s.allowPayment(ctx, p, domain.ActionRead, Payment{Payment: domain.Payment{MatterID: row.MatterID, ContactID: row.ContactID}}) == nil, nil
+	default:
+		return false, nil
+	}
+	_, err := s.Payment(ctx, p, id)
+	var api *domain.APIError
+	if errors.As(err, &api) && (api.Code == domain.CodeNotFound || api.Code == domain.CodeForbidden) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // Payments lists payments on matters the caller can see.
 func (s *Service) Payments(ctx context.Context, p domain.Principal, f PaymentFilter) ([]Payment, error) {
 	if err := s.allow(ctx, p, domain.ResPayment, domain.ActionRead, ""); err != nil {

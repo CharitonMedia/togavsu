@@ -362,7 +362,7 @@ func shared(err error) error {
 	}
 	switch api.Code {
 	case "csrf_required":
-		return domain.Forbidden(api.Message)
+		return err
 	// CORE-36: keep scope_denied in the JSON body (status stays 403 via APIError.HTTPStatus).
 	case "scope_denied":
 		return err
@@ -399,15 +399,15 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 		return p, err
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/api/v1/calendar-events" && r.URL.Query().Get("view") == "occupancy" {
-		if err := c.RequireScopes("calendar:occupancy"); err != nil {
+		if err := c.RequireScopes("calendar:read"); err != nil {
 			return p, shared(err)
 		}
 		if a.ext == nil || a.ext.Modules == nil {
 			return p, domain.Forbidden("occupancy module unavailable")
 		}
 		installed, err := a.ext.Modules.Installed(r.Context(), p.ModuleID)
-		if err != nil || !installed.Enabled || !installed.Approved["calendar:occupancy"] {
-			return p, domain.Forbidden("calendar:occupancy approval required")
+		if err != nil || !installed.Enabled || !installed.Approved["calendar:read"] {
+			return p, domain.Forbidden("calendar:read approval required")
 		}
 	}
 	if moduleOwn(p) {

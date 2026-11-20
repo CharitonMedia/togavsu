@@ -188,13 +188,13 @@ func (s *Service) timelineRow(ctx context.Context, row domain.Event) TimelineEnt
 }
 
 // SetPaymentReadable connects feed visibility to billing's current payment policy.
-func (s *Service) SetPaymentReadable(check func(context.Context, domain.Principal, domain.ID) bool) {
+func (s *Service) SetPaymentReadable(check func(context.Context, domain.Principal, domain.Event) bool) {
 	s.paymentReadable = check
 }
 
 // feedAllows hides unreadable payments, walled matters, contacts and attorney-only files.
 func (s *Service) feedAllows(ctx context.Context, p domain.Principal, row domain.Event) bool {
-	if row.RecordType == "payment" && (s.paymentReadable == nil || !s.paymentReadable(ctx, p, row.RecordID)) {
+	if row.PaymentEvent() && (s.paymentReadable == nil || !s.paymentReadable(ctx, p, row)) {
 		return false
 	}
 	if !s.fileEventAllows(ctx, p, row) {

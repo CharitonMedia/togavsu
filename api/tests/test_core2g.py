@@ -54,3 +54,22 @@ class Core2GContract(unittest.TestCase):
         actor = self.schemas['AuditEntry']['properties']['actor_id']
         Draft202012Validator(actor).validate('synthetic-intake')
         Draft202012Validator(actor).validate('019b6968-4600-7001-8000-000000000001')
+
+    def test_emitted_action_scanner(self):
+        from contract.build import emitted_actions
+        source = """
+        const reversed = "trust.entry_reversed"
+        const ( completed = "payment.completed" )
+        e.Action = "contact.phone_changed"
+        action := "matter.party_updated"
+        changedFields("county", id, matter, "county.updated", "Updated", fields)
+        t.event(reversed, "trust", id)
+        t.event(completed, "payment", id)
+        s.emit(ctx, "contact.created")
+        Event{Action: "note.created"}
+        Event{Name: "trust.entry_posted"}
+        """
+        self.assertEqual(emitted_actions(source), {"trust.entry_reversed", "payment.completed", "contact.phone_changed", "matter.party_updated", "county.updated", "contact.created", "note.created", "trust.entry_posted"})
+        op = self.spec['paths']['/api/v1/calendar-events']['get']
+        self.assertEqual(op['x-togavsu-access']['scopes'], ['calendar:read'])
+        self.assertNotIn('view_scopes', op['x-togavsu-access'])

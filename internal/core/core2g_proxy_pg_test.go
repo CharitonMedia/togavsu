@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto/ed25519"
+	"encoding/json"
 	"fmt"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/testkit"
@@ -74,6 +75,17 @@ func TestCoreUpdate2GFrameSessionCSRF(t *testing.T) {
 			res, err := person.http.Do(req)
 			if err != nil {
 				t.Fatal(err)
+			}
+			var problem struct {
+				Code string `json:"code"`
+			}
+			if path == "/api/v1/events" {
+				if err := json.NewDecoder(res.Body).Decode(&problem); err != nil {
+					t.Fatal(err)
+				}
+				if problem.Code != "csrf_required" {
+					t.Errorf("core write refused for wrong reason: %q", problem.Code)
+				}
 			}
 			res.Body.Close()
 			if res.StatusCode != 403 {

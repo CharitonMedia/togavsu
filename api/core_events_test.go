@@ -39,6 +39,15 @@ func TestCoreEventRegistryCoversEmitSites(t *testing.T) {
 			return err
 		}
 		literal := func(expr ast.Expr) {
+			if id, ok := expr.(*ast.Ident); ok && id.Obj != nil {
+				if spec, ok := id.Obj.Decl.(*ast.ValueSpec); ok {
+					for i, name := range spec.Names {
+						if name.Name == id.Name && i < len(spec.Values) {
+							expr = spec.Values[i]
+						}
+					}
+				}
+			}
 			if s, ok := expr.(*ast.BasicLit); ok && s.Kind == token.STRING {
 				name, err := strconv.Unquote(s.Value)
 				if err == nil {
@@ -49,10 +58,38 @@ func TestCoreEventRegistryCoversEmitSites(t *testing.T) {
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.KeyValueExpr:
-				if key, ok := x.Key.(*ast.Ident); ok && key.Name == "Action" {
+				if key, ok := x.Key.(*ast.Ident); ok && (key.Name == "Action" || key.Name == "Name") {
 					literal(x.Value)
 				}
+			case *ast.AssignStmt:
+				for i, lhs := range x.Lhs {
+					name := ""
+					switch v := lhs.(type) {
+					case *ast.Ident:
+						name = v.Name
+					case *ast.SelectorExpr:
+						name = v.Sel.Name
+					}
+					if (name == "Action" || name == "action") && i < len(x.Rhs) {
+						literal(x.Rhs[i])
+					}
+				}
+			case *ast.GenDecl:
+				if x.Tok == token.CONST {
+					for _, spec := range x.Specs {
+						if v, ok := spec.(*ast.ValueSpec); ok {
+							for i, value := range v.Values {
+								if i < len(v.Names) && (strings.Contains(strings.ToLower(v.Names[i].Name), "event") || strings.Contains(strings.ToLower(v.Names[i].Name), "action")) {
+									literal(value)
+								}
+							}
+						}
+					}
+				}
 			case *ast.CallExpr:
+				if id, ok := x.Fun.(*ast.Ident); ok && id.Name == "changedFields" && len(x.Args) > 3 {
+					literal(x.Args[3])
+				}
 				if sel, ok := x.Fun.(*ast.SelectorExpr); ok && (sel.Sel.Name == "event" || sel.Sel.Name == "emit") {
 					for _, arg := range x.Args {
 						literal(arg)
@@ -78,7 +115,7 @@ func TestCoreEventRegistryCoversEmitSites(t *testing.T) {
 			t.Errorf("legacy namespace %s: %v %v", namespace, reserved, err)
 		}
 	}
-	for _, name := range []string{"custom_field.updated", "conflict.checked", "county.created", "practice_area.created", "referral_source.created"} {
+	for _, name := range []string{"custom_field.updated", "conflict.checked", "county.created", "practice_area.created", "referral_source.created", "contact.phone_changed", "matter.party_updated", "practice_area.updated", "county.updated", "referral_source.updated", "contact.email_updated", "contact.address_updated", "trust.entry_reversed"} {
 		check(name)
 	}
 }

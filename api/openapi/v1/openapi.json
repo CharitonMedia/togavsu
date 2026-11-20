@@ -37965,7 +37965,7 @@
       "get": {
         "operationId": "listCalendarEvent",
         "summary": "List calendar events",
-        "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only with the separately declared, admin-approved calendar:occupancy scope; calendar:read alone is refused and is not additionally required for occupancy and returns only starts_at and ends_at for all events including unassigned/walled events. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls.",
+        "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only under calendar:read and returns only starts_at and ends_at for visible assigned or unassigned events. Walled matters are omitted; removing a wall makes their events visible on the next read. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls.",
         "tags": [
           "Calendar"
         ],
@@ -38174,11 +38174,6 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer_or_service_principal",
-          "view_scopes": {
-            "occupancy": [
-              "calendar:occupancy"
-            ]
-          },
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -75845,7 +75840,7 @@
           "starts_at",
           "ends_at"
         ],
-        "description": "Service-only firm-wide occupancy, including unassigned walled events. Requires separately declared/admin-approved calendar:occupancy; calendar:read alone does not grant occupancy. Start/end only; exact requested interval overlap; no other fields."
+        "description": "Service-only firm-wide occupancy under calendar:read, including unassigned events but excluding every walled matter. Start/end only; exact requested interval overlap; no other fields."
       },
       "CalendarBusyBlock": {
         "type": "object",
@@ -93092,10 +93087,6 @@
       "description": "Read the firm's invoices, payments, expenses, trust accounts and trust ledger, and the billing details of billed contacts, firm-wide except walled matters and without a viewer, for a module's background money work."
     },
     {
-      "scope": "calendar:occupancy",
-      "description": "Read firm-wide start/end intervals, including walled and unassigned events; module-only, with a manifest reason and explicit admin approval."
-    },
-    {
       "scope": "calendar:read",
       "description": "Read calendar events and available dates."
     },
@@ -93390,6 +93381,7 @@
     "backup_destination.updated",
     "backup_upload.created",
     "calendar.*",
+    "calendar.event_reminder_days",
     "calendar_event.created",
     "calendar_event.deleted",
     "calendar_event.updated",
@@ -93403,17 +93395,21 @@
     "conflict_record.created",
     "conflict_record.updated",
     "contact.address_added",
+    "contact.address_updated",
     "contact.archived",
     "contact.created",
     "contact.email_added",
+    "contact.email_updated",
     "contact.merged",
     "contact.phone_added",
+    "contact.phone_changed",
     "contact.phone_updated",
     "contact.tag_added",
     "contact.tag_updated",
     "contact.updated",
     "core.*",
     "county.created",
+    "county.updated",
     "court_profile.created",
     "court_profile.updated",
     "court_profile.verified",
@@ -93481,6 +93477,7 @@
     "matter.marker_set",
     "matter.merged",
     "matter.party_added",
+    "matter.party_updated",
     "matter.reopened",
     "matter.updated",
     "matter.wall_changed",
@@ -93515,8 +93512,10 @@
     "payment.reversed",
     "payment.updated",
     "practice_area.created",
+    "practice_area.updated",
     "problem_report.created",
     "referral_source.created",
+    "referral_source.updated",
     "restore.started",
     "session.created",
     "session.ended",
@@ -93535,6 +93534,7 @@
     "timer.resumed",
     "timer.started",
     "trust.entry_posted",
+    "trust.entry_reversed",
     "trust.flag_raised",
     "trust.flag_resolved",
     "trust.reconciled",

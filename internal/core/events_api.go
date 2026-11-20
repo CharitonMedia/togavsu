@@ -110,7 +110,10 @@ func (a *App) eventWriter(ctx context.Context, p domain.Principal) error {
 }
 
 // reservedAction shares the emitted core registry with binding event validation.
-func reservedAction(action string) bool { return api.CoreEventAction(action) }
+func reservedAction(action string) bool {
+	reserved, err := api.CoreEventNamespace(action)
+	return err != nil || reserved
+}
 
 // validID is a UUIDv7.
 func validID(s string) bool {

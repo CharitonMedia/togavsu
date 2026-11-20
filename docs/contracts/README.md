@@ -210,3 +210,10 @@ is arbitrary JSON. Only that enabled, approved, linked consumer receives it.
 Existing action prefixes remain: `<contract>.…`, with `document.generated` an
 exception only for `documents.generate.v1`. Dedupe remains per recipient/`id`.
 The two formats cannot be mixed. Neither format uses top-level `type`.
+
+Core update 2g also provides wall-filtered service occupancy under `calendar:read`
+and module-bound frame CSRF. See [module APIs](../api/modules.md) and
+[the complete continuation notes](../api/core-update-2g.md). Contract event inserts
+check legacy provider-created raw event keys as well as the `contract:` key, so
+upgrading does not redeliver an already accepted event. Contact-only payment and
+refund events follow the parent payment's contact walls on reads and delivery.

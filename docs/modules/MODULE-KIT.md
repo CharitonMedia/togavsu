@@ -911,12 +911,11 @@ or shared cache. Frame responses are `Cache-Control: no-store`. Module context
 verification and public-page CSRF remain separate requirements.
 
 `calendar-events?view=occupancy&from_time=…&to_time=…` is a service-only read under
-explicitly approved `calendar:occupancy`. Declare it
-in manifest permissions with a nonempty reason; ordinary required/optional scope
-approval rules apply. `calendar:read` alone returns 403 on REST and MCP. It includes every assigned/unassigned and walled event,
-with **only** `starts_at` and `ends_at` per row. Use the normal cursor pagination
-and existing interval range. User/matter/kind filters are refused. Existing
-user-specific `view=busy` and ordinary wall-filtered reads retain their behavior.
+approved `calendar:read`. It includes assigned and unassigned events visible to
+the service principal, excluding every walled matter. Lifting the wall returns
+its events on the next read. Rows contain **only** `starts_at` and `ends_at`.
+Use normal pagination and the existing interval range. User/matter/kind filters
+are refused. See [the API continuation notes](../api/core-update-2g.md).
 
 After processor approval, create the matter/contact and call
 `/api/v1/modules/contracts/processor.payment.v1/record` with

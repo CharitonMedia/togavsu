@@ -342,9 +342,9 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.Trust, app.Billing = fin.Trust, fin.Billing
-	app.Practice.SetPaymentReadable(func(ctx context.Context, p domain.Principal, id domain.ID) bool {
-		_, err := app.Billing.Payment(ctx, p, id)
-		return err == nil
+	app.Practice.SetPaymentReadable(func(ctx context.Context, p domain.Principal, ev domain.Event) bool {
+		allowed, err := app.Billing.PaymentEventReadable(ctx, p, ev)
+		return allowed && err == nil
 	})
 	// CORE-05: absolute links and delivery through the system mail router.
 	app.Trust.FirmDomain = cfg.Domain

@@ -52,7 +52,7 @@ func (s *Service) ListBusy(ctx context.Context, p domain.Principal, f EventFilte
 	return out, nil
 }
 
-// OccupancyBlock contains only the interval, including unassigned walled events.
+// OccupancyBlock contains only the interval of a visible event.
 type OccupancyBlock struct {
 	StartsAt string `json:"starts_at"`
 	EndsAt   string `json:"ends_at"`
@@ -67,12 +67,12 @@ func (s *Service) ListOccupancy(ctx context.Context, p domain.Principal, f Event
 	}
 	allowed := false
 	for _, scope := range p.Scopes {
-		if scope == "calendar:occupancy" {
+		if scope == "calendar:read" {
 			allowed = true
 		}
 	}
 	if !allowed {
-		return nil, domain.Forbidden("calendar:occupancy is required")
+		return nil, domain.Forbidden("calendar:read is required")
 	}
 	if err := s.gate(ctx, p, domain.ActionRead, ""); err != nil {
 		return nil, err
@@ -89,7 +89,7 @@ func (s *Service) ListOccupancy(ctx context.Context, p domain.Principal, f Event
 	}
 	out := []OccupancyBlock{}
 	for _, row := range rows {
-		if !matchEvent(row, f) {
+		if !matchEvent(row, f) || (!row.MatterID.IsZero() && !s.visible(ctx, p, row.MatterID)) {
 			continue
 		}
 		out = append(out, OccupancyBlock{StartsAt: fmtTime(row.StartsAt), EndsAt: fmtTime(row.EndsAt)})
