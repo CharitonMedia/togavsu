@@ -5420,7 +5420,7 @@ def _modules(api: Contract) -> None:
             "context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects "
             "a linked provider module id (never an address); omit it to use the earliest link. "
             "Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31). "
-            "For processor.payment.v1, authorize takes ProcessorPaymentWrite and recover takes ProcessorPaymentRecover, with ProcessorPaymentResult (200 terminal; 202 pending). Both require consumer bearer payments:write and current payments:write approvals on both modules. A durable pending receipt precedes any provider attempt; replay recovers without authorizing twice. A changed authorize body for an existing intent conflicts. No core matter/contact/payment is written; only approved permits intake continuation. "
+            "For processor.payment.v1, authorize takes ProcessorPaymentWrite and recover takes ProcessorPaymentRecover, with ProcessorPaymentResult (200 terminal; 202 pending). Both require consumer bearer payments:write and current payments:write approvals on both modules. A durable pending receipt precedes any provider attempt; replay recovers without authorizing twice. A changed authorize body for an existing intent conflicts. On this contract, intent_id owns durable idempotency; Idempotency-Key retains its length validation but does not cache HTTP responses. Every repeat rechecks current scopes and links and reads the current recovered result. No core matter/contact/payment is written; only approved permits intake continuation. "
             + MODULE_SENDER_DESCRIPTION
         ),
         tag="Modules",

@@ -256,6 +256,9 @@ Processor authorize/recover use `callModuleContract` on REST/MCP, conditional
 and admin-linked providers declaring operating payment processing. Durable
 receipts bind consumer, provider, amount, destination and original request digest;
 pending/uncertain attempts only recover and terminal results replay indefinitely.
+This contract uses `intent_id` for durable idempotency. `Idempotency-Key` retains
+its length limit but does not memoize the HTTP response: every repeat validates
+current scopes and links and reads the current recovered result.
 The core stores no hosted payment token and writes no matter/contact/payment in
 this pre-matter broker. The consumer must continue only after approval and use
 stable Idempotency-Key values for core record writes. The external processor

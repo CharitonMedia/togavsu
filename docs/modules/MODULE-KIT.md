@@ -815,7 +815,10 @@ import is needed. Its binding
 cover authorize/recover, pending/declined refusal before paid-intake matter writes,
 immutable intent data and recovery without a second authorization. The processor
 module itself is external. Both modules need the declared contract, approved link
-and payment scope. A pre-matter approval is not a core payment-write grant.
+and payment scope. `intent_id` defines durable financial idempotency;
+`Idempotency-Key` keeps its normal length bound but does not cache this contract
+response. Every retry rechecks current scopes and links and returns the current
+recovered intent result. A pre-matter approval is not a core payment-write grant.
 
 For synthetic processor acceptance, use `p := coretest.NewProcessor()` and
 `c.Serve(providerID, p.Handler)` before installing its signed manifest. Declare
