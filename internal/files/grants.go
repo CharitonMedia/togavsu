@@ -329,6 +329,8 @@ func (s *Service) ownUnassigned(ctx context.Context, p domain.Principal, f fileR
 
 // BulkItem is FileBulkItem.
 type BulkItem struct {
+	Status           string     `json:"status,omitempty"`
+	OnBehalfOfUserID domain.ID  `json:"on_behalf_of_user_id,omitempty"`
 	UploadID         domain.ID  `json:"upload_id"`
 	MatterID         *domain.ID `json:"matter_id"`
 	ContactID        *domain.ID `json:"contact_id"`
@@ -389,7 +391,7 @@ func (s *Service) PublishBatch(ctx context.Context, p domain.Principal, items []
 		}
 		for i, it := range items {
 			v, err := s.PublishUpload(ctx, p, Publish{UploadID: it.UploadID, MatterID: it.MatterID, ContactID: it.ContactID,
-				Name: it.Name, AttorneyOnly: it.AttorneyOnly, SharedWithClient: it.SharedWithClient, Library: it.Library, Origin: it.Origin})
+				Name: it.Name, AttorneyOnly: it.AttorneyOnly, SharedWithClient: it.SharedWithClient, Library: it.Library, Origin: it.Origin, Status: it.Status, OnBehalfOfUserID: it.OnBehalfOfUserID})
 			if err != nil {
 				return itemError(i, err)
 			}

@@ -15,15 +15,15 @@ the user id is written to `saved_by`/`made_by`, which reference `users`).
   `source`. This is `file.version_created`. Doc Tender queues its job from it; the
   integration lead also fans it out to module webhooks.
 - Timeline rows go to `core.events` in the same transaction as the write:
-  `file.version_created`, `file.updated`, `file.downloaded` (client downloads have
+  `file.version_created`, `file.updated`, `file.trashed`, `file.downloaded` (client downloads have
   `actor_kind = client` and `client_visible = 1` for the highlight), `file.purged`.
   `client_visible` is 1 for a client's own action, or for a file that is shared with the
   client and not attorney-only; an attorney-only file's events are never client-visible.
-- The OpenAPI contract names more events than these: `file.created`, `file.trashed` (today
-  `file.updated`), `file.linked`, `file.quarantine_changed`, `file_upload.*`, `folder.*`,
+- The OpenAPI contract names more events than these: `file.linked`, `file.quarantine_changed`, `file_upload.*`, `folder.*`,
   `storage_backend.*` and `storage_move.*`. They are pending, listed per operation in
   `events_test.go` (`TestFilesEventsFollowTheContract`), and proposed to the integration
   lead as a shared change: write them here, or narrow the contract.
+- Trashing emits `file.trashed` beside the existing `file.updated` in the same transaction. A repeated trash emits neither again. The normal event pump derives `files:read` from the published contract and delivers through the signed `core` sender path.
 - A file's history (`GET /api/v1/files/{id}/history`) shows a caller without attorney
   access nothing recorded while the file was attorney-only and no change of the flag, and
   blanks the old value of each field's first change after such a stretch.
@@ -128,3 +128,20 @@ from the trash deletes every copy of its objects: the current one, any old copy 
 kept, and any copy a stopped move left on its target. The supervisor
 encrypts the archive and restores the database; wiring it to these two calls is
 pending (PONYTAIL-DEBT platform ceiling 13).
+
+## Background draft publication (core update 2f)
+
+`Publish` and `BulkItem` accept optional `Status` and `OnBehalfOfUserID`. Status is
+validated against draft, final, executed, filed and received; omission retains the
+existing origin default. Only a module may name an author. `PracticeDirectory` resolves
+the current user, and the file service requires an active staff, attorney or admin
+with access to the target matter. The named user is stored in the immutable first
+version's `saved_by` and the file's `created_by`. Authorization still uses the caller,
+so an author inside a matter wall never supplies access to a service outside it. The
+module id stays the file source; audit and timeline rows still identify the module
+service caller. All bulk items share the existing transaction and rollback behavior.
+
+Under the approved `files:write` scope a module service may mark status on its own
+published files. For files from another source, the existing CORE-25 path remains:
+only that signature module's signed fee-agreement copy can be marked executed. Both
+paths retain the service's matter-wall and attorney-only checks.

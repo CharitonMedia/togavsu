@@ -49,3 +49,8 @@ func (d PracticeDirectory) UserContact(ctx context.Context, user domain.ID) (dom
 	}
 	return u.ContactID, nil
 }
+
+// PublicationUser resolves current user roles and activity for publication authorship.
+func (d PracticeDirectory) PublicationUser(ctx context.Context, user domain.ID) (domain.User, error) {
+	return d.Store.User(ctx, user)
+}

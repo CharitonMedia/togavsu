@@ -21,6 +21,7 @@ var emittedEvents = map[string][]string{
 	"renameFile":                {"file.updated"},
 	"moveFile":                  {"file.updated"},
 	"markFileStatus":            {"file.updated"},
+	"trashFile":                 {"file.trashed"},
 	"restoreFile":               {"file.updated"},
 	"purgeFile":                 {"file.purged"},
 	"addFileVersion":            {"file.version_created"},
@@ -41,7 +42,6 @@ var offContractEvents = map[string][]string{
 // "Proposed shared changes" asks whether to write these names here or narrow the
 // contract. Until then they are disclosed, not silently missing.
 var pendingEvents = map[string][]string{
-	"trashFile":             {"file.trashed"},
 	"createFileLink":        {"file.linked"},
 	"quarantineFileVersion": {"file.quarantine_changed"},
 	"createFileUpload":      {"file_upload.created"},

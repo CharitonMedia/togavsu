@@ -18,6 +18,9 @@ import (
 // NewFile describes a file an in-core producer (upload publish, the editor, Doc
 // Tender, the drop folder, a module through the API) adds with its first version.
 type NewFile struct {
+	// author and status are validated publication metadata; they never change access or the audit caller.
+	author           domain.ID
+	status           string
 	Name             string
 	MatterID         domain.ID
 	ContactID        domain.ID
@@ -273,6 +276,9 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 		return FileView{}, err
 	}
 	by := actor(p, domain.SystemUserID)
+	if nf.author != "" {
+		by = nf.author
+	}
 	fm, err := s.meta(by)
 	if err != nil {
 		return FileView{}, err
@@ -285,8 +291,8 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 	if err != nil {
 		return FileView{}, err
 	}
-	status := ""
-	if nf.Origin == "received" {
+	status := nf.status
+	if status == "" && nf.Origin == "received" {
 		status = "received"
 	}
 	f := fileRow{File: domain.File{
@@ -621,6 +627,11 @@ func (s *Service) change(ctx context.Context, p domain.Principal, id domain.ID, 
 		if err := s.event(ctx, p, f, "file.updated", fmt.Sprintf("Changed %s of %s", field, f.Name)); err != nil {
 			return err
 		}
+		if field == "trashed_at" && old == "" && nv != "" {
+			if err := s.event(ctx, p, f, "file.trashed", "Trashed "+f.Name); err != nil {
+				return err
+			}
+		}
 		out = f
 		return nil
 	})
@@ -668,8 +679,8 @@ func (s *Service) MoveToFolder(ctx context.Context, p domain.Principal, id domai
 }
 
 // MarkStatus is Mark draft, final, executed or filed. A model never calls it.
-// A module service call (CORE-25) may only set executed on the signed fee-agreement file
-// for that module.
+// A module service can mark its own published files. CORE-25 also permits a
+// signature module to mark its signed fee-agreement copy executed.
 func (s *Service) MarkStatus(ctx context.Context, p domain.Principal, id domain.ID, status string) (FileView, error) {
 	switch status {
 	case "draft", "final", "executed", "filed", "received":
@@ -677,7 +688,13 @@ func (s *Service) MarkStatus(ctx context.Context, p domain.Principal, id domain.
 		return FileView{}, domain.Invalid("status", "status is draft, final, executed, filed or received")
 	}
 	if p.Source == domain.SourceService && p.ModuleID != "" && p.UserID.IsZero() {
-		return s.signatureMarkExecuted(ctx, p, id, status)
+		f, err := s.loadFile(ctx, id)
+		if err != nil {
+			return FileView{}, err
+		}
+		if f.Source != p.ModuleID {
+			return s.signatureMarkExecuted(ctx, p, id, status)
+		}
 	}
 	return s.change(ctx, p, id, "status", func(f *fileRow) (string, string, error) {
 		old := f.Status
