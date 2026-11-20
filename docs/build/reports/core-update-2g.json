@@ -1,118 +1,233 @@
 {
   "task_id": "core-update-2g",
   "status": "pending",
-  "tested_revision": "2fecd428a826e7710aa238620ca956f017f418f8",
+  "tested_revision": "4d6b57cee1c99231cd5644ac90a8b5bcbe9c035a",
   "tests": [
     {
       "name": "focused-A",
-      "command": "python3 /out/run_check.py focused-A A go test -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCoreUpdate2G|TestCoreUpdate2E|TestFrameCSRF|TestCoreEventRegistry|TestCoreUpdate2FProxyRestoresFormAfterCSRF|TestBindingEventUUID|TestCoreUpdate2FAccepts|TestModuleClean)'",
-      "exit_code": 0
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py focused-A A go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/billing ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCoreUpdate2G|TestCoreUpdate2E|TestFrameCSRF|TestCoreEventRegistry|TestCoreUpdate2FProxyRestoresFormAfterCSRF|TestBindingEventUUID|TestCoreUpdate2FAccepts|TestModuleClean)'",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 30,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "focused-B",
-      "command": "python3 /out/run_check.py focused-B B go test -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCoreUpdate2G|TestCoreUpdate2E|TestFrameCSRF|TestCoreEventRegistry|TestCoreUpdate2FProxyRestoresFormAfterCSRF|TestBindingEventUUID|TestCoreUpdate2FAccepts|TestModuleClean)'",
-      "exit_code": 0
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py focused-B B go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/billing ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCoreUpdate2G|TestCoreUpdate2E|TestFrameCSRF|TestCoreEventRegistry|TestCoreUpdate2FProxyRestoresFormAfterCSRF|TestBindingEventUUID|TestCoreUpdate2FAccepts|TestModuleClean)'",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 30,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
-      "name": "full-A",
-      "command": "python3 /out/run_check.py full-A A go test -race -count=1 -p 1 -json ./...",
-      "exit_code": 1
+      "name": "batch1-A",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py batch1-A A go test -timeout 0 -race -count=1 -p 1 -json ./internal/core -run '^TestCU207Batch1ModulesUnchanged$'",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 1,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
-      "name": "full-B",
-      "command": "python3 /out/run_check.py full-B B go test -race -count=1 -p 1 -json ./...",
-      "exit_code": 1
+      "name": "full-race-A",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py full-race-A A go test -timeout 0 -race -count=1 -p 1 -json ./...",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 1283,
+        "fail": 3,
+        "skip": 42
+      }
+    },
+    {
+      "name": "full-race-B",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py full-race-B B go test -timeout 0 -race -count=1 -p 1 -json ./...",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 1283,
+        "fail": 3,
+        "skip": 42
+      }
     },
     {
       "name": "full-standard-A",
-      "command": "python3 /out/run_check.py full-standard-A A go test -count=1 -p 1 -json ./...",
-      "exit_code": 1
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py full-standard-A A go test -timeout 0 -count=1 -p 1 -json ./...",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 1283,
+        "fail": 3,
+        "skip": 42
+      }
     },
     {
       "name": "full-standard-B",
-      "command": "python3 /out/run_check.py full-standard-B B go test -count=1 -p 1 -json ./...",
-      "exit_code": 1
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py full-standard-B B go test -timeout 0 -count=1 -p 1 -json ./...",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 1283,
+        "fail": 3,
+        "skip": 42
+      }
     },
     {
       "name": "acceptance-cases",
-      "command": "python3 /out/run_check.py acceptance-cases A go test -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
-      "exit_code": 0
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py acceptance-cases A go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 37,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "vet",
-      "command": "python3 /out/run_check.py vet A go vet ./...",
-      "exit_code": 0
+      "command": "python3 scripts/ci/core2g-check.py vet A go vet ./...",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "api-contract",
-      "command": "python3 /out/run_check.py api-contract A sh api/check.sh",
-      "exit_code": 0
+      "command": "PATH=/out/check-venv/bin:$PATH python3 scripts/ci/core2g-check.py api-contract A sh api/check.sh",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "api-runtime",
+      "command": "TOGAVSU_API_VENV=/out/api-venv python3 scripts/ci/core2g-check.py api-runtime A sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "generated",
-      "command": "python3 /out/run_check.py generated A python3 /out/check_generated.py",
-      "exit_code": 0
+      "command": "PATH=/out/check-venv/bin:$PATH python3 scripts/ci/core2g-check.py generated A python3 scripts/ci/core2g-generated.py",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "qa",
-      "command": "python3 /out/run_check.py qa A sh scripts/ci/test-qa.sh",
-      "exit_code": 1
+      "command": "PATH=/out/check-venv/bin:$PATH python3 scripts/ci/core2g-check.py qa A sh scripts/ci/test-qa.sh",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "qa-unittest",
-      "command": "python3 /out/run_check.py qa-unittest A python3 -m unittest discover -s tests -p 'test_*.py'",
-      "exit_code": 1
+      "command": "PATH=/out/check-venv/bin:$PATH python3 scripts/ci/core2g-check.py qa-unittest A python3 -m unittest discover -s tests -p 'test_*.py'",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "qa-integrity",
-      "command": "python3 /out/run_check.py qa-integrity A python3 -m tests.harness",
-      "exit_code": 0
+      "command": "PATH=/out/check-venv/bin:$PATH python3 scripts/ci/core2g-check.py qa-integrity A python3 -m tests.harness",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "setup",
-      "command": "python3 /out/run_check.py setup A python3 scripts/check_setup.py",
-      "exit_code": 0
+      "command": "python3 scripts/ci/core2g-check.py setup A python3 scripts/check_setup.py",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "compose-static",
-      "command": "python3 /out/run_check.py compose-static A python3 scripts/ci/check-compose.py",
-      "exit_code": 0
+      "command": "python3 scripts/ci/core2g-check.py compose-static A python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "debt",
-      "command": "python3 /out/run_check.py debt A python3 scripts/release/check_debt.py",
-      "exit_code": 0
+      "command": "python3 scripts/ci/core2g-check.py debt A python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "formatting",
-      "command": "python3 /out/run_check.py formatting A sh -c 'test -z \"$(gofmt -l cmd internal pkg api web examples)\" && git diff --check'",
-      "exit_code": 0
+      "command": "python3 scripts/ci/core2g-check.py formatting A sh -c 'test -z \"$(gofmt -l cmd internal pkg api web examples)\" && git diff --check'",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "pending-gate",
-      "command": "python3 /out/run_check.py pending-gate A sh scripts/ci/pending-gate.sh",
-      "exit_code": 0
+      "command": "python3 scripts/ci/core2g-check.py pending-gate A sh scripts/ci/pending-gate.sh",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     },
     {
       "name": "backup-integration",
-      "command": "python3 /out/run_check.py backup-integration A sh scripts/ci/test-backup-integration.sh",
-      "exit_code": 0
+      "command": "python3 scripts/ci/core2g-check.py backup-integration A sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
     }
   ],
   "passed_acceptance_ids": [
     "CU2-02",
     "CU2-03",
-    "CU2-05"
+    "CU2-05",
+    "CU2-07"
   ],
   "pending_acceptance_ids": [
-    "CU2-01",
-    "CU2-07"
+    "CU2-01"
   ],
   "phase_cases": [
     {
       "id": "api-mcp-scopes",
       "status": "pending",
-      "command": "python3 /out/run_check.py full-standard-A A go test -count=1 -p 1 -json ./...",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py full-race-A A go test -timeout 0 -race -count=1 -p 1 -json ./...",
       "exit_code": 1,
       "acceptance_ids": [
         "CU2-01"
@@ -121,7 +236,7 @@
     {
       "id": "service-call-walls",
       "status": "pass",
-      "command": "python3 /out/run_check.py acceptance-cases A go test -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py acceptance-cases A go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
       "exit_code": 0,
       "acceptance_ids": [
         "CU2-02"
@@ -130,7 +245,7 @@
     {
       "id": "contracts",
       "status": "pass",
-      "command": "python3 /out/run_check.py acceptance-cases A go test -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py acceptance-cases A go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
       "exit_code": 0,
       "acceptance_ids": [
         "CU2-03"
@@ -139,7 +254,7 @@
     {
       "id": "gap-rows-closed",
       "status": "pass",
-      "command": "python3 /out/run_check.py acceptance-cases A go test -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py acceptance-cases A go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
       "exit_code": 0,
       "acceptance_ids": [
         "CU2-05"
@@ -147,12 +262,97 @@
     },
     {
       "id": "batch1-unchanged",
-      "status": "pending",
-      "command": "python3 /out/run_check.py full-standard-A A go test -count=1 -p 1 -json ./...",
-      "exit_code": 1,
+      "status": "pass",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py batch1-A A go test -timeout 0 -race -count=1 -p 1 -json ./internal/core -run '^TestCU207Batch1ModulesUnchanged$'",
+      "exit_code": 0,
       "acceptance_ids": [
         "CU2-07"
       ]
     }
+  ],
+  "batch1_module_sources": [
+    {
+      "repository": "https://github.com/CharitonMedia/togavsu-client-portal",
+      "branch": "main",
+      "revision": "57b909d0e93ccc5f44cecc935c86e5b435ff94d2",
+      "unchanged": true
+    },
+    {
+      "repository": "https://github.com/CharitonMedia/togavsu-documents",
+      "branch": "main",
+      "revision": "fc4c7661cc089d5f662a38ce85045f4c2b4ad719",
+      "unchanged": true
+    },
+    {
+      "repository": "https://github.com/CharitonMedia/togavsu-email",
+      "branch": "main",
+      "revision": "31e57e9463c0f317f6d3d682b68293b0386b57c9",
+      "unchanged": true
+    },
+    {
+      "repository": "https://github.com/CharitonMedia/togavsu-lawpay-docuseal",
+      "branch": "main",
+      "revision": "915ded5720706c94e59a240a92c3cfff6f05f01a",
+      "unchanged": true
+    },
+    {
+      "repository": "https://github.com/CharitonMedia/togavsu-quickbooks",
+      "branch": "main",
+      "revision": "9269820406a2394ed4255e4d9d04ab306eb1869d",
+      "unchanged": true
+    }
+  ],
+  "baseline_regressions": [
+    {
+      "name": "baseline-go",
+      "revision": "e89ed20b7bc4b1ccf2cb2e308b989c8485a870b5",
+      "working_directory": "/out/core2g-baseline",
+      "command": "go test -timeout 0 -count=1 -p 1 -json ./internal/core ./internal/billing ./internal/modules ./pkg/modulekit/coretest -run '^(TestCoreUpdate2GModuleMilestoneAppends|TestCoreUpdate2GPaymentEventMissingOrForbidden|TestCoreUpdate2GBogusPaymentEventDoesNotStall|TestCoreUpdate2GPumpVisibilityErrorDoesNotStall|TestCoreUpdate2GVisibilityErrorsDropDelivery|TestCoreUpdate2GTargetedCoreNamespace)$'",
+      "exit_code": 1,
+      "expected_exit_code": 1,
+      "result": "Expected behavioral regression failure with final regression tests overlaid; see PR reproduction steps."
+    },
+    {
+      "name": "baseline-scanner",
+      "revision": "e89ed20b7bc4b1ccf2cb2e308b989c8485a870b5",
+      "working_directory": "/out/core2g-baseline",
+      "command": "PYTHONPATH=api /out/check-venv/bin/python3 -m unittest api.tests.test_core2g",
+      "exit_code": 1,
+      "expected_exit_code": 1,
+      "result": "Expected behavioral regression failure with final regression tests overlaid; see PR reproduction steps."
+    }
+  ],
+  "superseded_validation_attempts": [
+    {
+      "name": "full-standard-A-overlap",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py full-standard-A A go test -timeout 0 -count=1 -p 1 -json ./...",
+      "exit_code": 241,
+      "go_process_exit_code": -15,
+      "top_level_tests": {
+        "pass": 179,
+        "fail": 1,
+        "skip": 0
+      },
+      "result": "Interrupted after collision with the concurrent race run on deterministic test database names; superseded by the completed standard matrix."
+    },
+    {
+      "name": "full-standard-B-overlap",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py full-standard-B B go test -timeout 0 -count=1 -p 1 -json ./...",
+      "exit_code": 241,
+      "go_process_exit_code": -15,
+      "top_level_tests": {
+        "pass": 188,
+        "fail": 1,
+        "skip": 0
+      },
+      "result": "Interrupted after collision with the concurrent race run on deterministic test database names; superseded by the completed standard matrix."
+    }
+  ],
+  "limitations": [
+    "CU2-01 remains pending: complete full-product tests still have equipped-host failures and optional fixture skips; assigned focused/acceptance and REST/MCP/scope checks passed.",
+    "Tesseract is absent: QA prerequisite check exits 1 and Python discovery runs 86 tests with one OCR sampling failure. No OCR check is disabled.",
+    "Docker/image/Compose/smoke checks were not run locally. Existing Go Docker/SSH tests execute unchanged and their actual failures/skips remain recorded.",
+    "Real sshd, sudo, runner-account prerequisites, pinned editor/browser assets, live S3 and optional corpus/performance fixtures remain equipped-host acceptance work.",
+    "No passing independent review, visual browser QC, Docker Desktop clean install, or release acceptance is claimed."
   ]
 }
