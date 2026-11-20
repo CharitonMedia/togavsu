@@ -43,3 +43,24 @@ Omitting those methods does not stop raw SQL or the table owner. Version 1 has n
 | `ai_call_log` | modules | AC-031 | Reject UPDATE and DELETE of a call-log row. Integration acceptance must not treat the interface as that proof. |
 
 Reference seed fills settings defaults and the 17 Doc Tender categories. `db.ApplySynthetic` fills every section 5 table with obvious fake rows for tests. Production first-run does not call it. `db.ReadSetup` is complete only when the firm name, an active admin, and that admin's confirmed TOTP are stored.
+
+## Module contract delivery identity
+
+Contract events carry the authenticated pushing module in `X-Togavsu-Sender`,
+loaded from `core.module_deliveries.created_by`, never from provider JSON or
+current links. A queued retry keeps the original sender after unlinking. Contract
+calls carry the authenticated caller's module id. Core events, direct grants and
+system mail carry `core` (historical empty delivery `created_by` means core).
+The JSON envelope and its id remain unchanged; sender is a header field.
+
+The unchanged `X-Togavsu-Signature: t=<unix>,v1=<hex>` signs `<unix>.<raw body>`.
+`X-Togavsu-Sender-Signature: t=<unix>,v2=<hex>` additionally signs
+`v2.<unix>.<sender>.<raw body>`. Both are lowercase hex HMAC-SHA256 with the
+recipient's nonempty webhook secret. All timestamps, including
+`X-Togavsu-Timestamp`, use identical canonical decimal Unix seconds. Sender is
+`core` or the module slug; dots are forbidden. Compare in constant time and
+accept within five minutes in either direction. `modulekit.VerifyWebhookSender`
+requires both signatures and returns the verified sender; existing
+`VerifyWebhookHeaders` callers retain their 2d behavior. Deduplicate ids durably.
+See [module API sender binding](../api/modules.md#core-update-2e-authenticated-delivery-sender)
+for the complete wire format and kit/coretest helpers.

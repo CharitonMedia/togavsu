@@ -120,3 +120,29 @@ Modules subscribe in their manifest. Delivery is the webhook `moduleEvent`. Scop
 Email, Zoom, drop-folder, and importer modules publish files with a core-issued background grant after the viewer context expires. The grant is `files:write` for one matter and the upload sequence through `publishFile` or `bulkFile`. It is not an admin grant. An expired grant or another matter creates no file and emits no event.
 
 `applyTrustToInvoice` and `applyFlatFee` name `client_id` and `trust_account_id`. The ledger entry debits that account for that client. Another account on the same matter is left alone.
+
+## Module delivery sender binding
+
+Every core-to-module delivery adds `X-Togavsu-Sender`: the pushing provider's id
+for contract events, the calling consumer's id for contract calls, and `core` for
+core events, grants and routed system mail. Queued identity comes from
+`module_deliveries.created_by` at push time (historical empty values mean core),
+never JSON or current links. Retries keep that identity after unlinking.
+
+The unchanged `X-Togavsu-Signature: t=<unix>,v1=<hex>` signs `<unix>.<raw body>`.
+The additional `X-Togavsu-Sender-Signature: t=<unix>,v2=<hex>` signs
+`v2.<unix>.<sender>.<raw body>`, including the literal `v2.` prefix. Both use
+lowercase hex HMAC-SHA256 with the recipient's nonempty webhook secret, exact
+raw body bytes and no appended newline. All timestamp positions, including
+`X-Togavsu-Timestamp`, contain identical canonical decimal Unix seconds. Sender
+matches `^[a-z0-9][a-z0-9-]{0,63}$` and cannot contain a dot. Keeping the v2 binding
+in a separate header preserves strict 2d verification unchanged.
+
+`modulekit.VerifyWebhookSender` requires both timestamped signatures and returns
+the authenticated sender only on success. It refuses missing/duplicate binding
+headers, legacy signatures without binding and tampering, uses constant-time
+comparison, and checks a five-minute window in either direction (a positive
+tolerance may only shorten it). Existing `VerifyWebhookHeaders` behavior stays
+unchanged and does not authenticate sender identity. Deduplicate event ids across
+retries; a retry has a fresh timestamp/signature. Sender identity grants no core
+record access. See [the complete format and kit helpers](modules.md#core-update-2e-authenticated-delivery-sender).

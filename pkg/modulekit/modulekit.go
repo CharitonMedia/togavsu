@@ -145,13 +145,15 @@ func KnownScope(scope string) bool { return identity.KnownScope(scope) }
 
 // CORE-32 public-page step tokens and CSRF helpers (also used by CORE-31 HMAC signing).
 const (
-	ContextHeader        = modules.ContextHeader
-	PublicStepHeader     = modules.PublicStepHeader
-	PublicCSRFCookie     = modules.PublicCSRFCookie
-	PublicCSRFHeader     = modules.PublicCSRFHeader
-	PublicCSRFPassHeader = modules.PublicCSRFPassHeader
-	SignatureHeader      = modules.SignatureHeader
-	TimestampHeader      = modules.TimestampHeader
+	ContextHeader         = modules.ContextHeader
+	PublicStepHeader      = modules.PublicStepHeader
+	PublicCSRFCookie      = modules.PublicCSRFCookie
+	PublicCSRFHeader      = modules.PublicCSRFHeader
+	PublicCSRFPassHeader  = modules.PublicCSRFPassHeader
+	SignatureHeader       = modules.SignatureHeader
+	TimestampHeader       = modules.TimestampHeader
+	SenderHeader          = modules.SenderHeader
+	SenderSignatureHeader = modules.SenderSignatureHeader
 )
 
 // StepToken is a verified public-page step token (CORE-32).
@@ -200,6 +202,23 @@ func SignWebhookHeaders(secret string, at time.Time, body []byte) http.Header {
 }
 func VerifyWebhookHeaders(secret string, header http.Header, body []byte, now time.Time, tolerance time.Duration) error {
 	return modules.VerifyWebhookHeaders(secret, header, body, now, tolerance)
+}
+
+// SignWebhookSenderHeaders preserves the v1 headers and adds sender and v2 binding
+// headers. It returns nil for an empty secret or invalid/reserved module sender id.
+func SignWebhookSenderHeaders(secret string, at time.Time, sender string, body []byte) http.Header {
+	return modules.SignWebhookSenderHeaders(secret, at, sender, body)
+}
+
+// SignCoreWebhookHeaders builds synthetic core-emitted deliveries for module tests.
+func SignCoreWebhookHeaders(secret string, at time.Time, body []byte) http.Header {
+	return modules.SignCoreWebhookHeaders(secret, at, body)
+}
+
+// VerifyWebhookSender requires the timestamped v1 signature and v2 sender binding.
+// It returns the verified module id (or "core"); missing/invalid binding is refused.
+func VerifyWebhookSender(secret string, headers http.Header, body []byte, now time.Time, tolerance time.Duration) (string, error) {
+	return modules.VerifyWebhookSender(secret, headers, body, now, tolerance)
 }
 
 // Install refusal codes the checks return in a *domain.APIError's Code (see Code).

@@ -1,0 +1,188 @@
+{
+  "task_id": "core-update-2e",
+  "status": "pending",
+  "base_revision": "2ffe2d3c1eb9e19db013f4f1d38206a135a49817",
+  "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419",
+  "full_suite_launch_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419",
+  "revision_note": "All final checks use this committed code revision; only this report changes afterward. Preliminary runs started before the final marketplace lookup fix, hit the default 10-minute package limit and used mixed build inputs; they are superseded and excluded from final evidence. Final full commands use the existing 25-minute limit from scripts/ci/test-core.sh. No test or timeout policy changed.",
+  "report_state_reason": "Assigned sender behavior and the P1 reserved-core identity fix pass unit and real Postgres acceptance. Both final full race commands fail only on three unchanged supervisor host prerequisites. Docker acceptance and the independent exact-base/head checkpoint remain pending.",
+  "prd_sections": [
+    "core PRD 9",
+    "CORE-CHANGES-2 4.1",
+    "CORE-CHANGES-2 4.2 CORE-31/CORE-36",
+    "CORE-CHANGES-2 18.3"
+  ],
+  "acceptance_mapping": {
+    "CU2-03": "Contract sender provenance, authenticated delivery and unlink/retry extension",
+    "CU2-07": "Unchanged batch 1 modules exercised by the existing full-suite compatibility test"
+  },
+  "tests": [
+    {
+      "name": "Sender and reserved-id acceptance on server A",
+      "command": "TMPDIR=/out/fix1-tmp-a go test -race -count=1 -v ./internal/marketplace ./marketplace ./pkg/modulekit ./pkg/modulekit/coretest ./internal/core -run 'TestReservedModuleID|TestPublishRefusesReservedModuleID|TestWebhookSender|TestReadDeliveryRequiresSender|TestCoreUpdate2ESender|TestCoreUpdate2EReservedSender|TestSystemMailSender|TestTimestampedWebhookAndProviderHelpers'",
+      "exit_code": 0,
+      "result": "Eight top-level tests pass without skips or race findings: manifest/catalog refusal, both install sources, reserved contract links, module signer refusal, spoofing, unlink/retry provenance, core emissions, system mail and unchanged v1 verification.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Sender and reserved-id acceptance on server B",
+      "command": "TMPDIR=/out/fix1-tmp-b TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" go test -race -count=1 -v ./internal/marketplace ./marketplace ./pkg/modulekit ./pkg/modulekit/coretest ./internal/core -run 'TestReservedModuleID|TestPublishRefusesReservedModuleID|TestWebhookSender|TestReadDeliveryRequiresSender|TestCoreUpdate2ESender|TestCoreUpdate2EReservedSender|TestSystemMailSender|TestTimestampedWebhookAndProviderHelpers'",
+      "exit_code": 0,
+      "result": "Eight top-level tests pass without skips or race findings: manifest/catalog refusal, both install sources, reserved contract links, module signer refusal, spoofing, unlink/retry provenance, core emissions, system mail and unchanged v1 verification.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Full race suite on server A",
+      "command": "PATH=/out/tools:$PATH TMPDIR=/out/fix1-tmp-a TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 2 -timeout 25m ./...",
+      "exit_code": 1,
+      "result": "34 package groups pass, including core, modules, modulekit and coretest. Only supervisor fails: missing sudo/Docker facilities, no passwd entry for UID 1000 during ssh-keygen, and unavailable real sshd. No race findings. Both database variables are swapped for B, preserving distinct cross-cluster targets.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Full race suite on server B",
+      "command": "primary_test_database_url=\"$TOGAVSU_TEST_DATABASE_URL\"\nsecondary_test_database_url=\"$TOGAVSU_TEST_DATABASE_URL_B\"\nPATH=/out/tools:$PATH TMPDIR=/out/fix1-tmp-b TOGAVSU_TEST_DATABASE_URL=\"$secondary_test_database_url\" TOGAVSU_TEST_DATABASE_URL_B=\"$primary_test_database_url\" TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -p 4 -timeout 25m ./...",
+      "exit_code": 1,
+      "result": "34 package groups pass, including core, modules, modulekit and coretest. Only supervisor fails: missing sudo/Docker facilities, no passwd entry for UID 1000 during ssh-keygen, and unavailable real sshd. No race findings. Both database variables are swapped for B, preserving distinct cross-cluster targets.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Unchanged-module compatibility",
+      "command": "TMPDIR=/out/fix1-tmp-a TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -v ./internal/core -run '^TestCU207Batch1ModulesUnchanged$'",
+      "exit_code": 0,
+      "result": "Matter Clock and all five unchanged batch 1 modules install, exercise real routes and signed/forged events, and uninstall. Six signed-event subtests pass; no skips or race findings.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Go vet",
+      "command": "TMPDIR=/out/fix1-tmp-a go vet ./...",
+      "exit_code": 0,
+      "result": "All packages pass.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "API contracts and regeneration",
+      "command": "PATH=/out/fix1-venv/bin:$PATH sh api/check.sh",
+      "exit_code": 0,
+      "result": "131 tests, both OpenAPI validators, broken-reference rejection and unchanged regeneration pass.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Formatting and whitespace",
+      "command": "test -z \"$(gofmt -l cmd internal pkg api web examples)\" && git diff --check",
+      "exit_code": 0,
+      "result": "Pass.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Debt ledger",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "result": "111 markers and 69 ledger entries, unchanged.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Setup metadata",
+      "command": "python3 scripts/check_setup.py",
+      "exit_code": 0,
+      "result": "52 core and 23 batch 2 criteria indexed; metadata only. No core-update-2e task exists in this checkout; no plan/task files edited.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Compose static validation",
+      "command": "python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "result": "Pass; static validation only.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Pending gate",
+      "command": "sh scripts/ci/pending-gate.sh",
+      "exit_code": 0,
+      "result": "Existing AC-001/016/018 remain pending.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    },
+    {
+      "name": "Protected paths and file modes",
+      "command": "Inspect every candidate commit and aggregate diff against 2ffe2d3c1eb9e19db013f4f1d38206a135a49817",
+      "exit_code": 0,
+      "result": "No prohibited control-plane or .github edits, added symlinks, submodules, dependencies or migrations. Only this report changes under docs/build/.",
+      "tested_revision": "1bd8ec57912c0e47a12cbf84dc0a1d945821b419"
+    }
+  ],
+  "passed_acceptance_ids": [
+    "CU2-03",
+    "CU2-07"
+  ],
+  "pending_acceptance_ids": [],
+  "assignment_criteria": [
+    {
+      "id": "sender-provenance",
+      "status": "pass",
+      "evidence": "Production Deliver selects module_deliveries.created_by. CallContract signs the authenticated consumer id. Empty core event/grant provenance and routed system mail use the dedicated core signer. Payload identity never determines sender."
+    },
+    {
+      "id": "signed-sender-and-2d-compatibility",
+      "status": "pass",
+      "evidence": "Separate X-Togavsu-Sender-Signature t=,v2= HMAC over v2.<unix>.<sender>.<raw body>; original timestamped v1 header stays unchanged. Both strict sender and legacy verification pass on each actual delivery. Tampering, missing binding, duplicate headers, timestamp mismatch/expiry and empty/wrong keys fail."
+    },
+    {
+      "id": "modulekit-and-coretest",
+      "status": "pass",
+      "evidence": "VerifyWebhookSender returns authenticated identity. SignWebhookSenderHeaders refuses invalid/reserved module identities; SignCoreWebhookHeaders creates core fixtures. coretest.ReadDelivery and DeliverEvents exercise the production queue and signers."
+    },
+    {
+      "id": "retry-after-unlink",
+      "status": "pass",
+      "evidence": "Two providers linked; Zoom pushes payload claiming Google; duplicate push from Google preserves first pusher. First delivery refused, Zoom unlinked, persisted retry due advanced in test only. Retried sender remains Zoom and body identical. A new push after unlink fails."
+    },
+    {
+      "id": "documentation",
+      "status": "pass",
+      "evidence": "MODULE-KIT, module API, API conventions, shared contract docs, generated OpenAPI and CORE-UPDATE-2E describe sender header fields, exact wire framing, compatibility and verification. API contract tests validate required sender headers and unchanged v1 schema."
+    },
+    {
+      "id": "reserved-core-identity",
+      "status": "pass",
+      "evidence": "core is reserved by shared id validation, both manifest readers, local/marketplace installation, both catalog upload forms, and consumer/provider contract links. Module signing refuses core; a queued nonempty created_by=core row is refused by the real pump and remains pending with a reserved-sender error. Core event/grant and system-mail deliveries still verify as core. MODULE-KIT and manifest/catalog docs explain the reservation."
+    }
+  ],
+  "phase_cases": [
+    {
+      "id": "sender-provenance-and-retry",
+      "status": "pass",
+      "command": "TMPDIR=/out/fix1-tmp-a go test -race -count=1 -v ./internal/marketplace ./marketplace ./pkg/modulekit ./pkg/modulekit/coretest ./internal/core -run 'TestReservedModuleID|TestPublishRefusesReservedModuleID|TestWebhookSender|TestReadDeliveryRequiresSender|TestCoreUpdate2ESender|TestCoreUpdate2EReservedSender|TestSystemMailSender|TestTimestampedWebhookAndProviderHelpers'",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-03"
+      ]
+    },
+    {
+      "id": "batch1-unchanged",
+      "status": "pass",
+      "command": "TMPDIR=/out/fix1-tmp-a TOGAVSU_BATCH1_MODS=/out/batch1-compat go test -race -count=1 -v ./internal/core -run '^TestCU207Batch1ModulesUnchanged$'",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-07"
+      ]
+    }
+  ],
+  "pending_checks": [
+    "Both full race commands remain failed locally: supervisor requires sudo/Docker facilities, a passwd entry for the container UID, and real sshd. Rerun on the equipped CI host; do not treat local full commands as passes.",
+    "Docker image builds, supervisor image, Compose execution and smoke/clean-install acceptance were not run locally because Docker is unavailable; CI must run them.",
+    "Fresh independent checkpoint against exact base and final head; the implementation worker does not approve itself."
+  ],
+  "simplification": {
+    "result": "Reuse the existing queue, signature framing, HMAC and manifest checks. Centralize the core reservation in shared marketplace validation, keep a separate core-only signing entry point, and reject nonempty reserved queue provenance. No dependency, migration, shortcut or new debt.",
+    "implementation_net_lines": 934,
+    "scope": "Implementation, tests, docs and regenerated inventory, excluding this report.",
+    "debt_entries": 69,
+    "ponytail_markers": 111,
+    "fix_pass_net_lines": 218
+  },
+  "proposed_ci_change": "None; run the existing Docker-enabled checks on the candidate.",
+  "fix_pass": {
+    "number": 1,
+    "finding": "P1: a module id of core collides with core delivery identity",
+    "resolution": "Reserved id validation and separate module/core signing paths; no self-issued independent review."
+  }
+}

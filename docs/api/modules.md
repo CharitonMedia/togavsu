@@ -1,5 +1,10 @@
 # Module API
 
+The manifest `id` must identify a module. The id `core` is reserved for core's
+authenticated delivery sender and cannot be installed from a local file or the
+marketplace, published to the catalog, or used as a contract consumer/provider.
+These paths return a validation error explaining that the id is reserved.
+
 Public module API additions from `togavsu-initial-modules-prd.md` §4 and `docs/modules/CORE-CHANGES.md` (CORE-01–CORE-29). Operation shapes, scopes and `module_delegation` live in `api/openapi/v1/openapi.json` and `api/openapi/v1/mcp-tools.json`; MCP parity is described in [mcp.md](mcp.md). Conventions for walls, grants and service principals are in [conventions.md](conventions.md).
 
 ## Service principals (CORE-01)
@@ -136,7 +141,9 @@ namespace, so providers cannot forge core events. `payload` is arbitrary JSON. T
 preserves the envelope's values, targets only the named enabled consumer's approved
 link to the provider, and deduplicates by recipient/event id. An unlinked target fails.
 The core signs delivery with the recipient's secret and timestamped HMAC; verify it with
-`modulekit.VerifyWebhookHeaders`. No contract payload grants access to core records.
+`modulekit.VerifyWebhookSender` to authenticate the pushing provider as well as the body.
+The sender header is recorded at push time and survives unlinking and retries; a
+payload naming another provider cannot change it. No contract payload grants access to core records.
 
 Contract calls carry a freshly signed provider-audience context when the consumer sent
 a viewer context. The provider verifies/delegates it with its own bearer; live links,
@@ -144,7 +151,7 @@ roles, matter walls and both modules' scopes remain binding. Provider addresses 
 reach consumers. `modules.contract_call_max_bytes` bounds requests and responses;
 oversized provider responses return HTTP 413, code `too_large`.
 
-These definitions document the core surface at core-update-2d. The assignment referred
+These definitions document the core surface through core-update-2e. The assignment referred
 to `docs/contracts/`, but that directory was absent from its base revision. Integration
 must compare any separately held provider/consumer contract definitions before claiming
 compatibility with them.
@@ -162,3 +169,61 @@ must match the signed timestamp. Both use the same five-minute window and consta
 HMAC comparison. The compatibility `sha256=` form has an unsigned optional timestamp and
 cannot provide timestamp replay protection. Durably deduplicate event ids for both forms,
 including retries and repetitions within the window.
+
+## Core update 2e: authenticated delivery sender
+
+Every core-to-module event, contract call and routed system mail now carries the
+header field `X-Togavsu-Sender`: the pushing provider's module id for contract
+events, the calling consumer's module id for contract calls, and `core` for
+core-emitted events (including grants) and system mail. This is separate from
+payload fields: `module` in a core event still names the recipient. Payload
+`sender` or `provider_id` values are untrusted claims.
+
+The core reads queued senders from `core.module_deliveries.created_by`, recorded
+when the push was accepted. Historical empty values mean `core`. Retries retain
+that identity and body even after provider links change. An unlink prevents new
+pushes/calls; it does not reattribute a queued delivery to another provider.
+
+The existing headers and exact v1 signature remain unchanged:
+
+```text
+X-Togavsu-Timestamp: <unix>
+X-Togavsu-Signature: t=<unix>,v1=<hex>
+X-Togavsu-Sender: <sender>
+X-Togavsu-Sender-Signature: t=<unix>,v2=<hex>
+```
+
+Both digests are lowercase hex HMAC-SHA256 keyed by the recipient module's
+nonempty webhook secret. Input bytes are UTF-8/ASCII prefixes followed by the
+exact raw body, without a trailing newline:
+
+- v1: `<unix>.<raw body>` (unchanged).
+- v2: `v2.<unix>.<sender>.<raw body>` (the literal `v2.` separates signature versions).
+
+`<unix>` is canonical decimal Unix seconds, identical in all three timestamp
+positions. `<sender>` is `core` or a module id matching
+`^[a-z0-9][a-z0-9-]{0,63}$`; it cannot contain a dot. The v2 signature lives in a
+separate header because the 2d verifier requires exactly `t=…,v1=…` in the
+original header. Modules pinned to 2d continue verifying that same delivery.
+
+New receivers use
+`sender, err := modulekit.VerifyWebhookSender(secret, request.Header, body, now, 0)`.
+It requires valid timestamped v1 and v2 signatures, compares MACs in constant time,
+and returns an identity only on success. Missing/duplicate sender or signature
+headers, legacy signatures without binding, changed identity/body/timestamps,
+empty secrets and expired signatures fail. Zero tolerance means five minutes in
+either direction; a positive tolerance can only shorten that window.
+`VerifyWebhookHeaders` keeps its existing behavior and does not authenticate
+sender identity. Do not use an unverified sender to select a provider, matter or
+record. Sender identity grants no access to core records. Deduplicate event ids
+durably, including across retries, which receive fresh timestamps/signatures.
+
+For synthetic sender-aware requests, use
+`modulekit.SignWebhookSenderHeaders(secret, now, sender, body)`; it returns all
+four headers, or nil for an empty secret or invalid/reserved module id. For a
+synthetic core emission use `modulekit.SignCoreWebhookHeaders(secret, now, body)`.
+Production core emissions use that separate signer; nonempty `created_by=core`
+is a reserved module sender and is refused. In `coretest.Serve` handlers,
+`sender, body, err := coretest.ReadDelivery(m, request)` reads and verifies using
+the real deployment secret. `c.DeliverEvents()` uses the production queue and
+sender signer for contract events, core events and retries.

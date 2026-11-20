@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from contract.model import MALWARE_DELIVERY, PAYMENT_PROCESSOR, PAYMENT_REFUND, Contract
-from contract.metadata import BACKGROUND_FILE_PUBLICATION, WEBHOOK_DELIVERY
+from contract.metadata import BACKGROUND_FILE_PUBLICATION, WEBHOOK_DELIVERY, MODULE_ID_PATTERN, MODULE_SENDER_DESCRIPTION
 from contract.routes import add_routes
 from contract.scopes import SCOPE_PATTERNS, SCOPES
 from contract.seeds import DOC_CATEGORIES, LAWCRAFT_COMMIT, NAMING_TOKENS, PARTY_ROLES
@@ -328,7 +328,8 @@ def _webhooks() -> dict:
                     "A module that fails any check receives no POST and no record id or summary. "
                     "The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. "
                     "X-Togavsu-Signature is t=<unix>,v1=<hex>, HMAC-SHA256 of decimal timestamp + dot + raw body, keyed with a nonempty module webhook secret. X-Togavsu-Timestamp repeats the signed timestamp. Verify within five minutes using constant-time comparison. The kit also accepts batch 2 sha256=<hex> raw-body HMAC, checking its unsigned X-Togavsu-Timestamp when present; that form has no timestamp replay protection. Deduplicate event ids for both forms. A plain SHA-256 of the body is not accepted. "
-                    "X-Togavsu-Timestamp contains decimal Unix seconds. Walled records require an inside-wall delegated viewer. Retries follow webhooks.retry_attempts "
+                    + MODULE_SENDER_DESCRIPTION
+                    + "X-Togavsu-Timestamp contains decimal Unix seconds. Walled records require an inside-wall delegated viewer. Retries follow webhooks.retry_attempts "
                     "across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. "
                     "For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. "
                     "That grant is issued by the core for this delivery's module id, event, file, and version. "
@@ -370,6 +371,20 @@ def _webhooks() -> dict:
                         "in": "header",
                         "required": True,
                         "schema": {"type": "string"},
+                    },
+                    {
+                        "name": "X-Togavsu-Sender",
+                        "in": "header",
+                        "required": True,
+                        "description": MODULE_SENDER_DESCRIPTION,
+                        "schema": {"type": "string", "pattern": MODULE_ID_PATTERN},
+                    },
+                    {
+                        "name": "X-Togavsu-Sender-Signature",
+                        "in": "header",
+                        "required": True,
+                        "description": "Lowercase hex HMAC-SHA256 of v2.<unix>.<sender>.<raw body>, using the recipient webhook secret. Timestamp matches v1 and X-Togavsu-Timestamp.",
+                        "schema": {"type": "string", "pattern": "^t=-?[0-9]+,v2=[a-f0-9]{64}$"},
                     },
                     {
                         "name": "X-Togavsu-Task-Authorization",

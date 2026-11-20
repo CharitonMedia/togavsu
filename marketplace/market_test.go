@@ -319,6 +319,27 @@ func TestUploadAndListing(t *testing.T) {
 	}
 }
 
+func TestPublishRefusesReservedModuleID(t *testing.T) {
+	e := newEnv(t)
+	a := e.author("Synthetic Author", "author@example.test")
+	p := pkg(t, "core", "1.0.0", "contracts:provide", "contracts:call")
+	// Both bare uploads and signed-file uploads must explain the reservation.
+	for _, withMetadata := range []bool{false, true} {
+		body := map[string]any{"package_base64": base64.StdEncoding.EncodeToString(p), "signature": shared.Sign(a.priv, p), "key_id": a.keyID}
+		if withMetadata {
+			body["listing_id"] = "core"
+			body["version"] = "1.0.0"
+		}
+		r := e.do("POST", "/v1/authors/me/packages", a.token, body)
+		if r.code != http.StatusBadRequest || !strings.Contains(string(r.body), "reserved") {
+			t.Fatalf("reserved upload (metadata %v): %d %s", withMetadata, r.code, r.body)
+		}
+	}
+	if r := e.do("GET", "/v1/listings/core", "", nil); r.code != http.StatusNotFound {
+		t.Fatalf("reserved module was listed: %d %s", r.code, r.body)
+	}
+}
+
 func htmlEscape(s string) string {
 	return strings.NewReplacer("'", "&#39;", "&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&#34;").Replace(s)
 }

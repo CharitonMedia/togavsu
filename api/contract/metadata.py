@@ -13,6 +13,22 @@ from __future__ import annotations
 # The path parameter {module_id} uses this same pattern. Callers do not get a second, looser rule.
 MODULE_ID_PATTERN = "^[a-z0-9][a-z0-9-]{0,63}$"
 
+MODULE_SENDER_DESCRIPTION = (
+    "X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer "
+    "for contract calls, or core for core-emitted events, grants and system mail. Queued identity "
+    "comes from module_deliveries.created_by (historical empty means core), never payload or current "
+    "links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is "
+    "t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, "
+    "keyed by the recipient module webhook secret. The literal v2. separates signature versions. "
+    "Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix "
+    "seconds. The separate v2 header preserves the exact 2d t=,v1= header. "
+    "modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the "
+    "authenticated sender, and refuses missing bindings, duplicate headers and tampering. "
+    "Use constant-time MAC comparison and a five-minute window in either direction; deduplicate "
+    "event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. "
+    "Sender authenticates provenance, not permission to read core records. "
+)
+
 _FLAG_METADATA = ("matter_id", "client_id", "trust_account_id", "balance_cents", "trust_entry_id", "balance_scope")
 _TRUST_FLAG = {
     "selection": "resulting_balance",

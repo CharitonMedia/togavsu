@@ -125,6 +125,9 @@ func (c *Client) Listings(ctx context.Context, query string) ([]Listing, error) 
 
 // Listing reads one listing, pulled or not, so a firm can still see why it was pulled.
 func (c *Client) Listing(ctx context.Context, id string) (Listing, error) {
+	if ReservedModuleID(id) {
+		return Listing{}, ErrReservedModuleID
+	}
 	if !ValidModuleID(id) {
 		return Listing{}, ErrNotFound
 	}
@@ -140,6 +143,9 @@ func (c *Client) Listing(ctx context.Context, id string) (Listing, error) {
 
 // Package reads one signed version. The caller must verify it before use.
 func (c *Client) Package(ctx context.Context, id, version string) (SignedPackage, error) {
+	if ReservedModuleID(id) {
+		return SignedPackage{}, ErrReservedModuleID
+	}
 	if !ValidModuleID(id) || !ValidVersion(version) {
 		return SignedPackage{}, ErrNotFound
 	}

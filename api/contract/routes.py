@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contract.model import Contract, _batch
-from contract.metadata import FILE_DOWNLOAD, MODULE_GUIDE, finalize, version_publication
+from contract.metadata import MODULE_SENDER_DESCRIPTION, FILE_DOWNLOAD, MODULE_GUIDE, finalize, version_publication
 
 ADMIN = ["admin"]
 ATTORNEY = ["admin", "attorney"]
@@ -5414,7 +5414,8 @@ def _modules(api: Contract) -> None:
             "admin-linked provider's declared path, HMAC-signed like events, carrying the caller's "
             "context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects "
             "a linked provider module id (never an address); omit it to use the earliest link. "
-            "Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31)."
+            "Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31). "
+            + MODULE_SENDER_DESCRIPTION
         ),
         tag="Modules",
         features=["modules"],
@@ -5446,7 +5447,8 @@ def _modules(api: Contract) -> None:
         summary="Push a contract event to linked consumers",
         description=(
             "The provider module's bearer with contracts:provide queues a contract event for the named "
-            "linked consumer, delivered like core events (CORE-31)."
+            "linked consumer, delivered like core events (CORE-31). "
+            + MODULE_SENDER_DESCRIPTION
         ),
         tag="Modules",
         features=["modules"],

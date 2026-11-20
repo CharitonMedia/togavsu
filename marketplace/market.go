@@ -406,6 +406,9 @@ func (m *Market) Publish(a Author, up Upload) (shared.Listing, error) {
 	}
 	man, err := shared.ReadManifest(up.Package)
 	if err != nil {
+		if errors.Is(err, shared.ErrReservedModuleID) {
+			return shared.Listing{}, invalid("id", shared.ErrReservedModuleID.Error())
+		}
 		return shared.Listing{}, invalid("package", "the package needs a "+shared.ManifestName+" with id, name, version and permissions")
 	}
 	var manifest map[string]any
