@@ -6,6 +6,11 @@ import (
 )
 
 func TestCoreUpdate2FAccepts(t *testing.T) {
+	var amount int64 = 2500
+	request := modulekit.ProcessorPaymentWrite{AmountCents: modulekit.Cents(amount)}
+	if int64(request.AmountCents) != amount {
+		t.Fatal("public cents conversion changed amount")
+	}
 	accepts := modulekit.Accepts()
 	for _, want := range []string{"CORE-23", "CORE-29", "CORE-30", "CORE-31", "CORE-36"} {
 		found := false

@@ -1,6 +1,13 @@
 package modulekit
 
-import "github.com/CharitonMedia/togavsu/internal/modules"
+import (
+	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/modules"
+)
+
+// Cents is an integer amount of money, exposed so external modules can construct
+// contract requests from int64 settings without importing a core internal package.
+type Cents = domain.Cents
 
 // ProcessorPaymentContract names the core-brokered pre-matter operating card
 // authorization contract. Both sides need an admin-approved contract link.

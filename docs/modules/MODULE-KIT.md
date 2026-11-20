@@ -808,7 +808,9 @@ envelopes retain their existing action prefixes. Payload data never grants core
 record access. Do not substitute top-level `type`/`data` or a core-event envelope.
 
 `modulekit.ProcessorPaymentContract`, `ProcessorPaymentWrite` and
-`ProcessorPaymentResult` expose `processor.payment.v1`. Its binding
+`ProcessorPaymentResult` expose `processor.payment.v1`. Convert integer-cent settings
+with `modulekit.Cents(amountInt64)` when constructing typed requests; no core internal
+import is needed. Its binding
 [definition and processor requirements](../contracts/README.md#processorpaymentv1)
 cover authorize/recover, pending/declined refusal before paid-intake matter writes,
 immutable intent data and recovery without a second authorization. The processor
