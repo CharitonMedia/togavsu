@@ -47,10 +47,34 @@ func TestModuleManifestReservedIDsContract(t *testing.T) {
 		if !ok || fn.Name.Name != "ReservedModuleID" {
 			continue
 		}
+		// Fail closed if reservations stop being a finite switch followed by
+		// false; otherwise a new early return could escape case enumeration.
+		if len(fn.Body.List) != 2 {
+			t.Fatal("ReservedModuleID changed shape; update contract enumeration")
+		}
+		sw, ok := fn.Body.List[0].(*ast.SwitchStmt)
+		if !ok || sw.Init != nil {
+			t.Fatal("ReservedModuleID must switch directly on id for contract enumeration")
+		}
+		tag, ok := sw.Tag.(*ast.Ident)
+		if !ok || tag.Name != "id" {
+			t.Fatal("ReservedModuleID must switch on id for contract enumeration")
+		}
+		fallback, ok := fn.Body.List[1].(*ast.ReturnStmt)
+		if !ok || len(fallback.Results) != 1 {
+			t.Fatal("ReservedModuleID must end in return false for contract enumeration")
+		}
+		value, ok := fallback.Results[0].(*ast.Ident)
+		if !ok || value.Name != "false" {
+			t.Fatal("ReservedModuleID must end in return false for contract enumeration")
+		}
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
 			clause, ok := node.(*ast.CaseClause)
 			if !ok {
 				return true
+			}
+			if len(clause.List) == 0 {
+				t.Fatal("ReservedModuleID gained a default; update contract enumeration")
 			}
 			for _, expr := range clause.List {
 				var id string
