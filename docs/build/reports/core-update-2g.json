@@ -1,14 +1,10 @@
 {
-  "tested_revision": "7d8f3fffc7e96b5d74c2073ab315cca8390cd85b",
-  "base_revision": "4408f8d892f93f7ea005ce8c0ba20f90930de878",
   "task_id": "core-update-2g",
-  "target_branch": "batch2",
-  "implementation_added_lines": 1484,
-  "implementation_deleted_lines": 158,
-  "implementation_net_lines": 1326,
-  "ponytail_markers": 111,
-  "debt_entries": 69,
   "status": "pending",
+  "tested_revision": "04a6245a77c5585d1b63530de09248a22d84ba87",
+  "base_revision": "4408f8d892f93f7ea005ce8c0ba20f90930de878",
+  "fix_pass_base_revision": "054250c6b4835bbaff204378813e462ff9d80f99",
+  "target_branch": "batch2",
   "core_items": [
     "CORE-23",
     "CORE-29",
@@ -22,517 +18,7 @@
     "calendar.firm_occupancy",
     "processor.receipt_recording"
   ],
-  "implementation_status": "Implemented; all assigned local positive/failure-path regression tests pass. Broad product acceptance remains pending external fixtures and equipped CI.",
-  "tests": [
-    {
-      "name": "Required race suite, Postgres A",
-      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/matrix-A TOGAVSU_BATCH1_MODS=/out/unavailable-batch1 go test -race -count=1 -p 1 -timeout 25m -json ./...",
-      "exit_code": 1,
-      "result": {
-        "test_events": {
-          "pass": 1633,
-          "fail": 5,
-          "skip": 42
-        },
-        "top_level_tests": {
-          "pass": 1264,
-          "fail": 5,
-          "skip": 42
-        },
-        "packages": {
-          "skip": 14,
-          "pass": 33,
-          "fail": 2
-        },
-        "failures": [
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestCU207Batch1ModulesUnchanged"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestEventsFeedAndAppend"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/supervisor",
-            "test": "TestTwoComposeProjectsStaySeparate"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/supervisor",
-            "test": "TestStalledSSHHandshakeRestartsWriters"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/supervisor",
-            "test": "TestOpenSSHNamespaceFirstUseAndStoreDelete"
-          }
-        ],
-        "skips": [
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestDocumentsLawCraftEditor"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestDocumentsScreens"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestExtensionsScreens"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestReleasePerfP95"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/dashboard/compose",
-            "test": "TestUIVisualQC"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/doctender",
-            "test": "TestWriteCorpus"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGDocxOpensAndSavesAsANewWordCompatibleVersion"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGOtherFormatsSaveAsDocx"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGSaveRefusesExportsAndBrokenPackages"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGSecondUserSeesTheLockUntilItLapses"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGLockTimeoutFollowsTheDocumentEditorTab"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGOnlyTheHolderOrAnAdminReleasesAndAdminReleasesAreAudited"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorAccessFollowsTheFile"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGNewPleadingFillsItsCaptionFromTheMatter"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGNewPleadingFollowsTheMatter"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGDocumentEditorTabShowsThePinnedCommit"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunFillsMergeFieldsAsANewVersion"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunCanSaveANewFileWithTheSourcesAccess"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunThatReadsALocalFileIsRefused"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunFailuresAreReportedAndAudited"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGConversionToPDFIsANewLinkedFile"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGConversionsToEveryFormatAndTheirRestrictions"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGTrackChangesAndCommentsSurviveARun"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGPDFPreviewForEachEditableVersion"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPinnedCommandListIsFiltered"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestBrowserEditPageE2E"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorAPIOverHTTP"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditPageOpensSavesAndShowsTheLock"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGNewPleadingFormMakesAFileAndOpensIt"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestEditorBuildAtThePinIsServable"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGCourtProfilesStayUnverifiedUntilAPersonApproves"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGCourtProfilesAreCheckedByLawCraft"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunsApplyTheFirmsCourtProfiles"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditContextGivesLawCraftTheFirmAndTheMatter"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGCourtProfileBodyCannotMakeLawCraftReadAFile"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunGivenAnAddressIsRefused"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGRunsAndConversionsThatFailAfterLawCraftAreAudited"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGSaveHoldsTheLockUntilTheVersionIsIn"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGLockHolderIsHiddenFromThoseWhoCannotEdit"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGRunIntoAVersionUnderYourOwnEditorIsRefused"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/modules",
-            "test": "TestModuleContainerOnDocker"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/storage",
-            "test": "TestLiveS3Compatible"
-          }
-        ]
-      }
-    },
-    {
-      "name": "Required race suite, Postgres B",
-      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/matrix-B TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TOGAVSU_BATCH1_MODS=/out/unavailable-batch1 go test -race -count=1 -p 1 -timeout 25m -json ./...",
-      "exit_code": 1,
-      "result": {
-        "test_events": {
-          "pass": 1634,
-          "fail": 4,
-          "skip": 42
-        },
-        "top_level_tests": {
-          "pass": 1265,
-          "fail": 4,
-          "skip": 42
-        },
-        "packages": {
-          "skip": 14,
-          "pass": 33,
-          "fail": 2
-        },
-        "failures": [
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestCU207Batch1ModulesUnchanged"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/supervisor",
-            "test": "TestTwoComposeProjectsStaySeparate"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/supervisor",
-            "test": "TestStalledSSHHandshakeRestartsWriters"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/supervisor",
-            "test": "TestOpenSSHNamespaceFirstUseAndStoreDelete"
-          }
-        ],
-        "skips": [
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestDocumentsLawCraftEditor"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestDocumentsScreens"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestExtensionsScreens"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/core",
-            "test": "TestReleasePerfP95"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/dashboard/compose",
-            "test": "TestUIVisualQC"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/doctender",
-            "test": "TestWriteCorpus"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGDocxOpensAndSavesAsANewWordCompatibleVersion"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGOtherFormatsSaveAsDocx"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGSaveRefusesExportsAndBrokenPackages"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGSecondUserSeesTheLockUntilItLapses"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGLockTimeoutFollowsTheDocumentEditorTab"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGOnlyTheHolderOrAnAdminReleasesAndAdminReleasesAreAudited"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorAccessFollowsTheFile"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGNewPleadingFillsItsCaptionFromTheMatter"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGNewPleadingFollowsTheMatter"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGDocumentEditorTabShowsThePinnedCommit"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunFillsMergeFieldsAsANewVersion"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunCanSaveANewFileWithTheSourcesAccess"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunThatReadsALocalFileIsRefused"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunFailuresAreReportedAndAudited"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGConversionToPDFIsANewLinkedFile"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGConversionsToEveryFormatAndTheirRestrictions"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGTrackChangesAndCommentsSurviveARun"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGPDFPreviewForEachEditableVersion"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPinnedCommandListIsFiltered"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestBrowserEditPageE2E"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorAPIOverHTTP"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditPageOpensSavesAndShowsTheLock"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGNewPleadingFormMakesAFileAndOpensIt"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestEditorBuildAtThePinIsServable"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGCourtProfilesStayUnverifiedUntilAPersonApproves"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGCourtProfilesAreCheckedByLawCraft"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunsApplyTheFirmsCourtProfiles"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditContextGivesLawCraftTheFirmAndTheMatter"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGCourtProfileBodyCannotMakeLawCraftReadAFile"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGEditorRunGivenAnAddressIsRefused"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGRunsAndConversionsThatFailAfterLawCraftAreAudited"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGSaveHoldsTheLockUntilTheVersionIsIn"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGLockHolderIsHiddenFromThoseWhoCannotEdit"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/editor",
-            "test": "TestPGRunIntoAVersionUnderYourOwnEditorIsRefused"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/modules",
-            "test": "TestModuleContainerOnDocker"
-          },
-          {
-            "package": "github.com/CharitonMedia/togavsu/internal/storage",
-            "test": "TestLiveS3Compatible"
-          }
-        ]
-      }
-    },
-    {
-      "name": "Assigned regression tests",
-      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/focused go test -race -count=1 -p 1 -json ./internal/core ./pkg/modulekit/coretest ./internal/modules ./pkg/modulekit ./internal/settings -run '^(TestCoreUpdate2G|TestBindingEventUUID|TestCoreUpdate2FAccepts|TestModuleClean)'",
-      "exit_code": 0,
-      "result": "All seven core-update-2g behaviors, generic UUID validation, Accepts capabilities and whole-module settings checks pass (10 tests), without skips.",
-      "tests": [
-        "TestCoreUpdate2GFrameSessionCSRF",
-        "TestCoreUpdate2GBindingEnvelope",
-        "TestCoreUpdate2GFirmOccupancy",
-        "TestCoreUpdate2GProcessorRecording",
-        "TestCoreUpdate2GProcessorContactAndRefusals",
-        "TestCoreUpdate2GAllBindingContracts",
-        "TestCoreUpdate2GLegacyReceiptApprovalOrder",
-        "TestBindingEventUUID",
-        "TestCoreUpdate2FAccepts",
-        "TestModuleClean"
-      ]
-    },
-    {
-      "name": "API contract checks",
-      "command": "PATH=/out/check-venv/bin:$PATH sh api/check.sh",
-      "exit_code": 0,
-      "result": "141 tests; both OpenAPI validators, broken-spec/reference check and generator clean-diff check pass. Simulator runtime fixtures are not executed by this script."
-    },
-    {
-      "name": "Pinned Caddy fixture tool",
-      "command": "GOTOOLCHAIN=auto GOBIN=/out/test-tools go install github.com/caddyserver/caddy/v2/cmd/caddy@v2.10.2",
-      "exit_code": 0,
-      "result": "Real test binary built outside the repository; go version -m confirms Caddy v2.10.2. Its build used Go 1.26.11; product tests remain Go 1.24 and go.mod is unchanged."
-    },
-    {
-      "name": "Go vet",
-      "command": "TMPDIR=/out/test-tmp go vet ./...",
-      "exit_code": 0,
-      "result": "All packages pass."
-    },
-    {
-      "name": "Unchanged feed assertion reruns",
-      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/feed-primary go test -race -count=1 -p 1 ./internal/core -run '^TestEventsFeedAndAppend$'\nPATH=/out/test-tools:$PATH TMPDIR=/out/feed-rerun TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" go test -race -count=3 -p 1 ./internal/core -run '^TestEventsFeedAndAppend$' ",
-      "exit_code": 0,
-      "result": "Three secondary reruns pass; see primary exit code. Original full-suite failure is retained. Formatter and assertion source are unchanged from the target base."
-    },
-    {
-      "name": "Formatting and whitespace",
-      "command": "test -z \"$(gofmt -l cmd internal pkg api web examples)\" && git diff --check",
-      "exit_code": 0,
-      "result": "Pass."
-    },
-    {
-      "name": "Postgres backup integration",
-      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/backup-check sh scripts/ci/test-backup-integration.sh",
-      "exit_code": 0,
-      "result": "17 required integration-tagged restore tests, using both supplied Postgres servers; see actual exit code."
-    },
-    {
-      "name": "Setup metadata",
-      "command": "python3 scripts/check_setup.py",
-      "exit_code": 0,
-      "result": "Pass; metadata only. The task index has no core-update-2g assignment row."
-    },
-    {
-      "name": "Compose static validation",
-      "command": "python3 scripts/ci/check-compose.py",
-      "exit_code": 0,
-      "result": "Pass; Compose was not executed."
-    },
-    {
-      "name": "Pending gate",
-      "command": "sh scripts/ci/pending-gate.sh",
-      "exit_code": 0,
-      "result": "Pass; AC-001, AC-016 and AC-018 remain pending."
-    },
-    {
-      "name": "Debt ledger",
-      "command": "python3 scripts/release/check_debt.py",
-      "exit_code": 0,
-      "result": "111 markers / 69 ledger entries, unchanged."
-    },
-    {
-      "name": "Protected paths and modes",
-      "command": "Inspect every commit and aggregate diff from 4408f8d892f93f7ea005ce8c0ba20f90930de878",
-      "exit_code": 0,
-      "result": "No prohibited control-plane/.github changes, added symlinks/submodules, or dependency changes. Only the permitted evidence report changes under docs/build/."
-    }
-  ],
+  "implementation_status": "Fix pass 1 implemented and tested with synthetic Postgres data; assigned regressions pass. Full-product acceptance and independent review remain pending.",
   "passed_acceptance_ids": [
     "CU2-02",
     "CU2-03",
@@ -552,7 +38,7 @@
         "CU2-05"
       ],
       "status": "pass",
-      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/focused go test -race -count=1 -p 1 -json ./internal/core ./pkg/modulekit/coretest ./internal/modules ./pkg/modulekit ./internal/settings -run '^(TestCoreUpdate2G|TestBindingEventUUID|TestCoreUpdate2FAccepts|TestModuleClean)'",
+      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/focused go test -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCoreUpdate2G|TestCoreUpdate2E|TestFrameCSRF|TestCoreEventRegistry|TestCoreUpdate2FProxyRestoresFormAfterCSRF|TestBindingEventUUID|TestCoreUpdate2FAccepts|TestModuleClean)'",
       "exit_code": 0
     },
     {
@@ -563,63 +49,352 @@
         "CU2-08"
       ],
       "status": "pending",
-      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/matrix-A TOGAVSU_BATCH1_MODS=/out/unavailable-batch1 go test -race -count=1 -p 1 -timeout 25m -json ./...",
+      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/matrix-A TOGAVSU_BATCH1_MODS=/out/unavailable-batch1 go test -race -count=1 -p 1 -json ./...",
       "exit_code": 1
     }
   ],
+  "tests": [
+    {
+      "name": "focused race regressions",
+      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/focused go test -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCoreUpdate2G|TestCoreUpdate2E|TestFrameCSRF|TestCoreEventRegistry|TestCoreUpdate2FProxyRestoresFormAfterCSRF|TestBindingEventUUID|TestCoreUpdate2FAccepts|TestModuleClean)'",
+      "exit_code": 0,
+      "counts": {
+        "pass": 21
+      },
+      "result": "All assigned positive and failure-path regressions pass, without skips."
+    },
+    {
+      "name": "full race suite Postgres A",
+      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/matrix-A TOGAVSU_BATCH1_MODS=/out/unavailable-batch1 go test -race -count=1 -p 1 -json ./...",
+      "wrapper_command": "python3 /out/run_suite.py A",
+      "exit_code": 1,
+      "counts": {
+        "pass": 1242,
+        "fail": 4,
+        "skip": 42
+      },
+      "failed_tests": {
+        "TestCU207Batch1ModulesUnchanged": "=== RUN   TestCU207Batch1ModulesUnchanged\n    cu207_batch1_pg_test.go:231: documents package missing at /out/unavailable-batch1/togavsu-documents: stat /out/unavailable-batch1/togavsu-documents/package/togavsu-module.yaml: no such file or directory\n--- FAIL: TestCU207Batch1ModulesUnchanged (7.72s)\n",
+        "TestOpenSSHNamespaceFirstUseAndStoreDelete": "=== RUN   TestOpenSSHNamespaceFirstUseAndStoreDelete\n    sftp_test.go:327: real sshd is required\n--- FAIL: TestOpenSSHNamespaceFirstUseAndStoreDelete (0.00s)\n",
+        "TestStalledSSHHandshakeRestartsWriters": "=== RUN   TestStalledSSHHandshakeRestartsWriters\n    lifecycle_test.go:2073: key: exit status 255 No user exists for uid 1000\r\n--- FAIL: TestStalledSSHHandshakeRestartsWriters (0.01s)\n",
+        "TestTwoComposeProjectsStaySeparate": "=== RUN   TestTwoComposeProjectsStaySeparate\n    docker_test.go:451: firma config: exec: \"sudo\": executable file not found in $PATH \n--- FAIL: TestTwoComposeProjectsStaySeparate (0.00s)\n"
+      },
+      "skipped_tests": [
+        "github.com/CharitonMedia/togavsu/internal/core.TestDocumentsLawCraftEditor",
+        "github.com/CharitonMedia/togavsu/internal/core.TestDocumentsScreens",
+        "github.com/CharitonMedia/togavsu/internal/core.TestExtensionsScreens",
+        "github.com/CharitonMedia/togavsu/internal/core.TestReleasePerfP95",
+        "github.com/CharitonMedia/togavsu/internal/dashboard/compose.TestUIVisualQC",
+        "github.com/CharitonMedia/togavsu/internal/doctender.TestWriteCorpus",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGDocxOpensAndSavesAsANewWordCompatibleVersion",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGOtherFormatsSaveAsDocx",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGSaveRefusesExportsAndBrokenPackages",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGSecondUserSeesTheLockUntilItLapses",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGLockTimeoutFollowsTheDocumentEditorTab",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGOnlyTheHolderOrAnAdminReleasesAndAdminReleasesAreAudited",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorAccessFollowsTheFile",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGNewPleadingFillsItsCaptionFromTheMatter",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGNewPleadingFollowsTheMatter",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGDocumentEditorTabShowsThePinnedCommit",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunFillsMergeFieldsAsANewVersion",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunCanSaveANewFileWithTheSourcesAccess",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunThatReadsALocalFileIsRefused",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunFailuresAreReportedAndAudited",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGConversionToPDFIsANewLinkedFile",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGConversionsToEveryFormatAndTheirRestrictions",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGTrackChangesAndCommentsSurviveARun",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGPDFPreviewForEachEditableVersion",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPinnedCommandListIsFiltered",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestBrowserEditPageE2E",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorAPIOverHTTP",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditPageOpensSavesAndShowsTheLock",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGNewPleadingFormMakesAFileAndOpensIt",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestEditorBuildAtThePinIsServable",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGCourtProfilesStayUnverifiedUntilAPersonApproves",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGCourtProfilesAreCheckedByLawCraft",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunsApplyTheFirmsCourtProfiles",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditContextGivesLawCraftTheFirmAndTheMatter",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGCourtProfileBodyCannotMakeLawCraftReadAFile",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunGivenAnAddressIsRefused",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGRunsAndConversionsThatFailAfterLawCraftAreAudited",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGSaveHoldsTheLockUntilTheVersionIsIn",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGLockHolderIsHiddenFromThoseWhoCannotEdit",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGRunIntoAVersionUnderYourOwnEditorIsRefused",
+        "github.com/CharitonMedia/togavsu/internal/modules.TestModuleContainerOnDocker",
+        "github.com/CharitonMedia/togavsu/internal/storage.TestLiveS3Compatible"
+      ],
+      "assigned_regressions": {
+        "TestCoreEventRegistryCoversEmitSites": "pass",
+        "TestCoreUpdate2GOccupancyMemoryWindow": "pass",
+        "TestCoreUpdate2GFrameSessionCSRF": "pass",
+        "TestCoreUpdate2GMigrationAllocation": "pass",
+        "TestFrameCSRFSessionRotation": "pass",
+        "TestCoreUpdate2GOccupancyPermissionReason": "pass",
+        "TestCoreUpdate2GEventDedupeNamespaces/binding": "pass",
+        "TestCoreUpdate2GEventDedupeNamespaces/targeted": "pass",
+        "TestCoreUpdate2GEventDedupeNamespaces": "pass",
+        "TestCoreUpdate2GContactPaymentPumpWalls": "pass",
+        "TestCoreUpdate2GOccupancyScopeRefusal": "pass",
+        "TestCoreUpdate2GBindingEnvelope": "pass",
+        "TestCoreUpdate2GFirmOccupancy": "pass",
+        "TestCoreUpdate2GProcessorRecording": "pass",
+        "TestCoreUpdate2GProcessorContactAndRefusals": "pass",
+        "TestCoreUpdate2GAllBindingContracts": "pass",
+        "TestCoreUpdate2GLegacyReceiptApprovalOrder": "pass"
+      }
+    },
+    {
+      "name": "full race suite Postgres B",
+      "command": "PATH=/out/test-tools:$PATH TMPDIR=/out/matrix-B TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TOGAVSU_BATCH1_MODS=/out/unavailable-batch1 go test -race -count=1 -p 1 -json ./...",
+      "wrapper_command": "python3 /out/run_suite.py B",
+      "exit_code": 1,
+      "counts": {
+        "pass": 1242,
+        "fail": 4,
+        "skip": 42
+      },
+      "failed_tests": {
+        "TestCU207Batch1ModulesUnchanged": "=== RUN   TestCU207Batch1ModulesUnchanged\n    cu207_batch1_pg_test.go:231: documents package missing at /out/unavailable-batch1/togavsu-documents: stat /out/unavailable-batch1/togavsu-documents/package/togavsu-module.yaml: no such file or directory\n--- FAIL: TestCU207Batch1ModulesUnchanged (5.13s)\n",
+        "TestOpenSSHNamespaceFirstUseAndStoreDelete": "=== RUN   TestOpenSSHNamespaceFirstUseAndStoreDelete\n    sftp_test.go:327: real sshd is required\n--- FAIL: TestOpenSSHNamespaceFirstUseAndStoreDelete (0.00s)\n",
+        "TestStalledSSHHandshakeRestartsWriters": "=== RUN   TestStalledSSHHandshakeRestartsWriters\n    lifecycle_test.go:2073: key: exit status 255 No user exists for uid 1000\r\n--- FAIL: TestStalledSSHHandshakeRestartsWriters (0.01s)\n",
+        "TestTwoComposeProjectsStaySeparate": "=== RUN   TestTwoComposeProjectsStaySeparate\n    docker_test.go:451: firma config: exec: \"sudo\": executable file not found in $PATH \n--- FAIL: TestTwoComposeProjectsStaySeparate (0.00s)\n"
+      },
+      "skipped_tests": [
+        "github.com/CharitonMedia/togavsu/internal/core.TestDocumentsLawCraftEditor",
+        "github.com/CharitonMedia/togavsu/internal/core.TestDocumentsScreens",
+        "github.com/CharitonMedia/togavsu/internal/core.TestExtensionsScreens",
+        "github.com/CharitonMedia/togavsu/internal/core.TestReleasePerfP95",
+        "github.com/CharitonMedia/togavsu/internal/dashboard/compose.TestUIVisualQC",
+        "github.com/CharitonMedia/togavsu/internal/doctender.TestWriteCorpus",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGDocxOpensAndSavesAsANewWordCompatibleVersion",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGOtherFormatsSaveAsDocx",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGSaveRefusesExportsAndBrokenPackages",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGSecondUserSeesTheLockUntilItLapses",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGLockTimeoutFollowsTheDocumentEditorTab",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGOnlyTheHolderOrAnAdminReleasesAndAdminReleasesAreAudited",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorAccessFollowsTheFile",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGNewPleadingFillsItsCaptionFromTheMatter",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGNewPleadingFollowsTheMatter",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGDocumentEditorTabShowsThePinnedCommit",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunFillsMergeFieldsAsANewVersion",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunCanSaveANewFileWithTheSourcesAccess",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunThatReadsALocalFileIsRefused",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunFailuresAreReportedAndAudited",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGConversionToPDFIsANewLinkedFile",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGConversionsToEveryFormatAndTheirRestrictions",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGTrackChangesAndCommentsSurviveARun",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGPDFPreviewForEachEditableVersion",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPinnedCommandListIsFiltered",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestBrowserEditPageE2E",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorAPIOverHTTP",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditPageOpensSavesAndShowsTheLock",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGNewPleadingFormMakesAFileAndOpensIt",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestEditorBuildAtThePinIsServable",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGCourtProfilesStayUnverifiedUntilAPersonApproves",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGCourtProfilesAreCheckedByLawCraft",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunsApplyTheFirmsCourtProfiles",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditContextGivesLawCraftTheFirmAndTheMatter",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGCourtProfileBodyCannotMakeLawCraftReadAFile",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGEditorRunGivenAnAddressIsRefused",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGRunsAndConversionsThatFailAfterLawCraftAreAudited",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGSaveHoldsTheLockUntilTheVersionIsIn",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGLockHolderIsHiddenFromThoseWhoCannotEdit",
+        "github.com/CharitonMedia/togavsu/internal/editor.TestPGRunIntoAVersionUnderYourOwnEditorIsRefused",
+        "github.com/CharitonMedia/togavsu/internal/modules.TestModuleContainerOnDocker",
+        "github.com/CharitonMedia/togavsu/internal/storage.TestLiveS3Compatible"
+      ],
+      "assigned_regressions": {
+        "TestCoreEventRegistryCoversEmitSites": "pass",
+        "TestCoreUpdate2GOccupancyMemoryWindow": "pass",
+        "TestCoreUpdate2GFrameSessionCSRF": "pass",
+        "TestCoreUpdate2GMigrationAllocation": "pass",
+        "TestFrameCSRFSessionRotation": "pass",
+        "TestCoreUpdate2GOccupancyPermissionReason": "pass",
+        "TestCoreUpdate2GEventDedupeNamespaces/binding": "pass",
+        "TestCoreUpdate2GEventDedupeNamespaces/targeted": "pass",
+        "TestCoreUpdate2GEventDedupeNamespaces": "pass",
+        "TestCoreUpdate2GContactPaymentPumpWalls": "pass",
+        "TestCoreUpdate2GOccupancyScopeRefusal": "pass",
+        "TestCoreUpdate2GBindingEnvelope": "pass",
+        "TestCoreUpdate2GFirmOccupancy": "pass",
+        "TestCoreUpdate2GProcessorRecording": "pass",
+        "TestCoreUpdate2GProcessorContactAndRefusals": "pass",
+        "TestCoreUpdate2GAllBindingContracts": "pass",
+        "TestCoreUpdate2GLegacyReceiptApprovalOrder": "pass"
+      }
+    },
+    {
+      "name": "go vet",
+      "command": "TMPDIR=/out/test-tmp go vet ./...",
+      "exit_code": 0
+    },
+    {
+      "name": "API generator check",
+      "command": "PATH=/out/check-venv/bin:$PATH sh api/check.sh",
+      "exit_code": 0,
+      "result": "141 contract tests; both OpenAPI validators; broken-reference rejection; regenerated core, marketplace, MCP and coverage outputs match committed bytes."
+    },
+    {
+      "name": "generated inventory check",
+      "command": "PYTHONPATH=api python3 -m contract.stage1_check && git diff --exit-code -- api/openapi/v1/openapi.json api/openapi/v1/mcp-tools.json api/openapi/marketplace/openapi.json docs/api/coverage.md docs/api/stage1-inventory.json docs/api/runtime-fixtures.json docs/api/method-acceptance.json",
+      "exit_code": 0
+    },
+    {
+      "name": "format and whitespace",
+      "command": "test -z \"$(gofmt -l cmd internal pkg api web examples)\" && git diff --check",
+      "exit_code": 0
+    },
+    {
+      "name": "setup metadata",
+      "command": "python3 scripts/check_setup.py",
+      "exit_code": 0,
+      "result": "Metadata only; core-update-2g task binding is still absent."
+    },
+    {
+      "name": "Compose static metadata",
+      "command": "python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "result": "Static configuration only, not a Docker run."
+    },
+    {
+      "name": "pending gate",
+      "command": "sh scripts/ci/pending-gate.sh",
+      "exit_code": 0,
+      "result": "AC-001 AC-016 AC-018 remain pending."
+    },
+    {
+      "name": "debt ledger",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "result": "111 markers; 69 debt entries; no new deliberate shortcut."
+    }
+  ],
+  "fix_pass_1": [
+    {
+      "id": "P1-a",
+      "behavior": "Feed and event reads reuse billing Payment/allowPayment for contact-only and matter-bound payment events; module pump retains the same billing access hook. Current contact walls apply to historical events.",
+      "tests": [
+        "TestCoreUpdate2GContactPaymentPumpWalls",
+        "TestCoreUpdate2GProcessorContactAndRefusals"
+      ]
+    },
+    {
+      "id": "P1-b",
+      "behavior": "Frame token is a purpose/session/module HMAC under the existing identity secret. Cookie POST only accepts the same module token; core routes, other modules and changed sessions refuse it. Core-wide token is not forwarded; authenticated GETs and all responses remain no-store; inbound copies are stripped.",
+      "tests": [
+        "TestCoreUpdate2GFrameSessionCSRF",
+        "TestFrameCSRFSessionRotation",
+        "TestCoreUpdate2FProxyRestoresFormAfterCSRF"
+      ]
+    },
+    {
+      "id": "P1-c",
+      "behavior": "Core append and binding validation share x-togavsu-core-events, generated from operation events and literal emit sites, with historical core/calendar namespace aliases retained. AST and registry coverage prevent emitted literal actions being omitted.",
+      "tests": [
+        "TestCoreUpdate2GBindingEnvelope",
+        "TestCoreEventRegistryCoversEmitSites",
+        "TestCoreUpdate2GAllBindingContracts"
+      ]
+    },
+    {
+      "id": "P2-a",
+      "behavior": "Both binding and targeted queue keys use a fixed contract: prefix on the wire event ID. Core UUID IDs cannot collide; the existing per-recipient first-accepted ID, sender and payload remain immutable across providers/contracts. Wire IDs and replay dedupe are preserved.",
+      "tests": [
+        "TestCoreUpdate2GEventDedupeNamespaces/binding",
+        "TestCoreUpdate2GEventDedupeNamespaces/targeted",
+        "TestCoreUpdate2ESenderPersistsAcrossUnlink",
+        "TestCoreUpdate2EReservedSender"
+      ]
+    },
+    {
+      "id": "P2-b",
+      "behavior": "Own module-only calendar:occupancy scope, manifest reason and live install approval are required. An occupancy-only module works on REST/MCP; calendar:read alone gets 403. Both stores apply matchEvent before pagination.",
+      "tests": [
+        "TestCoreUpdate2GOccupancyScopeRefusal",
+        "TestCoreUpdate2GFirmOccupancy",
+        "TestCoreUpdate2GOccupancyMemoryWindow",
+        "TestCoreUpdate2GOccupancyPermissionReason"
+      ]
+    },
+    {
+      "id": "P2-c",
+      "behavior": "1550-1599 is allocated specifically to core-update-2d. Move the unmerged contact-payment migration from 1551 to 1600 in the next free block 1600-1649, allocated to core-update-2g. Down is an expand-only comment-only no-op, preserving contact payments. No new dedupe migration is needed.",
+      "tests": [
+        "TestCoreUpdate2GMigrationAllocation",
+        "TestCoreUpdate2GContactPaymentPumpWalls"
+      ]
+    },
+    {
+      "id": "P3-recipient-count",
+      "behavior": "Both contract formats count RowsAffected; a replay audits consumers=0.",
+      "tests": [
+        "TestCoreUpdate2GEventDedupeNamespaces"
+      ]
+    },
+    {
+      "id": "P3-duplicate-keys",
+      "behavior": "Duplicate outer JSON keys in contract envelopes return 400 before raw forwarding.",
+      "tests": [
+        "TestCoreUpdate2GEventDedupeNamespaces"
+      ]
+    },
+    {
+      "id": "P3-binding-audit",
+      "behavior": "Receipt recording appends one distinct binding audit naming intent/payment/contact and matter when present, instead of repeating approved status. Concurrent replay writes no second binding.",
+      "tests": [
+        "TestCoreUpdate2GProcessorRecording"
+      ]
+    }
+  ],
   "pending_checks": [
-    "CU2-07: the five real batch-1 module repository/package fixtures are absent. The explicit fixture root prevents prohibited remote cloning; the unchanged fixture test fails instead of being skipped or given fabricated packages.",
-    "CU2-01 full-product acceptance remains pending while the full-suite environment failures and automatic skips listed in the test results remain.",
-    "CU2-08: Docker image builds, supervisor image, real Compose/smoke, clean install, update load and signed release acceptance run in equipped CI; Docker is absent here. Windows/macOS Docker Desktop acceptance is separate.",
-    "The source-controlled automatic skips for pinned LawCraft/editor, browser visual QC, live storage or release performance fixtures require equipped CI. No test was disabled or weakened.",
-    "The separately held documents/intake/module acceptance suites and real processor hosted-field adapter/recovery must run against this core revision; local regression tests do not claim those external suites passed.",
-    "An unchanged TestEventsFeedAndAppend assertion failed once in the full A run. It compares RFC3339Nano strings lexically; unchanged formatter/assertion source and a deterministic timestamp diagnostic show a false-ordering case. Focused reruns are recorded separately; the full failure is retained.",
-    "An independent checkpoint must review the exact target base and final report-only handoff head. This implementation report is not a passing review."
+    "Integration lead: core-update-2g has no task binding in docs/build/tasks.json. Control-plane files are unchanged; the lead must add the binding.",
+    "CU2-01 full-product acceptance remains pending the actual full-suite failures and automatic optional fixture skips recorded below. All assigned focused regressions pass; no failure or skip is waived.",
+    "CU2-07: real batch-1 module repositories/packages are absent. TOGAVSU_BATCH1_MODS points to an unavailable local fixture root to prevent prohibited remote cloning; TestCU207Batch1ModulesUnchanged is run unchanged and fails honestly.",
+    "Equipped-host prerequisites are absent: sudo/Docker/Compose, real sshd, and the runner uid passwd entry required by the SSH tests. Failures are recorded, not skipped or disabled.",
+    "CU2-08: Docker-dependent core/supervisor image builds, Compose, smoke, module containers, clean install, updater load and signed-image/release acceptance were skipped locally because Docker is absent; run them in CI. Windows/macOS Docker Desktop acceptance remains separate.",
+    "Browser screenshot/console QC, pinned LawCraft/editor and live-service/corpus/performance fixture checks require their equipped environment. This security/protocol fix adds no page layout; local HTTP/form regressions are not visual acceptance.",
+    "The real module repositories acceptance suites and real processor hosted-field/recovery adapter still require integration against this exact core revision.",
+    "Independent Codex/checkpoint and Opus reviews must review the named target base and final handoff head. This implementation report is not a passing self-review."
   ],
   "regression_evidence": {
-    "base": "4408f8d892f93f7ea005ce8c0ba20f90930de878",
-    "base_tests": [
-      "TestCoreUpdate2GBindingEnvelope",
-      "TestCoreUpdate2GFrameSessionCSRF",
-      "TestCoreUpdate2GFirmOccupancy",
-      "TestCoreUpdate2GProcessorRecording"
+    "base": "054250c6b4835bbaff204378813e462ff9d80f99",
+    "commands": [
+      "go test ./internal/core ./internal/db ./pkg/modulekit/coretest -run '^TestCoreUpdate2G' -count=1 -p 1 -json",
+      "go test ./internal/modules ./pkg/modulekit/coretest -run '^(TestCoreUpdate2GContactPaymentPumpWalls|TestCoreUpdate2GOccupancyPermissionReason)' -count=1 -p 1 -json",
+      "TMPDIR=/out/test-tmp go test ./internal/calendar -run '^TestCoreUpdate2GOccupancyMemoryWindow$' -count=1 -json"
     ],
-    "result": "All four primary tests failed before their production fixes. Binding was rerun serially after an initial shared-role setup race; its actual failure is HTTP 400 for the binding envelope.",
-    "legacy_base": "24d4e6ec8f96466588a85d0942bd21e34b5ab79e",
-    "legacy_test": "TestCoreUpdate2GLegacyReceiptApprovalOrder",
-    "legacy_result": "Before the fix, a contact created while pending incorrectly recorded with HTTP 200 instead of 403. After the fix, it is refused and a post-approval contact records/replays one charge."
+    "result": "Regression tests copied into a detached local worktree at 054250c fail for frame token exposure, payment feed/REST/MCP leakage, core/contract ID collisions in both formats, replay recipient audit, duplicate event keys (204), read-only occupancy (200), omitted core namespaces, missing binding audit, unallocated 1600, missing manifest reason and memory-window rows (3 vs 1). The actual old Down, executed with the core search path and a stored contact-only payment, refuses rollback with SQLSTATE 23502. The pre-existing module pump payment gate is retained and tested both outside a wall and after its removal.",
+    "notes": "Early new-fixture manifest duplication and a Down test missing the core search path were corrected before the quoted baseline evidence. Tests depending on the new frame helper are covered at baseline by the real HTTP regression; no compatibility shim or production fix was applied to the baseline. The memory fixture is executable unchanged on both revisions."
   },
-  "failures_and_fixes": [
-    "Moved migration 1551 into the late core sequence after a real billing-fixture migration-order failure.",
-    "Scoped the synthetic multi-contract receiver sender assertion to binding deliveries; subscribed core events remain separately signed core deliveries.",
-    "Kept payment metadata UUID-compatible and published module audit actor identity.",
-    "Legacy receipt target creation is checked against immutable approval audit evidence, not intent creation.",
-    "The settings checker identified protocol numeric literals; fixed UUID grammar and existing zero-value conventions pass without changing the checker.",
-    "A shared temporary Caddy archive conflicted between early runs; final runs use a real pinned Go-built Caddy and distinct temp directories.",
-    "Superseded full runs were interrupted after code changed; required-A2 and required-B2 are fresh runs begun at tested_revision. No interrupted run is reported as a pass."
-  ],
+  "migration_rule": "1550-1599 is allocated specifically to core-update-2d. Move the unmerged contact-payment migration from 1551 to 1600 in the next free block 1600-1649, allocated to core-update-2g. Down is an expand-only comment-only no-op, preserving contact payments. No new dedupe migration is needed.",
+  "audit_actor_contract": "AuditEntry.actor_id widened from UUID to string for every module service-principal audit row; the original internal/audit/service.go change is retained. Payment metadata remains UUID-compatible.",
   "simplification": {
-    "added_lines": 1484,
-    "deleted_lines": 158,
-    "net_lines": 1326,
+    "added_lines": 2378,
+    "deleted_lines": 218,
+    "net_lines": 2160,
+    "fix_pass": {
+      "added_lines": 961,
+      "deleted_lines": 127,
+      "net_lines": 834
+    },
     "debt_entries": 69,
     "ponytail_markers": 111,
-    "result": "Reuse existing durable deliveries, signer, receipt idempotency table, billing transaction/projection/event writes, practice visibility and audit APIs. Standard library only; no dependency or deliberate shortcut added. Counts exclude this report."
+    "result": "Reuses billing access, identity secret, durable queue/signer, receipt row lock, transaction and audit APIs. Standard library only; no product dependency or deliberate shortcut added."
   },
+  "implementation_added_lines": 2378,
+  "implementation_deleted_lines": 218,
+  "implementation_net_lines": 2160,
+  "debt_entries": 69,
+  "ponytail_markers": 111,
   "workflow_notes": [
-    "No repository codebase-memory index or task row exists in the supplied checkout. Explicit assignment and approved local scope define this work.",
-    "Remote session-memory/wiki reads conflict with the explicit network restriction; they were not attempted and no Ready claim was made.",
-    "Synthetic data and local container only. No forge/API publication or remote module checkout. An early unmodified Caddy fixture attempted its automatic external binary download; later runs use a real pinned Caddy built through allowed Go dependency downloads, avoiding that fallback.",
-    "The 25m Go timeout is already present in scripts/ci/test-core.sh; the integration script retains its existing timeout. Package execution is serial within each database server.",
+    "No repository codebase-memory index or core-update-2g task row exists in the supplied checkout. Explicit assignment and approved local scope define this work.",
+    "Session-memory/wiki reads would require prohibited machine/network access; they were not attempted and no Ready claim was made.",
+    "No forge/API credentials were used, no push/PR publication attempted, and no control-plane or .github path, symlink or submodule was changed. go.mod/go.sum are unchanged; go.mod remains Go 1.22.",
+    "Go 1.24.13 runs product tests. A real Caddy v2.10.2 prerequisite was built in /out/test-tools via allowed Go dependency downloads; its Go >=1.25 toolchain was selected by GOTOOLCHAIN=auto outside the repository. Python validators were installed in /out/check-venv from the pinned requirements.",
+    "Full suites execute serial packages within each synthetic server and run concurrently across the two servers. A wrapper redacts credential environment values from logs. No new timeout was added, no test was disabled or weakened, and no new skip was introduced; existing optional-fixture skips are enumerated.",
+    "Complete full race runs on both servers at ce5f888 found two 2e sender compatibility failures. Corrected the contract key to preserve cross-provider first-acceptance and updated only namespaced SQL fixture selectors; all signature/retry/immutable-sender/spoof-refusal assertions remain. Earlier full matrices at d8d34e2 and 75dc187 were interrupted when review identified the legacy namespace alias and standalone occupancy grant changes. They are superseded and not claimed as complete. Final matrices began at tested_revision.",
     "Only this evidence report changes after tested_revision."
   ],
   "proposed_ci_change": "None. Supply the existing equipped-host prerequisites and real module fixtures; retain all checks.",
-  "head_relation": "The handoff head is a report-only direct child of tested_revision. Only docs/build/reports/core-update-2g.json changes after that code revision; the PR body names the final head for independent review.",
-  "known_pending_failures": {
-    "TestCU207Batch1ModulesUnchanged": "The real batch-1 package/repository fixtures are absent; prohibited remote cloning was not attempted.",
-    "TestTwoComposeProjectsStaySeparate": "The unchanged fixture cannot execute sudo; Docker/Compose are not available locally.",
-    "TestStalledSSHHandshakeRestartsWriters": "ssh-keygen refuses the runner uid 1000 because it has no passwd entry.",
-    "TestOpenSSHNamespaceFirstUseAndStoreDelete": "The real sshd fixture is absent.",
-    "TestEventsFeedAndAppend": "One full run on A failed the unchanged lexical RFC3339Nano ordering assertion. The same test passed on B and all four focused reruns (one A, three B) pass. Formatter and assertion are unchanged from the target base; a deterministic timestamp diagnostic demonstrates a false-ordering case."
-  }
+  "head_relation": "Final handoff head is a report-only direct child of tested_revision; the PR body names that head for independent review."
 }
