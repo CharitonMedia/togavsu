@@ -674,9 +674,11 @@ core-emitted events (including grants) and system mail. This is separate from
 payload fields: `module` in a core event still names the recipient. Payload
 `sender` or `provider_id` values are untrusted claims.
 
-The module id `core` is reserved for core's own deliveries. Manifest validation,
-local/marketplace installation, catalog publication and contract linking refuse
-it with a reserved-id error. A module cannot install or link under that identity.
+Core source and identity labels are reserved module IDs: `core`, `upload`,
+`client_upload`, `editor`, `billing`, `email`, `zoom`, `drop_folder`, `importer`,
+`ui`, `api_token`, `module`, `service`, `system`, `api`, `manual`, `timer`, `import`.
+Manifest validation, local/marketplace installation, catalog publication and contract linking refuse
+them with a reserved-id error. A module cannot install or link under those identities.
 
 The core reads queued senders from `core.module_deliveries.created_by`, recorded
 when the push was accepted. Historical empty values mean `core`. Retries retain
@@ -758,6 +760,10 @@ exposed by the busy view.
 
 `runConflictCheck` accepts optional `{names: ["Synthetic Person", "Another Person"]}`
 in addition to the matter's parties and returns those names with the check.
+Live Practice settings `practice.conflict_additional_names_max` (default 20) and
+`practice.conflict_name_max_chars` (default 200 Unicode characters per name)
+limit this input. Exceeding either returns `validation` on `names` before scoring
+or storing a check, through REST, MCP and direct service calls.
 Use `createConflictRecord` with `conflicts:write` to register each additional
 person; a service call records the module as author and source `service`. Checks
 need `conflicts:read`. Existing wall and attorney-only redaction applies to both.
@@ -766,14 +772,28 @@ uses its own live `modules.service_call_limit.<operationId>` setting (default 12
 
 `FileBulkItem` (also single upload publication) accepts optional `status` and
 `on_behalf_of_user_id`. The latter must name an active staff, attorney or admin
-with file access to the matter; missing/inactive/outside-wall users and client or
-accountant-only users are refused before publication. It records the file/version
+with write access to the actual matter/contact and `attorney_only` placement,
+including contact-only and library publications. The caller's own placement check
+runs first; hidden targets return the same `not_found` for any named author or
+none. Once the caller may write, missing/inactive/outside-wall users, staff on an
+attorney-only publication and other invalid authors all return the same
+`validation` error on `on_behalf_of_user_id`. It records the file/version
 human author without changing the calling module's source, audit identity or
 independent access. Omitting it preserves ordinary authorship. `files:write`
 services may update status on files their module published; the existing signed
 fee-agreement executed callback remains available. A service still cannot reach
 a walled or attorney-only file. `file.trashed` is now a real signed core event;
-subscribers need `events:read` and its derived `files:read` scope.
+subscribers need `events:read` and its derived `files:read` scope. Ordinary
+`file.*` events identifying a file, including `file.updated` and `file.trashed`,
+are queued only when the module's service principal could read the file at enqueue.
+Targeted grants and books-reader filtering keep their existing behavior.
+
+File ownership is the first-version upload's explicit `owner_module_id`, retained
+and committed with publication, independent of `source`. Adding a later version
+confers no ownership. Ownership-refused service status writes answer `scope_denied`
+for missing IDs and other modules' files alike. Receipt audit transitions are tied
+to `module-processor/{consumer_module_id}/{intent_id}` without adding card data,
+hosted tokens or amounts to audit.
 
 ### Running Doc Tender jobs
 

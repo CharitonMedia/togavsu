@@ -70,6 +70,8 @@ SETTINGS: list[dict] = [
         "Patterns that mark a matter name as carrying a docket number. The starting pattern matches 23AR-CV00825.",
     ),
     _s("practice.conflict_score_floor", "integer", "practice", 60, "Lowest conflict score returned.", minimum=0, maximum=100),
+    _s("practice.conflict_additional_names_max", "integer", "practice", 20, "Maximum additional names per conflict check. Default 20.", minimum=1),
+    _s("practice.conflict_name_max_chars", "integer", "practice", 200, "Maximum characters per additional conflict name. Default 200.", minimum=1),
     _s(
         "billing.time_increment_minutes",
         "integer",

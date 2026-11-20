@@ -1589,7 +1589,7 @@ def _practice(api: Contract) -> None:
         "/api/v1/matters/{matter_id}/conflict-checks",
         operation_id="runConflictCheck",
         summary="Run a conflict check",
-        description="Searches contacts, matter parties, and conflict records by name, alias, and date of birth. Hits below the score floor are omitted.",
+        description="Searches contacts, matter parties, and conflict records by name, alias, and date of birth. Hits below the score floor are omitted. Additional names are bounded by live practice.conflict_additional_names_max (default 20) and practice.conflict_name_max_chars (default 200 Unicode characters per name). Exceeding either limit returns validation on names before any check is stored.",
         tag="Conflicts",
         features=["conflicts"],
         roles=STAFF,

@@ -321,8 +321,11 @@ func (s *Service) ReviewUnassigned(ctx context.Context, p domain.Principal, uplo
 // ownUnassigned reports a module's own token reading a file it published with no
 // matter (reviewUnassignedFile and the replay of its publish).
 func (s *Service) ownUnassigned(ctx context.Context, p domain.Principal, f fileRow, action domain.Action) (bool, error) {
-	if !moduleOnly(p) || action != domain.ActionRead || f.ID == "" || f.MatterID != "" || f.Source != p.ModuleID || f.AttorneyOnly {
+	if !moduleOnly(p) || action != domain.ActionRead || f.ID == "" || f.MatterID != "" || f.AttorneyOnly {
 		return false, nil
+	}
+	if own, err := s.st.moduleOwnsFile(ctx, p.ModuleID, f.ID); err != nil || !own {
+		return false, err
 	}
 	return s.moduleEnabled(ctx, p.ModuleID)
 }
@@ -518,15 +521,11 @@ func (s *store) grantUploads(ctx context.Context, grant domain.ID) ([]domain.ID,
 // only through a matter p could file to, the check a matter grant gets. Walled and
 // missing contacts answer alike, so the grant is no contact-ID oracle.
 func (s *Service) contactReachable(ctx context.Context, p domain.Principal, contact domain.ID) error {
-	ok, err := s.st.contactExists(ctx, contact)
+	matters, err := s.contactMatters(ctx, contact)
 	if err != nil {
-		return err
-	}
-	if !ok {
-		return domain.NotFound("contact")
-	}
-	matters, err := s.st.contactMatters(ctx, contact)
-	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return domain.NotFound("contact")
+		}
 		return err
 	}
 	if len(matters) == int(zero) {
@@ -542,6 +541,23 @@ func (s *Service) contactReachable(ctx context.Context, p domain.Principal, cont
 		}
 	}
 	return domain.NotFound("contact")
+}
+
+func (s *Service) contactMatters(ctx context.Context, contact domain.ID) ([]domain.ID, error) {
+	if directory, ok := s.dir.(interface {
+		ContactMatters(context.Context, domain.ID) ([]domain.ID, error)
+	}); ok {
+		return directory.ContactMatters(ctx, contact)
+	}
+	// Standalone relational directories use the section 5 tables directly.
+	ok, err := s.st.contactExists(ctx, contact)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, repository.ErrNotFound
+	}
+	return s.st.contactMatters(ctx, contact)
 }
 
 func (s *store) contactExists(ctx context.Context, id domain.ID) (bool, error) {

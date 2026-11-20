@@ -297,11 +297,8 @@ func (s *Service) completeProcessorReceipt(ctx context.Context, p domain.Princip
 }
 
 func (s *Service) auditProcessorReceipt(ctx context.Context, p domain.Principal, result ProcessorPaymentResult) error {
-	id, err := domain.NewID()
-	if err != nil {
-		return err
-	}
-	_, err = s.d.Audit.Record(ctx, p, audit.Change{Entity: "module_processor_intent", EntityID: id, Field: "status", New: result.Status, Reason: "processor.payment.v1"})
+	id := domain.ID("module-processor/" + p.ModuleID + "/" + result.IntentID)
+	_, err := s.d.Audit.Record(ctx, p, audit.Change{Entity: "module_processor_intent", EntityID: id, Field: "status", New: result.Status, Reason: "processor.payment.v1"})
 	return err
 }
 

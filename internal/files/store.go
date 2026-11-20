@@ -136,6 +136,16 @@ func (s *store) getFile(ctx context.Context, id domain.ID) (fileRow, error) {
 	return scanFile(s.row(ctx, `SELECT `+fileCols+` FROM files WHERE id = ?`, id))
 }
 
+// moduleOwnsFile uses the explicit upload owner, never the display source. Only
+// the upload that created version 1 confers ownership; adding a later version does
+// not. Published upload rows are retained for replay and commit with the file.
+func (s *store) moduleOwnsFile(ctx context.Context, module string, file domain.ID) (bool, error) {
+	var n int
+	err := s.row(ctx, `SELECT COUNT(*) FROM file_uploads u JOIN file_versions v ON v.id = u.version_id
+WHERE u.file_id = ? AND v.file_id = u.file_id AND v.number = 1 AND u.status = 'published' AND u.owner_module_id = ?`, file, module).Scan(&n)
+	return n != int(zero), err
+}
+
 // lockFile reads a file FOR UPDATE inside a transaction, so two saves to one file
 // number their versions one after the other.
 func (s *store) lockFile(ctx context.Context, id domain.ID) (fileRow, error) {

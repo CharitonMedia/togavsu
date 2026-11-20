@@ -688,11 +688,11 @@ func (s *Service) MarkStatus(ctx context.Context, p domain.Principal, id domain.
 		return FileView{}, domain.Invalid("status", "status is draft, final, executed, filed or received")
 	}
 	if p.Source == domain.SourceService && p.ModuleID != "" && p.UserID.IsZero() {
-		f, err := s.loadFile(ctx, id)
+		own, err := s.st.moduleOwnsFile(ctx, p.ModuleID, id)
 		if err != nil {
 			return FileView{}, err
 		}
-		if f.Source != p.ModuleID {
+		if !own {
 			return s.signatureMarkExecuted(ctx, p, id, status)
 		}
 	}

@@ -99,3 +99,15 @@ Status is `fixed` (with where) or `open`. "Follow-up" names the CORE item in
 | document.generated is rejected by the generic contract namespace rule | documents contract generation | fixed: exact named event allowed for documents.generate.v1 in the existing single targeted envelope; sender binding unchanged | `TestCoreUpdate2FDocumentGeneratedContractEnvelope` |
 | Modules cannot run real Doc Tender jobs without host services | documents MOD-DOC-22 | fixed: deterministic coretest adapters run real queue/pipeline, preserve category locks and persist failures | `TestCoreUpdate2FDocTenderCategoryHint`, `TestCoreUpdate2FDocTenderFailureIsRealQueueFailure` |
 | Intake card has no binding pre-matter payment approval/recovery contract | intake MOD-ITK-05 | fixed core side: processor.payment.v1 durable bounded authorization/recovery; processor module remains external | `TestCoreUpdate2FProcessorDeclineBeforeMatterAndApprovalRecovery`, `TestCoreUpdate2FProcessorConcurrentAndInvalidRequests` |
+
+### Core-update-2f fix pass 1
+
+| Review gap | Result | Regression evidence |
+| --- | --- | --- |
+| Core source labels collide with module status ownership | First-version upload owner is authoritative; core source/identity IDs refused by manifests, installs, catalog publishing and sender signing | `TestCoreUpdate2FFixStatusOwnership`, `TestCoreUpdate2FFixReservedSources`, `TestCoreUpdate2FFixPublishReservedSources` |
+| Named author leaks wall membership before caller access | Caller placement checked first; inaccessible targets have identical `not_found` responses for all authors | `TestCoreUpdate2FFixPublicationCallerFirst` |
+| Author ignores contact/attorney-only placement | Active firm author independently checks actual placement; all author failures share one validation response | `TestCoreUpdate2FFixPublicationAuthorPlacement` |
+| File events disclose hidden file IDs | Ordinary file events use module service read visibility at enqueue; targeted grants/books behavior retained | `TestCoreUpdate2FFixFileEventVisibility`, existing books pump regression |
+| Status ownership lookup distinguishes absent IDs | Missing and other-owner files share `scope_denied` | `TestCoreUpdate2FFixStatusExistenceOracle` |
+| Additional conflict names unbounded | Live Practice settings default to 20 names / 200 Unicode characters; over-limit input rejected before scoring/storage | `TestCoreUpdate2FFixConflictNameLimits` |
+| Processor audit IDs cannot be traced to intent | Stable consumer plus intent entity ID; no new sensitive payload | `TestCoreUpdate2FFixProcessorAuditIdentity` |

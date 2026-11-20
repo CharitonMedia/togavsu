@@ -1,9 +1,11 @@
 # Module API
 
-The manifest `id` must identify a module. The id `core` is reserved for core's
-authenticated delivery sender and cannot be installed from a local file or the
-marketplace, published to the catalog, or used as a contract consumer/provider.
-These paths return a validation error explaining that the id is reserved.
+The manifest `id` must identify a module. Core source and identity labels are
+reserved: `core`, `upload`, `client_upload`, `editor`, `billing`, `email`, `zoom`,
+`drop_folder`, `importer`, `ui`, `api_token`, `module`, `service`, `system`, `api`,
+`manual`, `timer`, `import`. Manifest/kit validation, local and marketplace installs,
+catalog publishing, contract links and module sender signing refuse them. Validation
+errors identify the reservation; only core's dedicated signer may sign as `core`.
 
 Public module API additions from `togavsu-initial-modules-prd.md` §4 and `docs/modules/CORE-CHANGES.md` (CORE-01–CORE-29). Operation shapes, scopes and `module_delegation` live in `api/openapi/v1/openapi.json` and `api/openapi/v1/mcp-tools.json`; MCP parity is described in [mcp.md](mcp.md). Conventions for walls, grants and service principals are in [conventions.md](conventions.md).
 
@@ -240,9 +242,31 @@ conflict creation and file status each have a live per-module service-call limit
 
 The real `file.trashed` delivery requires `events:read`, the derived `files:read`
 scope and a subscription. Its normal queued delivery is signed with sender `core`.
+All ordinary `file.*` events identifying a file (including `file.updated` and
+`file.trashed`) require `files:read` and the same file visibility as a module service
+read, evaluated before enqueue. Hidden/walled, attorney-only and purged files yield
+no delivery. Targeted publication grants and books-reader filtering retain their
+existing policies.
+
 A module service status write is limited to its own published files (plus the
-existing signed-copy callback); module and named-author access checks remain
-independent and retain all walls/attorney-only rules.
+existing signed-copy callback). Ownership comes from the retained first-version
+upload's explicit `owner_module_id`, committed with publication; `source` is only
+provenance. Uploading a later version confers no ownership. Ownership refusals use
+`scope_denied` for both existing and nonexistent IDs.
+
+Publication checks the caller's placement access before looking up a named author.
+A hidden matter/contact/file returns exactly the same `not_found` with or without
+an author. After the caller may write, every author failure returns the same
+`validation` error on `on_behalf_of_user_id`. The active staff/attorney/admin author
+must independently be able to write the actual matter/contact and attorney-only
+placement, including contact-only and library publications.
+
+Additional conflict names are limited by live admin settings
+`practice.conflict_additional_names_max` (default 20) and
+`practice.conflict_name_max_chars` (default 200 Unicode characters per name).
+Over-limit input returns `validation` on `names` before storing or scoring a check;
+whitespace does not bypass the character limit. REST, MCP and direct service calls
+share these checks.
 
 The named `document.generated` action is accepted only for
 `documents.generate.v1`, in the existing `action`/`payload` targeted envelope
@@ -263,3 +287,7 @@ The core stores no hosted payment token and writes no matter/contact/payment in
 this pre-matter broker. The consumer must continue only after approval and use
 stable Idempotency-Key values for core record writes. The external processor
 must durably deduplicate charges and recover results after response loss.
+
+Processor receipt audit transitions use the stable entity ID
+`module-processor/{consumer_module_id}/{intent_id}`. The audit status and existing
+provenance are unchanged; no card token, card data or amount is added.

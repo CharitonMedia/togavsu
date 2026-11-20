@@ -215,10 +215,19 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 		case !m.Approved["events:read"] || !Subscribed(m.Manifest.Events, ev.Action):
 			continue
 		}
-		// The newly emitted trash event derives files:read. Keep existing
-		// delivery policies, including books-reader contact visibility, intact.
-		if ev.Action == "file.trashed" && !m.Approved["files:read"] {
-			continue
+		// Ordinary file events expose file identifiers. Check the same live service
+		// principal read policy before queueing them. Targeted grants stay separate.
+		if recipient == "" && ev.RecordType == "file" && strings.HasPrefix(ev.Action, "file.") {
+			if !m.Approved["files:read"] || s.d.FileReadable == nil {
+				continue
+			}
+			ok, err := s.d.FileReadable(ctx, m.ID, ev.RecordID)
+			if err != nil {
+				return queued, err
+			}
+			if !ok {
+				continue
+			}
 		}
 		if m.Approved["books:read"] {
 			drop, err := s.dropBooksEvent(ctx, m.ID, ev)

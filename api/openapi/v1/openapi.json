@@ -18924,7 +18924,7 @@
       "post": {
         "operationId": "runConflictCheck",
         "summary": "Run a conflict check",
-        "description": "Searches contacts, matter parties, and conflict records by name, alias, and date of birth. Hits below the score floor are omitted.",
+        "description": "Searches contacts, matter parties, and conflict records by name, alias, and date of birth. Hits below the score floor are omitted. Additional names are bounded by live practice.conflict_additional_names_max (default 20) and practice.conflict_name_max_chars (default 200 Unicode characters per name). Exceeding either limit returns validation on names before any check is stored.",
         "tags": [
           "Conflicts"
         ],
@@ -77112,7 +77112,7 @@
           "on_behalf_of_user_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Optional active firm user with access to the target matter; recorded as file author. Module and source service remain in audit."
+            "description": "Optional active staff, attorney or admin with write access to the actual matter/contact placement and attorney_only flag, including library publications; recorded as file author. Caller access is checked first: an inaccessible target returns the same not_found regardless of author. Once the caller may write, all author failures return the same validation error. Module and source service remain in audit."
           },
           "attorney_only": {
             "type": "boolean"
@@ -79634,6 +79634,8 @@
           "client_access.days_after_close",
           "practice.case_number_patterns",
           "practice.conflict_score_floor",
+          "practice.conflict_additional_names_max",
+          "practice.conflict_name_max_chars",
           "billing.time_increment_minutes",
           "billing.default_hourly_rate_cents",
           "billing.default_expense_markup_percent",
@@ -83651,7 +83653,7 @@
             "type": "string",
             "minLength": 1,
             "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
-            "description": "Module slug. The same pattern as the {module_id} path parameter. Not a path."
+            "description": "Module slug. The same pattern as the {module_id} path parameter. Not a path. Core source and identity labels are reserved: core, upload, client_upload, editor, billing, email, zoom, drop_folder, importer, ui, api_token, module, service, system, api, manual, timer, import."
           },
           "name": {
             "type": "string"
@@ -91064,6 +91066,26 @@
       "minimum": 0,
       "maximum": 100,
       "help": "Lowest conflict score returned."
+    },
+    {
+      "key": "practice.conflict_additional_names_max",
+      "type": "integer",
+      "tab": "practice",
+      "default": 20,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Maximum additional names per conflict check. Default 20."
+    },
+    {
+      "key": "practice.conflict_name_max_chars",
+      "type": "integer",
+      "tab": "practice",
+      "default": 200,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Maximum characters per additional conflict name. Default 200."
     },
     {
       "key": "billing.time_increment_minutes",

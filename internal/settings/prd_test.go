@@ -34,6 +34,8 @@ func TestPRDDefaults(t *testing.T) {
 		"client_access.days_after_close":                       "14",
 		"practice.case_number_patterns":                        string(patterns),
 		"practice.conflict_score_minimum":                      "60",
+		"practice.conflict_additional_names_max":               "20",
+		"practice.conflict_name_max_chars":                     "200",
 		"practice.party_roles":                                 string(roles),
 		"practice.markers":                                     string(markers),
 		"billing.time_increment_minutes":                       "6",

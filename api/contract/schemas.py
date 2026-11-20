@@ -1718,7 +1718,7 @@ SCHEMAS = _register(
                 "contact_id": _null(_uuid()),
                 "name": {"type": "string"},
                 "status": _enum(["draft", "final", "executed", "filed", "received"]),
-                "on_behalf_of_user_id": _uuid("Optional active firm user with access to the target matter; recorded as file author. Module and source service remain in audit."),
+                "on_behalf_of_user_id": _uuid("Optional active staff, attorney or admin with write access to the actual matter/contact placement and attorney_only flag, including library publications; recorded as file author. Caller access is checked first: an inaccessible target returns the same not_found regardless of author. Once the caller may write, all author failures return the same validation error. Module and source service remain in audit."),
                 "attorney_only": {"type": "boolean"},
                 "shared_with_client": {"type": "boolean"},
                 "library": {
@@ -3384,7 +3384,7 @@ SCHEMAS = _register(
         },
         "ModuleManifest": _obj(
             {
-                "id": _module_id("Module slug. The same pattern as the {module_id} path parameter. Not a path."),
+                "id": _module_id("Module slug. The same pattern as the {module_id} path parameter. Not a path. Core source and identity labels are reserved: core, upload, client_upload, editor, billing, email, zoom, drop_folder, importer, ui, api_token, module, service, system, api, manual, timer, import."),
                 "name": {"type": "string"},
                 "version": {"type": "string"},
                 "author": {"type": "string"},

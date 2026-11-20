@@ -18,6 +18,8 @@ const (
 // The catalog defaults in the settings package are these same values.
 const (
 	ConflictScoreMinimum        = 60
+	ConflictAdditionalNamesMax  = 20
+	ConflictNameMaxChars        = 200
 	BillingTimeIncrementMinutes = 6
 	SearchMinChars              = 2
 	SearchHitsAll               = 5

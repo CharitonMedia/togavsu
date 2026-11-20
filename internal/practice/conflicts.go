@@ -2,8 +2,10 @@ package practice
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -87,10 +89,18 @@ func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matt
 	if err := s.gateMatterShared(ctx, p, matter, domain.ActionRead, false); err != nil {
 		return ConflictRun{}, err
 	}
+	maxNames := s.intSetting(ctx, "practice.conflict_additional_names_max", domain.ConflictAdditionalNamesMax)
+	maxChars := s.intSetting(ctx, "practice.conflict_name_max_chars", domain.ConflictNameMaxChars)
+	if len(names) > maxNames {
+		return ConflictRun{}, domain.Invalid("names", fmt.Sprintf("at most %d additional names are allowed", maxNames))
+	}
 	parties := s.db.Parties(matter, domain.ID(""))
 	var probes []nameProbe
 	checkedNames := make([]string, 0, len(names))
 	for _, name := range names {
+		if !utf8.ValidString(name) || utf8.RuneCountInString(name) > maxChars {
+			return ConflictRun{}, domain.Invalid("names", fmt.Sprintf("each additional name must contain at most %d characters", maxChars))
+		}
 		name = strings.TrimSpace(name)
 		if name == "" {
 			return ConflictRun{}, domain.Invalid("names", "each additional name must be nonempty")
