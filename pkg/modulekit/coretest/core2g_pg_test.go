@@ -296,3 +296,34 @@ func TestCoreUpdate2GAllBindingContracts(t *testing.T) {
 		t.Fatalf("changed/missing binding contracts: %#v", received)
 	}
 }
+
+func TestCoreUpdate2GLegacyReceiptApprovalOrder(t *testing.T) {
+	c, p, _, _ := processorFixture(t)
+	const consumer = "legacy-intake"
+	install2d(t, c, consumer, []string{"contracts:call", "payments:write", "contacts:write"}, "consumes:\n  - contract: processor.payment.v1\n")
+	c.Admin.Must(201, "POST", "/api/v1/modules/contract-links", map[string]any{"contract": "processor.payment.v1", "provider_id": "synthetic-processor", "consumer_id": consumer})
+	bot := c.ModuleClient(consumer)
+	path := "/api/v1/modules/contracts/processor.payment.v1/"
+	p.LoseNextApprovalResponse()
+	bot.Must(202, "POST", path+"authorize", processorRequest("legacy-intent"))
+	early := bot.Must(201, "POST", "/api/v1/contacts", map[string]any{"kind": "person", "given_name": "Created", "family_name": "WhilePending"})
+	bot.Must(200, "POST", path+"recover", map[string]any{"intent_id": "legacy-intent"})
+	// Emulate a real 2f receipt: it has approval audit evidence, but no new
+	// timestamp field. The append-only audit ledger itself remains untouched.
+	db, err := sql.Open("pgx", c.DatabaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`UPDATE core.core_idempotency SET response=(response::jsonb - 'approved_at')::text WHERE actor=$1 AND operation='processor.payment.v1' AND idem_key='legacy-intent'`, "module-processor/"+consumer); err != nil {
+		t.Fatal(err)
+	}
+	bot.Must(403, "POST", path+"record", map[string]any{"intent_id": "legacy-intent", "contact_id": early.JSON["id"]})
+	late := bot.Must(201, "POST", "/api/v1/contacts", map[string]any{"kind": "person", "given_name": "Created", "family_name": "AfterApproval"})
+	body := map[string]any{"intent_id": "legacy-intent", "contact_id": late.JSON["id"]}
+	first := bot.Must(200, "POST", path+"record", body)
+	again := bot.Must(200, "POST", path+"record", body)
+	if first.JSON["id"] != again.JSON["id"] || p.Charges() != 1 || len(p.Calls()) != 2 {
+		t.Fatal("legacy recovery duplicated payment or charge")
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
@@ -70,15 +71,31 @@ func (s *Service) recordProcessorPayment(ctx context.Context, p domain.Principal
 		if target.IsZero() {
 			target, kind = in.ContactID, "contact"
 		}
-		if receipt.ApprovedAt > claimedAt {
-			claimedAt = receipt.ApprovedAt
+		approvedAt := receipt.ApprovedAt
+		if approvedAt == 0 {
+			// 2f receipts have no timestamp field, but their approval transition
+			// is already in the append-only ledger. Intent creation is too early:
+			// a consumer must not bind a target it created while still pending.
+			rows, err := s.d.Audit.Rows(ctx, audit.RowQuery{Entity: "module_processor_intent", EntityID: domain.ID("module-processor/" + p.ModuleID + "/" + in.IntentID), Field: "status"})
+			if err != nil {
+				return err
+			}
+			for _, row := range rows {
+				at := row.CreatedAt.UnixMicro()
+				if row.NewValue == "approved" && at >= claimedAt && (approvedAt == 0 || at < approvedAt) {
+					approvedAt = at
+				}
+			}
+			if approvedAt == 0 {
+				return domain.Conflict("the stored receipt has no approval audit evidence")
+			}
 		}
 		var owned bool
-		if err := s.q(ctx).QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM core.events WHERE record_id=$1 AND record_type=$2 AND action=$3 AND actor_id=$4 AND created_at >= $5)`, string(target), kind, kind+".created", p.ModuleID, claimedAt).Scan(&owned); err != nil {
+		if err := s.q(ctx).QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM core.events WHERE record_id=$1 AND record_type=$2 AND action=$3 AND actor_id=$4 AND created_at >= $5)`, string(target), kind, kind+".created", p.ModuleID, approvedAt).Scan(&owned); err != nil {
 			return err
 		}
 		if !owned {
-			return domain.Forbidden("bind the receipt to a record this consumer created after the intent")
+			return domain.Forbidden("bind the receipt to a record this consumer created after approval")
 		}
 		payment, err := s.d.RecordProcessorPayment(ctx, p, in, receipt.ProviderID, receipt.Result, nil)
 		if err != nil {

@@ -120,8 +120,8 @@ on MCP, contract `processor.payment.v1`, operation `record`) with:
 `intent_id` and `contact_id` are required. `matter_id` is optional: if supplied,
 the matter must have been created by this consumer after approval, and the contact
 must be a party on it; otherwise the contact must have been created by this consumer
-after approval. Legacy 2f receipts without an approval timestamp use intent creation
-as their lower bound. Scope `payments:write` is required on the current consumer bearer
+after approval. Legacy 2f receipts without an approval timestamp use their append-only approval
+audit timestamp; a missing approval audit fails closed. Scope `payments:write` is required on the current consumer bearer
 in addition to `contracts:call`, with both modules' current approvals and link.
 This is a service operation, with no viewer/context token. Only this consumer's stored
 approved operating receipt grants this continuation. Pending/declined receipts conflict;

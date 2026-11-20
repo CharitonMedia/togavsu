@@ -48,7 +48,7 @@ func validEventUUID(id string) bool {
 		return false
 	}
 	raw, err := hex.DecodeString(strings.ReplaceAll(id, "-", ""))
-	return err == nil && len(raw) == 16 && raw[8]>>6 == 2 && raw[6]>>4 >= 1 && raw[6]>>4 <= 8
+	return err == nil && len(raw) == 16
 }
 
 func (s *Service) pushBindingContractEvent(ctx context.Context, p domain.Principal, contract string, in BindingContractEvent, raw []byte) error {
