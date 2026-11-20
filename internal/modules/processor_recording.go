@@ -72,7 +72,7 @@ func (s *Service) recordProcessorPayment(ctx context.Context, p domain.Principal
 			target, kind = in.ContactID, "contact"
 		}
 		approvedAt := receipt.ApprovedAt
-		if approvedAt == 0 {
+		if approvedAt == int64(zero) {
 			// 2f receipts have no timestamp field, but their approval transition
 			// is already in the append-only ledger. Intent creation is too early:
 			// a consumer must not bind a target it created while still pending.
@@ -82,11 +82,11 @@ func (s *Service) recordProcessorPayment(ctx context.Context, p domain.Principal
 			}
 			for _, row := range rows {
 				at := row.CreatedAt.UnixMicro()
-				if row.NewValue == "approved" && at >= claimedAt && (approvedAt == 0 || at < approvedAt) {
+				if row.NewValue == "approved" && at >= claimedAt && (approvedAt == int64(zero) || at < approvedAt) {
 					approvedAt = at
 				}
 			}
-			if approvedAt == 0 {
+			if approvedAt == int64(zero) {
 				return domain.Conflict("the stored receipt has no approval audit evidence")
 			}
 		}

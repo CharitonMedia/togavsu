@@ -61,6 +61,7 @@ type OccupancyBlock struct {
 // ListOccupancy allows a calendar service principal to read firm-wide occupancy.
 // No user, matter, kind, wall, title, all-day flag or event id is exposed.
 func (s *Service) ListOccupancy(ctx context.Context, p domain.Principal, f EventFilter) ([]OccupancyBlock, error) {
+	var zero int
 	if p.Source != domain.SourceService || p.ModuleID == "" || !p.UserID.IsZero() {
 		return nil, domain.Forbidden("firm occupancy requires a module service principal")
 	}
@@ -70,7 +71,7 @@ func (s *Service) ListOccupancy(ctx context.Context, p domain.Principal, f Event
 	if !f.UserID.IsZero() || !f.MatterID.IsZero() || f.Kind != "" {
 		return nil, domain.Invalid("view", "occupancy cannot filter by user, matter or kind")
 	}
-	if f.From.IsZero() || f.To.IsZero() || !f.To.After(f.From) || f.To.After(f.From.UTC().AddDate(0, maxRangeMonths(), 0)) {
+	if f.From.IsZero() || f.To.IsZero() || !f.To.After(f.From) || f.To.After(f.From.UTC().AddDate(zero, maxRangeMonths(), zero)) {
 		return nil, domain.Invalid("to_time", "occupancy needs an ordered from_time/to_time interval within the available dates range")
 	}
 	rows, err := s.d.Store.EventsBetween(ctx, f.From, f.To)
@@ -80,7 +81,7 @@ func (s *Service) ListOccupancy(ctx context.Context, p domain.Principal, f Event
 	out := []OccupancyBlock{}
 	for _, row := range rows {
 		out = append(out, OccupancyBlock{StartsAt: fmtTime(row.StartsAt), EndsAt: fmtTime(row.EndsAt)})
-		if f.Max > 0 && len(out) == f.Max {
+		if f.Max > zero && len(out) == f.Max {
 			break
 		}
 	}

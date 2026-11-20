@@ -3,9 +3,9 @@ package modules
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -43,13 +43,10 @@ var coreEventNamespaces, coreEventRegistryError = func() (map[string]bool, error
 	return out, err
 }()
 
-func validEventUUID(id string) bool {
-	if len(id) != 36 || id[8] != '-' || id[13] != '-' || id[18] != '-' || id[23] != '-' {
-		return false
-	}
-	raw, err := hex.DecodeString(strings.ReplaceAll(id, "-", ""))
-	return err == nil && len(raw) == 16
-}
+// UUID punctuation and widths are fixed by the wire format, not firm settings.
+var bindingEventUUIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+func validEventUUID(id string) bool { return bindingEventUUIDPattern.MatchString(id) }
 
 func (s *Service) pushBindingContractEvent(ctx context.Context, p domain.Principal, contract string, in BindingContractEvent, raw []byte) error {
 	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) || !p.UserID.IsZero() {
@@ -103,7 +100,7 @@ func (s *Service) pushBindingContractEvent(ctx context.Context, p domain.Princip
 		if err != nil {
 			return err
 		}
-		recipients := 0
+		recipients := zero
 		now := s.now().UnixMicro()
 		for _, id := range candidates {
 			consumer, err := s.Installed(ctx, id)
