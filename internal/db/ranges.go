@@ -31,6 +31,7 @@ func MigrationRanges() []MigrationRange {
 		{Task: "core-update-2b", Min: 1450, Max: 1499},
 		{Task: "core-update-2c", Min: 1500, Max: 1549},
 		{Task: "core-update-2d", Min: 1550, Max: 1599},
+		{Task: "core-update-2g", Min: 1600, Max: 1649},
 	}
 }
 
