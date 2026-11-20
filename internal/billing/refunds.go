@@ -84,7 +84,7 @@ func (s *Service) CreatePaymentRefund(ctx context.Context, p domain.Principal, p
 		if err != nil {
 			return err
 		}
-		if err := s.allow(t.ctx, p, domain.ResPayment, domain.ActionWrite, pay.MatterID); err != nil {
+		if err := s.allowPayment(t.ctx, p, domain.ActionWrite, pay); err != nil {
 			return err
 		}
 		if pay.Status != PayCompleted {
@@ -220,7 +220,7 @@ func (s *Service) UpdatePaymentRefundStatus(ctx context.Context, p domain.Princi
 		if err != nil {
 			return err
 		}
-		if err := s.allow(t.ctx, dp, domain.ResPayment, domain.ActionWrite, pay.MatterID); err != nil {
+		if err := s.allowPayment(t.ctx, dp, domain.ActionWrite, pay); err != nil {
 			return err
 		}
 		out = row

@@ -56,6 +56,8 @@ class Core2FContract(unittest.TestCase):
 
     def test_generated_event_keeps_one_envelope(self):
         body = self.spec['paths']['/api/v1/modules/contracts/{contract}/events']['post']['requestBody']['content']['application/json']['schema']
+        self.assertEqual(len(body['oneOf']), 2)
+        body = self.schemas['TargetedContractEvent']
         self.assertEqual(set(body['required']), {'id', 'contract', 'consumer_id', 'occurred_at', 'action'})
         for field in ('type', 'event', 'event_type', 'data', 'provider_id'):
             self.assertNotIn(field, body['properties'])

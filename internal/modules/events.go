@@ -215,6 +215,19 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 		case !m.Approved["events:read"] || !Subscribed(m.Manifest.Events, ev.Action):
 			continue
 		}
+		// Contact-only payment receipts follow the contact's current walls too.
+		if recipient == "" && ev.RecordType == "payment" && ev.MatterID.IsZero() {
+			if s.d.PaymentReadable == nil {
+				continue
+			}
+			visible, err := s.d.PaymentReadable(ctx, m.ID, ev.RecordID)
+			if err != nil {
+				return zero, err
+			}
+			if !visible {
+				continue
+			}
+		}
 		// Ordinary file events expose file identifiers. Check the same live service
 		// principal read policy before queueing them. Targeted grants stay separate.
 		if recipient == "" && ev.RecordType == "file" && strings.HasPrefix(ev.Action, "file.") {

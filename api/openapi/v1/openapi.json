@@ -37965,7 +37965,7 @@
       "get": {
         "operationId": "listCalendarEvent",
         "summary": "List calendar events",
-        "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. Ordinary event gets/lists retain their existing walls.",
+        "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only under calendar:read and returns only starts_at and ends_at for all events including unassigned/walled events. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls.",
         "tags": [
           "Calendar"
         ],
@@ -38050,7 +38050,8 @@
                 "day",
                 "week",
                 "month",
-                "busy"
+                "busy",
+                "occupancy"
               ]
             },
             "description": "Calendar view. busy returns occupancy only across matter walls; requires user_id, from_time and to_time and refuses matter_id/kind filters."
@@ -38108,6 +38109,25 @@
                           "type": "array",
                           "items": {
                             "$ref": "#/components/schemas/CalendarBusyBlock"
+                          }
+                        },
+                        "page": {
+                          "$ref": "#/components/schemas/Page"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "data",
+                        "page"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/CalendarOccupancyBlock"
                           }
                         },
                         "page": {
@@ -67349,7 +67369,7 @@
       "post": {
         "operationId": "callModuleContract",
         "summary": "Call a linked module contract operation",
-        "description": "The consumer module's bearer with contracts:call posts a body; the core proxies it to the admin-linked provider's declared path, HMAC-signed like events, carrying the caller's context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects a linked provider module id (never an address); omit it to use the earliest link. Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31). For processor.payment.v1, authorize takes ProcessorPaymentWrite and recover takes ProcessorPaymentRecover, with ProcessorPaymentResult (200 terminal; 202 pending). Both require consumer bearer payments:write and current payments:write approvals on both modules. A durable pending receipt precedes any provider attempt; replay recovers without authorizing twice. A changed authorize body for an existing intent conflicts. On this contract, intent_id owns durable idempotency; Idempotency-Key retains its length validation but does not cache HTTP responses. Every repeat rechecks current scopes and links and reads the current recovered result. No core matter/contact/payment is written; only approved permits intake continuation. X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer for contract calls, or core for core-emitted events, grants and system mail. Queued identity comes from module_deliveries.created_by (historical empty means core), never payload or current links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, keyed by the recipient module webhook secret. The literal v2. separates signature versions. Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix seconds. The separate v2 header preserves the exact 2d t=,v1= header. modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the authenticated sender, and refuses missing bindings, duplicate headers and tampering. Use constant-time MAC comparison and a five-minute window in either direction; deduplicate event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. Sender authenticates provenance, not permission to read core records.",
+        "description": "The consumer module's bearer with contracts:call posts a body; the core proxies it to the admin-linked provider's declared path, HMAC-signed like events, carrying the caller's context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects a linked provider module id (never an address); omit it to use the earliest link. Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31). For processor.payment.v1, authorize takes ProcessorPaymentWrite and recover takes ProcessorPaymentRecover, with ProcessorPaymentResult (200 terminal; 202 pending). Both require consumer bearer payments:write and current payments:write approvals on both modules. A durable pending receipt precedes any provider attempt; replay recovers without authorizing twice. A changed authorize body for an existing intent conflicts. On this contract, intent_id owns durable idempotency; Idempotency-Key retains its length validation but does not cache HTTP responses. Every repeat rechecks current scopes and links and reads the current recovered result. Authorize/recover write no core matter/contact/payment; only approved permits intake continuation. The core-handled record operation takes ProcessorPaymentRecord and returns Payment (200). It binds the approved receipt once to a matter/contact created by this consumer after the intent, using only stored amount, operating destination, provider and reference. Current consumer bearer contracts:call and payments:write, both modules approvals and the link are required. No viewer or provider call; retries return the same payment, changed targets conflict, unknown or other-module intents are not_found, pending/declined/trust receipts are refused. Money fields cannot be supplied. Binding/payment/audit/events commit atomically. X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer for contract calls, or core for core-emitted events, grants and system mail. Queued identity comes from module_deliveries.created_by (historical empty means core), never payload or current links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, keyed by the recipient module webhook secret. The literal v2. separates signature versions. Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix seconds. The separate v2 header preserves the exact 2d t=,v1= header. modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the authenticated sender, and refuses missing bindings, duplicate headers and tampering. Use constant-time MAC comparison and a five-minute window in either direction; deduplicate event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. Sender authenticates provenance, not permission to read core records.",
         "tags": [
           "Modules"
         ],
@@ -67528,7 +67548,7 @@
       "post": {
         "operationId": "pushModuleContractEvent",
         "summary": "Push a contract event to linked consumers",
-        "description": "The provider module's bearer with contracts:provide queues a contract event for the named linked consumer, delivered like core events (CORE-31). Actions use the contract prefix, with the documented document.generated exception only for documents.generate.v1. The sole envelope uses action and payload; no alternate type/data envelope. X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer for contract calls, or core for core-emitted events, grants and system mail. Queued identity comes from module_deliveries.created_by (historical empty means core), never payload or current links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, keyed by the recipient module webhook secret. The literal v2. separates signature versions. Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix seconds. The separate v2 header preserves the exact 2d t=,v1= header. modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the authenticated sender, and refuses missing bindings, duplicate headers and tampering. Use constant-time MAC comparison and a five-minute window in either direction; deduplicate event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. Sender authenticates provenance, not permission to read core records.",
+        "description": "The provider module's bearer with contracts:provide queues a contract event for the named linked consumers, delivered like core events (CORE-31). The binding batch 2 envelope is contract, event, event_id (UUID), occurred_at (RFC3339), data (object). Contract matches the route; event is nonempty and cannot use any core event namespace (file.*, matter.*, contact.*, calendar.*, payment.* or any other core-emitted namespace). Every enabled consumer declaring the contract, holding approved contracts:call and linked to this provider receives the original fields unchanged. Permanent per-recipient/event_id deduplication and durable signed retries apply. Also accepted: the unchanged targeted id, contract, consumer_id, occurred_at, action, payload envelope; its action uses the contract prefix or document.generated for documents.generate.v1, and it goes only to the named linked consumer. X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer for contract calls, or core for core-emitted events, grants and system mail. Queued identity comes from module_deliveries.created_by (historical empty means core), never payload or current links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, keyed by the recipient module webhook secret. The literal v2. separates signature versions. Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix seconds. The separate v2 header preserves the exact 2d t=,v1= header. modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the authenticated sender, and refuses missing bindings, duplicate headers and tampering. Use constant-time MAC comparison and a five-minute window in either direction; deduplicate event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. Sender authenticates provenance, not permission to read core records.",
         "tags": [
           "Modules"
         ],
@@ -67655,34 +67675,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "id",
-                  "contract",
-                  "consumer_id",
-                  "occurred_at",
-                  "action"
-                ],
-                "properties": {
-                  "id": {
-                    "type": "string"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BindingContractEvent"
                   },
-                  "contract": {
-                    "type": "string"
-                  },
-                  "consumer_id": {
-                    "type": "string"
-                  },
-                  "occurred_at": {
-                    "type": "string",
-                    "format": "date-time"
-                  },
-                  "action": {
-                    "type": "string"
-                  },
-                  "payload": {}
-                }
+                  {
+                    "$ref": "#/components/schemas/TargetedContractEvent"
+                  }
+                ]
               }
             }
           }
@@ -73569,9 +73569,16 @@
             "description": "UUIDv7."
           },
           "matter_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "Null only for an approved contact-only processor receipt payment."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "amount_cents": {
             "type": "integer",
@@ -75717,6 +75724,123 @@
           "statement_balance_cents"
         ],
         "description": "The caller enters the statement. The server computes the ledger total, the client sum, and both differences."
+      },
+      "BindingContractEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contract": {
+            "type": "string",
+            "minLength": 1
+          },
+          "event": {
+            "type": "string",
+            "minLength": 1
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "contract",
+          "event",
+          "event_id",
+          "occurred_at",
+          "data"
+        ],
+        "description": "Binding batch 2 event, unchanged to all approved linked consumers. Contract equals route; event cannot use a core event namespace. Deduplicate event_id permanently."
+      },
+      "TargetedContractEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contract": {
+            "type": "string",
+            "minLength": 1
+          },
+          "consumer_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1
+          },
+          "payload": {}
+        },
+        "required": [
+          "id",
+          "contract",
+          "consumer_id",
+          "occurred_at",
+          "action"
+        ],
+        "description": "Also accepted unchanged: targeted 2f envelope, delivered only to consumer_id. Existing action-prefix rules apply."
+      },
+      "ProcessorPaymentRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "intent_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          }
+        },
+        "required": [
+          "intent_id",
+          "contact_id"
+        ],
+        "description": "Record an approved operating receipt once, bound to the consuming module and newly created matter (contact must be its party), or a newly created contact when matter_id is omitted. No viewer or provider call. Money fields are forbidden; repeats return the same Payment."
+      },
+      "CalendarOccupancyBlock": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          }
+        },
+        "required": [
+          "starts_at",
+          "ends_at"
+        ],
+        "description": "Service-only firm-wide occupancy, including unassigned walled events. Start/end only; no other fields."
       },
       "CalendarBusyBlock": {
         "type": "object",
@@ -90220,6 +90344,13 @@
         "result": "not_found"
       }
     ]
+  },
+  "x-togavsu-frame-session-csrf": {
+    "request_header": "X-Togavsu-Session-CSRF",
+    "form_field": "csrf",
+    "path": "/m/{module_id}/…",
+    "method": "GET",
+    "description": "Only after successful browser-session authentication: core supplies that session-bound CSRF token to the module, strips caller-supplied CSRF headers, cookies and Authorization, and marks frame responses Cache-Control: no-store. Never in a URL or shared cache; bearer-only and unauthenticated requests get no session CSRF. Render an HTML-escaped hidden csrf field for urlencoded POST. POST cookie CSRF remains strict: missing/other-session tokens are refused before proxying. This does not replace module context or public-page CSRF."
   },
   "x-togavsu-event-owners": {
     "session.created": {

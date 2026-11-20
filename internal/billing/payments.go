@@ -55,7 +55,7 @@ func (s *Service) Payment(ctx context.Context, p domain.Principal, id domain.ID)
 	if err != nil {
 		return Payment{}, err
 	}
-	if err := s.allow(ctx, p, domain.ResPayment, domain.ActionRead, row.MatterID); err != nil {
+	if err := s.allowPayment(ctx, p, domain.ActionRead, row); err != nil {
 		return Payment{}, err
 	}
 	return row, nil
@@ -78,7 +78,7 @@ func (s *Service) Payments(ctx context.Context, p domain.Principal, f PaymentFil
 			f.Status != "" && r.Status != f.Status {
 			continue
 		}
-		if s.allow(ctx, p, domain.ResPayment, domain.ActionRead, r.MatterID) == nil {
+		if s.allowPayment(ctx, p, domain.ActionRead, r) == nil {
 			out = append(out, r)
 		}
 	}
@@ -330,7 +330,7 @@ func (s *Service) UpdatePaymentStatus(ctx context.Context, p domain.Principal, i
 		if err != nil {
 			return err
 		}
-		if err := s.allow(t.ctx, p, domain.ResPayment, domain.ActionWrite, row.MatterID); err != nil {
+		if err := s.allowPayment(t.ctx, p, domain.ActionWrite, row); err != nil {
 			return err
 		}
 		out = row
@@ -395,7 +395,7 @@ func (s *Service) ReversePayment(ctx context.Context, p domain.Principal, id dom
 		if err != nil {
 			return err
 		}
-		if err := s.allow(t.ctx, p, domain.ResPayment, domain.ActionApproveInvoice, row.MatterID); err != nil {
+		if err := s.allowPayment(t.ctx, p, domain.ActionApproveInvoice, row); err != nil {
 			return err
 		}
 		if !row.TrustEntryID.IsZero() {
@@ -593,4 +593,26 @@ func viewerless(p domain.Principal) error {
 		return domain.Forbidden("a module writes a payment with a processor authorization or a viewer")
 	}
 	return nil
+}
+
+// allowPayment keeps contact-only receipt payments behind the contact's walls
+// when that contact is subsequently attached to a matter. Existing matter-bound
+// payments continue to use only their own matter's policy.
+func (s *Service) allowPayment(ctx context.Context, p domain.Principal, act domain.Action, row Payment) error {
+	if err := s.allow(ctx, p, domain.ResPayment, act, row.MatterID); err != nil {
+		return err
+	}
+	if !row.MatterID.IsZero() {
+		return nil
+	}
+	parties := s.d.Practice.Parties("", row.ContactID)
+	if len(parties) == 0 {
+		return nil
+	}
+	for _, party := range parties {
+		if s.allow(ctx, p, domain.ResPayment, act, party.MatterID) == nil {
+			return nil
+		}
+	}
+	return domain.NotFound("payment")
 }

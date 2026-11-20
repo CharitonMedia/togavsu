@@ -659,6 +659,9 @@ func (s *Service) PaymentsReport(ctx context.Context, p domain.Principal, f Repo
 		if pay.Status != PayCompleted || !inRange(pay.ReceivedOn, f.FromDate, f.ToDate) {
 			continue
 		}
+		if pay.MatterID.IsZero() && s.allowPayment(ctx, p, domain.ActionRead, pay) != nil {
+			continue
+		}
 		if vis, err := ok(pay.MatterID); err != nil {
 			return Report{}, err
 		} else if !vis {

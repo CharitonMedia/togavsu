@@ -48,6 +48,8 @@ type Enrollment struct {
 
 // Caller is an authenticated session or bearer token.
 type Caller struct {
+	// CSRFToken is derived only from a successfully authenticated browser session.
+	CSRFToken string
 	Principal domain.Principal
 	Scopes    []string
 }

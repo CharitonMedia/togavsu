@@ -184,7 +184,7 @@ func invoiceView(i Invoice, client bool) any {
 type paymentJSON struct {
 	metaJSON
 	ContactID              domain.ID  `json:"contact_id"`
-	MatterID               domain.ID  `json:"matter_id"`
+	MatterID               *domain.ID `json:"matter_id"`
 	AmountCents            int64      `json:"amount_cents"`
 	Destination            string     `json:"destination"`
 	Method                 string     `json:"method"`
@@ -209,7 +209,7 @@ func paymentView(p Payment) paymentJSON {
 	if state == "" {
 		state = RefundNone
 	}
-	return paymentJSON{metaOf(p.Meta), p.ContactID, p.MatterID, int64(p.AmountCents), p.Destination, p.Method, p.ReferenceNumber,
+	return paymentJSON{metaOf(p.Meta), p.ContactID, idOrNil(p.MatterID), int64(p.AmountCents), p.Destination, p.Method, p.ReferenceNumber,
 		p.Status, idOrNil(p.InvoiceID), idOrNil(acct), idOrNil(p.TrustEntryID), p.Source,
 		int64(p.RefundedCents), state, idOrNil(p.ReplenishmentRequestID), p.Imported}
 }

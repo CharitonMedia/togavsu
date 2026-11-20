@@ -97,15 +97,52 @@ The processor module is not supplied by core. It must implement:
    querying the external processor; do not ask intake to submit a new charge.
 4. The exact bounded response schema above, without card data, hosted tokens,
    credentials, provider addresses or unrelated records in responses or logs.
-5. Recording an approved charge on the subsequently created matter using the
-   existing core payment workflow and applicable viewer/task authorization. The
-   pre-matter receipt itself is not an unrestricted payment-write grant.
+5. Letting the consuming module record the stored approval through the core `record`
+   continuation below. That operation never calls the provider again. Existing
+   viewer/task processor workflows continue to work unchanged.
 
 The intake consumer must persist its intent id and approved continuation state,
 create core records only after approval, and recover/retry record creation with
 stable core Idempotency-Key values. It must preserve and surface a charged but
 not yet recorded result rather than asking for payment again. The pre-matter
 contract does not open arbitrary service-principal payment writes or intercept unrelated createMatter callers. This call order is binding on the paid intake consumer, which persists its own continuation state.
+
+### Record the approved receipt
+
+After approval, the consuming module creates its matter/contact, then calls
+`POST /api/v1/modules/contracts/processor.payment.v1/record` (`callModuleContract`
+on MCP, contract `processor.payment.v1`, operation `record`) with:
+
+```json
+{"intent_id":"synthetic-intake-1","matter_id":"019b6968-4600-7001-8000-000000000001","contact_id":"019b6968-4600-7001-8000-000000000002"}
+```
+
+`intent_id` and `contact_id` are required. `matter_id` is optional: if supplied,
+the matter must have been created by this consumer after approval, and the contact
+must be a party on it; otherwise the contact must have been created by this consumer
+after approval. Legacy 2f receipts without an approval timestamp use intent creation
+as their lower bound. Scope `payments:write` is required on the current consumer bearer
+in addition to `contracts:call`, with both modules' current approvals and link.
+This is a service operation, with no viewer/context token. Only this consumer's stored
+approved operating receipt grants this continuation. Pending/declined receipts conflict;
+unknown/other-module intents are `not_found`. Amount, destination, provider, reference,
+status and hosted tokens cannot be supplied in this request; unknown fields fail.
+Trust recording remains unavailable.
+
+HTTP 200 returns the normal `Payment`. Core uses only the stored receipt's amount,
+operating destination, provider as `source`, reference, method `card` and status
+`completed`. A contact-only payment has null `matter_id`. Binding, payment, core row,
+audit and normal `payment.created`/`payment.completed` events commit together, under
+the consumer module as actor with source `service`. A row lock serializes concurrent
+recording across core processes. Repeats/recovery return the same payment without
+another provider request or charge. A changed target conflicts. Live link/scope and
+matter/contact visibility are rechecked even on replay. No arbitrary viewerless
+`createPayment` write opens. The receipt has no expiry or alternate intent alias.
+
+`modulekit.ProcessorPaymentRecord` and public `modulekit.ID` support typed callers;
+`c.RecordProcessorPayment(consumerID, request)` exercises the real operation in coretest.
+`c.PushContractEvent(providerID, modulekit.BindingContractEvent{…})` pushes the binding
+envelope through the real queue; consumer handlers use `coretest.ReadDelivery`.
 
 `coretest.NewProcessor()` supplies a deterministic, in-process provider for module
 acceptance. Register `c.Serve(id, processor.Handler)`, install the manifest and
@@ -117,49 +154,50 @@ the real broker signatures and uses no outside service. Its in-memory provider
 state is synthetic fixture state, not a replacement for production durable
 processor idempotency.
 
-## `documents.generate.v1` event delivery
+## Batch 2 contract events
 
-Provider-pushed `document.generated` uses the same targeted envelope as phone and
-workflow contracts. The following is the complete outer shape; `payload` is the
-provider's generated-result data and is preserved as JSON, without core adding
-another event envelope:
+**Events. Every contract event is `{"contract": "<name>", "event": "<type>", "event_id": "<uuid>", "occurred_at": "<RFC 3339>", "data": {...}}`. `event_id` is unique; consumers dedupe on it permanently.** A provider pushes a contract event through the core the same way core events are delivered, and the consumer's events endpoint receives it.
+
+This binding envelope applies to every contract, including `documents.generate.v1`
+(documents → workflows), `signature.request.v1` (lawpay-docuseal → mo-estate-planning),
+and `phone.provider.v1` / `meetings.provider.v1` (phone-zoom / phone-google → phone).
+Provider selection and the manifest's `many` rule remain unchanged.
+
+A documents provider posts this shape to
+`POST /api/v1/modules/contracts/documents.generate.v1/events`:
 
 ```json
-{
-  "id": "synthetic-generation-event-1",
-  "contract": "documents.generate.v1",
-  "consumer_id": "synthetic-consumer",
-  "occurred_at": "2026-11-20T12:00:00Z",
-  "action": "document.generated",
-  "payload": {"request_id": "synthetic-request-1", "file_id": "synthetic-file-id"}
-}
+{"contract":"documents.generate.v1","event":"document.generated","event_id":"d210ad4a-3c92-4ed1-9684-8fb164155760","occurred_at":"2026-11-20T12:00:00Z","data":{"run_id":"d210ad4a-3c92-4ed1-9684-8fb164155761","matter_id":"d210ad4a-3c92-4ed1-9684-8fb164155762","template_id":"d210ad4a-3c92-4ed1-9684-8fb164155763","file_ids":["d210ad4a-3c92-4ed1-9684-8fb164155764"]}}
 ```
 
-`id`, `contract`, `consumer_id`, `occurred_at` and `action` are required. `payload`
-is arbitrary JSON; the example's inner fields illustrate generated-result data,
-not a second core schema. The provider posts to
-`/api/v1/modules/contracts/documents.generate.v1/events` with its own approved
-`contracts:provide` bearer. The consumer must declare the contract, be enabled,
-hold approved `contracts:call`, and have an admin-approved link to this provider.
-The route and body contract match and the timestamp is RFC3339.
+The provider needs its own approved `contracts:provide` bearer and a matching
+manifest `provides` declaration. Body `contract` must equal the route; `event`
+is a nonempty type outside **every core event namespace**, including `file.*`,
+`matter.*`, `contact.*`, `calendar.*`, `calendar_event.*`, `payment.*`, `session.*`
+and all namespaces in the published core event registry. `event_id` is a UUID,
+`occurred_at` is RFC3339, and `data` is a JSON object. Unknown outer fields fail.
+Data is contract-owned and conveys no core record access.
 
-The exact action `document.generated` is an exception to the generic
-`<contract>.…` action prefix for this contract only. A provider still cannot emit
-`file.trashed` or impersonate a core event. Other contract action rules and
-phone/phone-zoom/phone-google/workflow deliveries remain unchanged.
+Every enabled consumer declaring this contract, holding approved `contracts:call`
+and linked by the admin to this provider receives the envelope's original fields
+and values unchanged, without another core envelope. No link means no delivery.
+Normal durable signed retries apply, with permanent per-recipient/event-id dedupe.
+`X-Togavsu-Sender` is the authenticated pushing provider, persisted in the queue;
+2e v1 and sender-bound v2 signatures remain unchanged. Unlinking blocks new pushes
+to that consumer; already queued retries retain their original sender and body.
+Use `modulekit.VerifyWebhookSender` or `coretest.ReadDelivery`, then durably dedupe.
 
-Only the named consumer receives the original envelope values. Repeated
-recipient/event ids enqueue once. Delivery uses the normal durable retry queue
-and the consumer's webhook secret. `X-Togavsu-Sender` is the authenticated pushing
-provider, persisted at acceptance; the 2e timestamped v1 signature and separate
-sender-bound v2 signature are unchanged. Unlinking refuses new pushes without
-reattributing queued retries. Use `modulekit.VerifyWebhookSender` or
-`coretest.ReadDelivery`, then durably deduplicate the event id before effects.
-Delivered file ids confer no core read permission.
+### Also accepted: targeted envelope
 
-Top-level `type`, `event`, `event_type`, `data` and `provider_id` are not fields in
-this envelope. In particular `action` cannot be renamed to `type`, and `payload`
-cannot be renamed to `data`. A module expecting those fields needs a module-side
-fix; core does not emit two envelopes. The base revision lacked this directory,
-so separately held contract definitions and external module acceptance still
-require integration comparison.
+The complete 2f targeted envelope stays accepted and delivered unchanged. Existing
+phone, phone-zoom, phone-google and workflows callers need no migration:
+
+```json
+{"id":"synthetic-event-1","contract":"documents.generate.v1","consumer_id":"synthetic-consumer","occurred_at":"2026-11-20T12:00:00Z","action":"document.generated","payload":{"request_id":"synthetic-request-1","file_id":"synthetic-file-id"}}
+```
+
+`id`, `contract`, `consumer_id`, `occurred_at`, `action` are required; `payload`
+is arbitrary JSON. Only that enabled, approved, linked consumer receives it.
+Existing action prefixes remain: `<contract>.…`, with `document.generated` an
+exception only for `documents.generate.v1`. Dedupe remains per recipient/`id`.
+The two formats cannot be mixed. Neither format uses top-level `type`.

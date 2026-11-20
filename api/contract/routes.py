@@ -2813,8 +2813,8 @@ def _calendar(api: Contract) -> None:
         extra_access=WALL,
     )
     busy_read = api.spec["paths"]["/api/v1/calendar-events"]["get"]
-    busy_read["description"] += " view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. Ordinary event gets/lists retain their existing walls."
-    busy_read["responses"]["200"]["content"]["application/json"]["schema"] = {"anyOf": [_page("CalendarEvent"), _page("CalendarBusyBlock")]}
+    busy_read["description"] += " view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only under calendar:read and returns only starts_at and ends_at for all events including unassigned/walled events. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls."
+    busy_read["responses"]["200"]["content"]["application/json"]["schema"] = {"anyOf": [_page("CalendarEvent"), _page("CalendarBusyBlock"), _page("CalendarOccupancyBlock")]}
     api.resource(
         collection="/api/v1/deadlines",
         schema="Deadline",
@@ -4935,6 +4935,13 @@ def _admin(api: Contract) -> None:
 
 
 def _modules(api: Contract) -> None:
+    api.spec["x-togavsu-frame-session-csrf"] = {
+        "request_header": "X-Togavsu-Session-CSRF",
+        "form_field": "csrf",
+        "path": "/m/{module_id}/…",
+        "method": "GET",
+        "description": "Only after successful browser-session authentication: core supplies that session-bound CSRF token to the module, strips caller-supplied CSRF headers, cookies and Authorization, and marks frame responses Cache-Control: no-store. Never in a URL or shared cache; bearer-only and unauthenticated requests get no session CSRF. Render an HTML-escaped hidden csrf field for urlencoded POST. POST cookie CSRF remains strict: missing/other-session tokens are refused before proxying. This does not replace module context or public-page CSRF.",
+    }
     api.add(
         "get",
         "/api/v1/modules",
@@ -5420,7 +5427,7 @@ def _modules(api: Contract) -> None:
             "context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects "
             "a linked provider module id (never an address); omit it to use the earliest link. "
             "Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31). "
-            "For processor.payment.v1, authorize takes ProcessorPaymentWrite and recover takes ProcessorPaymentRecover, with ProcessorPaymentResult (200 terminal; 202 pending). Both require consumer bearer payments:write and current payments:write approvals on both modules. A durable pending receipt precedes any provider attempt; replay recovers without authorizing twice. A changed authorize body for an existing intent conflicts. On this contract, intent_id owns durable idempotency; Idempotency-Key retains its length validation but does not cache HTTP responses. Every repeat rechecks current scopes and links and reads the current recovered result. No core matter/contact/payment is written; only approved permits intake continuation. "
+            "For processor.payment.v1, authorize takes ProcessorPaymentWrite and recover takes ProcessorPaymentRecover, with ProcessorPaymentResult (200 terminal; 202 pending). Both require consumer bearer payments:write and current payments:write approvals on both modules. A durable pending receipt precedes any provider attempt; replay recovers without authorizing twice. A changed authorize body for an existing intent conflicts. On this contract, intent_id owns durable idempotency; Idempotency-Key retains its length validation but does not cache HTTP responses. Every repeat rechecks current scopes and links and reads the current recovered result. Authorize/recover write no core matter/contact/payment; only approved permits intake continuation. The core-handled record operation takes ProcessorPaymentRecord and returns Payment (200). It binds the approved receipt once to a matter/contact created by this consumer after the intent, using only stored amount, operating destination, provider and reference. Current consumer bearer contracts:call and payments:write, both modules approvals and the link are required. No viewer or provider call; retries return the same payment, changed targets conflict, unknown or other-module intents are not_found, pending/declined/trust receipts are refused. Money fields cannot be supplied. Binding/payment/audit/events commit atomically. "
             + MODULE_SENDER_DESCRIPTION
         ),
         tag="Modules",
@@ -5453,23 +5460,17 @@ def _modules(api: Contract) -> None:
         summary="Push a contract event to linked consumers",
         description=(
             "The provider module's bearer with contracts:provide queues a contract event for the named "
-            "linked consumer, delivered like core events (CORE-31). Actions use the contract prefix, with the documented document.generated exception only for documents.generate.v1. The sole envelope uses action and payload; no alternate type/data envelope. "
+            "linked consumers, delivered like core events (CORE-31). The binding batch 2 envelope is contract, event, event_id (UUID), occurred_at (RFC3339), data (object). Contract matches the route; event is nonempty and cannot use any core event namespace (file.*, matter.*, contact.*, calendar.*, payment.* or any other core-emitted namespace). Every enabled consumer declaring the contract, holding approved contracts:call and linked to this provider receives the original fields unchanged. Permanent per-recipient/event_id deduplication and durable signed retries apply. Also accepted: the unchanged targeted id, contract, consumer_id, occurred_at, action, payload envelope; its action uses the contract prefix or document.generated for documents.generate.v1, and it goes only to the named linked consumer. "
             + MODULE_SENDER_DESCRIPTION
         ),
         tag="Modules",
         features=["modules"],
         roles=[],
         scopes=["contracts:provide"],
-        body_schema={
-            "type": "object",
-            "additionalProperties": False,
-            "required": ["id", "contract", "consumer_id", "occurred_at", "action"],
-            "properties": {
-                "id": {"type":"string"}, "contract":{"type":"string"}, "consumer_id":{"type":"string"}, "occurred_at":{"type":"string","format":"date-time"},
-                "action": {"type": "string"},
-                "payload": {},
-            },
-        },
+        body_schema={"oneOf": [
+            {"$ref": "#/components/schemas/BindingContractEvent"},
+            {"$ref": "#/components/schemas/TargetedContractEvent"},
+        ]},
         success="204",
         response_content={},
         error_codes=["scope_denied", "not_found", "forbidden", "validation"],

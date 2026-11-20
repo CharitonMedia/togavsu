@@ -62,7 +62,7 @@ func (s *Service) authSession(ctx context.Context, in Presented) (Caller, error)
 	if err := touch.Touch(ctx, row.ID, exp, exp, now); err != nil {
 		return Caller{}, domain.Unauthenticated("sign in is required")
 	}
-	return Caller{Principal: domain.Principal{
+	return Caller{CSRFToken: csrfToken(s.key, row.ID), Principal: domain.Principal{
 		UserID: user.ID, Roles: roles, Source: domain.SourceUI, SessionID: row.ID,
 		MustChangePassword: user.MustChangePassword,
 	}}, nil

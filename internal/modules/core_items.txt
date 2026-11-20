@@ -1,3 +1,4 @@
+# core-update-2g completes CORE-23/29/30/31/36; granular behaviors are in RuntimeCriteria.
 CORE-01
 CORE-02
 CORE-03
