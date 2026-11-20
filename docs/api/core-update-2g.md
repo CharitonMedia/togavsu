@@ -90,8 +90,41 @@ for the exact tested code revision, actual check results and pending criteria.
 
 Occupancy follows service-call walls under calendar:read. Refund visibility resolves
 its parent payment for Activities, REST/MCP event reads and module subscriptions.
-Core append refuses every reserved namespace root, including future actions.
+The fix-pass-2 root-wide append guard is superseded by fix pass 3 below.
 The registry scans action assignments, changedFields calls and constant declarations.
 Contract inserts preserve legacy raw-key deduplication across both envelope formats.
 Frame regressions assert csrf_required on core event writes. Migration 1600 and
 its expand-only no-op Down remain unchanged in the allocated 1600–1649 block.
+
+## Fix pass 3
+
+The ordinary `POST /api/v1/events` and `POST /api/v1/events:bulk` timeline append
+APIs refuse exact emitted core names from `api.CoreEventAction`, including the
+seven action-assignment names added in pass 2 and historical `trust.entry_reversed`,
+plus the legacy `core.*` and `calendar.*` roots. Other module actions under shared
+domain roots remain appendable: `fee_agreement.sent_for_signature`,
+`fee_agreement.client_signed` and `fee_agreement.executed` return 201. Core
+`fee_agreement.created`, `county.updated` and `matter.party_updated` remain refused.
+Binding contract event envelopes reserve whole core roots. Targeted envelopes
+also check the root independently of their required contract prefix; a binding `fee_agreement.executed` event is refused.
+
+A missing or forbidden payment, refund or processor initialization is unreadable,
+not a delivery-pump error. Unexpected payment, file or books visibility errors
+are logged with event and recipient IDs and drop that recipient's delivery;
+other deliveries and subsequent events proceed. A rescan can reconsider the
+record within the existing cursor horizon, without duplicating delivered events.
+The registry scanner reads `Name` only in event literals and resolves constants
+referenced by event sites, so settings such as `calendar.event_reminder_days`
+are absent from `x-togavsu-core-events`.
+
+Evidence: `TestCoreUpdate2GModuleMilestoneAppends`,
+`TestCoreUpdate2GReservedAppends`, `TestCoreUpdate2GBindingEnvelope`,
+`TestCoreUpdate2GPaymentEventMissingOrForbidden`,
+`TestCoreUpdate2GBogusPaymentEventDoesNotStall`,
+`TestCoreUpdate2GPumpVisibilityErrorDoesNotStall`,
+`TestCoreUpdate2GVisibilityErrorsDropDelivery`,
+`TestCoreUpdate2GTargetedCoreNamespace` and the Python scanner/schema
+regressions. `TestCU207Batch1ModulesUnchanged` also appends the three signing
+milestones using the unchanged installed LawPay/DocuSeal package's module token
+and approval. This verifies its append API compatibility; it does not exercise
+an external signing provider.

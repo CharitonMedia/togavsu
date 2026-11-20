@@ -200,8 +200,12 @@ func TestCoreUpdate2GLegacyContractDedupe(t *testing.T) {
 			bot.Must(204, "POST", path, body)
 			c.DeliverEvents()
 			// Simulate an existing delivered row from before the namespace change.
-			if _, err := db.Exec("UPDATE core.module_deliveries SET event_id=$1 WHERE event_id=$2 AND module_id='legacy-consumer' AND status='delivered'", eventID, "contract:"+eventID); err != nil {
+			result, err := db.Exec("UPDATE core.module_deliveries SET event_id=$1 WHERE event_id=$2 AND module_id='legacy-consumer' AND status='delivered'", eventID, "contract:"+eventID)
+			if err != nil {
 				t.Fatal(err)
+			}
+			if n, err := result.RowsAffected(); err != nil || n != 1 {
+				t.Fatalf("legacy fixture update affected %d rows, error %v; want 1", n, err)
 			}
 			bot.Must(204, "POST", path, body)
 			c.DeliverEvents()
@@ -209,5 +213,28 @@ func TestCoreUpdate2GLegacyContractDedupe(t *testing.T) {
 				t.Errorf("legacy replay delivered twice: %d", n)
 			}
 		})
+	}
+}
+
+func TestCoreUpdate2GBogusPaymentEventDoesNotStall(t *testing.T) {
+	c := coretest.New(t)
+	for _, id := range []string{"continuation-one", "continuation-two"} {
+		c.Handle(id, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+		install2d(t, c, id, []string{"payments:read"}, "", func(files map[string][]byte) {
+			files["togavsu-module.yaml"] = []byte(strings.Replace(string(files["togavsu-module.yaml"]), "events:\n", "events:\n  - synthetic.*\n", 1))
+		})
+	}
+	for _, recordType := range []string{"payment_refund", "processor_initialization"} {
+		c.Admin.Must(201, "POST", "/api/v1/events", map[string]any{"action": "synthetic.bogus", "record_type": recordType, "record_id": "made-up-record", "summary": "Synthetic missing money record"})
+	}
+	next := c.Admin.Must(201, "POST", "/api/v1/events", map[string]any{"action": "synthetic.completed", "record_type": "synthetic", "record_id": "after-bogus", "summary": "Synthetic event after bogus records"})
+	c.DeliverEvents()
+	for _, id := range []string{"continuation-one", "continuation-two"} {
+		if n := c.Count("SELECT COUNT(*) FROM core.module_deliveries WHERE module_id=$1 AND event_id=$2 AND status='delivered'", id, str(t, next.JSON, "id")); n != 1 {
+			t.Errorf("%s: subsequent delivery count %d, want 1", id, n)
+		}
+		if n := c.Count("SELECT COUNT(*) FROM core.module_deliveries WHERE module_id=$1 AND action='synthetic.bogus'", id); n != 0 {
+			t.Errorf("%s: queued %d unreadable events", id, n)
+		}
 	}
 }

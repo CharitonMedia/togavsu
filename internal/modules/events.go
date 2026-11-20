@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -222,7 +223,8 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 			}
 			visible, err := s.d.PaymentReadable(ctx, m.ID, ev)
 			if err != nil {
-				return zero, err
+				log.Printf("modules: drop event %s for %s: payment visibility: %v", ev.ID, m.ID, err)
+				continue
 			}
 			if !visible {
 				continue
@@ -236,7 +238,8 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 			}
 			ok, err := s.d.FileReadable(ctx, m.ID, ev.RecordID)
 			if err != nil {
-				return queued, err
+				log.Printf("modules: drop event %s for %s: file visibility: %v", ev.ID, m.ID, err)
+				continue
 			}
 			if !ok {
 				continue
@@ -245,7 +248,8 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 		if m.Approved["books:read"] {
 			drop, err := s.dropBooksEvent(ctx, m.ID, ev)
 			if err != nil {
-				return queued, err
+				log.Printf("modules: drop event %s for %s: books visibility: %v", ev.ID, m.ID, err)
+				continue
 			}
 			if drop {
 				continue

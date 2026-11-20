@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CharitonMedia/togavsu/api"
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/marketplace"
@@ -462,6 +463,13 @@ func (s *Service) PushContractEvent(ctx context.Context, p domain.Principal, con
 	}
 	if !strings.HasPrefix(in.Action, contract+".") && !(contract == "documents.generate.v1" && in.Action == "document.generated") {
 		return domain.Invalid("action", "contract event action must be scoped under "+contract)
+	}
+	reserved, err := api.CoreEventNamespace(in.Action)
+	if err != nil {
+		return err
+	}
+	if reserved {
+		return domain.Invalid("action", "use a contract event action outside core event namespaces")
 	}
 	provider, err := s.Installed(ctx, p.ModuleID)
 	if err != nil || !provider.Enabled {

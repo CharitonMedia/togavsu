@@ -109,10 +109,10 @@ func (a *App) eventWriter(ctx context.Context, p domain.Principal) error {
 	return nil
 }
 
-// reservedAction shares the emitted core registry with binding event validation.
+// reservedAction prevents impersonating emitted core actions while preserving
+// module timeline actions under shared domain roots (for example signing milestones).
 func reservedAction(action string) bool {
-	reserved, err := api.CoreEventNamespace(action)
-	return err != nil || reserved
+	return api.CoreEventAction(action) || strings.HasPrefix(action, "core.") || strings.HasPrefix(action, "calendar.")
 }
 
 // validID is a UUIDv7.

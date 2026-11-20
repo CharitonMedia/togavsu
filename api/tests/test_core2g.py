@@ -68,8 +68,14 @@ class Core2GContract(unittest.TestCase):
         s.emit(ctx, "contact.created")
         Event{Action: "note.created"}
         Event{Name: "trust.entry_posted"}
+        Setting{Name: "calendar.event_reminder_days"}
+        const settingEventOffset = "calendar.event_reminder_days"
+        Setting{Name: settingEventOffset}
         """
         self.assertEqual(emitted_actions(source), {"trust.entry_reversed", "payment.completed", "contact.phone_changed", "matter.party_updated", "county.updated", "contact.created", "note.created", "trust.entry_posted"})
         op = self.spec['paths']['/api/v1/calendar-events']['get']
         self.assertEqual(op['x-togavsu-access']['scopes'], ['calendar:read'])
         self.assertNotIn('view_scopes', op['x-togavsu-access'])
+
+    def test_settings_are_not_core_events(self):
+        self.assertNotIn('calendar.event_reminder_days', self.spec['x-togavsu-core-events'])

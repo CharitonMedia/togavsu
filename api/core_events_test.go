@@ -58,8 +58,32 @@ func TestCoreEventRegistryCoversEmitSites(t *testing.T) {
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.KeyValueExpr:
-				if key, ok := x.Key.(*ast.Ident); ok && (key.Name == "Action" || key.Name == "Name") {
+				if key, ok := x.Key.(*ast.Ident); ok && key.Name == "Action" {
 					literal(x.Value)
+				}
+			case *ast.CompositeLit:
+				// Only event literals use Name as an action. Settings also have
+				// Name fields and event-related constants, but emit nothing.
+				eventFields := func(lit *ast.CompositeLit) {
+					for _, field := range lit.Elts {
+						if kv, ok := field.(*ast.KeyValueExpr); ok {
+							if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Name" {
+								literal(kv.Value)
+							}
+						}
+					}
+				}
+				if typ, ok := x.Type.(*ast.Ident); ok && typ.Name == "Event" {
+					eventFields(x)
+				}
+				if typ, ok := x.Type.(*ast.ArrayType); ok {
+					if elem, ok := typ.Elt.(*ast.Ident); ok && elem.Name == "Event" {
+						for _, el := range x.Elts {
+							if lit, ok := el.(*ast.CompositeLit); ok {
+								eventFields(lit)
+							}
+						}
+					}
 				}
 			case *ast.AssignStmt:
 				for i, lhs := range x.Lhs {
@@ -72,18 +96,6 @@ func TestCoreEventRegistryCoversEmitSites(t *testing.T) {
 					}
 					if (name == "Action" || name == "action") && i < len(x.Rhs) {
 						literal(x.Rhs[i])
-					}
-				}
-			case *ast.GenDecl:
-				if x.Tok == token.CONST {
-					for _, spec := range x.Specs {
-						if v, ok := spec.(*ast.ValueSpec); ok {
-							for i, value := range v.Values {
-								if i < len(v.Names) && (strings.Contains(strings.ToLower(v.Names[i].Name), "event") || strings.Contains(strings.ToLower(v.Names[i].Name), "action")) {
-									literal(value)
-								}
-							}
-						}
 					}
 				}
 			case *ast.CallExpr:

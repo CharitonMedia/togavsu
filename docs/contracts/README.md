@@ -208,7 +208,8 @@ phone, phone-zoom, phone-google and workflows callers need no migration:
 `id`, `contract`, `consumer_id`, `occurred_at`, `action` are required; `payload`
 is arbitrary JSON. Only that enabled, approved, linked consumer receives it.
 Existing action prefixes remain: `<contract>.…`, with `document.generated` an
-exception only for `documents.generate.v1`. Dedupe remains per recipient/`id`.
+exception only for `documents.generate.v1`. Actions also stay outside every core
+event namespace, even if their contract prefix matches. Dedupe remains per recipient/`id`.
 The two formats cannot be mixed. Neither format uses top-level `type`.
 
 Core update 2g also provides wall-filtered service occupancy under `calendar:read`

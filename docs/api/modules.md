@@ -135,7 +135,8 @@ an admin-approved link receives the original fields/values through the durable
 signed retry queue. Deduplicate permanently per recipient and `event_id`.
 The 2f targeted `id`, `contract`, `consumer_id`, `occurred_at`, `action`, `payload`
 envelope is also accepted unchanged, with its existing action-prefix rules and
-single linked recipient. See [full schemas and examples](../contracts/README.md).
+single linked recipient. Its action must also stay outside every core event
+namespace; choosing a contract with a core root does not bypass that reservation. See [full schemas and examples](../contracts/README.md).
 Both deliveries bind `X-Togavsu-Sender` to the authenticated provider using the
 unchanged 2e v1/v2 signatures, including after unlinking and retry. Payload data
 never grants core read permission.

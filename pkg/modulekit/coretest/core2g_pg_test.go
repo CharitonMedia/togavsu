@@ -94,7 +94,7 @@ func TestCoreUpdate2GBindingEnvelope(t *testing.T) {
 		t.Error("unlinked/disabled delivery")
 	}
 	mu.Unlock()
-	for _, change := range []map[string]any{{"contract": "other.v1"}, {"event": ""}, {"event": "calendar.changed"}, {"event": "core.changed"}, {"event": "custom_field.updated"}, {"event": "conflict.checked"}, {"event": "county.changed"}, {"event": "practice_area.changed"}, {"event": "referral_source.changed"}, {"event": "file.updated"}, {"event": "calendar_event.created"}, {"event": "session.created"}, {"event_id": "not-a-uuid"}, {"occurred_at": "yesterday"}, {"data": nil}, {"data": []any{}}} {
+	for _, change := range []map[string]any{{"contract": "other.v1"}, {"event": ""}, {"event": "calendar.changed"}, {"event": "core.changed"}, {"event": "custom_field.updated"}, {"event": "conflict.checked"}, {"event": "county.changed"}, {"event": "practice_area.changed"}, {"event": "referral_source.changed"}, {"event": "file.updated"}, {"event": "fee_agreement.executed"}, {"event": "calendar_event.created"}, {"event": "session.created"}, {"event_id": "not-a-uuid"}, {"occurred_at": "yesterday"}, {"data": nil}, {"data": []any{}}} {
 		bad := map[string]any{}
 		for k, v := range event {
 			bad[k] = v
@@ -121,7 +121,7 @@ func TestCoreUpdate2GFirmOccupancy(t *testing.T) {
 	for _, attendees := range [][]string{nil, {c.Attorney.ID}} {
 		c.Attorney.Must(201, "POST", "/api/v1/calendar-events", map[string]any{"title": "SECRET", "kind": "court_date", "matter_id": c.Walled, "starts_at": start.Format(time.RFC3339), "ends_at": start.Add(time.Hour).Format(time.RFC3339), "attendee_user_ids": attendees})
 	}
-	// An unwalled, unassigned event remains visible; a later event is out of range.
+	// An unwalled event with no attendees remains visible; a later event is out of range.
 	for _, offset := range []time.Duration{0, 5 * time.Hour} {
 		c.Attorney.Must(201, "POST", "/api/v1/calendar-events", map[string]any{"title": "Open", "kind": "block", "matter_id": c.Open, "starts_at": start.Add(offset).Format(time.RFC3339), "ends_at": start.Add(offset + time.Hour).Format(time.RFC3339)})
 	}

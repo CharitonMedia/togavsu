@@ -70,22 +70,28 @@ func (s *Service) PaymentEventReadable(ctx context.Context, p domain.Principal, 
 	case "payment_refund":
 		row, err := s.refund(ctx, id)
 		if err != nil {
-			return false, err
+			return paymentEventVisibility(err)
 		}
 		id = row.PaymentID
 	case "processor_initialization":
 		var row ProcessorInit
 		if err := s.d.Store.Get(ctx, kindProcessorInit, string(id), &row); err != nil {
-			return false, err
+			return paymentEventVisibility(err)
 		}
 		// Initialization may precede creation of the reserved payment.
-		return s.allowPayment(ctx, p, domain.ActionRead, Payment{Payment: domain.Payment{MatterID: row.MatterID, ContactID: row.ContactID}}) == nil, nil
+		return paymentEventVisibility(s.allowPayment(ctx, p, domain.ActionRead, Payment{Payment: domain.Payment{MatterID: row.MatterID, ContactID: row.ContactID}}))
 	default:
 		return false, nil
 	}
 	_, err := s.Payment(ctx, p, id)
+	return paymentEventVisibility(err)
+}
+
+// Missing records and denied reads are invisible, while unexpected failures remain
+// errors so callers can log them without exposing an unreadable money record.
+func paymentEventVisibility(err error) (bool, error) {
 	var api *domain.APIError
-	if errors.As(err, &api) && (api.Code == domain.CodeNotFound || api.Code == domain.CodeForbidden) {
+	if errors.Is(err, ErrNotFound) || errors.As(err, &api) && (api.Code == domain.CodeNotFound || api.Code == domain.CodeForbidden) {
 		return false, nil
 	}
 	return err == nil, err

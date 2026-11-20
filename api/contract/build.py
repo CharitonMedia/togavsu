@@ -27,16 +27,22 @@ def emitted_actions(source: str) -> set[str]:
     build_spec's protocol aliases even if no current writer emits them.
     """
     action = r'"([a-z_]+(?:\.[a-z_]+)+)"'
-    names = set(re.findall(r'\b(?:Action|Name):\s*' + action, source))
+    names = set(re.findall(r'\bAction:\s*' + action, source))
+    # Trust's Event uses Name; settings and other named structs do not emit events.
+    event_literals = re.findall(r'\bEvent\s*\{\s*\{?([^{}]*)', source)
+    for literal in event_literals:
+        names.update(re.findall(r'\bName:\s*' + action, literal))
     names.update(re.findall(r'\b(?:Action|action)\s*(?::=|=)\s*' + action, source))
     references = set()
     for call in re.findall(r'(?:\.(?:event|emit)|\bchangedFields)\([^;{}]*', source):
         names.update(re.findall(action, call))
         references.update(re.findall(r"\b[A-Za-z_]\w*\b", call))
-    references.update(re.findall(r"\b(?:Action|action|Name)\s*(?::|=)\s*([A-Za-z_]\w*)", source))
+    references.update(re.findall(r"\b(?:Action|action)\s*(?::|=)\s*([A-Za-z_]\w*)", source))
+    for literal in event_literals:
+        references.update(re.findall(r"\bName:\s*([A-Za-z_]\w*)", literal))
     for declaration in re.findall(r'\bconst\s+(?:\([^)]*\)|[^\n]+)', source):
         for name, value in re.findall(r'\b([A-Za-z_]\w*)(?:\s+string)?\s*=\s*' + action, declaration):
-            if name in references or 'event' in name.lower() or 'action' in name.lower():
+            if name in references:
                 names.add(value)
     return names
 
