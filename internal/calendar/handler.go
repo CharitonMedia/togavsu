@@ -121,7 +121,7 @@ func (h *Handler) listEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if v := q.Get("view"); v != "" {
+	if v := q.Get("view"); v != "" && v != "busy" {
 		// view=day|week|month with from_time sets the window when to_time is absent.
 		if f.From.IsZero() {
 			writeErr(w, domain.Invalid("from_time", "view needs from_time"))
@@ -144,6 +144,20 @@ func (h *Handler) listEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	f.Max = off + limit + 1
+	if q.Get("view") == "busy" {
+		rows, err := h.Svc.ListBusy(r.Context(), p, f)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		items, pg, err := page(h.Svc, r, rows)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data": items, "page": pg})
+		return
+	}
 	rows, err := h.Svc.ListEvents(r.Context(), p, f)
 	if err != nil {
 		writeErr(w, err)

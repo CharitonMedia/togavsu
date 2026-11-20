@@ -52,6 +52,10 @@ func (s *Service) CreateConflict(ctx context.Context, p domain.Principal, in Con
 	if err != nil {
 		return domain.ConflictRecord{}, err
 	}
+	if p.Source == domain.SourceService && p.ModuleID != "" && p.UserID.IsZero() {
+		meta.CreatedBy = domain.ID(p.ModuleID)
+		in.Source = string(domain.SourceService)
+	}
 	row := domain.ConflictRecord{
 		Meta: meta, Name: name, Aliases: in.Aliases, DateOfBirth: in.DateOfBirth, Relationship: in.Relationship,
 		Scope: in.Scope, Reason: strings.TrimSpace(in.Reason), MatterID: in.MatterID, StartsOn: in.StartsOn,
@@ -77,7 +81,7 @@ func (s *Service) CreateConflict(ctx context.Context, p domain.Principal, in Con
 }
 
 // RunConflictCheck scores contacts, parties, and conflict records in the application.
-func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matter domain.ID) (_ ConflictRun, err error) {
+func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matter domain.ID, names ...string) (_ ConflictRun, err error) {
 	ctx, done := s.unit(ctx)
 	defer func() { err = done(err) }()
 	if err := s.gateMatterShared(ctx, p, matter, domain.ActionRead, false); err != nil {
@@ -85,6 +89,15 @@ func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matt
 	}
 	parties := s.db.Parties(matter, domain.ID(""))
 	var probes []nameProbe
+	checkedNames := make([]string, 0, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return ConflictRun{}, domain.Invalid("names", "each additional name must be nonempty")
+		}
+		checkedNames = append(checkedNames, name)
+		probes = append(probes, nameProbe{name: name})
+	}
 	for _, party := range parties {
 		contact, err := s.db.Contact(ctx, party.ContactID)
 		if err != nil {
@@ -145,7 +158,10 @@ func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matt
 	if err != nil {
 		return ConflictRun{}, err
 	}
-	run := ConflictRun{ID: meta.ID, MatterID: matter, CreatedAt: meta.CreatedAt, CreatedBy: actorID(p)}
+	run := ConflictRun{ID: meta.ID, MatterID: matter, CreatedAt: meta.CreatedAt, CreatedBy: actorID(p), Names: checkedNames}
+	if p.Source == domain.SourceService && p.ModuleID != "" && p.UserID.IsZero() {
+		run.CreatedBy = domain.ID(p.ModuleID)
+	}
 	for _, hit := range best {
 		id, err := s.id()
 		if err != nil {

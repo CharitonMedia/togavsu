@@ -400,6 +400,10 @@ func (s *Service) record(ctx context.Context, p domain.Principal, rows []change)
 	var audits []storedAudit
 	var events []domain.Event
 	now := s.clock()
+	auditActor := actorID(p)
+	if p.Source == domain.SourceService && p.ModuleID != "" && p.UserID.IsZero() {
+		auditActor = p.EventActor()
+	}
 	for _, row := range rows {
 		if row.Old == row.New && row.Kind != "create" {
 			continue
@@ -413,7 +417,7 @@ func (s *Service) record(ctx context.Context, p domain.Principal, rows []change)
 		audits = append(audits, storedAudit{
 			Entry: domain.AuditEntry{
 				Meta:     meta,
-				ActorID:  actorID(p),
+				ActorID:  auditActor,
 				Role:     roleLabel(p),
 				Source:   sourceLabel(p),
 				Entity:   row.Entity,
