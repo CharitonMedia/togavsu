@@ -25,7 +25,7 @@ workflows and ordinary payment gates remain in place. Practice's immutable creat
 event proves target ownership and creation after approval; legacy 2f receipts
 without an approval timestamp use intent creation as the lower bound.
 
-Migration 1551 uses an unused version within the already allocated 1550–1599 block:
+Core migration 1551 follows core migration 1550 and uses an unused version within the already allocated 1550–1599 block:
 it expands payments.matter_id to nullable for contact-only receipts, retaining the
 foreign key on every matter-bound payment. The integration lead must retain unique
 migration numbering when integrating. Contact-only payment reads, reports, event
