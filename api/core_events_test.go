@@ -73,6 +73,11 @@ func TestCoreEventRegistryCoversEmitSites(t *testing.T) {
 	for _, name := range names {
 		check(name)
 	}
+	for _, namespace := range []string{"core.custom", "calendar.custom"} {
+		if reserved, err := CoreEventNamespace(namespace); err != nil || !reserved {
+			t.Errorf("legacy namespace %s: %v %v", namespace, reserved, err)
+		}
+	}
 	for _, name := range []string{"custom_field.updated", "conflict.checked", "county.created", "practice_area.created", "referral_source.created"} {
 		check(name)
 	}

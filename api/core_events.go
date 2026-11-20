@@ -58,5 +58,5 @@ func CoreEventNamespace(action string) (bool, error) {
 			return true, nil
 		}
 	}
-	return root == "core", nil
+	return false, nil
 }

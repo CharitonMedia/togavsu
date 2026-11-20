@@ -94,7 +94,7 @@ func TestCoreUpdate2GBindingEnvelope(t *testing.T) {
 		t.Error("unlinked/disabled delivery")
 	}
 	mu.Unlock()
-	for _, change := range []map[string]any{{"contract": "other.v1"}, {"event": ""}, {"event": "custom_field.updated"}, {"event": "conflict.checked"}, {"event": "county.changed"}, {"event": "practice_area.changed"}, {"event": "referral_source.changed"}, {"event": "file.updated"}, {"event": "calendar_event.created"}, {"event": "session.created"}, {"event_id": "not-a-uuid"}, {"occurred_at": "yesterday"}, {"data": nil}, {"data": []any{}}} {
+	for _, change := range []map[string]any{{"contract": "other.v1"}, {"event": ""}, {"event": "calendar.changed"}, {"event": "core.changed"}, {"event": "custom_field.updated"}, {"event": "conflict.checked"}, {"event": "county.changed"}, {"event": "practice_area.changed"}, {"event": "referral_source.changed"}, {"event": "file.updated"}, {"event": "calendar_event.created"}, {"event": "session.created"}, {"event_id": "not-a-uuid"}, {"occurred_at": "yesterday"}, {"data": nil}, {"data": []any{}}} {
 		bad := map[string]any{}
 		for k, v := range event {
 			bad[k] = v

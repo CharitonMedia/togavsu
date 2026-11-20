@@ -41,7 +41,9 @@ def build_spec() -> dict:
     # One shared registry drives both core append refusal and contract namespaces.
     # Include literal emit sites as well as contract operations (some internal
     # events, such as conflict.checked, have no operation event annotation).
-    names = set(spec["x-togavsu-event-scopes"])
+    # Historical protocol aliases stay reserved even though current emits use
+    # calendar_event.* and individual domain roots. Keep them in this one registry.
+    names = {"core.*", "calendar.*"} | set(spec["x-togavsu-event-scopes"])
     for item in spec["paths"].values():
         for op in item.values():
             if isinstance(op, dict):

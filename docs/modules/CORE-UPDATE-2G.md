@@ -58,7 +58,8 @@ intent, payment, matter (when set) and contact IDs; it no longer repeats an
   `x-togavsu-core-events` registry, including custom_field, conflict, county,
   practice_area and referral_source. The generator includes published operation
   events and literal core emit sites; an AST regression checks actual emit sites
-  and every registry name. Existing contract event names remain accepted.
+  and every registry name. Legacy `core.*`/`calendar.*` guards remain in the same
+  registry. Existing contract event names remain accepted.
 - Binding and targeted deliveries use per-provider/contract/recipient dedupe keys
   in a separate namespace from core event IDs. Wire IDs/bodies are unchanged.
   Replays insert no delivery and audit `consumers=0`, using RowsAffected.
