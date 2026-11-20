@@ -184,10 +184,12 @@ Data is contract-owned and conveys no core record access.
 Every enabled consumer declaring this contract, holding approved `contracts:call`
 and linked by the admin to this provider receives the envelope's original fields
 and values unchanged, without another core envelope. No link means no delivery.
-Normal durable signed retries apply, with permanent per-provider/contract/recipient/event-id
+Normal durable signed retries apply, with permanent per-recipient/event-id
 dedupe in a `contract:` queue namespace separate from core UUID event IDs. A core
 event and a contract event with identical wire IDs both deliver. Replays insert no
-rows and audit `consumers=0`; forwarded wire IDs remain unchanged. Duplicate
+rows and audit `consumers=0`; forwarded wire IDs remain unchanged. The first
+accepted ID retains its original sender and payload across providers/contracts,
+as before. Duplicate
 top-level JSON keys return 400 before forwarding.
 `X-Togavsu-Sender` is the authenticated pushing provider, persisted in the queue;
 2e v1 and sender-bound v2 signatures remain unchanged. Unlinking blocks new pushes

@@ -95,7 +95,7 @@ func (s *Service) pushBindingContractEvent(ctx context.Context, p domain.Princip
 			if err != nil {
 				return err
 			}
-			result, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_deliveries (id,created_at,updated_at,created_by,module_id,event_id,action,payload,status,attempts,next_attempt_at,last_error,delivered_at,task_authorization) VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'') ON CONFLICT (module_id,event_id) DO NOTHING`, string(delivery), now, p.ModuleID, id, contractEventKey(p.ModuleID, contract, strings.ToLower(in.EventID)), in.Event, string(raw))
+			result, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_deliveries (id,created_at,updated_at,created_by,module_id,event_id,action,payload,status,attempts,next_attempt_at,last_error,delivered_at,task_authorization) VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'') ON CONFLICT (module_id,event_id) DO NOTHING`, string(delivery), now, p.ModuleID, id, contractEventKey(strings.ToLower(in.EventID)), in.Event, string(raw))
 			if err != nil {
 				return err
 			}
@@ -115,11 +115,9 @@ func (s *Service) pushBindingContractEvent(ctx context.Context, p domain.Princip
 }
 
 // Core IDs are UUIDs; this fixed prefix cannot collide with any core event ID.
-// JSON tuple encoding is unambiguous even for arbitrary targeted envelope IDs.
-func contractEventKey(provider, contract, id string) string {
-	raw, _ := json.Marshal([]string{provider, contract, id})
-	return "contract:" + string(raw)
-}
+// Preserve the existing per-recipient identity across providers and contracts:
+// the first accepted event ID owns the immutable sender and payload.
+func contractEventKey(id string) string { return "contract:" + id }
 
 // Raw binding bodies are forwarded unchanged, so all recipients must see the
 // same unambiguous outer object regardless of their JSON decoder.

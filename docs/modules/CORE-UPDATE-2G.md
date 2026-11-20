@@ -60,9 +60,10 @@ intent, payment, matter (when set) and contact IDs; it no longer repeats an
   events and literal core emit sites; an AST regression checks actual emit sites
   and every registry name. Legacy `core.*`/`calendar.*` guards remain in the same
   registry. Existing contract event names remain accepted.
-- Binding and targeted deliveries use per-provider/contract/recipient dedupe keys
+- Binding and targeted deliveries use per-recipient dedupe keys
   in a separate namespace from core event IDs. Wire IDs/bodies are unchanged.
-  Replays insert no delivery and audit `consumers=0`, using RowsAffected.
+  First acceptance retains its sender and payload across providers/contracts, as
+  before. Replays insert no delivery and audit `consumers=0`, using RowsAffected.
   Duplicate top-level JSON keys in either envelope return HTTP 400.
 - Firm occupancy requires its own module-only `calendar:occupancy`, declared
   in the manifest with a reason and explicitly approved at install. Declining a

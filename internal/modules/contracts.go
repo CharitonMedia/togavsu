@@ -502,7 +502,7 @@ func (s *Service) PushContractEvent(ctx context.Context, p domain.Principal, con
 			}
 			result, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_deliveries (id, created_at, updated_at, created_by, module_id, event_id, action, payload, status, attempts, next_attempt_at, last_error, delivered_at, task_authorization)
 VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'') ON CONFLICT (module_id,event_id) DO NOTHING`,
-				string(id), now, p.ModuleID, consumer, contractEventKey(p.ModuleID, contract, in.ID), in.Action, string(payload))
+				string(id), now, p.ModuleID, consumer, contractEventKey(in.ID), in.Action, string(payload))
 			if err != nil {
 				return err
 			}
