@@ -227,3 +227,36 @@ is a reserved module sender and is refused. In `coretest.Serve` handlers,
 `sender, body, err := coretest.ReadDelivery(m, request)` reads and verifies using
 the real deployment secret. `c.DeliverEvents()` uses the production queue and
 sender signer for contract events, core events and retries.
+
+
+## Core-update-2f document and intake operations
+
+The public [kit guide](../modules/MODULE-KIT.md#core-update-2f-intake-and-document-generation)
+explains permission `reason`, restored CSRF form bodies, occupancy-only
+`calendar-events?view=busy`, additional conflict `names`, scoped service county
+gets, file status and optional validated `on_behalf_of_user_id` publication.
+OpenAPI and MCP describe the same input and output shapes. County reads,
+conflict creation and file status each have a live per-module service-call limit.
+
+The real `file.trashed` delivery requires `events:read`, the derived `files:read`
+scope and a subscription. Its normal queued delivery is signed with sender `core`.
+A module service status write is limited to its own published files (plus the
+existing signed-copy callback); module and named-author access checks remain
+independent and retain all walls/attorney-only rules.
+
+The named `document.generated` action is accepted only for
+`documents.generate.v1`, in the existing `action`/`payload` targeted envelope
+above. [Contract definitions](../contracts/README.md) document it and the
+binding `processor.payment.v1` pre-matter authorization/recovery protocol.
+There is one envelope. Phone and workflow event deliveries and 2e sender binding
+are unchanged. A `type`/`data` top-level envelope is not accepted.
+
+Processor authorize/recover use `callModuleContract` on REST/MCP, conditional
+`payments:write` on the current consumer bearer and approvals of both modules,
+and admin-linked providers declaring operating payment processing. Durable
+receipts bind consumer, provider, amount, destination and original request digest;
+pending/uncertain attempts only recover and terminal results replay indefinitely.
+The core stores no hosted payment token and writes no matter/contact/payment in
+this pre-matter broker. The consumer must continue only after approval and use
+stable Idempotency-Key values for core record writes. The external processor
+must durably deduplicate charges and recover results after response loss.

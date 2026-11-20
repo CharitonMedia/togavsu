@@ -301,6 +301,13 @@ func (s *Service) ListLinkedProviders(ctx context.Context, p domain.Principal, c
 // The response never includes the provider's address. The body is HMAC-signed like events.
 // providerID, when set, selects among many-provider links (X-Togavsu-Contract-Provider).
 func (s *Service) CallContract(ctx context.Context, p domain.Principal, contract, operation string, body []byte, contextToken, providerID string) (status int, header http.Header, respBody []byte, err error) {
+	if strings.TrimSpace(contract) == ProcessorPaymentContract {
+		return s.callProcessorPayment(ctx, p, operation, body, contextToken, providerID)
+	}
+	return s.callContract(ctx, p, contract, operation, body, contextToken, providerID)
+}
+
+func (s *Service) callContract(ctx context.Context, p domain.Principal, contract, operation string, body []byte, contextToken, providerID string) (status int, header http.Header, respBody []byte, err error) {
 	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) {
 		return 0, nil, nil, domain.Forbidden("only a module token may call a contract")
 	}
@@ -453,7 +460,7 @@ func (s *Service) PushContractEvent(ctx context.Context, p domain.Principal, con
 	if contract == "" || in.Action == "" {
 		return domain.Invalid("action", "contract and action are required")
 	}
-	if !strings.HasPrefix(in.Action, contract+".") {
+	if !strings.HasPrefix(in.Action, contract+".") && !(contract == "documents.generate.v1" && in.Action == "document.generated") {
 		return domain.Invalid("action", "contract event action must be scoped under "+contract)
 	}
 	provider, err := s.Installed(ctx, p.ModuleID)

@@ -727,3 +727,98 @@ In `coretest.Serve` handlers,
 `sender, body, err := coretest.ReadDelivery(m, request)` reads and verifies using
 the real deployment secret. `c.DeliverEvents()` uses the production queue and
 sender signer for contract events, core events and retries.
+
+
+## Core update 2f: intake and document generation
+
+`Accepts().core_items` continues to include CORE-23/29/30/31/36. The granular
+`runtime_criteria` now includes `module.permission_reasons`, `module.form_proxy`,
+`file.trashed_delivery`, `calendar.busy_across_walls`, `conflict.named_people`,
+`module.county_read`, `file.service_status`, `file.publication_author`,
+`contract.document_generated`, `coretest.doc_tender` and `contract.processor_payment`.
+Remove matching runtime-pending entries and run those acceptance cases.
+`processor.payment_principal` still describes the separate unrestricted background
+payment workflow and is not claimed by this pre-matter contract.
+
+The admin Modules tab shows each permission's signed reason, escaped, beside its
+pending/approved/declined decision. Module API permission rows include `reason`.
+During update approval the candidate manifest supplies its declared reasons.
+Urlencoded forms through `/m/` retain their exact bytes after session CSRF parsing,
+including repeated keys and empty fields. The parser's size ceiling and CSRF
+checks still apply; a refused cookie write never reaches the module.
+
+For occupancy, read `GET /api/v1/calendar-events?view=busy&user_id=…&from_time=…&to_time=…`
+with `calendar:read` (or MCP `listCalendarEvent` with the same query). Both timestamps
+are RFC3339; use an ordered interval within the available-dates maximum range and
+an active user. Standard pagination applies. Rows have **only** `starts_at`,
+`ends_at` and `all_day`, even across walls. Do not use matter/kind filters in this
+view. Ordinary calendar reads still omit hidden events and answer `not_found` on
+walled detail gets. No event ids, titles, matter data or attendee identifiers are
+exposed by the busy view.
+
+`runConflictCheck` accepts optional `{names: ["Synthetic Person", "Another Person"]}`
+in addition to the matter's parties and returns those names with the check.
+Use `createConflictRecord` with `conflicts:write` to register each additional
+person; a service call records the module as author and source `service`. Checks
+need `conflicts:read`. Existing wall and attorney-only redaction applies to both.
+`getCounty` now accepts a `settings:read` service call. Each new service operation
+uses its own live `modules.service_call_limit.<operationId>` setting (default 120).
+
+`FileBulkItem` (also single upload publication) accepts optional `status` and
+`on_behalf_of_user_id`. The latter must name an active staff, attorney or admin
+with file access to the matter; missing/inactive/outside-wall users and client or
+accountant-only users are refused before publication. It records the file/version
+human author without changing the calling module's source, audit identity or
+independent access. Omitting it preserves ordinary authorship. `files:write`
+services may update status on files their module published; the existing signed
+fee-agreement executed callback remains available. A service still cannot reach
+a walled or attorney-only file. `file.trashed` is now a real signed core event;
+subscribers need `events:read` and its derived `files:read` scope.
+
+### Running Doc Tender jobs
+
+`coretest.New` now supplies `c.DocTender`. Upload/publish a synthetic file through
+the real API, set its category with the metadata API as the module would, then
+call `c.RunDocTender()` (or `c.DocTender.Run()`) to drain currently due production
+jobs. These helpers return the count processed. The real queue, extraction,
+labeling, person locks, immutable Markdown renditions and failure persistence run.
+Models, OCR/document reading and conversion are in-process stand-ins and never
+call an outside provider or install a host program. Media extraction refuses
+unsupported synthetic media rather than invoking host ffmpeg.
+
+`SetCategory(key)` sets the model's proposed existing category; person-locked hints
+stay untouched. `SetText(text)` supplies synthetic OCR/document-reader output;
+native text/PDF/spreadsheet extraction still reads uploaded bytes. `Fail(err)`
+injects an outside-service failure (`nil` restores success). `Calls()` returns a
+copy of model requests (`Task`, `Check`, `FileID`, `MatterID`).
+`RunOnce(ctx) (bool, error)` runs one due job and exposes its result; retries retain
+the real queue schedule. Closed matters make no model call. This verifies module
+integration and category retention; real model quality and rendering fidelity are
+separate acceptance criteria.
+
+### Document and payment contracts
+
+Use the sole [targeted contract-event envelope](../contracts/README.md):
+`id`, `contract`, `consumer_id`, `occurred_at`, `action`, `payload`.
+For `documents.generate.v1`, the documented generated action is
+`document.generated`. The core preserves that envelope and event id, deduplicates
+per recipient, and signs its linked consumer delivery with the actual provider
+sender. Verify with `ReadDelivery` or `VerifyWebhookSender`. Phone and workflow
+envelopes retain their existing action prefixes. Payload data never grants core
+record access. Do not substitute top-level `type`/`data` or a core-event envelope.
+
+`modulekit.ProcessorPaymentContract`, `ProcessorPaymentWrite` and
+`ProcessorPaymentResult` expose `processor.payment.v1`. Its binding
+[definition and processor requirements](../contracts/README.md#processorpaymentv1)
+cover authorize/recover, pending/declined refusal before paid-intake matter writes,
+immutable intent data and recovery without a second authorization. The processor
+module itself is external. Both modules need the declared contract, approved link
+and payment scope. A pre-matter approval is not a core payment-write grant.
+
+For synthetic processor acceptance, use `p := coretest.NewProcessor()` and
+`c.Serve(providerID, p.Handler)` before installing its signed manifest. Declare
+`payment_processor` operating and both contract operations; link the consumer as
+admin. `p.DeclineNext("card_declined")` scripts a decline;
+`p.LoseNextApprovalResponse()` records approval then answers 503, exercising real
+core recovery. `p.Calls()` omits tokens and records verified consumer/operation/intent;
+`p.Charges()` counts new approvals. No outside processor is called.

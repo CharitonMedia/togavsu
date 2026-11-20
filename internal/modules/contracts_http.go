@@ -3,6 +3,7 @@ package modules
 import (
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -32,6 +33,10 @@ func (h *Handler) listContractProviders(w http.ResponseWriter, r *http.Request, 
 
 // callContract is POST /api/v1/modules/contracts/{contract}/{operation} (CORE-31).
 func (h *Handler) callContract(w http.ResponseWriter, r *http.Request, c Caller) {
+	if strings.TrimSpace(r.PathValue("contract")) == ProcessorPaymentContract && !hasScope(c.Scopes, "payments:write") {
+		writeErr(w, scopeDenied("payments:write"))
+		return
+	}
 	if c.Bearer && !hasScope(c.Scopes, "contracts:call") {
 		writeErr(w, scopeDenied("contracts:call"))
 		return

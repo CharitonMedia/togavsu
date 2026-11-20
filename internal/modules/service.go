@@ -310,6 +310,7 @@ func (s *Service) loadPackage(ctx context.Context, id string) (pkgRow, error) {
 // Permission is one requested scope with the admin's decision.
 type PermissionView struct {
 	Scope    string `json:"scope"`
+	Reason   string `json:"reason"`
 	Required bool   `json:"required"`
 	Approved bool   `json:"approved"`
 	Decision string `json:"-"`
@@ -440,6 +441,13 @@ func (s *Service) view(ctx context.Context, r modRow) (View, error) {
 		if err != nil {
 			return View{}, err
 		}
+		for _, declared := range pkg.Manifest.Permissions {
+			for i := range v.Permissions {
+				if v.Permissions[i].Scope == declared.Scope {
+					v.Permissions[i].Reason = declared.Reason
+				}
+			}
+		}
 		if pkg.Manifest.Replaces != "" {
 			rep := pkg.Manifest.Replaces
 			v.Replaces = &rep
@@ -456,6 +464,20 @@ func (s *Service) view(ctx context.Context, r modRow) (View, error) {
 			v.PublicPages = append(v.PublicPages, path)
 		}
 		v.PublicOperations = append([]string{}, pkg.Manifest.PublicOperations...)
+	}
+	// Pending updates ask for decisions about the candidate signed manifest.
+	if r.PendingPackageID != "" {
+		candidate, err := s.loadPackage(ctx, r.PendingPackageID)
+		if err != nil {
+			return View{}, err
+		}
+		for _, declared := range candidate.Manifest.Permissions {
+			for i := range v.Permissions {
+				if v.Permissions[i].Scope == declared.Scope {
+					v.Permissions[i].Reason = declared.Reason
+				}
+			}
+		}
 	}
 	return v, nil
 }

@@ -136,10 +136,10 @@
 {{if .PriceDisplay}}<p class="muted" id="price-{{.ID}}">Listed price (provider information only; Togavsu never charges it): {{.PriceDisplay}}</p>{{end}}
 {{if .Undecided}}<form method="post" action="/admin/modules/permissions" class="form-grid permissions"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}">
 <p>This module asks for these permissions. Declining a required one cancels the install.</p>
-{{range .Permissions}}{{if eq .Decision "pending"}}<fieldset><legend><code>{{.Scope}}</code>{{if .Required}} (required){{end}}</legend>
-<label class="check"><input type="radio" name="scope:{{.Scope}}" value="approve" required> Approve</label> <label class="check"><input type="radio" name="scope:{{.Scope}}" value="decline"> Decline</label></fieldset>{{end}}{{end}}
+{{range .Permissions}}{{if eq .Decision "pending"}}<fieldset><legend><code>{{.Scope}}</code>{{if .Required}} (required){{end}}</legend><p>{{.Reason}}</p>
+<label class="check"><input type="radio" name="scope:{{.Scope}}" value="approve" required> Approve</label> <label class="check"><input type="radio" name="scope:{{.Scope}}" value="decline"> Decline</label></fieldset>{{else}}<p><code>{{.Scope}}</code> ({{.Decision}}): {{.Reason}}</p>{{end}}{{end}}
 <div><button type="submit">Save decisions</button></div></form>
-{{else}}<p class="muted">Permissions: {{range $i, $p := .Permissions}}{{if $i}}, {{end}}<code>{{$p.Scope}}</code>{{if not $p.Approved}} (declined){{end}}{{end}}</p>{{end}}
+{{else}}<p class="muted">Permissions: {{range $i, $p := .Permissions}}{{if $i}}, {{end}}<code>{{$p.Scope}}</code> ({{if $p.Approved}}approved{{else}}declined{{end}}): {{$p.Reason}}{{end}}</p>{{end}}
 {{if or (eq .Status "installed") (eq .Status "disabled")}}
 <div class="actions">
 {{if .Enabled}}<form method="post" action="/admin/modules/disable" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}"><button type="submit">Disable</button></form>

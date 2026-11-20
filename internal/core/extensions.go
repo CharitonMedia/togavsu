@@ -183,6 +183,17 @@ func (a *App) extend(h http.Handler) http.Handler {
 	}
 	routed := a.ext.Modules.Router(a.principal, a.ext.modH.Include(h))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Cookie-authenticated frame writes must honor the same session-bound
+		// CSRF result as core writes. Opaque frames without cookies keep their
+		// module context credential; the module verifies that credential.
+		if strings.HasPrefix(r.URL.Path, "/m/") && !safeMethod(r.Method) {
+			if _, err := r.Cookie(sessionCookie); err == nil {
+				if _, err := a.caller(r); err != nil {
+					writeErr(w, err)
+					return
+				}
+			}
+		}
 		if d := modules.DomainOf(r.URL.Path); d != "" {
 			if module, err := a.ext.Modules.Replacement(r.Context(), d); err == nil && module != "" {
 				r = memoCaller(r)

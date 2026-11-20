@@ -108,3 +108,50 @@ metadata without tokens; `Charges()` counts new approvals. The helper verifies
 the real broker signatures and uses no outside service. Its in-memory provider
 state is synthetic fixture state, not a replacement for production durable
 processor idempotency.
+
+## `documents.generate.v1` event delivery
+
+Provider-pushed `document.generated` uses the same targeted envelope as phone and
+workflow contracts. The following is the complete outer shape; `payload` is the
+provider's generated-result data and is preserved as JSON, without core adding
+another event envelope:
+
+```json
+{
+  "id": "synthetic-generation-event-1",
+  "contract": "documents.generate.v1",
+  "consumer_id": "synthetic-consumer",
+  "occurred_at": "2026-11-20T12:00:00Z",
+  "action": "document.generated",
+  "payload": {"request_id": "synthetic-request-1", "file_id": "synthetic-file-id"}
+}
+```
+
+`id`, `contract`, `consumer_id`, `occurred_at` and `action` are required. `payload`
+is arbitrary JSON; the example's inner fields illustrate generated-result data,
+not a second core schema. The provider posts to
+`/api/v1/modules/contracts/documents.generate.v1/events` with its own approved
+`contracts:provide` bearer. The consumer must declare the contract, be enabled,
+hold approved `contracts:call`, and have an admin-approved link to this provider.
+The route and body contract match and the timestamp is RFC3339.
+
+The exact action `document.generated` is an exception to the generic
+`<contract>.…` action prefix for this contract only. A provider still cannot emit
+`file.trashed` or impersonate a core event. Other contract action rules and
+phone/phone-zoom/phone-google/workflow deliveries remain unchanged.
+
+Only the named consumer receives the original envelope values. Repeated
+recipient/event ids enqueue once. Delivery uses the normal durable retry queue
+and the consumer's webhook secret. `X-Togavsu-Sender` is the authenticated pushing
+provider, persisted at acceptance; the 2e timestamped v1 signature and separate
+sender-bound v2 signature are unchanged. Unlinking refuses new pushes without
+reattributing queued retries. Use `modulekit.VerifyWebhookSender` or
+`coretest.ReadDelivery`, then durably deduplicate the event id before effects.
+Delivered file ids confer no core read permission.
+
+Top-level `type`, `event`, `event_type`, `data` and `provider_id` are not fields in
+this envelope. In particular `action` cannot be renamed to `type`, and `payload`
+cannot be renamed to `data`. A module expecting those fields needs a module-side
+fix; core does not emit two envelopes. The base revision lacked this directory,
+so separately held contract definitions and external module acceptance still
+require integration comparison.

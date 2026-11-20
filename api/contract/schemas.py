@@ -1448,6 +1448,29 @@ SCHEMAS = _register(
             ["trust_account_id", "statement_on", "statement_balance_cents"],
             "The caller enters the statement. The server computes the ledger total, the client sum, and both differences.",
         ),
+        "CalendarBusyBlock": _obj(
+            {"starts_at": _dt(), "ends_at": _dt(), "all_day": {"type": "boolean"}},
+            ["starts_at", "ends_at", "all_day"],
+            "Occupancy only, including walled events. No event, matter, attendee or author identifiers or details.",
+        ),
+        "ProcessorPaymentWrite": _obj(
+            {"intent_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"},
+             "amount_cents": {"type": "integer", "minimum": 1}, "destination": {"const": "operating"},
+             "payment_token": {"type": "string", "minLength": 1, "writeOnly": True}},
+            ["intent_id", "amount_cents", "destination", "payment_token"],
+            "processor.payment.v1 authorize: a processor-hosted field token only. Approved payments:write required on both modules and consumer bearer. Never raw card data. Core stores a digest only.",
+        ),
+        "ProcessorPaymentRecover": _obj(
+            {"intent_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"}}, ["intent_id"],
+            "Recover a previously attempted processor.payment.v1 intent. Never reauthorizes an ambiguous attempt.",
+        ),
+        "ProcessorPaymentResult": _obj(
+            {"intent_id": {"type": "string"}, "status": _enum(["approved", "declined", "pending"]),
+             "amount_cents": {"type": "integer", "minimum": 1}, "destination": {"const": "operating"},
+             "reference_number": {"type": "string", "minLength": 1, "maxLength": 200, "pattern": "\\S"}, "decline_code": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"}},
+            ["intent_id", "status", "amount_cents", "destination"],
+            "Approved requires reference_number, declined forbids it; pending forbids both optional fields. All results must match the original intent/amount/destination. Only approved permits paid-intake continuation. No core matter/contact/payment write occurs in the broker.",
+        ),
         "CalendarEvent": _meta(
             {
                 "title": {"type": "string"},
@@ -1694,6 +1717,8 @@ SCHEMAS = _register(
                 "matter_id": _null(_uuid()),
                 "contact_id": _null(_uuid()),
                 "name": {"type": "string"},
+                "status": _enum(["draft", "final", "executed", "filed", "received"]),
+                "on_behalf_of_user_id": _uuid("Optional active firm user with access to the target matter; recorded as file author. Module and source service remain in audit."),
                 "attorney_only": {"type": "boolean"},
                 "shared_with_client": {"type": "boolean"},
                 "library": {
@@ -3070,7 +3095,7 @@ SCHEMAS = _register(
                 "name": {"type": "string"},
                 "version": {"type": "string"},
                 "enabled": {"type": "boolean"},
-                "permissions": _arr(_obj({"scope": {"type": "string"}, "required": {"type": "boolean"}, "approved": {"type": "boolean"}}, ["scope", "required", "approved"])),
+                "permissions": _arr(_obj({"scope": {"type": "string"}, "reason": {"type": "string", "description": "Declared reason from the signed manifest being approved."}, "required": {"type": "boolean"}, "approved": {"type": "boolean"}}, ["scope", "reason", "required", "approved"])),
                 "replaces": _null(_enum(["time", "trust", "calendar"])),
                 "status": _enum(["awaiting_approval", "installed", "disabled", "uninstalling"]),
                 "price": {
@@ -3646,6 +3671,7 @@ SCHEMAS = _register(
         ),
         "ConflictRecord": _meta(
             {
+                "created_by": {"type": "string", "description": "Viewer user id or background module id."},
                 "name": {"type": "string"},
                 "aliases": _arr({"type": "string"}),
                 "date_of_birth": _null(_date()),
@@ -3688,7 +3714,7 @@ SCHEMAS = _register(
             ["id", "matched_record_type", "matched_id", "score", "name"],
         ),
         "ConflictCheck": _meta(
-            {"matter_id": _uuid(), "hits": _arr(_ref("ConflictHit"))},
+            {"created_by": {"type": "string", "description": "Viewer user id or background module id."}, "matter_id": _uuid(), "names": _arr({"type": "string"}), "hits": _arr(_ref("ConflictHit"))},
             ["matter_id", "hits"],
             "Hits at or above practice.conflict_score_floor. Scoring runs in the application, not in SQL.",
         ),
@@ -4053,7 +4079,7 @@ QUERY = {
         },
         "description": "Up to 100 user ids. When set, only those users are returned.",
     },
-    "view": _query("view", _enum(["day", "week", "month"]), "Calendar view."),
+    "view": _query("view", _enum(["day", "week", "month", "busy"]), "Calendar view. busy returns occupancy only across matter walls; requires user_id, from_time and to_time and refuses matter_id/kind filters."),
     "disposition": _query("disposition", _enum(["inline", "attachment"]), "Download disposition."),
     "confirm": _query("confirm", {"type": "boolean"}, "Must be true to download a quarantined version."),
     "confirm_quarantine": _query("confirm_quarantine", {"type": "boolean"}, "Must be true to download a quarantined file. Omitted or false returns quarantine_confirmation_required and no bytes."),
