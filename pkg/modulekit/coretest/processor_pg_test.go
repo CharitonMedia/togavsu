@@ -114,8 +114,8 @@ func TestCoreUpdate2FProcessorDeclineBeforeMatterAndApprovalRecovery(t *testing.
 	if c.Count(`SELECT COUNT(*) FROM core.core_idempotency WHERE operation='processor.payment.v1' AND response LIKE '%synthetic-hosted-field-placeholder%'`) != 0 {
 		t.Fatal("a hosted-field token was persisted")
 	}
-	if c.Count(`SELECT COUNT(*) FROM core.audit_log WHERE entity='module_processor_intent'`) == 0 {
-		t.Fatal("processor intent status was not audited")
+	if c.Count(`SELECT COUNT(*) FROM core.audit_log WHERE entity='module_processor_intent' AND source='service' AND reason LIKE '%module=synthetic-intake%'`) == 0 {
+		t.Fatal("processor receipt must audit the module with source service")
 	}
 }
 

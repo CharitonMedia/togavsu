@@ -68,6 +68,11 @@ func (s *Service) callProcessorPayment(ctx context.Context, p domain.Principal, 
 	if p.ModuleID == "" || (p.Source != domain.SourceModule && p.Source != domain.SourceService) {
 		return 0, nil, nil, domain.Forbidden("only a module token may call a contract")
 	}
+	// The contract has no viewer on background calls; keep receipt and broker audit
+	// attribution consistent with other service-principal operations.
+	if p.UserID.IsZero() {
+		p.Source = domain.SourceService
+	}
 	var in ProcessorPaymentWrite
 	switch operation {
 	case "authorize":

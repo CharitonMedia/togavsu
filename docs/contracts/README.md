@@ -48,7 +48,8 @@ field. Unknown fields and mismatched results fail closed. A decline means the
 consumer creates no intake matter, parties or payment. Pending means the
 consumer waits and recovers; it must not continue the paid intake writes.
 Only approved permits that continuation. The broker itself writes no core
-matter, contact, payment or trust entry on any of these paths.
+matter, contact, payment or trust entry on any of these paths. Background receipts
+and broker calls audit the module with source `service`.
 
 Recover through the same URL with operation `recover` and exactly:
 
