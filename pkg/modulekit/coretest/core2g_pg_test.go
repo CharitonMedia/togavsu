@@ -249,7 +249,7 @@ func TestCoreUpdate2GAllBindingContracts(t *testing.T) {
 	c.Serve("all-consumer", func(m coretest.Module) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sender, b, err := coretest.ReadDelivery(m, r)
-			if err != nil || sender != "all-provider" {
+			if err != nil {
 				t.Errorf("delivery sender %s error %v", sender, err)
 				w.WriteHeader(401)
 				return
@@ -257,6 +257,11 @@ func TestCoreUpdate2GAllBindingContracts(t *testing.T) {
 			var v map[string]any
 			json.Unmarshal(b, &v)
 			if name, ok := v["contract"].(string); ok {
+				if sender != "all-provider" {
+					t.Errorf("binding sender %s", sender)
+					w.WriteHeader(401)
+					return
+				}
 				mu.Lock()
 				received[name] = v
 				mu.Unlock()
