@@ -37965,7 +37965,7 @@
       "get": {
         "operationId": "listCalendarEvent",
         "summary": "List calendar events",
-        "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only with calendar:read and the separately declared, admin-approved calendar:occupancy scope and returns only starts_at and ends_at for all events including unassigned/walled events. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls.",
+        "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only with the separately declared, admin-approved calendar:occupancy scope; calendar:read alone is refused and is not additionally required for occupancy and returns only starts_at and ends_at for all events including unassigned/walled events. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls.",
         "tags": [
           "Calendar"
         ],
@@ -75845,7 +75845,7 @@
           "starts_at",
           "ends_at"
         ],
-        "description": "Service-only firm-wide occupancy, including unassigned walled events. Requires calendar:read and separately declared/admin-approved calendar:occupancy. Start/end only; exact requested interval overlap; no other fields."
+        "description": "Service-only firm-wide occupancy, including unassigned walled events. Requires separately declared/admin-approved calendar:occupancy; calendar:read alone does not grant occupancy. Start/end only; exact requested interval overlap; no other fields."
       },
       "CalendarBusyBlock": {
         "type": "object",
@@ -93093,7 +93093,7 @@
     },
     {
       "scope": "calendar:occupancy",
-      "description": "Read firm-wide start/end intervals, including walled and unassigned events; module-only, with a manifest reason and explicit admin approval. Also requires calendar:read."
+      "description": "Read firm-wide start/end intervals, including walled and unassigned events; module-only, with a manifest reason and explicit admin approval."
     },
     {
       "scope": "calendar:read",

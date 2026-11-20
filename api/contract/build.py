@@ -276,7 +276,7 @@ def render_coverage(spec: dict) -> str:
             roles = ", ".join(access["roles"]) or "public"
             scopes = ", ".join(access["scopes"]) or "none"
             for view, extra in sorted(access.get("view_scopes", {}).items()):
-                scopes += " (view=" + view + ": also " + ", ".join(extra) + ")"
+                scopes += " (view=" + view + ": " + ", ".join(extra) + ")"
             features = ", ".join(operation["x-togavsu-features"])
             lines.append(
                 f"| {features} | `{method.upper()}` | `{path}` | `{operation['operationId']}` | {parity}:{tool} | {roles} | {scopes} |"

@@ -259,7 +259,7 @@ It does not claim the handlers or the MCP server are implemented.
 | trust-reconciliation | `POST` | `/api/v1/trust-reconciliations` | `createTrustReconciliation` | required:createTrustReconciliation | admin, attorney, staff | trust:write |
 | trust-reconciliation | `GET` | `/api/v1/trust-reconciliations/{reconciliation_id}` | `getTrustReconciliation` | required:getTrustReconciliation | admin, attorney, staff, accountant | trust:read |
 | trust-reconciliation, bulk | `POST` | `/api/v1/trust-reconciliations:bulk` | `bulkTrustReconciliation` | required:bulkTrustReconciliation | admin, attorney, staff | trust:write |
-| calendar | `GET` | `/api/v1/calendar-events` | `listCalendarEvent` | required:listCalendarEvent | admin, attorney, staff | calendar:read (view=occupancy: also calendar:occupancy) |
+| calendar | `GET` | `/api/v1/calendar-events` | `listCalendarEvent` | required:listCalendarEvent | admin, attorney, staff | calendar:read (view=occupancy: calendar:occupancy) |
 | calendar | `POST` | `/api/v1/calendar-events` | `createCalendarEvent` | required:createCalendarEvent | admin, attorney, staff | calendar:write |
 | calendar | `GET` | `/api/v1/calendar-events/{calendar_event_id}` | `getCalendarEvent` | required:getCalendarEvent | admin, attorney, staff | calendar:read |
 | calendar | `PATCH` | `/api/v1/calendar-events/{calendar_event_id}` | `updateCalendarEvent` | required:updateCalendarEvent | admin, attorney, staff | calendar:write |

@@ -911,7 +911,7 @@ or shared cache. Frame responses are `Cache-Control: no-store`. Module context
 verification and public-page CSRF remain separate requirements.
 
 `calendar-events?view=occupancy&from_time=…&to_time=…` is a service-only read under
-`calendar:read` plus explicitly approved `calendar:occupancy`. Declare the latter
+explicitly approved `calendar:occupancy`. Declare it
 in manifest permissions with a nonempty reason; ordinary required/optional scope
 approval rules apply. `calendar:read` alone returns 403 on REST and MCP. It includes every assigned/unassigned and walled event,
 with **only** `starts_at` and `ends_at` per row. Use the normal cursor pagination

@@ -298,7 +298,7 @@ func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 		if entryTypeScoped[t.Name] {
 			return c, nil
 		}
-		if err := c.RequireScopes(t.Scopes...); err != nil {
+		if err := c.RequireScopes(t.requiredScopes(r)...); err != nil {
 			return identity.Caller{}, shared(err)
 		}
 	}
@@ -540,7 +540,7 @@ func (a *App) requirePublicStepRouteScopes(r *http.Request, c identity.Caller) e
 	if !ok || entryTypeScoped[t.Name] {
 		return nil
 	}
-	if err := c.RequireScopes(t.Scopes...); err != nil {
+	if err := c.RequireScopes(t.requiredScopes(r)...); err != nil {
 		return shared(err)
 	}
 	return nil

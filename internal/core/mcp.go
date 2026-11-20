@@ -20,13 +20,22 @@ type tool struct {
 	Transfer struct {
 		Headers []string `json:"headers"`
 	} `json:"transfer"`
-	Name       string   `json:"name"`
-	Method     string   `json:"method"`
-	Path       string   `json:"path"`
-	Scopes     []string `json:"scopes"`
-	Roles      []string `json:"roles"`
-	Delegation string   `json:"module_delegation,omitempty"`
+	Name       string              `json:"name"`
+	Method     string              `json:"method"`
+	Path       string              `json:"path"`
+	Scopes     []string            `json:"scopes"`
+	ViewScopes map[string][]string `json:"view_scopes,omitempty"`
+	Roles      []string            `json:"roles"`
+	Delegation string              `json:"module_delegation,omitempty"`
 	segs       []string
+}
+
+// requiredScopes uses the trusted contract's scope for a specialized list view.
+func (t tool) requiredScopes(r *http.Request) []string {
+	if scopes, ok := t.ViewScopes[r.URL.Query().Get("view")]; ok {
+		return scopes
+	}
+	return t.Scopes
 }
 
 func loadTools(raw []byte) ([]tool, error) {

@@ -41,7 +41,7 @@ SCOPES = {
     "trust:write": "Post a trust deposit or other non-withdrawal trust write allowed to the role.",
     "trust:withdraw": "Post a trust withdrawal, transfer, refund, adjustment, or reversal.",
     "reports:read": "Read billing reports.",
-    "calendar:occupancy": "Read firm-wide start/end intervals, including walled and unassigned events; module-only, with a manifest reason and explicit admin approval. Also requires calendar:read.",
+    "calendar:occupancy": "Read firm-wide start/end intervals, including walled and unassigned events; module-only, with a manifest reason and explicit admin approval.",
     "calendar:read": "Read calendar events and available dates.",
     "calendar:write": "Write calendar events and iCal feeds.",
     "deadlines:read": "Read deadlines.",

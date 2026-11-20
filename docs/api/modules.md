@@ -313,7 +313,7 @@ bearer-only or unauthenticated request gets no session CSRF header. Never put th
 token in a URL or shared storage. Frame responses are `Cache-Control: no-store`.
 This does not replace module context verification or public `/p/` CSRF.
 
-A calendar service principal holding `calendar:read` and the separately declared,
+A calendar service principal holding separately declared,
 admin-approved **`calendar:occupancy`** can read
 `GET /api/v1/calendar-events?view=occupancy&from_time=…&to_time=…`
 (or `listCalendarEvent` on MCP). Every event counts, including unassigned and walled

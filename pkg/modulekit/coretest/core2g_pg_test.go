@@ -115,7 +115,7 @@ func TestCoreUpdate2GFirmOccupancy(t *testing.T) {
 	c := coretest.New(t)
 	const id = "firm-occupancy"
 	c.Handle(id, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
-	install2d(t, c, id, []string{"calendar:read", "calendar:occupancy"}, "")
+	install2d(t, c, id, []string{"calendar:occupancy"}, "")
 	install2d(t, c, "calendar-read-only", []string{"calendar:read"}, "")
 	start := time.Now().UTC().Truncate(time.Second).Add(time.Hour)
 	for _, attendees := range [][]string{nil, {c.Attorney.ID}} {
