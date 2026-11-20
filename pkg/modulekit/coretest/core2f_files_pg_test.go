@@ -144,6 +144,25 @@ func TestCoreUpdate2FPublicationAuthorAndStatus(t *testing.T) {
 			t.Fatalf("invalid author %s: %d %s", author, got.Code, got.Body)
 		}
 	}
+	// The same publication metadata and status path work through generated MCP tools.
+	mcpUp := stage2f(t, bot, c.Open, "mcp-draft.txt")
+	mcpPub := toolResult2d(t, bot, "bulkFile", map[string]any{"body": map[string]any{"items": []any{map[string]any{"upload_id": mcpUp, "status": "draft", "on_behalf_of_user_id": c.Attorney.ID}}}}, false)
+	data, ok := mcpPub["data"].([]any)
+	if !ok || len(data) != 1 {
+		t.Fatalf("MCP publication: %v", mcpPub)
+	}
+	mcpFile, ok := data[0].(map[string]any)
+	if !ok || mcpFile["created_by"] != c.Attorney.ID || mcpFile["status"] != "draft" || mcpFile["source"] != module {
+		t.Fatalf("MCP publication author/status: %v", data)
+	}
+	mcpID := str(t, mcpFile, "id")
+	args := map[string]any{"path": map[string]any{"file_id": mcpID}, "body": map[string]any{"status": "final"}}
+	if marked := toolResult2d(t, bot, "markFileStatus", args, false); marked["status"] != "final" {
+		t.Fatalf("MCP status: %v", marked)
+	}
+	if refused := toolResult2d(t, denied, "markFileStatus", args, true); refused["code"] != "scope_denied" {
+		t.Fatalf("MCP write scope: %v", refused)
+	}
 	// A bad author in the second bulk item rolls back the first file/version and bytes.
 	first := stage2f(t, bot, c.Open, "rollback-first.txt")
 	second := stage2f(t, bot, c.Open, "rollback-second.txt")
