@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -41,10 +42,15 @@ func TestCoreUpdate2GFrameSessionCSRF(t *testing.T) {
 		}
 		b, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		if !strings.Contains(string(b), `value="`+person.csrf+`"`) || res.Header.Get("Cache-Control") != "no-store" {
+		match := regexp.MustCompile(`value="([^"]+)"`).FindSubmatch(b)
+		if len(match) != 2 {
+			t.Fatalf("no frame token: %s", b)
+		}
+		frameToken := string(match[1])
+		if frameToken == person.csrf || frameToken == "forged" || res.Header.Get("Cache-Control") != "no-store" {
 			t.Fatalf("frame did not get current session token privately: %s, cache %s", b, res.Header.Get("Cache-Control"))
 		}
-		for _, token := range []string{person.csrf, "", map[*client]string{x.staff: cli.csrf, cli: x.staff.csrf}[person]} {
+		for _, token := range []string{frameToken, "", map[*client]string{x.staff: cli.csrf, cli: x.staff.csrf}[person]} {
 			form := url.Values{"csrf": {token}, "answer": {"synthetic"}}
 			req, _ := http.NewRequest("POST", x.srv.URL+"/m/matter-clock/review", strings.NewReader(form.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -55,12 +61,38 @@ func TestCoreUpdate2GFrameSessionCSRF(t *testing.T) {
 			io.Copy(io.Discard, res.Body)
 			res.Body.Close()
 			want := 403
-			if token == person.csrf {
+			if token == frameToken {
 				want = 204
 			}
 			if res.StatusCode != want {
 				t.Errorf("form status %d want %d", res.StatusCode, want)
 			}
+		}
+		for _, path := range []string{"/api/v1/events", "/m/another-module/review"} {
+			req, _ := http.NewRequest("POST", x.srv.URL+path, strings.NewReader("{}"))
+			req.Header.Set("X-CSRF-Token", frameToken)
+			res, err := person.http.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+			if res.StatusCode != 403 {
+				t.Errorf("frame token accepted by %s: %d", path, res.StatusCode)
+			}
+		}
+		other := x.staff
+		if person == x.staff {
+			other = cli
+		}
+		req, _ = http.NewRequest("POST", x.srv.URL+"/m/matter-clock/review", nil)
+		req.Header.Set("X-CSRF-Token", frameToken)
+		res, err = other.http.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != 403 {
+			t.Errorf("other session accepted frame token: %d", res.StatusCode)
 		}
 	}
 	req, _ := http.NewRequest("GET", x.srv.URL+"/m/matter-clock/review", nil)

@@ -112,7 +112,21 @@ func (s *Service) recordProcessorPayment(ctx context.Context, p domain.Principal
 			return err
 		}
 		answer = payment
-		return s.auditProcessorReceipt(ctx, p, receipt.Result)
+		var recorded struct {
+			ID domain.ID `json:"id"`
+		}
+		if err := json.Unmarshal(payment, &recorded); err != nil {
+			return err
+		}
+		binding, err := json.Marshal(struct {
+			PaymentID domain.ID `json:"payment_id"`
+			ProcessorPaymentRecord
+		}{recorded.ID, in})
+		if err != nil {
+			return err
+		}
+		_, err = s.d.Audit.Record(ctx, p, audit.Change{Entity: "module_processor_intent", EntityID: domain.ID("module-processor/" + p.ModuleID + "/" + in.IntentID), Field: "binding", New: string(binding), Reason: "module.processor_receipt_bound"})
+		return err
 	})
 	if err != nil {
 		return 0, nil, nil, err

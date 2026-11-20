@@ -287,3 +287,14 @@ func TestSupervisorClient(t *testing.T) {
 		t.Fatal("wrong supervisor secret accepted")
 	}
 }
+
+func TestCoreUpdate2GOccupancyPermissionReason(t *testing.T) {
+	raw := strings.Replace(string(sampleManifest(t)), "permissions:\n", "permissions:\n  - scope: calendar:occupancy\n", 1)
+	if _, err := modules.ParseManifest([]byte(raw)); err == nil || !strings.Contains(err.Error(), "reason") {
+		t.Fatalf("occupancy without a reason: %v", err)
+	}
+	raw = strings.Replace(raw, "  - scope: calendar:occupancy\n", "  - scope: calendar:occupancy\n    reason: Synthetic intake scheduling across walls.\n", 1)
+	if _, err := modules.ParseManifest([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+}

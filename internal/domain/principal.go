@@ -36,6 +36,7 @@ type Principal struct {
 	Source             ActorSource
 	SessionID          ID
 	TokenID            ID
+	Scopes             []string // Authenticated bearer grants; never populated from a request body.
 	ModuleID           string
 	MustChangePassword bool // CORE-14: client must change a temporary password before other API use.
 }

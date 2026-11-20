@@ -4,5 +4,5 @@
 ALTER TABLE payments ALTER COLUMN matter_id DROP NOT NULL;
 
 -- +goose Down
--- Refuse rollback while contact-only payments exist; never discard money records.
-ALTER TABLE payments ALTER COLUMN matter_id SET NOT NULL;
+-- Expand-only: retain nullable matter_id on downgrade, including every contact-only
+-- payment. Restoring NOT NULL would fail with those immutable money records.

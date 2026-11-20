@@ -302,22 +302,35 @@ provenance are unchanged; no card token, card data or amount is added.
 
 On a successfully authenticated `/m/{module_id}/…` **GET**, the module receives
 `X-Togavsu-Session-CSRF` (`modulekit.FrameSessionCSRFHeader`) derived from the
-current browser session. Render it as `<input type="hidden" name="csrf" value="…">`
+current browser session and this module ID using identity’s existing secret. It is a
+frame-scoped HMAC token, never the core API CSRF token. Render it as `<input type="hidden" name="csrf" value="…">`
 with HTML escaping, or use `forms.RenderOptions.CSRFToken`. An ordinary cookie-jar
-form POST then passes the unchanged session CSRF check. `X-CSRF-Token` remains
-accepted on POST. Missing/other-session tokens fail before proxying. Core strips
+form POST then passes the session-and-module frame CSRF check. `X-CSRF-Token` remains
+accepted on POST. Missing/other-session/other-module tokens fail before proxying. Core `/api/v1`
+writes refuse frame tokens. Core strips
 caller-supplied CSRF headers, cookies and Authorization before forwarding; a
 bearer-only or unauthenticated request gets no session CSRF header. Never put this
 token in a URL or shared storage. Frame responses are `Cache-Control: no-store`.
 This does not replace module context verification or public `/p/` CSRF.
 
-A calendar service principal holding approved `calendar:read` can read
+A calendar service principal holding `calendar:read` and the separately declared,
+admin-approved **`calendar:occupancy`** can read
 `GET /api/v1/calendar-events?view=occupancy&from_time=…&to_time=…`
 (or `listCalendarEvent` on MCP). Every event counts, including unassigned and walled
 events. Each row has **only** `starts_at`, `ends_at`; no all-day flag, ids, titles,
 attendees or wall metadata. Normal pagination and the existing available-dates
 maximum interval apply. User/matter/kind filters are refused. A viewer cannot use
-this view; `view=busy&user_id=…` and ordinary detail/list wall rules are unchanged.
+this view. `calendar:read` alone returns 403, including on MCP. The manifest must
+request `calendar:occupancy` with a nonempty reason; the normal required/optional
+install approval rules apply. Example:
+
+```yaml
+permissions:
+  - scope: calendar:occupancy
+    reason: Show available intake times without revealing calendar details.
+```
+
+`view=busy&user_id=…` and ordinary detail/list wall rules are unchanged.
 
 An approved `processor.payment.v1` intent may be recorded once by its consumer,
 without a viewer, through the [record continuation](../contracts/README.md#record-the-approved-receipt).

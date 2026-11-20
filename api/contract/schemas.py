@@ -1470,7 +1470,7 @@ SCHEMAS = _register(
         ),
         "CalendarOccupancyBlock": _obj(
             {"starts_at":_dt(), "ends_at":_dt()}, ["starts_at", "ends_at"],
-            "Service-only firm-wide occupancy, including unassigned walled events. Start/end only; no other fields.",
+            "Service-only firm-wide occupancy, including unassigned walled events. Requires calendar:read and separately declared/admin-approved calendar:occupancy. Start/end only; exact requested interval overlap; no other fields.",
         ),
         "CalendarBusyBlock": _obj(
             {"starts_at": _dt(), "ends_at": _dt(), "all_day": {"type": "boolean"}},

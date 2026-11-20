@@ -494,16 +494,23 @@ func (s *Service) PushContractEvent(ctx context.Context, p domain.Principal, con
 	}
 	now := s.now().UnixMicro()
 	return s.commit(ctx, func(ctx context.Context) error {
+		recipients := zero
 		for _, consumer := range consumers {
 			id, err := domain.NewID()
 			if err != nil {
 				return err
 			}
-			if _, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_deliveries (id, created_at, updated_at, created_by, module_id, event_id, action, payload, status, attempts, next_attempt_at, last_error, delivered_at, task_authorization)
+			result, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_deliveries (id, created_at, updated_at, created_by, module_id, event_id, action, payload, status, attempts, next_attempt_at, last_error, delivered_at, task_authorization)
 VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'') ON CONFLICT (module_id,event_id) DO NOTHING`,
-				string(id), now, p.ModuleID, consumer, in.ID, in.Action, string(payload)); err != nil {
+				string(id), now, p.ModuleID, consumer, contractEventKey(p.ModuleID, contract, in.ID), in.Action, string(payload))
+			if err != nil {
 				return err
 			}
+			n, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			recipients += int(n)
 		}
 		auditID, err := domain.NewID()
 		if err != nil {
@@ -511,7 +518,7 @@ VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'') ON CONFLICT (module_id,e
 		}
 		_, err = s.d.Audit.Record(ctx, p, audit.Change{
 			Entity: "module_contract_event", EntityID: auditID, Field: "push",
-			New:    contract + ":" + in.Action + " provider=" + p.ModuleID + " consumers=" + strconv.Itoa(len(consumers)),
+			New:    contract + ":" + in.Action + " provider=" + p.ModuleID + " consumers=" + strconv.Itoa(recipients),
 			Reason: "module.contract_event",
 		})
 		return err

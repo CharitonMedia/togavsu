@@ -362,7 +362,8 @@ func (s *Service) proxy(module, strip, token string) http.Handler {
 }
 
 // FrameSessionCSRFHeader supplies authenticated /m/ GETs with the current
-// browser session's CSRF token. Render it in a hidden form field named csrf.
+// browser session's module-bound frame token. Core API and other frames refuse it.
+// Render it in a hidden form field named csrf.
 const FrameSessionCSRFHeader = "X-Togavsu-Session-CSRF"
 
 type frameSessionCSRFKey struct{}

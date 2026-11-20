@@ -900,17 +900,20 @@ the same durable signed retry queue. See [contracts](../contracts/README.md).
 For acceptance, `c.PushContractEvent(providerID, event)` uses the real core;
 `coretest.ReadDelivery` reads and verifies the consumer's original envelope.
 
-Authenticated frame GETs receive the current session's CSRF token in
+Authenticated frame GETs receive a module-bound HMAC token derived from the session in
 `modulekit.FrameSessionCSRFHeader` (`X-Togavsu-Session-CSRF`). Pass it to
 `forms.RenderOptions.CSRFToken`, or render an HTML-escaped hidden input named
 `csrf` in a urlencoded form. The browser cookie jar suffices for its POST.
-Missing or another session's token is refused. Caller headers cannot select the
+Missing, another module's or another session's token is refused. Core API writes
+refuse frame tokens; modules never receive the core-wide CSRF token. Caller headers cannot select the
 token; unauthenticated/bearer-only requests receive none. Never place it in a URL
 or shared cache. Frame responses are `Cache-Control: no-store`. Module context
 verification and public-page CSRF remain separate requirements.
 
 `calendar-events?view=occupancy&from_time=…&to_time=…` is a service-only read under
-existing `calendar:read`. It includes every assigned/unassigned and walled event,
+`calendar:read` plus explicitly approved `calendar:occupancy`. Declare the latter
+in manifest permissions with a nonempty reason; ordinary required/optional scope
+approval rules apply. `calendar:read` alone returns 403 on REST and MCP. It includes every assigned/unassigned and walled event,
 with **only** `starts_at` and `ends_at` per row. Use the normal cursor pagination
 and existing interval range. User/matter/kind filters are refused. Existing
 user-specific `view=busy` and ordinary wall-filtered reads retain their behavior.

@@ -953,6 +953,7 @@ _GATE_QUALIFIERS = frozenset(
         "resolve_before_write",
         "roles",
         "scope_bound",
+        "view_scopes",
         "scope_combination",
         "scopes",
         "trust_debit",

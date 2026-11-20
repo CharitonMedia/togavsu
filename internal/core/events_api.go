@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 
@@ -110,39 +109,8 @@ func (a *App) eventWriter(ctx context.Context, p domain.Principal) error {
 	return nil
 }
 
-var (
-	coreActionsOnce sync.Once
-	coreActions     map[string]bool
-)
-
-// reservedAction reports an action the core itself emits (every x-togavsu-events name in
-// the contract). An appended event may not take one, so a module or token cannot make a
-// feed row or a webhook that looks like the core's own matter.created or
-// trust.flag_raised.
-func reservedAction(action string) bool {
-	coreActionsOnce.Do(func() {
-		coreActions = map[string]bool{}
-		var doc struct {
-			Paths map[string]map[string]json.RawMessage `json:"paths"`
-		}
-		if json.Unmarshal(api.OpenAPI, &doc) != nil {
-			return
-		}
-		for _, item := range doc.Paths {
-			for _, raw := range item {
-				var op struct {
-					Events []string `json:"x-togavsu-events"`
-				}
-				if json.Unmarshal(raw, &op) == nil {
-					for _, e := range op.Events {
-						coreActions[e] = true
-					}
-				}
-			}
-		}
-	})
-	return coreActions[action]
-}
+// reservedAction shares the emitted core registry with binding event validation.
+func reservedAction(action string) bool { return api.CoreEventAction(action) }
 
 // validID is a UUIDv7.
 func validID(s string) bool {

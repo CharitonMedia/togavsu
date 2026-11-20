@@ -228,6 +228,9 @@ func (a *App) caller(r *http.Request) (identity.Caller, error) {
 
 func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 	in := identity.Presented{Write: !safeMethod(r.Method)}
+	if strings.HasPrefix(r.URL.Path, "/m/") {
+		in.FrameModule, _, _ = strings.Cut(strings.TrimPrefix(r.URL.Path, "/m/"), "/")
+	}
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		in.SessionToken = c.Value
 	}
@@ -382,6 +385,7 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 		return c.Principal, err
 	}
 	p, err := a.delegate(r, c.Principal)
+	p.Scopes = c.Scopes
 	if err != nil {
 		return p, err
 	}
@@ -393,6 +397,18 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 	}
 	if err := a.requirePublicStepRouteScopes(r, c); err != nil {
 		return p, err
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/api/v1/calendar-events" && r.URL.Query().Get("view") == "occupancy" {
+		if err := c.RequireScopes("calendar:occupancy"); err != nil {
+			return p, shared(err)
+		}
+		if a.ext == nil || a.ext.Modules == nil {
+			return p, domain.Forbidden("occupancy module unavailable")
+		}
+		installed, err := a.ext.Modules.Installed(r.Context(), p.ModuleID)
+		if err != nil || !installed.Enabled || !installed.Approved["calendar:occupancy"] {
+			return p, domain.Forbidden("calendar:occupancy approval required")
+		}
 	}
 	if moduleOwn(p) {
 		runtime := moduleRuntimeRoute(r, p)

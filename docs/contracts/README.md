@@ -132,8 +132,10 @@ Trust recording remains unavailable.
 HTTP 200 returns the normal `Payment`. Core uses only the stored receipt's amount,
 operating destination, provider as `source`, reference, method `card` and status
 `completed`. A contact-only payment has null `matter_id`. Binding, payment, core row,
-audit and normal `payment.created`/`payment.completed` events commit together, under
-the consumer module as actor with source `service`. A row lock serializes concurrent
+a distinct append-only `binding` audit naming intent/payment/matter/contact IDs and
+normal `payment.created`/`payment.completed` events commit together, under
+the consumer module as actor with source `service`. `AuditEntry.actor_id` is a
+string for every module service-principal audit row. A row lock serializes concurrent
 recording across core processes. Repeats/recovery return the same payment without
 another provider request or charge. A changed target conflicts. Live link/scope and
 matter/contact visibility are rechecked even on replay. No arbitrary viewerless
@@ -174,14 +176,19 @@ The provider needs its own approved `contracts:provide` bearer and a matching
 manifest `provides` declaration. Body `contract` must equal the route; `event`
 is a nonempty type outside **every core event namespace**, including `file.*`,
 `matter.*`, `contact.*`, `calendar.*`, `calendar_event.*`, `payment.*`, `session.*`
-and all namespaces in the published core event registry. `event_id` is a UUID,
+`custom_field.*`, `conflict.*`, `county.*`, `practice_area.*`, `referral_source.*`,
+and all namespaces in the shared published `x-togavsu-core-events` registry. `event_id` is a UUID,
 `occurred_at` is RFC3339, and `data` is a JSON object. Unknown outer fields fail.
 Data is contract-owned and conveys no core record access.
 
 Every enabled consumer declaring this contract, holding approved `contracts:call`
 and linked by the admin to this provider receives the envelope's original fields
 and values unchanged, without another core envelope. No link means no delivery.
-Normal durable signed retries apply, with permanent per-recipient/event-id dedupe.
+Normal durable signed retries apply, with permanent per-provider/contract/recipient/event-id
+dedupe in a `contract:` queue namespace separate from core UUID event IDs. A core
+event and a contract event with identical wire IDs both deliver. Replays insert no
+rows and audit `consumers=0`; forwarded wire IDs remain unchanged. Duplicate
+top-level JSON keys return 400 before forwarding.
 `X-Togavsu-Sender` is the authenticated pushing provider, persisted in the queue;
 2e v1 and sender-bound v2 signatures remain unchanged. Unlinking blocks new pushes
 to that consumer; already queued retries retain their original sender and body.

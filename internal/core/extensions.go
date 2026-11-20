@@ -202,7 +202,7 @@ func (a *App) extend(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/m/") && r.Method == http.MethodGet {
 			if c, err := a.caller(r); err == nil && c.CSRFToken != "" {
-				r = r.WithContext(modules.WithFrameSessionCSRF(r.Context(), c.CSRFToken))
+				r = r.WithContext(modules.WithFrameSessionCSRF(r.Context(), a.Identity.FrameCSRF(c.Principal.SessionID, frameModuleID(r.URL.Path))))
 			}
 		}
 		// Cookie-authenticated frame writes must honor the same session-bound
@@ -365,4 +365,9 @@ func (a *App) paymentReadableForModule(ctx context.Context, module string, id do
 		return false, nil
 	}
 	return err == nil, err
+}
+
+func frameModuleID(path string) string {
+	id, _, _ := strings.Cut(strings.TrimPrefix(path, "/m/"), "/")
+	return id
 }

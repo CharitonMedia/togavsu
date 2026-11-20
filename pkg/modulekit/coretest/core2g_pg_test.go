@@ -78,7 +78,7 @@ func TestCoreUpdate2GBindingEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Exec(`UPDATE core.module_deliveries SET next_attempt_at=0 WHERE event_id=$1`, event["event_id"]); err != nil {
+	if _, err := db.Exec(`UPDATE core.module_deliveries SET next_attempt_at=0 WHERE payload LIKE $1`, "%"+event["event_id"].(string)+"%"); err != nil {
 		t.Fatal(err)
 	}
 	c.DeliverEvents()
@@ -94,7 +94,7 @@ func TestCoreUpdate2GBindingEnvelope(t *testing.T) {
 		t.Error("unlinked/disabled delivery")
 	}
 	mu.Unlock()
-	for _, change := range []map[string]any{{"contract": "other.v1"}, {"event": ""}, {"event": "file.updated"}, {"event": "calendar_event.created"}, {"event": "session.created"}, {"event_id": "not-a-uuid"}, {"occurred_at": "yesterday"}, {"data": nil}, {"data": []any{}}} {
+	for _, change := range []map[string]any{{"contract": "other.v1"}, {"event": ""}, {"event": "custom_field.updated"}, {"event": "conflict.checked"}, {"event": "county.changed"}, {"event": "practice_area.changed"}, {"event": "referral_source.changed"}, {"event": "file.updated"}, {"event": "calendar_event.created"}, {"event": "session.created"}, {"event_id": "not-a-uuid"}, {"occurred_at": "yesterday"}, {"data": nil}, {"data": []any{}}} {
 		bad := map[string]any{}
 		for k, v := range event {
 			bad[k] = v
@@ -102,7 +102,12 @@ func TestCoreUpdate2GBindingEnvelope(t *testing.T) {
 		for k, v := range change {
 			bad[k] = v
 		}
-		bot.Must(400, "POST", path, bad)
+		r := bot.Must(400, "POST", path, bad)
+		if change["event"] == "custom_field.updated" || change["event"] == "conflict.checked" {
+			if r.JSON["code"] != "validation" || r.JSON["field"] != "event" {
+				t.Errorf("reserved error shape: %s", r.Body)
+			}
+		}
 	}
 }
 
@@ -110,13 +115,16 @@ func TestCoreUpdate2GFirmOccupancy(t *testing.T) {
 	c := coretest.New(t)
 	const id = "firm-occupancy"
 	c.Handle(id, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
-	install2d(t, c, id, []string{"calendar:read"}, "")
+	install2d(t, c, id, []string{"calendar:read", "calendar:occupancy"}, "")
+	install2d(t, c, "calendar-read-only", []string{"calendar:read"}, "")
 	start := time.Now().UTC().Truncate(time.Second).Add(time.Hour)
 	for _, attendees := range [][]string{nil, {c.Attorney.ID}} {
 		c.Attorney.Must(201, "POST", "/api/v1/calendar-events", map[string]any{"title": "SECRET", "kind": "court_date", "matter_id": c.Walled, "starts_at": start.Format(time.RFC3339), "ends_at": start.Add(time.Hour).Format(time.RFC3339), "attendee_user_ids": attendees})
 	}
 	q := url.Values{"view": {"occupancy"}, "from_time": {start.Add(-time.Hour).Format(time.RFC3339)}, "to_time": {start.Add(2 * time.Hour).Format(time.RFC3339)}}
 	bot := c.ModuleClient(id)
+	c.ModuleClient("calendar-read-only").Must(403, "GET", "/api/v1/calendar-events?"+q.Encode(), nil)
+	toolResult2d(t, c.ModuleClient("calendar-read-only"), "listCalendarEvent", map[string]any{"query": map[string]any{"view": "occupancy", "from_time": q.Get("from_time"), "to_time": q.Get("to_time")}}, true)
 	for _, transport := range []string{"REST", "MCP"} {
 		var v map[string]any
 		if transport == "REST" {
@@ -137,6 +145,11 @@ func TestCoreUpdate2GFirmOccupancy(t *testing.T) {
 	}
 	narrowService2f(t, c, id).Must(403, "GET", "/api/v1/calendar-events?"+q.Encode(), nil)
 	c.Attorney.Must(403, "GET", "/api/v1/calendar-events?"+q.Encode(), nil)
+	q.Set("from_time", start.Add(3*time.Hour).Format(time.RFC3339))
+	q.Set("to_time", start.Add(4*time.Hour).Format(time.RFC3339))
+	if rows := bot.Must(200, "GET", "/api/v1/calendar-events?"+q.Encode(), nil).JSON["data"].([]any); len(rows) != 0 {
+		t.Fatalf("outside window: %v", rows)
+	}
 	q.Set("user_id", c.Attorney.ID)
 	bot.Must(400, "GET", "/api/v1/calendar-events?"+q.Encode(), nil)
 }
@@ -189,6 +202,9 @@ func TestCoreUpdate2GProcessorRecording(t *testing.T) {
 	if c.Count("SELECT COUNT(*) FROM core.audit_log WHERE entity='payment' AND entity_id=$1 AND actor_id='synthetic-intake' AND source='service'", id) == 0 {
 		t.Fatal("missing module audit actor")
 	}
+	if c.Count("SELECT COUNT(*) FROM core.audit_log WHERE entity='module_processor_intent' AND field='binding' AND new_value LIKE $1 AND new_value LIKE $2 AND new_value LIKE $3", "%"+id+"%", "%"+in["matter_id"].(string)+"%", "%"+c.ClientContact+"%") != 1 {
+		t.Error("missing distinct binding audit")
+	}
 	if strings.Contains(first.Body, "payment_token") {
 		t.Fatal("token exposed")
 	}
@@ -234,6 +250,20 @@ func TestCoreUpdate2GProcessorContactAndRefusals(t *testing.T) {
 	c.Attorney.Must(201, "POST", "/api/v1/matter-parties", map[string]any{"matter_id": c.Walled, "contact_id": contactID, "role": "client"})
 	bot.Must(404, "POST", path+"record", in)
 	c.Admin.Must(404, "GET", "/api/v1/payments/"+id, nil)
+	for _, who := range []*coretest.User{c.Admin, c.Attorney} {
+		want := who == c.Attorney
+		for _, surface := range []string{"/practice/activity", "/api/v1/events?limit=200"} {
+			r := who.Must(200, "GET", surface, nil)
+			if strings.Contains(r.Body, map[bool]string{true: "payment.created", false: id}[surface == "/practice/activity"]) != want {
+				t.Errorf("payment visibility %s for %s: want %v", surface, who.ID, want)
+			}
+		}
+		v := toolResult2d(t, who.Client, "listEvents", map[string]any{"query": map[string]any{"limit": 200}}, false)
+		raw, _ := json.Marshal(v)
+		if strings.Contains(string(raw), id) != want {
+			t.Errorf("MCP payment visibility for %s want %v", who.ID, want)
+		}
+	}
 	c.Attorney.Must(200, "GET", "/api/v1/payments/"+id, nil)
 	c.Admin.Must(204, "DELETE", "/api/v1/modules/contract-links/"+link, nil)
 	// Disabling the linked processor refuses recording/replay without contacting it.

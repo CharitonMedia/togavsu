@@ -102,6 +102,10 @@ func (h *Handler) pushContractEvent(w http.ResponseWriter, r *http.Request, c Ca
 		return
 	}
 	var fields map[string]json.RawMessage
+	if err := uniqueEventKeys(raw); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		writeErr(w, domain.Invalid("body", "send a contract event object"))
 		return

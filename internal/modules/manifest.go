@@ -402,6 +402,10 @@ func (m Manifest) validate(report func(error) bool) {
 			if !ok(invalid(f, "unknown scope format "+p.Scope)) {
 				return
 			}
+		case p.Scope == "calendar:occupancy" && strings.TrimSpace(p.Reason) == "":
+			if !ok(invalid(f, "calendar:occupancy requires a reason")) {
+				return
+			}
 		case forbiddenScopes[p.Scope]:
 			if !ok(invalid(f, "a module cannot request "+p.Scope)) {
 				return

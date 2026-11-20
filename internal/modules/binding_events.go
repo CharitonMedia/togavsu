@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,24 +24,6 @@ type BindingContractEvent struct {
 	Data       json.RawMessage `json:"data"`
 }
 
-// Reserve every namespace in the published core event registry, including events
-// added in later core updates. A malformed registry fails closed.
-var coreEventNamespaces, coreEventRegistryError = func() (map[string]bool, error) {
-	var spec struct {
-		Events map[string]json.RawMessage `json:"x-togavsu-event-scopes"`
-	}
-	err := json.Unmarshal(api.OpenAPI, &spec)
-	if err == nil && len(spec.Events) == 0 {
-		err = errors.New("core event registry is empty")
-	}
-	out := map[string]bool{"core": true, "file": true, "matter": true, "contact": true, "calendar": true, "payment": true}
-	for name := range spec.Events {
-		root, _, _ := strings.Cut(name, ".")
-		out[root] = true
-	}
-	return out, err
-}()
-
 // UUID punctuation and widths are fixed by the wire format, not firm settings.
 var bindingEventUUIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
@@ -55,11 +36,11 @@ func (s *Service) pushBindingContractEvent(ctx context.Context, p domain.Princip
 	if in.Contract != contract || contract == "" {
 		return domain.Invalid("contract", "body contract must equal route contract")
 	}
-	root, _, _ := strings.Cut(in.Event, ".")
-	if coreEventRegistryError != nil {
-		return coreEventRegistryError
+	reserved, err := api.CoreEventNamespace(in.Event)
+	if err != nil {
+		return err
 	}
-	if strings.TrimSpace(in.Event) == "" || strings.TrimSpace(in.Event) != in.Event || coreEventNamespaces[root] {
+	if strings.TrimSpace(in.Event) == "" || strings.TrimSpace(in.Event) != in.Event || reserved {
 		return domain.Invalid("event", "use a nonempty contract event type outside core event namespaces")
 	}
 	if !validEventUUID(in.EventID) {
@@ -114,11 +95,15 @@ func (s *Service) pushBindingContractEvent(ctx context.Context, p domain.Princip
 			if err != nil {
 				return err
 			}
-			_, err = s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_deliveries (id,created_at,updated_at,created_by,module_id,event_id,action,payload,status,attempts,next_attempt_at,last_error,delivered_at,task_authorization) VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'') ON CONFLICT (module_id,event_id) DO NOTHING`, string(delivery), now, p.ModuleID, id, strings.ToLower(in.EventID), in.Event, string(raw))
+			result, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_deliveries (id,created_at,updated_at,created_by,module_id,event_id,action,payload,status,attempts,next_attempt_at,last_error,delivered_at,task_authorization) VALUES ($1,$2,$2,$3,$4,$5,$6,$7,'pending',0,$2,'',0,'') ON CONFLICT (module_id,event_id) DO NOTHING`, string(delivery), now, p.ModuleID, id, contractEventKey(p.ModuleID, contract, strings.ToLower(in.EventID)), in.Event, string(raw))
 			if err != nil {
 				return err
 			}
-			recipients++
+			n, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			recipients += int(n)
 		}
 		auditID, err := domain.NewID()
 		if err != nil {
@@ -127,4 +112,39 @@ func (s *Service) pushBindingContractEvent(ctx context.Context, p domain.Princip
 		_, err = s.d.Audit.Record(ctx, p, audit.Change{Entity: "module_contract_event", EntityID: auditID, Field: "push", New: contract + ":" + in.Event + " provider=" + p.ModuleID + " consumers=" + strconv.Itoa(recipients), Reason: "module.contract_event"})
 		return err
 	})
+}
+
+// Core IDs are UUIDs; this fixed prefix cannot collide with any core event ID.
+// JSON tuple encoding is unambiguous even for arbitrary targeted envelope IDs.
+func contractEventKey(provider, contract, id string) string {
+	raw, _ := json.Marshal([]string{provider, contract, id})
+	return "contract:" + string(raw)
+}
+
+// Raw binding bodies are forwarded unchanged, so all recipients must see the
+// same unambiguous outer object regardless of their JSON decoder.
+func uniqueEventKeys(raw []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	first, err := dec.Token()
+	if err != nil || first != json.Delim('{') {
+		return domain.Invalid("body", "send a contract event object")
+	}
+	seen := map[string]bool{}
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return domain.Invalid("body", "invalid contract event object")
+		}
+		name, ok := key.(string)
+		if !ok || seen[name] {
+			return domain.Invalid("body", "duplicate contract event key")
+		}
+		seen[name] = true
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return domain.Invalid("body", "invalid contract event object")
+		}
+	}
+	_, err = dec.Token()
+	return err
 }

@@ -45,6 +45,9 @@ func (s *Service) authSession(ctx context.Context, in Presented) (Caller, error)
 	}
 	if in.Write {
 		want := csrfToken(s.key, row.ID)
+		if in.FrameModule != "" {
+			want = s.FrameCSRF(row.ID, in.FrameModule)
+		}
 		if !constantTimeEqual([]byte(in.CSRF), []byte(want)) {
 			return Caller{}, apiCode("csrf_required", "csrf token is required")
 		}

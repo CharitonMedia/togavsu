@@ -65,6 +65,15 @@ func (s *Service) ListOccupancy(ctx context.Context, p domain.Principal, f Event
 	if p.Source != domain.SourceService || p.ModuleID == "" || !p.UserID.IsZero() {
 		return nil, domain.Forbidden("firm occupancy requires a module service principal")
 	}
+	allowed := false
+	for _, scope := range p.Scopes {
+		if scope == "calendar:occupancy" {
+			allowed = true
+		}
+	}
+	if !allowed {
+		return nil, domain.Forbidden("calendar:occupancy is required")
+	}
 	if err := s.gate(ctx, p, domain.ActionRead, ""); err != nil {
 		return nil, err
 	}
@@ -80,6 +89,9 @@ func (s *Service) ListOccupancy(ctx context.Context, p domain.Principal, f Event
 	}
 	out := []OccupancyBlock{}
 	for _, row := range rows {
+		if !matchEvent(row, f) {
+			continue
+		}
 		out = append(out, OccupancyBlock{StartsAt: fmtTime(row.StartsAt), EndsAt: fmtTime(row.EndsAt)})
 		if f.Max > zero && len(out) == f.Max {
 			break

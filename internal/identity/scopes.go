@@ -28,7 +28,7 @@ var catalog = map[string]struct{}{
 	"payments:read": {}, "payments:write": {},
 	"trust:read": {}, "trust:write": {}, "trust:withdraw": {},
 	"reports:read":  {},
-	"calendar:read": {}, "calendar:write": {},
+	"calendar:read": {}, "calendar:write": {}, "calendar:occupancy": {},
 	"deadlines:read": {}, "deadlines:write": {},
 	"files:read": {}, "files:write": {},
 	"editor:run":      {},
@@ -59,6 +59,7 @@ var catalog = map[string]struct{}{
 // moduleOnlyScopes are grantable only on a module token (CORE-02, CORE-04 to CORE-06).
 // Entries land with the CORE item that adds the scope to the catalog.
 var moduleOnlyScopes = map[string]struct{}{
+	"calendar:occupancy":    {},
 	"module_settings:write": {}, "webhooks:authorization": {},
 	"books:read":           {},
 	"module_secrets:write": {},

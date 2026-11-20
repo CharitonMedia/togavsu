@@ -59,6 +59,7 @@ type Presented struct {
 	SessionToken string
 	Bearer       string
 	CSRF         string
+	FrameModule  string // Set only for the /m/{id}/ cookie write path.
 	Write        bool
 }
 

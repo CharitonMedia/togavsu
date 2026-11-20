@@ -153,8 +153,8 @@ evidence remains `TestCoreUpdate2FFixFileEventVisibility` and
 | Module gap / failing acceptance | Status | Core evidence |
 | --- | --- | --- |
 | Binding event envelope returns 400 (`TestDocumentsGenerateV1Contract`, `TestContractGeneratedEnvelopeCoretest`) | fixed: binding contract/event/event_id/occurred_at/data fanout, original envelope and provider sender, durable recipient dedupe; targeted 2f shape retained | `TestCoreUpdate2GBindingEnvelope`, existing 2d/2f contract and 2e sender tests |
-| Client frame has no session CSRF for its rendered POST (`TestReviewClientPageAutosave`) | fixed: trusted current-session header on authenticated GET, hidden `csrf`, no-store; strict POST check retained | `TestCoreUpdate2GFrameSessionCSRF`, existing 2f body-restoration test |
-| Unassigned walled event disappears for every user (`TestReviewBusyAcrossWalls`) | fixed: service-only firm-wide `view=occupancy` returns start/end only, assigned or not; user busy and detail walls retained | `TestCoreUpdate2GFirmOccupancy`, existing 2f busy and CU2-02 wall cases |
+| Client frame has no session CSRF for its rendered POST (`TestReviewClientPageAutosave`) | fixed: module-bound session HMAC header on authenticated GET, hidden `csrf`, no-store; strict POST check retained | `TestCoreUpdate2GFrameSessionCSRF`, existing 2f body-restoration test |
+| Unassigned walled event disappears for every user (`TestReviewBusyAcrossWalls`) | fixed: service-only firm-wide `view=occupancy` requires explicit `calendar:occupancy` approval and returns start/end only, assigned or not; user busy and detail walls retained | `TestCoreUpdate2GFirmOccupancy`, existing 2f busy and CU2-02 wall cases |
 | Public processor approval cannot record its charge without a viewer | fixed: once-bound receipt `record` continuation under current approved consumer scopes/link, no provider call; contact or matter target, atomic payment/audit/events and replay | `TestCoreUpdate2GProcessorRecording`, `TestCoreUpdate2GProcessorContactAndRefusals` |
 
 These close the remaining behaviors beyond 2f's original rows; external module
