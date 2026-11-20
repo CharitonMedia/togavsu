@@ -333,3 +333,80 @@ func TestCoreUpdate2FProcessorConcurrentRecoveryCannotRegressApproval(t *testing
 	}
 	consumer.Must(http.StatusOK, "POST", path+"recover", map[string]string{"intent_id": "inflight-approval"})
 }
+
+func TestCoreUpdate2FProcessorHTTPReplayRechecksStateAndAccess(t *testing.T) {
+	c, processor, consumer, link := processorFixture(t)
+	path := "/api/v1/modules/contracts/" + modulekit.ProcessorPaymentContract + "/"
+	processor.LoseNextApprovalResponse()
+	pending := consumer.Do("POST", path+"authorize", processorRequest("http-replay-intent"), "Idempotency-Key", "authorize-key-a")
+	if pending.Code != http.StatusAccepted || pending.JSON["status"] != "pending" {
+		t.Fatalf("initial ambiguous authorization: %d %s", pending.Code, pending.Body)
+	}
+	recoveryBody := map[string]string{"intent_id": "http-replay-intent"}
+	mcpRecover := func(client *coretest.Client, wantError bool) map[string]any {
+		t.Helper()
+		r := client.Do("POST", "/mcp", map[string]any{
+			"jsonrpc": "2.0", "id": "processor-replay", "method": "tools/call",
+			"params": map[string]any{"name": "callModuleContract", "arguments": map[string]any{
+				"path": map[string]string{"contract": modulekit.ProcessorPaymentContract, "operation": "recover"}, "body": recoveryBody,
+			}},
+		}, "Idempotency-Key", "recover-key-b")
+		result, ok := r.JSON["result"].(map[string]any)
+		if r.Code != http.StatusOK || !ok || result["isError"] != wantError {
+			t.Fatalf("processor replay MCP envelope: %d %s", r.Code, r.Body)
+		}
+		value, ok := result["structuredContent"].(map[string]any)
+		if !ok {
+			t.Fatalf("processor replay MCP missing structured result: %s", r.Body)
+		}
+		return value
+	}
+	approved := consumer.Do("POST", path+"recover", recoveryBody, "Idempotency-Key", "recover-key-b")
+	if approved.Code != http.StatusOK || approved.JSON["status"] != "approved" || approved.JSON["reference_number"] != "synthetic-approval-1" {
+		t.Fatalf("initial approval recovery: %d %s", approved.Code, approved.Body)
+	}
+	// A transport retry must see the recovered receipt, not a cached pending body.
+	replay := consumer.Do("POST", path+"authorize", processorRequest("http-replay-intent"), "Idempotency-Key", "authorize-key-a")
+	if replay.Code != http.StatusOK || replay.JSON["status"] != "approved" || replay.JSON["reference_number"] != approved.JSON["reference_number"] {
+		t.Errorf("authorize replay returned stale state: %d %s", replay.Code, replay.Body)
+	}
+	if result := mcpRecover(consumer, false); result["status"] != "approved" || result["reference_number"] != approved.JSON["reference_number"] {
+		t.Errorf("MCP recovery did not read the latest receipt: %#v", result)
+	}
+	// A narrower credential for this same module cannot replay the wider
+	// credential's response even when route, body and Idempotency-Key match.
+	token := c.Admin.Must(http.StatusCreated, "POST", "/api/v1/api-tokens", map[string]any{
+		"name": "narrow processor replay bearer", "module_id": "synthetic-intake", "scopes": []string{"contracts:call"},
+		"approved_scopes": []string{"contracts:call", "payments:write"},
+	})
+	narrow := c.NewClient()
+	narrow.Bearer = str(t, token.JSON, "secret")
+	denied := narrow.Do("POST", path+"recover", recoveryBody, "Idempotency-Key", "recover-key-b")
+	if denied.Code != http.StatusForbidden || denied.JSON["code"] != "scope_denied" {
+		t.Errorf("cached recovery bypassed current payment scope: %d %s", denied.Code, denied.Body)
+	}
+	if result := mcpRecover(narrow, true); result["code"] != "scope_denied" {
+		t.Errorf("MCP cached recovery bypassed current payment scope: %#v", result)
+	}
+	// The existing header length bound still applies even though financial
+	// idempotency is owned by the durable intent receipt rather than this header.
+	tooLong := consumer.Do("POST", path+"recover", recoveryBody, "Idempotency-Key", strings.Repeat("x", 201))
+	if tooLong.Code != http.StatusBadRequest || tooLong.JSON["field"] != "Idempotency-Key" {
+		t.Errorf("oversized Idempotency-Key: %d %s", tooLong.Code, tooLong.Body)
+	}
+	c.Admin.Must(http.StatusNoContent, "DELETE", "/api/v1/modules/contract-links/"+link, nil)
+	unlinked := consumer.Do("POST", path+"recover", recoveryBody, "Idempotency-Key", "recover-key-b")
+	if unlinked.Code != http.StatusConflict || unlinked.JSON["code"] != "contract_unlinked" {
+		t.Errorf("cached recovery bypassed current contract link: %d %s", unlinked.Code, unlinked.Body)
+	}
+	if result := mcpRecover(consumer, true); result["code"] != "contract_unlinked" {
+		t.Errorf("MCP cached recovery bypassed current link: %#v", result)
+	}
+	if processor.Charges() != 1 {
+		t.Fatalf("HTTP retries charged %d times", processor.Charges())
+	}
+	calls := processor.Calls()
+	if len(calls) != 2 || calls[0].Operation != "authorize" || calls[1].Operation != "recover" {
+		t.Fatalf("HTTP retries called provider again: %#v", calls)
+	}
+}

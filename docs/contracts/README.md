@@ -65,7 +65,14 @@ processes. Concurrent repeats may return pending while that request is in flight
 recover them. A terminal approval or decline cannot be overwritten by a stale
 pending recovery. A
 changed authorize body is `idempotency_conflict`, regardless of Idempotency-Key;
-that header does not define financial identity. Approved and declined receipts
+that header does not define financial identity. These two processor operations
+bypass the generic HTTP response cache even when that header is supplied. The
+header's 200-character bound still applies, but every retry checks the current
+bearer's scopes, module approvals and provider link and reads the latest durable
+receipt. A retry after recovery therefore returns the approval; it cannot replay
+an earlier pending response or a response authorized before scope/link revocation.
+Every other contract retains its existing HTTP idempotency behavior.
+Approved and declined receipts
 replay indefinitely without another provider request. There is no expiry that
 could turn a reused intent into another charge. Token rotation does not change
 the consumer identity. A retry of an ambiguous or pending authorization calls

@@ -129,7 +129,18 @@ func (h *Handler) ContractRoutes() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/v1/modules/contracts/{contract}/providers", h.scoped("contracts:call", h.listContractProviders))
 	m.HandleFunc("POST /api/v1/modules/contracts/{contract}/events", h.write("contracts:provide", h.pushContractEvent))
-	m.HandleFunc("POST /api/v1/modules/contracts/{contract}/{operation}", h.write("contracts:call", h.callContract))
+	cachedCall := h.write("contracts:call", h.callContract)
+	processorCall := h.scoped("contracts:call", h.callContract)
+	m.HandleFunc("POST /api/v1/modules/contracts/{contract}/{operation}", func(w http.ResponseWriter, r *http.Request) {
+		// The processor receipt owns financial idempotency. Every retry must
+		// recheck current access and return its current result, so a transport
+		// cache cannot retain pending after recovery or approval after unlink.
+		if strings.TrimSpace(r.PathValue("contract")) == ProcessorPaymentContract {
+			processorCall(w, r)
+			return
+		}
+		cachedCall(w, r)
+	})
 	return m
 }
 
