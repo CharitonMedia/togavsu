@@ -2944,7 +2944,7 @@ SCHEMAS = _register(
             {
                 "id": _uuid(),
                 "at": _dt(),
-                "actor_id": _null(_uuid()),
+                "actor_id": _null({"type":"string","description":"User UUID, or the authenticated module id for a background service actor."}),
                 "actor_kind": _ACTOR,
                 "role": {"type": "string"},
                 "source": {"type": "string", "description": "ui, api token id, or module id."},

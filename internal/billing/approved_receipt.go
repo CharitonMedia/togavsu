@@ -33,7 +33,6 @@ func (s *Service) RecordApprovedOperatingPayment(ctx context.Context, p domain.P
 	if err != nil {
 		return nil, err
 	}
-	meta.CreatedBy = domain.ID(p.ModuleID)
 	row := Payment{Payment: domain.Payment{Meta: meta, ContactID: in.ContactID, MatterID: in.MatterID, AmountCents: in.AmountCents, Destination: DestOperating, Method: "card", ReferenceNumber: in.ReferenceNumber, Status: PayCompleted, Source: in.Source, RefundState: RefundNone}, ReceivedOn: s.today(ctx)}
 	if err := s.write(ctx, p, func(t *txn) error { return s.insertPayment(t, &row) }); err != nil {
 		return nil, err

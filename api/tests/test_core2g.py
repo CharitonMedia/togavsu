@@ -49,3 +49,8 @@ class Core2GContract(unittest.TestCase):
         self.assertEqual(csrf['form_field'], 'csrf')
         self.assertEqual(csrf['method'], 'GET')
         self.assertIn('no-store', csrf['description'])
+
+    def test_background_audit_actor_is_a_module_id(self):
+        actor = self.schemas['AuditEntry']['properties']['actor_id']
+        Draft202012Validator(actor).validate('synthetic-intake')
+        Draft202012Validator(actor).validate('019b6968-4600-7001-8000-000000000001')

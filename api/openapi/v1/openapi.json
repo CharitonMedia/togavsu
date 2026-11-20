@@ -81890,8 +81890,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "format": "uuid",
-                "description": "UUIDv7."
+                "description": "User UUID, or the authenticated module id for a background service actor."
               },
               {
                 "type": "null"
