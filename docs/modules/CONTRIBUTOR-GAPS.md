@@ -120,3 +120,29 @@ Status is `fixed` (with where) or `open`. "Follow-up" names the CORE item in
 | Reservation blocks approved module IDs | Approved batch 1/batch 2 IDs, matter-clock, zoom and importer validate, install and authenticate; email contract links and marketplace publishing work. Core-only labels remain refused; source alone still grants no ownership | `TestCoreUpdate2FFix2ApprovedModuleIDs`, `TestCoreUpdate2FFix2PublishApprovedSources`, retained reserved-source/ownership tests |
 | Purged files lose every pending event | Enqueue checks the retained row’s placement, ignoring only purge. Visible file.purged and older pending events deliver once; walled/attorney-only files stay hidden; normal file reads stay not_found | `TestCoreUpdate2FFix2PurgedFileEvents`, `TestCoreUpdate2FFix2FileEventPolicyFailsClosed` |
 | Client contact writes after the matter window | Existing target-base behavior: own shared contact files remain readable, but clients already cannot add contact-only files, directly or through a module. No policy change | `TestCoreUpdate2FFix2ClientOwnContactAfterAccessWindow`, also run against target base 4c215a3 |
+
+### Core-update-2f contract and subscriber documentation
+
+The reserved module IDs are exactly `core`, `upload`, `client_upload`, `editor`,
+`billing`, `drop_folder`, `ui`, `api_token`, `module`, `service`, `system`, `api`,
+`manual`, `timer`, `import`. Approved IDs `email`, `zoom` and `importer` remain
+valid. The regenerated `ModuleManifest.id` description matches the runtime list;
+`TestModuleManifestReservedIDsContract` enumerates `ReservedModuleID` switch cases
+and compares them with the published list, including underscore labels.
+
+The file visibility guard applies to every non-targeted `file.*` event identifying
+a file, including `file.updated`, `file.downloaded`, `file.trashed` and
+`file.purged`. It requires approved `events:read`, a matching subscription,
+approved `files:read` and service-principal read access to the current placement
+at enqueue. Matter walls, attorney-only restrictions and non-matter placement
+checks apply; purge ignores only the retained row's purge marker. Targeted grants
+and books-reader filters retain their existing behavior.
+
+**Behavior change for existing subscribers:** without approved `files:read`, or
+for walled, attorney-only or non-matter files their service principal cannot read,
+subscribers stop receiving `file.updated` and `file.downloaded`. Delegated viewer
+access does not grant background event access. The [batch 1 inventory](MODULE-KIT.md#batch-1-file-event-subscriptions)
+lists all five module specs' subscriptions and read scopes; real-package
+compatibility still needs its separate acceptance run. Existing regression
+evidence remains `TestCoreUpdate2FFixFileEventVisibility` and
+`TestCoreUpdate2FFix2PurgedFileEvents`.

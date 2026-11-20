@@ -24,9 +24,25 @@ See [module API](../api/modules.md), [public kit](MODULE-KIT.md) and
 Phone, phone-zoom, phone-google and workflow event envelopes stay unchanged. The
 reserved `core` sender and both 2e signature headers remain mandatory. Existing
 books-reader `contact.updated` delivery keeps its books visibility rules
-(`TestCORE02BooksContactUpdatedPump`); the new file-scope guard applies only to
-`file.trashed`. The source
-base did not contain the referenced contracts directory; this update documents
+(`TestCORE02BooksContactUpdatedPump`). Every non-targeted `file.*` event identifying
+a file requires approved `events:read`, a matching subscription, approved
+`files:read` and the module service principal's read access to the file's current
+placement at enqueue. This includes `file.updated`, `file.downloaded`,
+`file.trashed` and `file.purged`. Matter walls, attorney-only restrictions and
+contact-only/library placement checks apply. After purge the retained row is
+checked with only its purge marker ignored, so visible purge and older pending
+events can still deliver; ordinary purged-file reads remain `not_found`.
+Targeted file authorization grants retain their existing policy.
+
+**Behavior change for existing subscribers:** a subscriber without approved
+`files:read` stops receiving `file.updated` and `file.downloaded`. A subscriber
+also stops receiving those events for walled, attorney-only or non-matter files
+that its service principal cannot read, even if a delegated viewer can read them.
+See the [batch 1 subscription inventory](MODULE-KIT.md#batch-1-file-event-subscriptions)
+for the specified subscriptions and permissions; real-package compatibility
+acceptance remains pending.
+
+The source base did not contain the referenced contracts directory; this update documents
 the existing core envelope there and does not introduce a second shape.
 
 The processor module and module-repository acceptance runs are outside this repo.

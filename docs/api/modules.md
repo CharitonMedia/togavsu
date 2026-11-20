@@ -8,6 +8,8 @@ catalog publishing, contract links and module sender signing refuse them. Valida
 errors identify the reservation; only core's dedicated signer may sign as `core`.
 Approved module IDs remain valid, including `email`, `zoom` and `importer`, even
 when a file's `source` uses the same label. Ownership uses `owner_module_id`.
+`TestModuleManifestReservedIDsContract` compares the published manifest description
+with every `ReservedModuleID` switch case, including labels with underscores.
 
 Public module API additions from `togavsu-initial-modules-prd.md` §4 and `docs/modules/CORE-CHANGES.md` (CORE-01–CORE-29). Operation shapes, scopes and `module_delegation` live in `api/openapi/v1/openapi.json` and `api/openapi/v1/mcp-tools.json`; MCP parity is described in [mcp.md](mcp.md). Conventions for walls, grants and service principals are in [conventions.md](conventions.md).
 
@@ -244,8 +246,9 @@ conflict creation and file status each have a live per-module service-call limit
 
 The real `file.trashed` delivery requires `events:read`, the derived `files:read`
 scope and a subscription. Its normal queued delivery is signed with sender `core`.
-All ordinary `file.*` events identifying a file (including `file.updated`,
-`file.trashed` and `file.purged`) require `files:read` and the module service
+All non-targeted `file.*` events identifying a file (including `file.updated`,
+`file.downloaded`, `file.trashed` and `file.purged`) require approved `events:read`,
+a matching subscription, approved `files:read` and the module service
 read policy on the retained row’s current placement, evaluated before enqueue.
 Purging does not suppress `file.purged` or older pending events: the placement check
 ignores only the purge marker. Matter walls, contact placement and attorney-only
@@ -253,6 +256,14 @@ restrictions still apply; hidden files yield no delivery. Ordinary file reads an
 byte access still return `not_found` after purge. A missing file service or row
 fails closed; other visibility errors abort enqueue. Targeted publication grants
 and books-reader filtering retain their existing policies.
+
+**Behavior change for existing subscribers:** without approved `files:read`, a
+subscriber stops receiving `file.updated` and `file.downloaded`. Those events also
+stop for walled, attorney-only and non-matter (contact-only or library) files that
+the subscriber's service principal cannot read. A delegated viewer's access does
+not grant background delivery access. The [batch 1 subscription inventory](../modules/MODULE-KIT.md#batch-1-file-event-subscriptions)
+records which module specs request these events and `files:read`; it does not
+replace real-package compatibility acceptance.
 
 A module service status write is limited to its own published files (plus the
 existing signed-copy callback). Ownership comes from the retained first-version

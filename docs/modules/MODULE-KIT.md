@@ -682,6 +682,8 @@ them with a reserved-id error. Approved IDs, including `email`, `zoom` and
 `importer`, remain valid for installs, links and authenticated senders even when
 the same label appears in file provenance. Explicit `owner_module_id` determines
 ownership.
+The published `ModuleManifest.id` reservation list is checked against
+`ReservedModuleID` by `TestModuleManifestReservedIDsContract`.
 
 The core reads queued senders from `core.module_deliveries.created_by`, recorded
 when the push was accepted. Historical empty values mean `core`. Retries retain
@@ -785,10 +787,11 @@ human author without changing the calling module's source, audit identity or
 independent access. Omitting it preserves ordinary authorship. `files:write`
 services may update status on files their module published; the existing signed
 fee-agreement executed callback remains available. A service still cannot reach
-a walled or attorney-only file. `file.trashed` is now a real signed core event;
-subscribers need `events:read` and its derived `files:read` scope. Ordinary
-`file.*` events identifying a file, including `file.updated` and `file.trashed`,
-are queued only when the module's service principal could read its current
+a walled or attorney-only file. `file.trashed` is now a real signed core event.
+Every non-targeted `file.*` event identifying a file, including `file.updated`,
+`file.downloaded`, `file.trashed` and `file.purged`, requires approved `events:read`,
+a matching subscription and approved `files:read`. These events are queued only
+when the module's service principal could read the file's current
 placement at enqueue. This includes `file.purged` and earlier pending events after
 purge: the check uses the retained row and ignores only its purge marker. Hidden,
 walled and attorney-only files remain excluded. Normal file and byte reads still
@@ -796,12 +799,36 @@ return `not_found` after purge; a missing file service/row fails closed and othe
 visibility errors stop enqueue.
 Targeted grants and books-reader filtering keep their existing behavior.
 
+**Behavior change for existing subscribers:** a subscriber without approved
+`files:read` stops receiving `file.updated` and `file.downloaded`. Those events
+also stop for walled, attorney-only or non-matter (contact-only or library) files
+that the subscriber's service principal cannot read. Viewer access on an
+interactive call does not grant background event access.
+
 File ownership is the first-version upload's explicit `owner_module_id`, retained
 and committed with publication, independent of `source`. Adding a later version
 confers no ownership. Ownership-refused service status writes answer `scope_denied`
 for missing IDs and other modules' files alike. Receipt audit transitions are tied
 to `module-processor/{consumer_module_id}/{intent_id}` without adding card data,
 hosted tokens or amounts to audit.
+
+### Batch 1 file event subscriptions
+
+This inventory comes from the five batch 1 specs under `docs/modules/`. Required
+permissions still need admin approval; this is a specification audit, with
+real-package compatibility acceptance pending.
+
+| Module spec | Subscriptions to `file.*` events | Spec requests `files:read`? |
+| --- | --- | --- |
+| [documents](documents/SPEC.md#3-manifest) | `file.updated`, `file.trashed` | Yes, required |
+| [email](email/SPEC.md#3-manifest) | None; subscribes to `matter.*`, `contact.*` | Yes, required |
+| [client-portal](client-portal/SPEC.md) | None; no subscriptions | Yes, required |
+| [lawpay-docuseal](lawpay-docuseal/SPEC.md) | `file.background_authorized`, a targeted authorization grant; the ordinary-file guard does not apply | Yes, required |
+| [quickbooks](quickbooks/SPEC.md#event-subscriptions) | None; subscribes to invoice/payment/expense events, `trust.entry_posted`, `contact.updated` | No |
+
+Documents has the required read scope, but updates/trash events for files its
+service principal cannot read are withheld. Its library templates and components
+must not rely on viewer access to receive background events.
 
 ### Running Doc Tender jobs
 

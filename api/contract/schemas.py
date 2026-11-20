@@ -3384,7 +3384,7 @@ SCHEMAS = _register(
         },
         "ModuleManifest": _obj(
             {
-                "id": _module_id("Module slug. The same pattern as the {module_id} path parameter. Not a path. Core source and identity labels are reserved: core, upload, client_upload, editor, billing, email, zoom, drop_folder, importer, ui, api_token, module, service, system, api, manual, timer, import."),
+                "id": _module_id("Module slug. The same pattern as the {module_id} path parameter. Not a path. Core-only source and identity labels are reserved: core, upload, client_upload, editor, billing, drop_folder, ui, api_token, module, service, system, api, manual, timer, import."),
                 "name": {"type": "string"},
                 "version": {"type": "string"},
                 "author": {"type": "string"},
