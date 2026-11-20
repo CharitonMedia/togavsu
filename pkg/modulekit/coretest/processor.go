@@ -94,7 +94,7 @@ func (p *Processor) Handler(m Module) http.Handler {
 			}
 			in.IntentID = recover.IntentID
 		} else if op == "authorize" {
-			if err := json.Unmarshal(body, &in); err != nil || in.AmountCents <= 0 || in.PaymentToken == "" || in.Destination != "operating" {
+			if err := json.Unmarshal(body, &in); err != nil || in.AmountCents <= modulekit.Cents(zero) || in.PaymentToken == "" || in.Destination != "operating" {
 				http.Error(w, "invalid authorization", http.StatusBadRequest)
 				return
 			}
@@ -121,7 +121,7 @@ func (p *Processor) Handler(m Module) http.Handler {
 			}
 			outcome := processorOutcome{status: "approved"}
 			if len(p.outcomes) != 0 {
-				outcome, p.outcomes = p.outcomes[0], p.outcomes[1:]
+				outcome, p.outcomes = p.outcomes[0], p.outcomes[one:]
 			}
 			result := modulekit.ProcessorPaymentResult{IntentID: in.IntentID, AmountCents: in.AmountCents, Destination: in.Destination, Status: outcome.status, DeclineCode: outcome.code}
 			if outcome.status == "approved" {

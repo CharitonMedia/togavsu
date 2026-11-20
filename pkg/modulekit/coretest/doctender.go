@@ -68,7 +68,7 @@ func (d *DocTender) RunOnce(ctx context.Context) (bool, error) {
 // test. No goroutine, sleep, polling timeout or external executable is involved.
 func (d *DocTender) Run() int {
 	d.core.T.Helper()
-	n := 0
+	n := zero
 	for {
 		ran, err := d.RunOnce(context.Background())
 		if err != nil {
@@ -110,11 +110,11 @@ func (m docTenderModels) Call(ctx context.Context, req doctender.Request) (docte
 	var value any
 	switch req.Task {
 	case doctender.TaskLabeling:
-		value = doctender.Label{WhatItIs: "synthetic document", WhatItIsConfidence: 1, Summary: "Synthetic acceptance document.", DocDateConfidence: 1}
+		value = doctender.Label{WhatItIs: "synthetic document", WhatItIsConfidence: float64(one), Summary: "Synthetic acceptance document.", DocDateConfidence: float64(one)}
 	case doctender.TaskCategorizing:
-		value = doctender.CategoryAnswer{Category: category, Confidence: 1}
+		value = doctender.CategoryAnswer{Category: category, Confidence: float64(one)}
 	case doctender.TaskPhoto:
-		value = map[string]any{"text": text, "description": "Synthetic page", "confidence": 1}
+		value = map[string]any{"text": text, "description": "Synthetic page", "confidence": float64(one)}
 	case doctender.TaskGrouping:
 		return doctender.Response{}, errors.New("coretest: script grouping in a dedicated grouping acceptance fixture")
 	case doctender.TaskTranscription:
@@ -146,7 +146,7 @@ type docTenderDocs struct{ d *DocTender }
 func (r docTenderDocs) ToMarkdown(context.Context, string, []byte) (string, int, int, error) {
 	r.d.mu.Lock()
 	defer r.d.mu.Unlock()
-	return r.d.text, len(strings.Fields(r.d.text)), 1, r.d.fail
+	return r.d.text, len(strings.Fields(r.d.text)), one, r.d.fail
 }
 
 // Media deliberately returns a deterministic error instead of selecting ffmpeg on

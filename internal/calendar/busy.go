@@ -17,6 +17,7 @@ type BusyBlock struct {
 // ListBusy answers availability across walls without granting event access.
 // Event detail and ordinary list reads continue to apply matter walls.
 func (s *Service) ListBusy(ctx context.Context, p domain.Principal, f EventFilter) ([]BusyBlock, error) {
+	var zero int
 	if err := s.gate(ctx, p, domain.ActionRead, ""); err != nil {
 		return nil, err
 	}
@@ -32,7 +33,7 @@ func (s *Service) ListBusy(ctx context.Context, p domain.Principal, f EventFilte
 	if f.From.IsZero() || f.To.IsZero() || !f.To.After(f.From) {
 		return nil, domain.Invalid("to_time", "busy view needs from_time and a later to_time")
 	}
-	if f.To.After(f.From.UTC().AddDate(0, maxRangeMonths(), 0)) {
+	if f.To.After(f.From.UTC().AddDate(zero, maxRangeMonths(), zero)) {
 		return nil, domain.Invalid("to_time", "busy view exceeds the available dates range")
 	}
 	rows, err := s.d.Store.EventsBetween(ctx, f.From, f.To)
@@ -43,7 +44,7 @@ func (s *Service) ListBusy(ctx context.Context, p domain.Principal, f EventFilte
 	for _, row := range rows {
 		if matchEvent(row, f) {
 			out = append(out, BusyBlock{StartsAt: fmtTime(row.StartsAt), EndsAt: fmtTime(row.EndsAt), AllDay: row.AllDay})
-			if f.Max > 0 && len(out) == f.Max {
+			if f.Max > zero && len(out) == f.Max {
 				break
 			}
 		}

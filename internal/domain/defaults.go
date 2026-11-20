@@ -49,7 +49,9 @@ const (
 	PublicPageMaxBytes        = 10 << 20
 	PublicPageRatePerMin      = 60
 	ContractCallMaxBytes      = 25 << 20
-	StaffBannerDefaultHeight  = 48
+	// ProcessorReferenceMaxChars is the fixed processor.payment.v1 wire bound.
+	ProcessorReferenceMaxChars = 200
+	StaffBannerDefaultHeight   = 48
 	// FormsMaxRepeatingIndex is the highest accepted repeating-row index (0..N) in
 	// pkg/modulekit/forms ParseFormAnswers (CORE-33); larger forged indices are ignored.
 	FormsMaxRepeatingIndex     = 99

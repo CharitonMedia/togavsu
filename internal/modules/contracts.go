@@ -321,7 +321,7 @@ func (s *Service) callContract(ctx context.Context, p domain.Principal, contract
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	if maxBytes <= 0 {
+	if maxBytes <= zero {
 		maxBytes = domain.ContractCallMaxBytes
 	}
 	if len(body) > maxBytes {
@@ -403,7 +403,7 @@ func (s *Service) callContract(ctx context.Context, p domain.Principal, contract
 	resp, err := s.d.HTTP.Do(req)
 	if err != nil {
 		// Fail closed: every proxied attempt is audited (CORE-CHANGES-2 §4.1).
-		if aerr := s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, 0, "provider_unreachable"); aerr != nil {
+		if aerr := s.auditContractCall(ctx, p, contract, operation, consumerID, providerID, zero, "provider_unreachable"); aerr != nil {
 			return 0, nil, nil, aerr
 		}
 		return 0, nil, nil, domain.Conflict("provider did not answer")

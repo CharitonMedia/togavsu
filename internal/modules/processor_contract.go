@@ -79,7 +79,7 @@ func (s *Service) callProcessorPayment(ctx context.Context, p domain.Principal, 
 		if err := strictProcessorJSON(body, &in); err != nil {
 			return 0, nil, nil, err
 		}
-		if in.AmountCents <= 0 || in.Destination != "operating" || strings.TrimSpace(in.PaymentToken) == "" {
+		if in.AmountCents <= domain.Cents(zero) || in.Destination != "operating" || strings.TrimSpace(in.PaymentToken) == "" {
 			return 0, nil, nil, domain.Invalid("body", "authorize needs a positive amount_cents, operating destination and hosted payment_token")
 		}
 	case "recover":
@@ -100,7 +100,7 @@ func (s *Service) callProcessorPayment(ctx context.Context, p domain.Principal, 
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	if maxBytes <= 0 {
+	if maxBytes <= zero {
 		maxBytes = domain.ContractCallMaxBytes
 	}
 	if len(body) > maxBytes {
@@ -188,7 +188,7 @@ func validProcessorResult(got, bound ProcessorPaymentResult) bool {
 	}
 	switch got.Status {
 	case "approved":
-		return strings.TrimSpace(got.ReferenceNumber) != "" && len(got.ReferenceNumber) <= 200 && got.DeclineCode == ""
+		return strings.TrimSpace(got.ReferenceNumber) != "" && len(got.ReferenceNumber) <= domain.ProcessorReferenceMaxChars && got.DeclineCode == ""
 	case "declined":
 		return got.ReferenceNumber == "" && (got.DeclineCode == "" || processorIntentPattern.MatchString(got.DeclineCode))
 	case "pending":
@@ -261,7 +261,7 @@ func (s *Service) claimProcessorReceipt(ctx context.Context, p domain.Principal,
 			return err
 		}
 		n, err := result.RowsAffected()
-		if err != nil || n == 0 {
+		if err != nil || n == int64(zero) {
 			return err
 		}
 		claimed = true
@@ -287,7 +287,7 @@ func (s *Service) completeProcessorReceipt(ctx context.Context, p domain.Princip
 		if err != nil {
 			return err
 		}
-		if n == 0 {
+		if n == int64(zero) {
 			_, receipt, _, err = s.loadProcessorReceipt(ctx, actor, receipt.Result.IntentID)
 			return err
 		}
