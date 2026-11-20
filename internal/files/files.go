@@ -484,6 +484,19 @@ func (s *Service) Get(ctx context.Context, p domain.Principal, id domain.ID) (Fi
 	return view(f, nil), nil
 }
 
+// CheckEventVisibility checks the retained row's current placement for event delivery.
+// Purging removes bytes and ordinary read access, but must not suppress file.purged
+// or earlier events still awaiting enqueue. No file content or metadata is returned.
+func (s *Service) CheckEventVisibility(ctx context.Context, p domain.Principal, id domain.ID) error {
+	f, err := s.loadFile(ctx, id)
+	if err != nil {
+		return err
+	}
+	// Reuse the normal read policy, ignoring only the purge marker on this copy.
+	f.PurgedAt = zero
+	return s.visible(ctx, p, f)
+}
+
 // ListQuery filters a file list. Text matches the name and the newest Markdown copy.
 type ListQuery struct {
 	MatterID  domain.ID

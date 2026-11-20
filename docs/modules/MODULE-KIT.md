@@ -674,11 +674,14 @@ core-emitted events (including grants) and system mail. This is separate from
 payload fields: `module` in a core event still names the recipient. Payload
 `sender` or `provider_id` values are untrusted claims.
 
-Core source and identity labels are reserved module IDs: `core`, `upload`,
-`client_upload`, `editor`, `billing`, `email`, `zoom`, `drop_folder`, `importer`,
+Core-only source and identity labels are reserved module IDs: `core`, `upload`,
+`client_upload`, `editor`, `billing`, `drop_folder`,
 `ui`, `api_token`, `module`, `service`, `system`, `api`, `manual`, `timer`, `import`.
 Manifest validation, local/marketplace installation, catalog publication and contract linking refuse
-them with a reserved-id error. A module cannot install or link under those identities.
+them with a reserved-id error. Approved IDs, including `email`, `zoom` and
+`importer`, remain valid for installs, links and authenticated senders even when
+the same label appears in file provenance. Explicit `owner_module_id` determines
+ownership.
 
 The core reads queued senders from `core.module_deliveries.created_by`, recorded
 when the push was accepted. Historical empty values mean `core`. Retries retain
@@ -785,7 +788,12 @@ fee-agreement executed callback remains available. A service still cannot reach
 a walled or attorney-only file. `file.trashed` is now a real signed core event;
 subscribers need `events:read` and its derived `files:read` scope. Ordinary
 `file.*` events identifying a file, including `file.updated` and `file.trashed`,
-are queued only when the module's service principal could read the file at enqueue.
+are queued only when the module's service principal could read its current
+placement at enqueue. This includes `file.purged` and earlier pending events after
+purge: the check uses the retained row and ignores only its purge marker. Hidden,
+walled and attorney-only files remain excluded. Normal file and byte reads still
+return `not_found` after purge; a missing file service/row fails closed and other
+visibility errors stop enqueue.
 Targeted grants and books-reader filtering keep their existing behavior.
 
 File ownership is the first-version upload's explicit `owner_module_id`, retained

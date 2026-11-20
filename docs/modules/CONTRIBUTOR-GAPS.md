@@ -104,10 +104,19 @@ Status is `fixed` (with where) or `open`. "Follow-up" names the CORE item in
 
 | Review gap | Result | Regression evidence |
 | --- | --- | --- |
-| Core source labels collide with module status ownership | First-version upload owner is authoritative; core source/identity IDs refused by manifests, installs, catalog publishing and sender signing | `TestCoreUpdate2FFixStatusOwnership`, `TestCoreUpdate2FFixReservedSources`, `TestCoreUpdate2FFixPublishReservedSources` |
+| Core source labels collide with module status ownership | First-version upload owner is authoritative; only core-exclusive IDs are reserved. Approved IDs such as email, zoom and importer remain valid (corrected in fix pass 2) | `TestCoreUpdate2FFixStatusOwnership`, `TestCoreUpdate2FFixReservedSources`, `TestCoreUpdate2FFixPublishReservedSources` |
 | Named author leaks wall membership before caller access | Caller placement checked first; inaccessible targets have identical `not_found` responses for all authors | `TestCoreUpdate2FFixPublicationCallerFirst` |
 | Author ignores contact/attorney-only placement | Active firm author independently checks actual placement; all author failures share one validation response | `TestCoreUpdate2FFixPublicationAuthorPlacement` |
 | File events disclose hidden file IDs | Ordinary file events use module service read visibility at enqueue; targeted grants/books behavior retained | `TestCoreUpdate2FFixFileEventVisibility`, existing books pump regression |
 | Status ownership lookup distinguishes absent IDs | Missing and other-owner files share `scope_denied` | `TestCoreUpdate2FFixStatusExistenceOracle` |
 | Additional conflict names unbounded | Live Practice settings default to 20 names / 200 Unicode characters; over-limit input rejected before scoring/storage | `TestCoreUpdate2FFixConflictNameLimits` |
 | Processor audit IDs cannot be traced to intent | Stable consumer plus intent entity ID; no new sensitive payload | `TestCoreUpdate2FFixProcessorAuditIdentity` |
+
+
+### Core-update-2f fix pass 2
+
+| Review gap | Result | Regression evidence |
+| --- | --- | --- |
+| Reservation blocks approved module IDs | Approved batch 1/batch 2 IDs, matter-clock, zoom and importer validate, install and authenticate; email contract links and marketplace publishing work. Core-only labels remain refused; source alone still grants no ownership | `TestCoreUpdate2FFix2ApprovedModuleIDs`, `TestCoreUpdate2FFix2PublishApprovedSources`, retained reserved-source/ownership tests |
+| Purged files lose every pending event | Enqueue checks the retained row’s placement, ignoring only purge. Visible file.purged and older pending events deliver once; walled/attorney-only files stay hidden; normal file reads stay not_found | `TestCoreUpdate2FFix2PurgedFileEvents`, `TestCoreUpdate2FFix2FileEventPolicyFailsClosed` |
+| Client contact writes after the matter window | Existing target-base behavior: own shared contact files remain readable, but clients already cannot add contact-only files, directly or through a module. No policy change | `TestCoreUpdate2FFix2ClientOwnContactAfterAccessWindow`, also run against target base 4c215a3 |

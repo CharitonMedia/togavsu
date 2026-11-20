@@ -67,7 +67,8 @@ type Deps struct {
 	// the contact (CORE-02). moduleID is the installed module so the books-reader principal
 	// is authenticated. Nil drops every contact.updated for books:read modules.
 	BooksContactOK func(ctx context.Context, moduleID string, contactID domain.ID) (bool, error)
-	// FileReadable applies the files service's current read policy to file events.
+	// FileReadable applies the retained file row's current placement policy to events,
+	// including events queued after purge; ordinary file reads still refuse purge.
 	// Nil fails closed for file.* events that identify a file.
 	FileReadable func(ctx context.Context, moduleID string, fileID domain.ID) (bool, error)
 	HTTP         *http.Client

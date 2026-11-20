@@ -23,7 +23,7 @@ func TestCoreUpdate2FFixReservedSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.TrustKey("synthetic-core-sources", pub)
-	for _, id := range []string{"core", "upload", "client_upload", "editor", "billing", "email", "zoom", "drop_folder", "importer", "ui", "api_token", "module", "service", "system", "api", "manual", "timer", "import"} {
+	for _, id := range []string{"core", "upload", "client_upload", "editor", "billing", "drop_folder", "ui", "api_token", "module", "service", "system", "api", "manual", "timer", "import"} {
 		t.Run(id, func(t *testing.T) {
 			files, err := matterclock.Files()
 			if err != nil {

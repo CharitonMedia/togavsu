@@ -26,12 +26,13 @@ const SupervisorURL = "http://supervisor:8081"
 const ModuleURL = "http://togavsu-mod-%s:%d"
 
 // fileReadableForModule shares the files service's read decision with enqueue.
-// Trashed files remain readable; missing, purged and hidden files never deliver.
+// Purged rows retain their placement for pending events; missing and hidden files
+// never deliver. Normal file APIs still refuse purged records.
 func (a *App) fileReadableForModule(ctx context.Context, moduleID string, fileID domain.ID) (bool, error) {
 	if a.Files == nil {
 		return false, nil
 	}
-	_, err := a.Files.Get(ctx, domain.Principal{Source: domain.SourceService, ModuleID: moduleID}, fileID)
+	err := a.Files.CheckEventVisibility(ctx, domain.Principal{Source: domain.SourceService, ModuleID: moduleID}, fileID)
 	var api *domain.APIError
 	if errors.As(err, &api) && api.Code == domain.CodeNotFound {
 		return false, nil

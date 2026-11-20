@@ -30,11 +30,13 @@ var ErrReservedModuleID = errors.New("module id is reserved for a core source or
 // CoreSenderID is core's authenticated identity on deliveries to modules.
 const CoreSenderID = "core"
 
-// ReservedModuleID keeps core provenance labels out of the module namespace.
+// ReservedModuleID reserves core-only identities, never approved module IDs.
+// File ownership uses owner_module_id, so source labels such as email, zoom and
+// importer that also identify modules must remain valid.
 // Include labels with underscores even though the slug grammar also refuses them.
 func ReservedModuleID(id string) bool {
 	switch id {
-	case CoreSenderID, "upload", "client_upload", "editor", "billing", "email", "zoom", "drop_folder", "importer",
+	case CoreSenderID, "upload", "client_upload", "editor", "billing", "drop_folder",
 		"ui", "api_token", "module", "service", "system", "api", "manual", "timer", "import":
 		return true
 	}

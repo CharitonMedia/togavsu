@@ -11,7 +11,7 @@ import (
 func TestCoreUpdate2FFixStatusOwnership(t *testing.T) {
 	e := newEnv(t)
 	e.svc.SetModuleCheck(func(context.Context, string) (bool, error) { return true, nil })
-	for _, source := range []string{"upload", "editor", "billing", "synthetic-module"} {
+	for _, source := range []string{"upload", "editor", "billing", "email", "zoom", "importer", "synthetic-module"} {
 		f, err := e.svc.Create(context.Background(), e.staff, NewFile{Name: "core.txt", MatterID: e.open, Source: source}, strings.NewReader("x"), 1)
 		if err != nil {
 			t.Fatal(err)

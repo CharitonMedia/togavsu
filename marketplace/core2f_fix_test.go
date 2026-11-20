@@ -12,7 +12,7 @@ import (
 func TestCoreUpdate2FFixPublishReservedSources(t *testing.T) {
 	e := newEnv(t)
 	a := e.author("Synthetic Sources", "sources@example.test")
-	for _, id := range []string{"core", "upload", "client_upload", "editor", "billing", "email", "zoom", "drop_folder", "importer", "ui", "api_token", "module", "service", "system", "api", "manual", "timer", "import"} {
+	for _, id := range []string{"core", "upload", "client_upload", "editor", "billing", "drop_folder", "ui", "api_token", "module", "service", "system", "api", "manual", "timer", "import"} {
 		p := pkg(t, id, "1.0.0", "files:read")
 		for _, metadata := range []bool{false, true} {
 			body := map[string]any{"package_base64": base64.StdEncoding.EncodeToString(p), "signature": shared.Sign(a.priv, p), "key_id": a.keyID}

@@ -1,11 +1,13 @@
 # Module API
 
-The manifest `id` must identify a module. Core source and identity labels are
-reserved: `core`, `upload`, `client_upload`, `editor`, `billing`, `email`, `zoom`,
-`drop_folder`, `importer`, `ui`, `api_token`, `module`, `service`, `system`, `api`,
+The manifest `id` must identify a module. Core-only source and identity labels are
+reserved: `core`, `upload`, `client_upload`, `editor`, `billing`,
+`drop_folder`, `ui`, `api_token`, `module`, `service`, `system`, `api`,
 `manual`, `timer`, `import`. Manifest/kit validation, local and marketplace installs,
 catalog publishing, contract links and module sender signing refuse them. Validation
 errors identify the reservation; only core's dedicated signer may sign as `core`.
+Approved module IDs remain valid, including `email`, `zoom` and `importer`, even
+when a file's `source` uses the same label. Ownership uses `owner_module_id`.
 
 Public module API additions from `togavsu-initial-modules-prd.md` §4 and `docs/modules/CORE-CHANGES.md` (CORE-01–CORE-29). Operation shapes, scopes and `module_delegation` live in `api/openapi/v1/openapi.json` and `api/openapi/v1/mcp-tools.json`; MCP parity is described in [mcp.md](mcp.md). Conventions for walls, grants and service principals are in [conventions.md](conventions.md).
 
@@ -242,11 +244,15 @@ conflict creation and file status each have a live per-module service-call limit
 
 The real `file.trashed` delivery requires `events:read`, the derived `files:read`
 scope and a subscription. Its normal queued delivery is signed with sender `core`.
-All ordinary `file.*` events identifying a file (including `file.updated` and
-`file.trashed`) require `files:read` and the same file visibility as a module service
-read, evaluated before enqueue. Hidden/walled, attorney-only and purged files yield
-no delivery. Targeted publication grants and books-reader filtering retain their
-existing policies.
+All ordinary `file.*` events identifying a file (including `file.updated`,
+`file.trashed` and `file.purged`) require `files:read` and the module service
+read policy on the retained row’s current placement, evaluated before enqueue.
+Purging does not suppress `file.purged` or older pending events: the placement check
+ignores only the purge marker. Matter walls, contact placement and attorney-only
+restrictions still apply; hidden files yield no delivery. Ordinary file reads and
+byte access still return `not_found` after purge. A missing file service or row
+fails closed; other visibility errors abort enqueue. Targeted publication grants
+and books-reader filtering retain their existing policies.
 
 A module service status write is limited to its own published files (plus the
 existing signed-copy callback). Ownership comes from the retained first-version
