@@ -14,10 +14,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/CharitonMedia/togavsu/api"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
@@ -68,21 +66,6 @@ func Subscribed(subs []string, action string) bool {
 }
 
 const cursorID = "module-events"
-
-// The published contract is the source of each core event's derived read scopes.
-// Unknown actions keep the existing subscription behavior for module-defined events.
-var eventReadScopes = sync.OnceValues(func() (map[string][]string, error) {
-	var spec struct {
-		Scopes map[string][]string `json:"x-togavsu-event-scopes"`
-	}
-	if err := json.Unmarshal(api.OpenAPI, &spec); err != nil {
-		return nil, err
-	}
-	if spec.Scopes == nil {
-		return nil, errors.New("modules: missing event scope registry")
-	}
-	return spec.Scopes, nil
-})
 
 // Pump reads events from core.events and queues one delivery per subscribed, enabled
 // module with events:read approved. Every write in the core adds an event row, so this
@@ -208,10 +191,6 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 	if ev.RecordType == "module" || ev.ID.IsZero() || directEvents[ev.Action] {
 		return zero, nil
 	}
-	scopes, err := eventReadScopes()
-	if err != nil {
-		return zero, err
-	}
 	queued := zero
 	now := s.now().UnixMicro()
 	at := ev.CreatedAt
@@ -236,17 +215,10 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 		case !m.Approved["events:read"] || !Subscribed(m.Manifest.Events, ev.Action):
 			continue
 		}
-		if recipient == "" {
-			allowed := true
-			for _, scope := range scopes[ev.Action] {
-				if !m.Approved[scope] {
-					allowed = false
-					break
-				}
-			}
-			if !allowed {
-				continue
-			}
+		// The newly emitted trash event derives files:read. Keep existing
+		// delivery policies, including books-reader contact visibility, intact.
+		if ev.Action == "file.trashed" && !m.Approved["files:read"] {
+			continue
 		}
 		if m.Approved["books:read"] {
 			drop, err := s.dropBooksEvent(ctx, m.ID, ev)

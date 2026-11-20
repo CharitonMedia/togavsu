@@ -22,7 +22,10 @@ limits, matter walls and module/source audit attribution.
 See [module API](../api/modules.md), [public kit](MODULE-KIT.md) and
 [contracts](../contracts/README.md) for the wire protocol and processor obligations.
 Phone, phone-zoom, phone-google and workflow event envelopes stay unchanged. The
-reserved `core` sender and both 2e signature headers remain mandatory. The source
+reserved `core` sender and both 2e signature headers remain mandatory. Existing
+books-reader `contact.updated` delivery keeps its books visibility rules
+(`TestCORE02BooksContactUpdatedPump`); the new file-scope guard applies only to
+`file.trashed`. The source
 base did not contain the referenced contracts directory; this update documents
 the existing core envelope there and does not introduce a second shape.
 
