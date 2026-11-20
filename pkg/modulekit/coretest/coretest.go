@@ -99,6 +99,8 @@ type Core struct {
 	// notification email, module mail SMTP fallback).
 	Mail      *Mail
 	Converter *Converter
+	// DocTender drives the production job pipeline with deterministic outside services.
+	DocTender *DocTender
 	// SupervisorMailOutbox is the temp-dir path of the supervisor notice file DeliverMail drains.
 	SupervisorMailOutbox string
 
@@ -141,14 +143,16 @@ func New(t *testing.T) *Core {
 	t.Cleanup(c.Runtime.Close)
 	c.Mail = startMail(t)
 	c.Converter = NewConverter()
+	c.DocTender = newDocTender(c)
 	c.SupervisorMailOutbox = filepath.Join(t.TempDir(), "mail-outbox.jsonl")
 	app, err := core.Open(context.Background(), core.Config{DatabaseURL: c.DatabaseURL, Key: testKey, Domain: "firm.example",
 		WordcraftCLI: filepath.Join(t.TempDir(), "wordcraft-cli-not-installed"), DocumentConverter: c.Converter.Convert, MailEvery: -time.Nanosecond, DataDir: t.TempDir(), SupervisorMailOutbox: c.SupervisorMailOutbox,
-		ModuleRuntime: c.Runtime, ModuleBackups: c.Backups, NoBackground: true})
+		ModuleRuntime: c.Runtime, ModuleBackups: c.Backups, NoBackground: true, DocTenderAdapters: c.DocTender.adapters})
 	if err != nil {
 		t.Fatal(err)
 	}
 	c.app = app
+	c.DocTender.log = app.DocTender.CallLog()
 	srv := httptest.NewServer(app.Handler())
 	c.URL = srv.URL
 	t.Cleanup(func() {

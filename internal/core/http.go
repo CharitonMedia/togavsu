@@ -1,9 +1,11 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -239,7 +241,24 @@ func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 	if in.Write && in.SessionToken != "" {
 		in.CSRF = r.Header.Get("X-CSRF-Token")
 		if in.CSRF == "" && strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
-			in.CSRF = r.FormValue("csrf")
+			// ParseForm keeps its existing size limit. Save exactly the bytes it
+			// consumes so the frame proxy can forward the original encoded body.
+			var body bytes.Buffer
+			original := r.Body
+			if original != nil {
+				r.Body = io.NopCloser(io.TeeReader(original, &body))
+			}
+			err := r.ParseForm()
+			if original != nil {
+				r.Body = struct {
+					io.Reader
+					io.Closer
+				}{bytes.NewReader(body.Bytes()), original}
+			}
+			if err != nil {
+				return identity.Caller{}, domain.Invalid("body", "invalid or oversized form body")
+			}
+			in.CSRF = r.Form.Get("csrf")
 		}
 	}
 	// CORE-32: core-signed public-page credential as Authorization bearer. Limited to

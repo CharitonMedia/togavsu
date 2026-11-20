@@ -279,6 +279,7 @@ type ConflictRun struct {
 	MatterID  domain.ID
 	CreatedAt time.Time
 	CreatedBy domain.ID
+	Names     []string
 	Hits      []Hit
 }
 

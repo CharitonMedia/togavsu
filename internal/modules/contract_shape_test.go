@@ -134,7 +134,7 @@ func asSlice(v any) []any { s, _ := v.([]any); return s }
 // missing required field fails; the contract's shape passes.
 func TestContractShapeChecker(t *testing.T) {
 	good := map[string]any{"id": "m", "name": "M", "version": "1.0.0", "enabled": false, "replaces": nil, "status": "uninstalling",
-		"permissions": []any{map[string]any{"scope": "matters:read", "required": true, "approved": true}}}
+		"permissions": []any{map[string]any{"scope": "matters:read", "reason": "Read synthetic matters.", "required": true, "approved": true}}}
 	if err := shapeOf(t, "Module", good); err != nil {
 		t.Fatal(err)
 	}

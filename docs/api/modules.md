@@ -1,9 +1,15 @@
 # Module API
 
-The manifest `id` must identify a module. The id `core` is reserved for core's
-authenticated delivery sender and cannot be installed from a local file or the
-marketplace, published to the catalog, or used as a contract consumer/provider.
-These paths return a validation error explaining that the id is reserved.
+The manifest `id` must identify a module. Core-only source and identity labels are
+reserved: `core`, `upload`, `client_upload`, `editor`, `billing`,
+`drop_folder`, `ui`, `api_token`, `module`, `service`, `system`, `api`,
+`manual`, `timer`, `import`. Manifest/kit validation, local and marketplace installs,
+catalog publishing, contract links and module sender signing refuse them. Validation
+errors identify the reservation; only core's dedicated signer may sign as `core`.
+Approved module IDs remain valid, including `email`, `zoom` and `importer`, even
+when a file's `source` uses the same label. Ownership uses `owner_module_id`.
+`TestModuleManifestReservedIDsContract` compares the published manifest description
+with every `ReservedModuleID` switch case, including labels with underscores.
 
 Public module API additions from `togavsu-initial-modules-prd.md` §4 and `docs/modules/CORE-CHANGES.md` (CORE-01–CORE-29). Operation shapes, scopes and `module_delegation` live in `api/openapi/v1/openapi.json` and `api/openapi/v1/mcp-tools.json`; MCP parity is described in [mcp.md](mcp.md). Conventions for walls, grants and service principals are in [conventions.md](conventions.md).
 
@@ -227,3 +233,78 @@ is a reserved module sender and is refused. In `coretest.Serve` handlers,
 `sender, body, err := coretest.ReadDelivery(m, request)` reads and verifies using
 the real deployment secret. `c.DeliverEvents()` uses the production queue and
 sender signer for contract events, core events and retries.
+
+
+## Core-update-2f document and intake operations
+
+The public [kit guide](../modules/MODULE-KIT.md#core-update-2f-intake-and-document-generation)
+explains permission `reason`, restored CSRF form bodies, occupancy-only
+`calendar-events?view=busy`, additional conflict `names`, scoped service county
+gets, file status and optional validated `on_behalf_of_user_id` publication.
+OpenAPI and MCP describe the same input and output shapes. County reads,
+conflict creation and file status each have a live per-module service-call limit.
+
+The real `file.trashed` delivery requires `events:read`, the derived `files:read`
+scope and a subscription. Its normal queued delivery is signed with sender `core`.
+All non-targeted `file.*` events identifying a file (including `file.updated`,
+`file.downloaded`, `file.trashed` and `file.purged`) require approved `events:read`,
+a matching subscription, approved `files:read` and the module service
+read policy on the retained row’s current placement, evaluated before enqueue.
+Purging does not suppress `file.purged` or older pending events: the placement check
+ignores only the purge marker. Matter walls, contact placement and attorney-only
+restrictions still apply; hidden files yield no delivery. Ordinary file reads and
+byte access still return `not_found` after purge. A missing file service or row
+fails closed; other visibility errors abort enqueue. Targeted publication grants
+and books-reader filtering retain their existing policies.
+
+**Behavior change for existing subscribers:** without approved `files:read`, a
+subscriber stops receiving `file.updated` and `file.downloaded`. Those events also
+stop for walled, attorney-only and non-matter (contact-only or library) files that
+the subscriber's service principal cannot read. A delegated viewer's access does
+not grant background delivery access. The [batch 1 subscription inventory](../modules/MODULE-KIT.md#batch-1-file-event-subscriptions)
+records which module specs request these events and `files:read`; it does not
+replace real-package compatibility acceptance.
+
+A module service status write is limited to its own published files (plus the
+existing signed-copy callback). Ownership comes from the retained first-version
+upload's explicit `owner_module_id`, committed with publication; `source` is only
+provenance. Uploading a later version confers no ownership. Ownership refusals use
+`scope_denied` for both existing and nonexistent IDs.
+
+Publication checks the caller's placement access before looking up a named author.
+A hidden matter/contact/file returns exactly the same `not_found` with or without
+an author. After the caller may write, every author failure returns the same
+`validation` error on `on_behalf_of_user_id`. The active staff/attorney/admin author
+must independently be able to write the actual matter/contact and attorney-only
+placement, including contact-only and library publications.
+
+Additional conflict names are limited by live admin settings
+`practice.conflict_additional_names_max` (default 20) and
+`practice.conflict_name_max_chars` (default 200 Unicode characters per name).
+Over-limit input returns `validation` on `names` before storing or scoring a check;
+whitespace does not bypass the character limit. REST, MCP and direct service calls
+share these checks.
+
+The named `document.generated` action is accepted only for
+`documents.generate.v1`, in the existing `action`/`payload` targeted envelope
+above. [Contract definitions](../contracts/README.md) document it and the
+binding `processor.payment.v1` pre-matter authorization/recovery protocol.
+There is one envelope. Phone and workflow event deliveries and 2e sender binding
+are unchanged. A `type`/`data` top-level envelope is not accepted.
+
+Processor authorize/recover use `callModuleContract` on REST/MCP, conditional
+`payments:write` on the current consumer bearer and approvals of both modules,
+and admin-linked providers declaring operating payment processing. Durable
+receipts bind consumer, provider, amount, destination and original request digest;
+pending/uncertain attempts only recover and terminal results replay indefinitely.
+This contract uses `intent_id` for durable idempotency. `Idempotency-Key` retains
+its length limit but does not memoize the HTTP response: every repeat validates
+current scopes and links and reads the current recovered result.
+The core stores no hosted payment token and writes no matter/contact/payment in
+this pre-matter broker. The consumer must continue only after approval and use
+stable Idempotency-Key values for core record writes. The external processor
+must durably deduplicate charges and recover results after response loss.
+
+Processor receipt audit transitions use the stable entity ID
+`module-processor/{consumer_module_id}/{intent_id}`. The audit status and existing
+provenance are unchanged; no card token, card data or amount is added.

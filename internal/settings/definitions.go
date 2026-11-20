@@ -41,6 +41,8 @@ var definitions = []Definition{
 
 	{Key: "practice.case_number_patterns", Kind: KindJSON, Default: jsonText([]string{domain.DefaultCasePattern}), Tab: TabPractice, Help: "Case-number patterns. The default matches Missouri docket numbers such as 23AR-CV00825.", PRD: true, Special: "regexp_list"},
 	{Key: "practice.conflict_score_minimum", Kind: KindInt, Default: strconv.Itoa(domain.ConflictScoreMinimum), Min: 0, Max: 100, HasMin: true, HasMax: true, Tab: TabPractice, Help: "Lowest conflict score shown, out of 100. Default 60.", PRD: true},
+	{Key: "practice.conflict_additional_names_max", Kind: KindInt, Default: strconv.Itoa(domain.ConflictAdditionalNamesMax), Min: 1, HasMin: true, Tab: TabPractice, Help: "Maximum additional names per conflict check. Default 20.", PRD: true},
+	{Key: "practice.conflict_name_max_chars", Kind: KindInt, Default: strconv.Itoa(domain.ConflictNameMaxChars), Min: 1, HasMin: true, Tab: TabPractice, Help: "Maximum characters per additional conflict name. Default 200.", PRD: true},
 	{Key: "practice.party_roles", Kind: KindJSON, Default: jsonText(domain.DefaultPartyRoles()), Tab: TabPractice, Help: "Party roles offered on a matter.", PRD: true},
 	{Key: "practice.markers", Kind: KindJSON, Default: jsonText(domain.DefaultMarkers()), Tab: TabPractice, Help: "Core matter markers. The firm can add its own.", PRD: true},
 
@@ -165,6 +167,9 @@ var definitions = []Definition{
 	{Key: "modules.replace_trust", Kind: KindString, Tab: TabModules, Help: "Module id that replaces trust. Empty keeps the core."},
 	{Key: "modules.replace_calendar", Kind: KindString, Tab: TabModules, Help: "Module id that replaces calendar. Empty keeps the core."},
 	// CORE-30: per-operation service-call limits (default 120/minute).
+	{Key: "modules.service_call_limit.createConflictRecord", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal createConflictRecord calls per minute per module. Default 120.", PRD: true},
+	{Key: "modules.service_call_limit.getCounty", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal getCounty calls per minute per module. Default 120.", PRD: true},
+	{Key: "modules.service_call_limit.markFileStatus", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal markFileStatus calls per minute per module. Default 120.", PRD: true},
 	{Key: "modules.service_call_limit.getNote", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal getNote calls per minute per module. Default 120.", PRD: true},
 	{Key: "modules.service_call_limit.listNote", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal listNote calls per minute per module. Default 120.", PRD: true},
 	{Key: "modules.service_call_limit.listFile", Kind: KindInt, Default: "120", Min: 1, HasMin: true, Tab: TabModules, Help: "Service-principal listFile calls per minute per module. Default 120.", PRD: true},

@@ -71,6 +71,9 @@ type Config struct {
 	// ProviderURLs overrides AI provider endpoints, so tests run Doc Tender against a
 	// synthetic model server on the providers' wire. Production leaves it nil.
 	ProviderURLs map[string]string
+	// DocTenderAdapters replaces outside services for in-process acceptance tests.
+	// Production leaves it nil; the real queue, pipeline and file store still run.
+	DocTenderAdapters func(*doctender.Deps)
 	// SupervisorURL and SupervisorSecret reach the supervisor's local API, which runs
 	// module containers and takes the backups an uninstall needs. Empty URL is
 	// SupervisorURL (the Compose service).
@@ -352,7 +355,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	}
 	host, _ := os.Hostname()
 	if err := openDocuments(ctx, docs, pool, aud, reg, store, app.Practice, users, cfg.Domain,
-		documentsConfig{DocumentConverter: cfg.DocumentConverter, DataDir: dataDir, WordcraftCLI: cli, EditorDist: dist, ProviderURLs: cfg.ProviderURLs, Worker: "core-" + host},
+		documentsConfig{DocTenderAdapters: cfg.DocTenderAdapters, DocumentConverter: cfg.DocumentConverter, DataDir: dataDir, WordcraftCLI: cli, EditorDist: dist, ProviderURLs: cfg.ProviderURLs, Worker: "core-" + host},
 		app.principal, now); err != nil {
 		return fail(err)
 	}

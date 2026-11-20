@@ -1,0 +1,665 @@
+{
+  "task_id": "core-update-2f",
+  "status": "pending",
+  "fix_pass": 3,
+  "base_revision": "4c215a32e12d41150129e967d1b5df89c9da2624",
+  "fix_pass_base_revision": "80c7dbdeeffd4ad49772a4a89f7203546da87546",
+  "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483",
+  "target_branch": "batch2",
+  "assignment_criteria": [
+    {
+      "id": "permission-reasons",
+      "core_items": [
+        "CORE-36"
+      ],
+      "status": "pass",
+      "tests": [
+        "TestCoreUpdate2FPermissionReasons"
+      ],
+      "evidence": "Signed manifest reasons beside pending, approved and declined decisions, escaped; candidate update reasons are included. Covered by the 62-test focused race suite on the exact tested code revision; complete-suite results are listed separately."
+    },
+    {
+      "id": "frame-form-body",
+      "core_items": [
+        "CORE-36"
+      ],
+      "status": "pass",
+      "tests": [
+        "TestCoreUpdate2FProxyRestoresFormAfterCSRF"
+      ],
+      "evidence": "Exact encoded bytes survive CSRF parsing; missing/wrong CSRF and oversized forms never reach the module. Covered by the 62-test focused race suite on the exact tested code revision; complete-suite results are listed separately."
+    },
+    {
+      "id": "file-trashed",
+      "core_items": [
+        "CORE-36"
+      ],
+      "status": "pass",
+      "tests": [
+        "TestCoreUpdate2FFileTrashDelivery",
+        "TestCORE02BooksContactUpdatedPump"
+      ],
+      "evidence": "Real scoped file.trashed event reaches both subscribers through sender-bound core delivery, deduplicated; legacy books contact delivery remains intact. Covered by the 62-test focused race suite on the exact tested code revision; complete-suite results are listed separately."
+    },
+    {
+      "id": "busy-across-walls",
+      "core_items": [
+        "CORE-30"
+      ],
+      "status": "pass",
+      "tests": [
+        "TestCoreUpdate2FBusyAcrossWalls"
+      ],
+      "evidence": "REST/MCP occupancy has only starts_at/ends_at/all_day; ordinary detail gets remain not_found and ordinary lists omit walled events. Covered by the 62-test focused race suite on the exact tested code revision; complete-suite results are listed separately."
+    },
+    {
+      "id": "named-conflicts",
+      "core_items": [
+        "CORE-30"
+      ],
+      "status": "pass",
+      "tests": [
+        "TestCoreUpdate2FNamedConflictService",
+        "TestCoreUpdate2FAdditionalConflictNames"
+      ],
+      "evidence": "Additional names are checked and retained; service records/checks name the module as author/source service, with walls and attorney-only redaction. Covered by the 62-test focused race suite on the exact tested code revision; complete-suite results are listed separately."
+    },
+    {
+      "id": "county-service-read",
+      "core_items": [
+        "CORE-30"
+      ],
+      "status": "pass",
+      "tests": [
+        "TestCoreUpdate2FCountyService"
+      ],
+      "evidence": "Scoped service county get and missing-scope refusal, with a live operation limit. Covered by the 62-test focused race suite on the exact tested code revision; complete-suite results are listed separately."
+    },
+    {
+      "id": "background-draft-author",
+      "core_items": [
+        "CORE-30",
+        "CORE-36"
+      ],
+      "status": "pass",
+      "tests": [
+        "TestCoreUpdate2FPublicationAuthorAndStatus"
+      ],
+      "evidence": "REST/MCP draft status and optional independently validated active firm author; atomic invalid-author rollback, module source, saved_by, no borrowed wall access, narrow-bearer refusal. Covered by the 62-test focused race suite on the exact tested code revision; complete-suite results are listed separately."
+    },
+    {
+      "id": "generated-contract-envelope",
+      "core_items": [
+        "CORE-31"
+      ],
+      "status": "pass",
+      "tests": [
+        "TestCoreUpdate2FDocumentGeneratedContractEnvelope"
+      ],
+      "evidence": "Named document.generated action on documents.generate.v1 retains the existing action/payload targeted envelope, correct provider sender, deduplication and linked-consumer checks; core-event spoofing is refused. Covered by the 62-test focused race suite on the exact tested code revision; complete-suite results are listed separately."
+    },
+    {
+      "id": "doctender-coretest",
+      "core_items": [
+        "CORE-29",
+        "CORE-36"
+      ],
+      "status": "pass",
+      "tests": [
+        "TestCoreUpdate2FDocTenderCategoryHint",
+        "TestCoreUpdate2FDocTenderFailureIsRealQueueFailure"
+      ],
+      "evidence": "Real jobs/pipeline/immutable Markdown with synthetic outside services; category locks retained, closed matters make no model call, failures persist rather than manufacturing success. Covered by the 62-test focused race suite on the exact tested code revision; complete-suite results are listed separately."
+    },
+    {
+      "id": "processor-card",
+      "core_items": [
+        "CORE-23",
+        "CORE-31"
+      ],
+      "status": "pass",
+      "tests": [
+        "TestCoreUpdate2FProcessorDeclineBeforeMatterAndApprovalRecovery",
+        "TestCoreUpdate2FProcessorConcurrentAndInvalidRequests",
+        "TestCoreUpdate2FProcessorMalformedApprovalNeverReauthorizes",
+        "TestCoreUpdate2FProcessorReceiptSurvivesProviderRestartAndAge",
+        "TestCoreUpdate2FProcessorConcurrentRecoveryCannotRegressApproval",
+        "TestCoreUpdate2FProcessorHTTPReplayRechecksStateAndAccess"
+      ],
+      "evidence": "Durable unique claim before authorization, decline/pending before matter writes, immutable financial identity, terminal CAS, idempotent approval recovery, scoped linked signed REST/MCP, service audit and no hosted-token persistence. Financial retries bypass generic HTTP response caching, recheck current scopes/links, and return current recovered results, even with the same Idempotency-Key (REST/MCP). Covered by the 62-test focused race suite on the exact tested code revision; complete-suite results are listed separately."
+    }
+  ],
+  "prior_fix_pass_findings": [
+    {
+      "id": "1",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "title": "Explicit module file ownership and reserved core labels",
+      "tests": [
+        "TestCoreUpdate2FFixStatusOwnership",
+        "TestCoreUpdate2FFixReservedSources",
+        "TestCoreUpdate2FFixPublishReservedSources"
+      ],
+      "evidence": "Explicit first-version upload owner_module_id remains authoritative, independently of source. Only core-exclusive labels are reserved; approved email/zoom/importer IDs are corrected by fix pass 2."
+    },
+    {
+      "id": "2",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "title": "Caller placement before named author",
+      "tests": [
+        "TestCoreUpdate2FFixPublicationCallerFirst",
+        "TestCoreUpdate2FFixPublicationAuthorPlacement"
+      ],
+      "evidence": "Caller access runs first, including hidden contacts. Walled/missing matters have byte-identical not_found responses for inside-wall, outside-wall, missing or omitted authors. Rejected staged uploads remain reusable. Author failures share one validation response."
+    },
+    {
+      "id": "3",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "title": "Author checks actual placement",
+      "tests": [
+        "TestCoreUpdate2FFixPublicationAuthorPlacement"
+      ],
+      "evidence": "Check real contact and attorney_only values for matter, contact-only and library publications. Read authoritative practice parties because the relational projection omits them; no test fixture silently supplies a missing projection."
+    },
+    {
+      "id": "4",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "title": "File event visibility at enqueue",
+      "tests": [
+        "TestCoreUpdate2FFixFileEventVisibility",
+        "TestCoreUpdate2FFileTrashDelivery",
+        "TestCORE02BooksContactUpdatedPump"
+      ],
+      "evidence": "Enqueue uses the files service placement policy for ordinary file events. Fix pass 2 extends that policy to retained purged rows without permitting ordinary purged reads; targeted grants/books filters stay unchanged."
+    },
+    {
+      "id": "5",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "title": "Uniform service status ownership refusals",
+      "tests": [
+        "TestCoreUpdate2FFixStatusExistenceOracle"
+      ],
+      "evidence": "An ownership lookup uses explicit upload ownership and does not reveal existence: missing and other-owner IDs take the same scope_denied callback path. Existing valid CORE-25 callbacks and wall behavior remain covered."
+    },
+    {
+      "id": "6",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "title": "Live additional conflict-name bounds",
+      "tests": [
+        "TestCoreUpdate2FFixConflictNameLimits"
+      ],
+      "evidence": "Practice registry settings conflict_additional_names_max=20 and conflict_name_max_chars=200 are live, documented and enforced in the shared service. Unicode boundaries, REST/MCP refusal, no stored rejected check and valid names are tested."
+    },
+    {
+      "id": "7",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "title": "Traceable processor receipt audit",
+      "tests": [
+        "TestCoreUpdate2FFixProcessorAuditIdentity"
+      ],
+      "evidence": "Audit entity ID is module-processor/{consumer_module_id}/{intent_id}; multiple transitions share it, distinct intents differ. Audit payload remains status/provenance without hosted tokens, card data or new amounts."
+    }
+  ],
+  "fix_pass_findings": [
+    {
+      "id": "P1-published-reserved-list",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "tests": [
+        "TestModuleManifestReservedIDsContract"
+      ],
+      "evidence": "ModuleManifest.id lists exactly the 15 ReservedModuleID labels. email/zoom/importer stay valid. OpenAPI was regenerated with contract.build, and its inventory digest with contract.stage1_check. The final test fails on starting revision 80c7dbd. Isolated mutation checks reject an extra published email, a missing published upload, a new runtime switch label and a new early-return reservation. Runtime reservation behavior is unchanged."
+    },
+    {
+      "id": "P2-file-event-scope-documentation",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "tests": [
+        "TestCoreUpdate2FFixFileEventVisibility",
+        "TestCoreUpdate2FFix2PurgedFileEvents",
+        "TestCoreUpdate2FFix2FileEventPolicyFailsClosed",
+        "TestCORE02BooksContactUpdatedPump"
+      ],
+      "evidence": "CORE-UPDATE-2F, MODULE-KIT, CONTRIBUTOR-GAPS and API docs describe every non-targeted file.* event identifying a file, including updated/downloaded/trashed/purged. They explicitly warn existing subscribers that missing files:read or unreadable walled/attorney-only/non-matter placement stops updated/downloaded delivery. Targeted grants/books rules and all fix-pass-2 runtime behavior are preserved. Batch-1 spec inventory is in MODULE-KIT and the PR body; real package compatibility remains pending."
+    },
+    {
+      "id": "P3-exact-tested-revision",
+      "implementation_status": "implemented",
+      "test_status": "recorded",
+      "evidence": "All final candidate checks name tested_revision. The PR body names that revision and the report-only handoff head separately, and requires independent review at the named base/final-head SHAs. No passing self-review is claimed."
+    }
+  ],
+  "prd_sections": [
+    "core PRD 8.2, 8.16, 8.19, 8.21, 9",
+    "CORE-CHANGES CORE-23/CORE-29",
+    "CORE-CHANGES-2 4.1, 4.2 CORE-30/CORE-31/CORE-36, 18.3",
+    "initial modules PRD 7 and batch-1 compatibility"
+  ],
+  "passed_acceptance_ids": [
+    "CU2-02",
+    "CU2-03",
+    "CU2-05"
+  ],
+  "pending_acceptance_ids": [
+    "CU2-01",
+    "CU2-07",
+    "CU2-08"
+  ],
+  "acceptance_note": "Passed IDs describe only assigned core contributions, not whole-update/phase completion, external module acceptance or an independent checkpoint.",
+  "report_state_reason": "All three fix-pass findings are addressed; runtime behavior from fix pass 2 is retained. Assignment and contract tests pass. Whole-product acceptance still requires real batch-1 packages, equipped-host tools, Docker/editor/browser QC and independent review. Full-suite prerequisite failures are listed honestly below.",
+  "tests": [
+    {
+      "name": "Published reservation regression on starting code",
+      "command": "In git archive of 80c7dbdeeffd4ad49772a4a89f7203546da87546, copy only the final internal/marketplace/manifest_contract_test.go, then TMPDIR=/out/test-tmp go test -count=1 ./internal/marketplace -run ^TestModuleManifestReservedIDsContract$",
+      "exit_code": 1,
+      "result": "Expected failure: published reserved list still contains email/zoom/importer.",
+      "tested_revision": "80c7dbdeeffd4ad49772a4a89f7203546da87546"
+    },
+    {
+      "name": "Reservation drift mutation checks",
+      "command": "In a git archive of the tested code revision, change only the indicated published list or runtime reservation, then go test -count=1 ./internal/marketplace -run ^TestModuleManifestReservedIDsContract$",
+      "exit_code": 0,
+      "result": "All four mutations fail as expected: extra published email; missing published upload; new runtime switch label; new runtime early return. Originals restored between cases. These are test-strength probes, not failures of the candidate.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Focused assignment and compatibility race suite, server A",
+      "command": "TMPDIR=/out/test-tmp go test -race -count=1 -p 1 -json ./internal/core ./internal/files ./internal/modules ./pkg/modulekit ./pkg/modulekit/coretest ./marketplace ./internal/marketplace -run 'TestCoreUpdate2F|TestCORE30|TestCORE36|TestCORE25|TestCORE02BooksContactUpdatedPump|TestCoreUpdate2D|TestCoreUpdate2E|TestContractShapeChecker|TestModuleManifestReservedIDsContract'",
+      "exit_code": 0,
+      "result": {
+        "counts": {
+          "pass_tests": 128,
+          "pass_packages": 7
+        },
+        "top_level_counts": {
+          "pass": 62
+        },
+        "failed_tests": [],
+        "failed_packages": [],
+        "skipped_tests": [],
+        "new_regression_passes": [
+          "TestCoreUpdate2FFix2ClientOwnContactAfterAccessWindow",
+          "TestCoreUpdate2FFix2FileEventPolicyFailsClosed",
+          "TestCoreUpdate2FFix2ApprovedModuleIDs",
+          "TestCoreUpdate2FFix2PurgedFileEvents",
+          "TestCoreUpdate2FFix2PublishApprovedSources",
+          "TestModuleManifestReservedIDsContract"
+        ],
+        "race_reports": 0,
+        "test_timeouts": 0
+      },
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Complete Go race suite, server B",
+      "command": "TMPDIR=/out/test-tmp TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TOGAVSU_BATCH1_MODS=/out/unavailable-batch1 go test -race -count=1 -p 1 -timeout 25m -json ./...",
+      "exit_code": 1,
+      "result": {
+        "counts": {
+          "skip_packages": 14,
+          "pass_tests": 1626,
+          "pass_packages": 33,
+          "fail_tests": 4,
+          "skip_tests": 42,
+          "fail_packages": 2
+        },
+        "top_level_counts": {
+          "pass": 1257,
+          "fail": 4,
+          "skip": 42
+        },
+        "failed_tests": [
+          "TestCU207Batch1ModulesUnchanged",
+          "TestTwoComposeProjectsStaySeparate",
+          "TestStalledSSHHandshakeRestartsWriters",
+          "TestOpenSSHNamespaceFirstUseAndStoreDelete"
+        ],
+        "failed_packages": [
+          "github.com/CharitonMedia/togavsu/internal/core",
+          "github.com/CharitonMedia/togavsu/internal/supervisor"
+        ],
+        "skipped_tests": [
+          "TestDocumentsLawCraftEditor",
+          "TestDocumentsScreens",
+          "TestExtensionsScreens",
+          "TestReleasePerfP95",
+          "TestUIVisualQC",
+          "TestWriteCorpus",
+          "TestPGDocxOpensAndSavesAsANewWordCompatibleVersion",
+          "TestPGOtherFormatsSaveAsDocx",
+          "TestPGSaveRefusesExportsAndBrokenPackages",
+          "TestPGSecondUserSeesTheLockUntilItLapses",
+          "TestPGLockTimeoutFollowsTheDocumentEditorTab",
+          "TestPGOnlyTheHolderOrAnAdminReleasesAndAdminReleasesAreAudited",
+          "TestPGEditorAccessFollowsTheFile",
+          "TestPGNewPleadingFillsItsCaptionFromTheMatter",
+          "TestPGNewPleadingFollowsTheMatter",
+          "TestPGDocumentEditorTabShowsThePinnedCommit",
+          "TestPGEditorRunFillsMergeFieldsAsANewVersion",
+          "TestPGEditorRunCanSaveANewFileWithTheSourcesAccess",
+          "TestPGEditorRunThatReadsALocalFileIsRefused",
+          "TestPGEditorRunFailuresAreReportedAndAudited",
+          "TestPGConversionToPDFIsANewLinkedFile",
+          "TestPGConversionsToEveryFormatAndTheirRestrictions",
+          "TestPGTrackChangesAndCommentsSurviveARun",
+          "TestPGPDFPreviewForEachEditableVersion",
+          "TestPinnedCommandListIsFiltered",
+          "TestBrowserEditPageE2E",
+          "TestPGEditorAPIOverHTTP",
+          "TestPGEditPageOpensSavesAndShowsTheLock",
+          "TestPGNewPleadingFormMakesAFileAndOpensIt",
+          "TestEditorBuildAtThePinIsServable",
+          "TestPGCourtProfilesStayUnverifiedUntilAPersonApproves",
+          "TestPGCourtProfilesAreCheckedByLawCraft",
+          "TestPGEditorRunsApplyTheFirmsCourtProfiles",
+          "TestPGEditContextGivesLawCraftTheFirmAndTheMatter",
+          "TestPGCourtProfileBodyCannotMakeLawCraftReadAFile",
+          "TestPGEditorRunGivenAnAddressIsRefused",
+          "TestPGRunsAndConversionsThatFailAfterLawCraftAreAudited",
+          "TestPGSaveHoldsTheLockUntilTheVersionIsIn",
+          "TestPGLockHolderIsHiddenFromThoseWhoCannotEdit",
+          "TestPGRunIntoAVersionUnderYourOwnEditorIsRefused",
+          "TestModuleContainerOnDocker",
+          "TestLiveS3Compatible"
+        ],
+        "new_regression_passes": [
+          "TestCoreUpdate2FFix2ClientOwnContactAfterAccessWindow",
+          "TestCoreUpdate2FFix2FileEventPolicyFailsClosed",
+          "TestModuleManifestReservedIDsContract",
+          "TestCoreUpdate2FFix2PublishApprovedSources",
+          "TestCoreUpdate2FFix2ApprovedModuleIDs",
+          "TestCoreUpdate2FFix2PurgedFileEvents"
+        ],
+        "race_reports": 0,
+        "test_timeouts": 0
+      },
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "API contract validation and OpenAPI generation check",
+      "command": "TMPDIR=/out/test-tmp PATH=/out/check-venv/bin:$PATH sh api/check.sh",
+      "exit_code": 0,
+      "result": "136 tests pass; core and marketplace OpenAPI validators, broken-reference rejection and unchanged regeneration pass.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Runtime REST/MCP API tests",
+      "command": "TMPDIR=/out/test-tmp go test -count=1 -v ./internal/core -run '^(TestContractRoutesFailClosed|TestBearerScopesMCPAndSettings|TestFirstRunGate)$'",
+      "exit_code": 0,
+      "result": "All three tests pass; no skips.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Touched contract package race tests",
+      "command": "TMPDIR=/out/test-tmp go test -race -count=1 ./internal/marketplace ./api",
+      "exit_code": 0,
+      "result": "Marketplace package passes, including TestModuleManifestReservedIDsContract. api embeds the published artifacts and has no Go tests.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Postgres 17 backup/restore integration",
+      "command": "TMPDIR=/out/test-tmp sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0,
+      "result": "All 17 required integration-tagged backup/restore tests pass against the two supplied Postgres 17 servers, with no skips.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Go vet",
+      "command": "TMPDIR=/out/test-tmp go vet ./...",
+      "exit_code": 0,
+      "result": "All packages pass.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Python QA",
+      "command": "TMPDIR=/out/test-tmp /out/check-venv/bin/python -m unittest discover -s tests -p 'test_*.py'",
+      "exit_code": 1,
+      "result": "85/86 tests pass. test_scanned_pdf_has_120_pages_and_a_page_49_resume_point fails because Tesseract is not installed. No test was disabled or weakened.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "QA harness integrity",
+      "command": "TMPDIR=/out/test-tmp /out/check-venv/bin/python -m tests.harness",
+      "exit_code": 0,
+      "result": "Zero integrity errors; zero accepted and all 52 product criteria pending.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "JavaScript helpers",
+      "command": "TMPDIR=/out/test-tmp node --test web/static/banner-bridge_test.js pkg/modulekit/forms/repeating_reindex_test.js pkg/modulekit/forms/opaque_origin_test.js",
+      "exit_code": 0,
+      "result": "All three test files pass; no skips.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "ARM64 supervisor compilation",
+      "command": "TMPDIR=/out/test-tmp CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go test -c -o /out/supervisor-arm64.test ./internal/supervisor\nTMPDIR=/out/test-tmp CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /out/supervisor-arm64 ./cmd/supervisor",
+      "exit_code": 0,
+      "result": "Both binaries compile; no ARM64 execution claimed.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Setup metadata",
+      "command": "python3 scripts/check_setup.py",
+      "exit_code": 0,
+      "result": "Pass, metadata only. The supplied task index has no core-update-2f row.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Compose static validation",
+      "command": "python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "result": "Pass; Compose not executed.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Pending gate",
+      "command": "sh scripts/ci/pending-gate.sh",
+      "exit_code": 0,
+      "result": "Pass; AC-001/016/018 remain pending.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Debt ledger",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "result": "111 markers / 69 ledger entries, unchanged.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Formatting and whitespace",
+      "command": "test -z \"$(gofmt -l cmd internal pkg api web examples)\" && git diff --check",
+      "exit_code": 0,
+      "result": "Pass.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    },
+    {
+      "name": "Protected paths and modes",
+      "command": "Inspect every commit and aggregate diff from 4c215a32e12d41150129e967d1b5df89c9da2624",
+      "exit_code": 0,
+      "result": "No forbidden control-plane/.github changes, added symlinks/submodules, dependencies or migrations. Only this report changes under docs/build/.",
+      "tested_revision": "b75583e2a72bbea6bebbf8b5a7e727f3d53ea483"
+    }
+  ],
+  "phase_cases": [
+    {
+      "id": "core-update-2f-assigned-behavior",
+      "acceptance_ids": [
+        "CU2-02",
+        "CU2-03",
+        "CU2-05"
+      ],
+      "status": "pass",
+      "command": "TMPDIR=/out/test-tmp go test -race -count=1 -p 1 -json ./internal/core ./internal/files ./internal/modules ./pkg/modulekit ./pkg/modulekit/coretest ./marketplace ./internal/marketplace -run 'TestCoreUpdate2F|TestCORE30|TestCORE36|TestCORE25|TestCORE02BooksContactUpdatedPump|TestCoreUpdate2D|TestCoreUpdate2E|TestContractShapeChecker|TestModuleManifestReservedIDsContract'",
+      "exit_code": 0
+    },
+    {
+      "id": "full-product",
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-07",
+        "CU2-08"
+      ],
+      "status": "pending",
+      "command": "TMPDIR=/out/test-tmp TOGAVSU_TEST_DATABASE_URL=\"$TOGAVSU_TEST_DATABASE_URL_B\" TOGAVSU_BATCH1_MODS=/out/unavailable-batch1 go test -race -count=1 -p 1 -timeout 25m -json ./...",
+      "exit_code": 1
+    }
+  ],
+  "pending_checks": [
+    "CU2-07 real main-branch batch-1 fixtures are absent. Supply togavsu-documents, togavsu-email, togavsu-client-portal, togavsu-lawpay-docuseal and togavsu-quickbooks with package/togavsu-module.yaml and real cmd/<id> source, migrations/help. Local fixture root is /out/unavailable-batch1 to prevent prohibited remote cloning; no fixture was fabricated.",
+    "Equipped-host Compose/SSH checks require sudo, a passwd entry for the runner uid, Docker and sshd. See actual full-suite failure output/counts; no test was disabled or weakened.",
+    "Existing tests automatically skip unavailable pinned LawCraft/editor/browser, live S3 and release-performance fixtures. Complete skip inventory is in full-suite results; new/focused tests never skip.",
+    "Tesseract is absent for the scanned-PDF Python QA test; 85 other tests pass.",
+    "Docker image builds, supervisor image, real Compose, module-container/smoke, clean install, update load and signed release acceptance were not run locally because Docker is absent. Windows/macOS Docker Desktop acceptance remains separate.",
+    "Browser screenshot/console QC for the branch\u2019s earlier Modules-page/settings work remains for equipped CI.",
+    "Separately held external module contracts and real processor-module hosted-card deduplication/recovery acceptance remain outside this checkout.",
+    "Independent checkpoint at the exact named base and final handoff head is required; this is not a passing self-review."
+  ],
+  "known_review_items": [
+    "A client-viewer upload through a module is module-owned, so the module service can set its status under existing scopes/access policy. No code change requested.",
+    "Every pump pass rereads each file for each subscribed module for every file event in the lookback window. Performance concern retained under existing pump debt trigger; no code change requested."
+  ],
+  "simplification": {
+    "fix_pass_added_lines": 200,
+    "fix_pass_deleted_lines": 12,
+    "fix_pass_net_lines": 188,
+    "implementation_added_lines": 3898,
+    "implementation_deleted_lines": 101,
+    "implementation_net_lines": 3797,
+    "scope": "Against named fix-pass and target bases, excluding the evidence report.",
+    "debt_entries": 69,
+    "ponytail_markers": 111,
+    "result": "Production Go behavior is unchanged from fix pass 2. Use standard-library Go AST parsing to enumerate finite reservations and compare the embedded published contract; fail closed on a changed implementation shape. Reuse both existing artifact generators. No dependency, migration, setting or deliberate shortcut added."
+  },
+  "regression_evidence": {
+    "base": "80c7dbdeeffd4ad49772a4a89f7203546da87546",
+    "test": "TestModuleManifestReservedIDsContract",
+    "expected_top_level_failures": 1,
+    "candidate_test": "pass",
+    "mutation_expected_failures": 4,
+    "note": "The starting-code and mutated-code failures establish test coverage; they are not failed candidate checks."
+  },
+  "workflow_notes": [
+    "No local codebase-memory index or core-update-2f task row exists in the supplied checkout; explicit assignment and approved local PRDs define the work.",
+    "Remote session-memory/wiki reads conflict with the explicit no-other-machines restriction. They were not accessed and no Ready claim was made.",
+    "Local work and synthetic data only; no Git/API publication or remote module checkout. Only permitted Go/Python dependency downloads.",
+    "No test disabled or weakened. The full-suite 25m timeout already exists in scripts/ci/test-core.sh; the backup integration script retains its existing timeout. Package execution is serial within each database server.",
+    "Only this evidence report changes after the exact tested code revision. Independent review must bind the final report-only head as well as the target base."
+  ],
+  "proposed_ci_change": "None. Supply the existing equipped-host prerequisites and unchanged real module fixtures; retain all checks.",
+  "head_relation": "The handoff head is a report-only direct child of tested_revision. Only docs/build/reports/core-update-2f.json changes after that code revision; the PR body supplies the final head SHA for independent review.",
+  "prior_fix_pass_2_findings": [
+    {
+      "id": "P0-approved-module-ids",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "tests": [
+        "TestCoreUpdate2FFix2ApprovedModuleIDs",
+        "TestCoreUpdate2FFix2PublishApprovedSources",
+        "TestCoreUpdate2FFixReservedSources",
+        "TestCoreUpdate2FFixPublishReservedSources",
+        "TestCoreUpdate2FFixStatusOwnership"
+      ],
+      "approved_ids": [
+        "documents",
+        "email",
+        "client-portal",
+        "lawpay-docuseal",
+        "quickbooks",
+        "intake",
+        "discovery",
+        "phone",
+        "phone-zoom",
+        "phone-google",
+        "workflows",
+        "google-notebooklm",
+        "matter-wiki",
+        "mo-estate-planning",
+        "matter-clock",
+        "zoom",
+        "importer"
+      ],
+      "evidence": "Every listed ID validates and installs from a synthetic signed package; sender signing/verification accepts each. Email links as a contract provider. Marketplace publishes email/zoom/importer. Core-only labels remain refused. Source-only ownership still grants nothing, including email/zoom/importer. The three new regression tests fail on be6cc70."
+    },
+    {
+      "id": "P1-purged-file-events",
+      "implementation_status": "implemented",
+      "test_status": "pass",
+      "tests": [
+        "TestCoreUpdate2FFix2PurgedFileEvents",
+        "TestCoreUpdate2FFix2FileEventPolicyFailsClosed"
+      ],
+      "evidence": "The retained file row uses the existing read policy, ignoring only purge. Real file.purged and earlier created/version_created/updated/trashed deliveries reach a visible subscriber exactly once after purge. Walled/attorney-only files do not deliver; ordinary purged reads remain not_found. Nil Files and missing rows return false; cancellation errors propagate. Purged-event test fails on be6cc70."
+    },
+    {
+      "id": "P3-client-own-contact",
+      "implementation_status": "unchanged-preexisting-behavior",
+      "test_status": "pass",
+      "tests": [
+        "TestCoreUpdate2FFix2ClientOwnContactAfterAccessWindow"
+      ],
+      "evidence": "Same characterization passes on target base 4c215a3, starting head be6cc70 and candidate. Direct client writes were already denied by domain.Decide; moduleDecision already denied module client writes with no MatterID. Own shared contact reads stay available after the matter window ends. No policy change."
+    }
+  ],
+  "batch1_file_event_spec_inventory": [
+    {
+      "module": "documents",
+      "source": "docs/modules/documents/SPEC.md",
+      "file_subscriptions": [
+        "file.updated",
+        "file.trashed"
+      ],
+      "files_read": "required"
+    },
+    {
+      "module": "email",
+      "source": "docs/modules/email/SPEC.md",
+      "file_subscriptions": [],
+      "other_subscriptions": [
+        "matter.*",
+        "contact.*"
+      ],
+      "files_read": "required"
+    },
+    {
+      "module": "client-portal",
+      "source": "docs/modules/client-portal/SPEC.md",
+      "file_subscriptions": [],
+      "other_subscriptions": [],
+      "files_read": "required"
+    },
+    {
+      "module": "lawpay-docuseal",
+      "source": "docs/modules/lawpay-docuseal/SPEC.md",
+      "file_subscriptions": [
+        "file.background_authorized"
+      ],
+      "files_read": "required",
+      "note": "Targeted authorization grant; ordinary-file guard does not apply."
+    },
+    {
+      "module": "quickbooks",
+      "source": "docs/modules/quickbooks/SPEC.md",
+      "file_subscriptions": [],
+      "other_subscriptions": [
+        "invoice.*",
+        "payment.*",
+        "expense.*",
+        "trust.entry_posted",
+        "contact.updated"
+      ],
+      "files_read": "not requested"
+    }
+  ],
+  "previous_validation": {
+    "tested_revision": "ad5bc3d783c6eab09d1fc406e09a13ea8a7e23c2",
+    "report_revision": "80c7dbdeeffd4ad49772a4a89f7203546da87546",
+    "note": "Historical fix-pass-2 commands, baseline regressions and results remain available in this report at the prior report revision; the tests below are fresh final-candidate results."
+  }
+}

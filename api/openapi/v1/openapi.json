@@ -18392,7 +18392,7 @@
           ],
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -18419,6 +18419,13 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -18917,7 +18924,7 @@
       "post": {
         "operationId": "runConflictCheck",
         "summary": "Run a conflict check",
-        "description": "Searches contacts, matter parties, and conflict records by name, alias, and date of birth. Hits below the score floor are omitted.",
+        "description": "Searches contacts, matter parties, and conflict records by name, alias, and date of birth. Hits below the score floor are omitted. Additional names are bounded by live practice.conflict_additional_names_max (default 20) and practice.conflict_name_max_chars (default 200 Unicode characters per name). Exceeding either limit returns validation on names before any check is stored.",
         "tags": [
           "Conflicts"
         ],
@@ -19027,6 +19034,10 @@
               "Authorization",
               "Host"
             ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
             "result": {
               "encoding": "json",
               "media_type": "application/json"
@@ -19035,7 +19046,8 @@
               "path",
               "query",
               "idempotency_key",
-              "context_token"
+              "context_token",
+              "body"
             ]
           }
         },
@@ -19046,7 +19058,27 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "names": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/conflict-checks": {
@@ -20351,7 +20383,7 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer",
+          "module_delegation": "delegated_viewer_or_service_principal",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -20367,13 +20399,32 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
             "result": {
               "encoding": "json",
               "media_type": "application/json"
             },
             "arguments": [
               "path",
-              "query"
+              "query",
+              "context_token"
             ]
           }
         },
@@ -37914,7 +37965,7 @@
       "get": {
         "operationId": "listCalendarEvent",
         "summary": "List calendar events",
-        "description": "Cursor-paginated calendar events the caller is allowed to see.",
+        "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. Ordinary event gets/lists retain their existing walls.",
         "tags": [
           "Calendar"
         ],
@@ -37998,10 +38049,11 @@
               "enum": [
                 "day",
                 "week",
-                "month"
+                "month",
+                "busy"
               ]
             },
-            "description": "Calendar view."
+            "description": "Calendar view. busy returns occupancy only across matter walls; requires user_id, from_time and to_time and refuses matter_id/kind filters."
           },
           {
             "name": "include",
@@ -38024,23 +38076,46 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "data",
-                    "page"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/CalendarEvent"
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "data",
+                        "page"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/CalendarEvent"
+                          }
+                        },
+                        "page": {
+                          "$ref": "#/components/schemas/Page"
+                        }
                       }
                     },
-                    "page": {
-                      "$ref": "#/components/schemas/Page"
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "data",
+                        "page"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/CalendarBusyBlock"
+                          }
+                        },
+                        "page": {
+                          "$ref": "#/components/schemas/Page"
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -42299,7 +42374,7 @@
       "post": {
         "operationId": "markFileStatus",
         "summary": "Mark a file status",
-        "description": "Sets draft, final, executed, or filed. Received is how client and outside files arrive. A signature module service call (CORE-25) may only set executed on that module's signed fee-agreement file.",
+        "description": "Sets draft, final, executed, or filed. Received is how client and outside files arrive. An approved files:write service may mark its own published files on accessible matters. CORE-25 additionally permits executed on its signed fee-agreement file.",
         "tags": [
           "Files"
         ],
@@ -67274,7 +67349,7 @@
       "post": {
         "operationId": "callModuleContract",
         "summary": "Call a linked module contract operation",
-        "description": "The consumer module's bearer with contracts:call posts a body; the core proxies it to the admin-linked provider's declared path, HMAC-signed like events, carrying the caller's context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects a linked provider module id (never an address); omit it to use the earliest link. Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31). X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer for contract calls, or core for core-emitted events, grants and system mail. Queued identity comes from module_deliveries.created_by (historical empty means core), never payload or current links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, keyed by the recipient module webhook secret. The literal v2. separates signature versions. Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix seconds. The separate v2 header preserves the exact 2d t=,v1= header. modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the authenticated sender, and refuses missing bindings, duplicate headers and tampering. Use constant-time MAC comparison and a five-minute window in either direction; deduplicate event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. Sender authenticates provenance, not permission to read core records.",
+        "description": "The consumer module's bearer with contracts:call posts a body; the core proxies it to the admin-linked provider's declared path, HMAC-signed like events, carrying the caller's context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects a linked provider module id (never an address); omit it to use the earliest link. Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31). For processor.payment.v1, authorize takes ProcessorPaymentWrite and recover takes ProcessorPaymentRecover, with ProcessorPaymentResult (200 terminal; 202 pending). Both require consumer bearer payments:write and current payments:write approvals on both modules. A durable pending receipt precedes any provider attempt; replay recovers without authorizing twice. A changed authorize body for an existing intent conflicts. On this contract, intent_id owns durable idempotency; Idempotency-Key retains its length validation but does not cache HTTP responses. Every repeat rechecks current scopes and links and reads the current recovered result. No core matter/contact/payment is written; only approved permits intake continuation. X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer for contract calls, or core for core-emitted events, grants and system mail. Queued identity comes from module_deliveries.created_by (historical empty means core), never payload or current links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, keyed by the recipient module webhook secret. The literal v2. separates signature versions. Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix seconds. The separate v2 header preserves the exact 2d t=,v1= header. modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the authenticated sender, and refuses missing bindings, duplicate headers and tampering. Use constant-time MAC comparison and a five-minute window in either direction; deduplicate event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. Sender authenticates provenance, not permission to read core records.",
         "tags": [
           "Modules"
         ],
@@ -67453,7 +67528,7 @@
       "post": {
         "operationId": "pushModuleContractEvent",
         "summary": "Push a contract event to linked consumers",
-        "description": "The provider module's bearer with contracts:provide queues a contract event for the named linked consumer, delivered like core events (CORE-31). X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer for contract calls, or core for core-emitted events, grants and system mail. Queued identity comes from module_deliveries.created_by (historical empty means core), never payload or current links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, keyed by the recipient module webhook secret. The literal v2. separates signature versions. Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix seconds. The separate v2 header preserves the exact 2d t=,v1= header. modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the authenticated sender, and refuses missing bindings, duplicate headers and tampering. Use constant-time MAC comparison and a five-minute window in either direction; deduplicate event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. Sender authenticates provenance, not permission to read core records.",
+        "description": "The provider module's bearer with contracts:provide queues a contract event for the named linked consumer, delivered like core events (CORE-31). Actions use the contract prefix, with the documented document.generated exception only for documents.generate.v1. The sole envelope uses action and payload; no alternate type/data envelope. X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer for contract calls, or core for core-emitted events, grants and system mail. Queued identity comes from module_deliveries.created_by (historical empty means core), never payload or current links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, keyed by the recipient module webhook secret. The literal v2. separates signature versions. Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix seconds. The separate v2 header preserves the exact 2d t=,v1= header. modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the authenticated sender, and refuses missing bindings, duplicate headers and tampering. Use constant-time MAC comparison and a five-minute window in either direction; deduplicate event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. Sender authenticates provenance, not permission to read core records.",
         "tags": [
           "Modules"
         ],
@@ -75643,6 +75718,115 @@
         ],
         "description": "The caller enters the statement. The server computes the ledger total, the client sum, and both differences."
       },
+      "CalendarBusyBlock": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "starts_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "ends_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "all_day": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "starts_at",
+          "ends_at",
+          "all_day"
+        ],
+        "description": "Occupancy only, including walled events. No event, matter, attendee or author identifiers or details."
+      },
+      "ProcessorPaymentWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "intent_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "destination": {
+            "const": "operating"
+          },
+          "payment_token": {
+            "type": "string",
+            "minLength": 1,
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "intent_id",
+          "amount_cents",
+          "destination",
+          "payment_token"
+        ],
+        "description": "processor.payment.v1 authorize: a processor-hosted field token only. Approved payments:write required on both modules and consumer bearer. Never raw card data. Core stores a digest only."
+      },
+      "ProcessorPaymentRecover": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "intent_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+          }
+        },
+        "required": [
+          "intent_id"
+        ],
+        "description": "Recover a previously attempted processor.payment.v1 intent. Never reauthorizes an ambiguous attempt."
+      },
+      "ProcessorPaymentResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "intent_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "declined",
+              "pending"
+            ]
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "destination": {
+            "const": "operating"
+          },
+          "reference_number": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S"
+          },
+          "decline_code": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+          }
+        },
+        "required": [
+          "intent_id",
+          "status",
+          "amount_cents",
+          "destination"
+        ],
+        "description": "Approved requires reference_number, declined forbids it; pending forbids both optional fields. All results must match the original intent/amount/destination. Only approved permits paid-intake continuation. No core matter/contact/payment write occurs in the broker."
+      },
       "CalendarEvent": {
         "type": "object",
         "additionalProperties": false,
@@ -76914,6 +77098,21 @@
           },
           "name": {
             "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "final",
+              "executed",
+              "filed",
+              "received"
+            ]
+          },
+          "on_behalf_of_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional active staff, attorney or admin with write access to the actual matter/contact placement and attorney_only flag, including library publications; recorded as file author. Caller access is checked first: an inaccessible target returns the same not_found regardless of author. Once the caller may write, all author failures return the same validation error. Module and source service remain in audit."
           },
           "attorney_only": {
             "type": "boolean"
@@ -79435,6 +79634,8 @@
           "client_access.days_after_close",
           "practice.case_number_patterns",
           "practice.conflict_score_floor",
+          "practice.conflict_additional_names_max",
+          "practice.conflict_name_max_chars",
           "billing.time_increment_minutes",
           "billing.default_hourly_rate_cents",
           "billing.default_expense_markup_percent",
@@ -79583,6 +79784,9 @@
           "modules.service_call_limit.getMatter",
           "modules.service_call_limit.listMatter",
           "modules.service_call_limit.runConflictCheck",
+          "modules.service_call_limit.createConflictRecord",
+          "modules.service_call_limit.getCounty",
+          "modules.service_call_limit.markFileStatus",
           "modules.service_call_limit.getConflictCheck",
           "modules.service_call_limit.createCalendarEvent",
           "modules.service_call_limit.updateCalendarEvent",
@@ -82035,7 +82239,7 @@
           "record_id",
           "summary"
         ],
-        "description": "Signed webhook body. X-Togavsu-Signature is t=<unix>,v1=<hex> HMAC-SHA256 of timestamp + dot + raw body, keyed with the module's webhook secret; X-Togavsu-Timestamp repeats the signed timestamp, checked within five minutes with constant-time comparison. The kit also accepts sha256=<hex> raw-body HMAC with an optional unsigned timestamp, which offers no timestamp replay protection. Deduplicate event ids for both forms. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read. X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer for contract calls, or core for core-emitted events, grants and system mail. Queued identity comes from module_deliveries.created_by (historical empty means core), never payload or current links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, keyed by the recipient module webhook secret. The literal v2. separates signature versions. Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix seconds. The separate v2 header preserves the exact 2d t=,v1= header. modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the authenticated sender, and refuses missing bindings, duplicate headers and tampering. Use constant-time MAC comparison and a five-minute window in either direction; deduplicate event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. Sender authenticates provenance, not permission to read core records. "
+        "description": "Signed webhook body. X-Togavsu-Signature is t=<unix>,v1=<hex> HMAC-SHA256 of timestamp + dot + raw body, keyed with the module's webhook secret; X-Togavsu-Timestamp repeats the signed timestamp, checked within five minutes with constant-time comparison. The kit also accepts sha256=<hex> raw-body HMAC with an optional unsigned timestamp, which offers no timestamp replay protection. Deduplicate event ids for both forms. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. Ordinary file events require events:read, files:read and a subscription, and use the retained file row’s current placement visibility at enqueue. Only the purge marker is ignored, so file.purged and earlier pending file events can deliver after purge; walled and attorney-only files remain hidden, and ordinary file reads still return not_found. Missing file services or rows fail closed; other visibility errors abort enqueue. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read. X-Togavsu-Sender identifies the pushing provider for contract events, the calling consumer for contract calls, or core for core-emitted events, grants and system mail. Queued identity comes from module_deliveries.created_by (historical empty means core), never payload or current links; retries keep that sender after unlinking. X-Togavsu-Sender-Signature is t=<unix>,v2=<hex>: lowercase hex HMAC-SHA256 over the exact bytes v2.<unix>.<sender>.<raw body>, keyed by the recipient module webhook secret. The literal v2. separates signature versions. Sender matches ^[a-z0-9][a-z0-9-]{0,63}$ and all timestamps are identical canonical decimal Unix seconds. The separate v2 header preserves the exact 2d t=,v1= header. modulekit.VerifyWebhookSender requires both valid timestamped signatures, returns the authenticated sender, and refuses missing bindings, duplicate headers and tampering. Use constant-time MAC comparison and a five-minute window in either direction; deduplicate event ids durably. VerifyWebhookHeaders retains its existing behavior without sender binding. Sender authenticates provenance, not permission to read core records. "
       },
       "Backup": {
         "type": "object",
@@ -82372,6 +82576,10 @@
                 "scope": {
                   "type": "string"
                 },
+                "reason": {
+                  "type": "string",
+                  "description": "Declared reason from the signed manifest being approved."
+                },
                 "required": {
                   "type": "boolean"
                 },
@@ -82381,6 +82589,7 @@
               },
               "required": [
                 "scope",
+                "reason",
                 "required",
                 "approved"
               ]
@@ -83444,7 +83653,7 @@
             "type": "string",
             "minLength": 1,
             "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
-            "description": "Module slug. The same pattern as the {module_id} path parameter. Not a path."
+            "description": "Module slug. The same pattern as the {module_id} path parameter. Not a path. Core-only source and identity labels are reserved: core, upload, client_upload, editor, billing, drop_folder, ui, api_token, module, service, system, api, manual, timer, import."
           },
           "name": {
             "type": "string"
@@ -84646,8 +84855,7 @@
           },
           "created_by": {
             "type": "string",
-            "format": "uuid",
-            "description": "User who created the row, or the nil id for System."
+            "description": "Viewer user id or background module id."
           },
           "updated_at": {
             "type": "string",
@@ -84974,8 +85182,7 @@
           },
           "created_by": {
             "type": "string",
-            "format": "uuid",
-            "description": "User who created the row, or the nil id for System."
+            "description": "Viewer user id or background module id."
           },
           "updated_at": {
             "type": "string",
@@ -84986,6 +85193,12 @@
             "type": "string",
             "format": "uuid",
             "description": "UUIDv7."
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "hits": {
             "type": "array",
@@ -88038,6 +88251,29 @@
         },
         "description": "The caller enters the statement. The server computes the ledger total, the client sum, and both differences. Patch: every field is optional."
       },
+      "ProcessorPaymentWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "intent_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "destination": {
+            "const": "operating"
+          },
+          "payment_token": {
+            "type": "string",
+            "minLength": 1,
+            "writeOnly": true
+          }
+        },
+        "description": "processor.payment.v1 authorize: a processor-hosted field token only. Approved payments:write required on both modules and consumer bearer. Never raw card data. Core stores a digest only. Patch: every field is optional."
+      },
       "CalendarEventWritePatch": {
         "type": "object",
         "additionalProperties": false,
@@ -89659,6 +89895,7 @@
       "operations": [
         "bulkEvent",
         "createCalendarEvent",
+        "createConflictRecord",
         "createContact",
         "createContactEmail",
         "createContactPhone",
@@ -89676,6 +89913,7 @@
         "getContactAddress",
         "getContactEmail",
         "getContactPhone",
+        "getCounty",
         "getCustomFieldDefinition",
         "getDeadline",
         "getExpense",
@@ -90828,6 +91066,26 @@
       "minimum": 0,
       "maximum": 100,
       "help": "Lowest conflict score returned."
+    },
+    {
+      "key": "practice.conflict_additional_names_max",
+      "type": "integer",
+      "tab": "practice",
+      "default": 20,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Maximum additional names per conflict check. Default 20."
+    },
+    {
+      "key": "practice.conflict_name_max_chars",
+      "type": "integer",
+      "tab": "practice",
+      "default": 200,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Maximum characters per additional conflict name. Default 200."
     },
     {
       "key": "billing.time_increment_minutes",
@@ -92342,6 +92600,36 @@
       "locked": false,
       "minimum": 1,
       "help": "Service-principal calls to runConflictCheck allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.createConflictRecord",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to createConflictRecord allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.getCounty",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to getCounty allowed per minute per module. Over is 429. Default 120 (CORE-30)."
+    },
+    {
+      "key": "modules.service_call_limit.markFileStatus",
+      "type": "integer",
+      "tab": "modules_and_marketplace",
+      "default": 120,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "help": "Service-principal calls to markFileStatus allowed per minute per module. Over is 429. Default 120 (CORE-30)."
     },
     {
       "key": "modules.service_call_limit.getConflictCheck",

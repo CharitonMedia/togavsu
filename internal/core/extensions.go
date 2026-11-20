@@ -25,6 +25,21 @@ const SupervisorURL = "http://supervisor:8081"
 // supervisor names each module container togavsu-mod-{id} on the stack network.
 const ModuleURL = "http://togavsu-mod-%s:%d"
 
+// fileReadableForModule shares the files service's read decision with enqueue.
+// Purged rows retain their placement for pending events; missing and hidden files
+// never deliver. Normal file APIs still refuse purged records.
+func (a *App) fileReadableForModule(ctx context.Context, moduleID string, fileID domain.ID) (bool, error) {
+	if a.Files == nil {
+		return false, nil
+	}
+	err := a.Files.CheckEventVisibility(ctx, domain.Principal{Source: domain.SourceService, ModuleID: moduleID}, fileID)
+	var api *domain.APIError
+	if errors.As(err, &api) && api.Code == domain.CodeNotFound {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // extensions is the module runtime and the marketplace client side of the running core
 // (PRD 9 and 10): the trust root, signed installs, permissions, module schemas, include=
 // reads and views, domain replacement, framed pages, events, AI calls and alerts.
@@ -80,7 +95,7 @@ func (x *extensions) openModules(a *App, cfg Config, ui *UI, now func() time.Tim
 		}
 	}
 	svc, err := modules.New(modules.Deps{DB: a.Pool, Key: cfg.Key, Audit: a.Audit, Settings: a.Settings, Walls: a.Practice.Policy.Walls,
-		Phone: a.Practice.GetPhone, Contacts: a.Practice, BooksContactOK: a.booksContactReadableForModule, Signing: x.Market, Users: a.Users, Tokens: modules.IdentityTokens{Svc: a.Identity}, Help: ui.Help,
+		Phone: a.Practice.GetPhone, Contacts: a.Practice, BooksContactOK: a.booksContactReadableForModule, FileReadable: a.fileReadableForModule, Signing: x.Market, Users: a.Users, Tokens: modules.IdentityTokens{Svc: a.Identity}, Help: ui.Help,
 		Widgets: ui.Catalog, Nav: ui.Dashboard, Runtime: rt, Backups: backups, Now: now})
 	if err != nil {
 		return err
@@ -183,6 +198,17 @@ func (a *App) extend(h http.Handler) http.Handler {
 	}
 	routed := a.ext.Modules.Router(a.principal, a.ext.modH.Include(h))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Cookie-authenticated frame writes must honor the same session-bound
+		// CSRF result as core writes. Opaque frames without cookies keep their
+		// module context credential; the module verifies that credential.
+		if strings.HasPrefix(r.URL.Path, "/m/") && !safeMethod(r.Method) {
+			if _, err := r.Cookie(sessionCookie); err == nil {
+				if _, err := a.caller(r); err != nil {
+					writeErr(w, err)
+					return
+				}
+			}
+		}
 		if d := modules.DomainOf(r.URL.Path); d != "" {
 			if module, err := a.ext.Modules.Replacement(r.Context(), d); err == nil && module != "" {
 				r = memoCaller(r)

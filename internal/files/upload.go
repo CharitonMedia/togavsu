@@ -315,6 +315,8 @@ func (s *Service) CompleteUpload(ctx context.Context, p domain.Principal, id dom
 // Publish is publishFile: it creates the file and its first version from a staged
 // upload. A repeated publish of the same upload replays the file it made.
 type Publish struct {
+	Status           string     `json:"status,omitempty"`
+	OnBehalfOfUserID domain.ID  `json:"on_behalf_of_user_id,omitempty"`
 	UploadID         domain.ID  `json:"upload_id"`
 	MatterID         *domain.ID `json:"matter_id"`
 	ContactID        *domain.ID `json:"contact_id"`
@@ -363,13 +365,35 @@ func (s *Service) PublishUpload(ctx context.Context, p domain.Principal, in Publ
 		name = in.Name
 	}
 	library := in.Library || u.Library
+	unassigned := grant.Assignment == "unassigned" && !library
+	// The caller must independently reach the target before any author lookup.
+	// Unassigned grants already check placement; they do not confer attorney access.
+	if unassigned {
+		if matter != "" || in.AttorneyOnly {
+			return FileView{}, domain.Forbidden("an unassigned module file has no matter and is not attorney-only")
+		}
+		if contact != "" {
+			if err := s.contactReachable(ctx, p, contact); err != nil {
+				return FileView{}, err
+			}
+		}
+	} else if err := s.canWriteTo(ctx, p, matter, contact, in.AttorneyOnly); err != nil {
+		return FileView{}, err
+	}
+	author, err := s.publicationAuthor(ctx, p, in.OnBehalfOfUserID, matter, contact, in.AttorneyOnly)
+	if err != nil {
+		return FileView{}, err
+	}
+	if err := publicationStatus(in.Status); err != nil {
+		return FileView{}, err
+	}
 	if err := libraryPlacement(library, matter, contact); err != nil {
 		return FileView{}, err
 	}
 	nf := NewFile{
 		Name: name, MatterID: matter, ContactID: contact, FolderID: in.FolderID, AttorneyOnly: in.AttorneyOnly,
 		SharedWithClient: in.SharedWithClient, Library: library, MediaType: u.MediaType, Source: sourceFor(p), How: "upload",
-		Origin: origin, created: true, unassigned: grant.Assignment == "unassigned" && !library,
+		Origin: origin, author: author, status: in.Status, created: true, unassigned: unassigned,
 	}
 	if origin == "" && grant.ID != "" && grant.Source != "importer" {
 		nf.Origin = "received"

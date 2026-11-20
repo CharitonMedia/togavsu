@@ -1270,6 +1270,7 @@ func (m *Memory) AppendRun(ctx context.Context, row ConflictRun) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	row.Hits = append([]Hit(nil), row.Hits...)
+	row.Names = append([]string(nil), row.Names...)
 	m.runs = append(m.runs, row)
 	return nil
 }
@@ -1284,6 +1285,7 @@ func (m *Memory) Runs(matter domain.ID) []ConflictRun {
 		}
 		copyRun := row
 		copyRun.Hits = append([]Hit(nil), row.Hits...)
+		copyRun.Names = append([]string(nil), row.Names...)
 		out = append(out, copyRun)
 	}
 	return out

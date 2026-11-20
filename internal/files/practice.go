@@ -49,3 +49,21 @@ func (d PracticeDirectory) UserContact(ctx context.Context, user domain.ID) (dom
 	}
 	return u.ContactID, nil
 }
+
+// PublicationUser resolves current user roles and activity for publication authorship.
+func (d PracticeDirectory) PublicationUser(ctx context.Context, user domain.ID) (domain.User, error) {
+	return d.Store.User(ctx, user)
+}
+
+// ContactMatters reads the authoritative practice records. The relational
+// projection currently omits parties, so it cannot decide contact access.
+func (d PracticeDirectory) ContactMatters(ctx context.Context, contact domain.ID) ([]domain.ID, error) {
+	if _, err := d.Store.Contact(ctx, contact); err != nil {
+		return nil, err
+	}
+	var matters []domain.ID
+	for _, party := range d.Store.Parties("", contact) {
+		matters = append(matters, party.MatterID)
+	}
+	return matters, nil
+}

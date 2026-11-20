@@ -67,8 +67,12 @@ type Deps struct {
 	// the contact (CORE-02). moduleID is the installed module so the books-reader principal
 	// is authenticated. Nil drops every contact.updated for books:read modules.
 	BooksContactOK func(ctx context.Context, moduleID string, contactID domain.ID) (bool, error)
-	HTTP           *http.Client
-	Now            func() time.Time
+	// FileReadable applies the retained file row's current placement policy to events,
+	// including events queued after purge; ordinary file reads still refuse purge.
+	// Nil fails closed for file.* events that identify a file.
+	FileReadable func(ctx context.Context, moduleID string, fileID domain.ID) (bool, error)
+	HTTP         *http.Client
+	Now          func() time.Time
 }
 
 // Service is the module runtime (PRD 9).
@@ -310,6 +314,7 @@ func (s *Service) loadPackage(ctx context.Context, id string) (pkgRow, error) {
 // Permission is one requested scope with the admin's decision.
 type PermissionView struct {
 	Scope    string `json:"scope"`
+	Reason   string `json:"reason"`
 	Required bool   `json:"required"`
 	Approved bool   `json:"approved"`
 	Decision string `json:"-"`
@@ -440,6 +445,13 @@ func (s *Service) view(ctx context.Context, r modRow) (View, error) {
 		if err != nil {
 			return View{}, err
 		}
+		for _, declared := range pkg.Manifest.Permissions {
+			for i := range v.Permissions {
+				if v.Permissions[i].Scope == declared.Scope {
+					v.Permissions[i].Reason = declared.Reason
+				}
+			}
+		}
 		if pkg.Manifest.Replaces != "" {
 			rep := pkg.Manifest.Replaces
 			v.Replaces = &rep
@@ -456,6 +468,20 @@ func (s *Service) view(ctx context.Context, r modRow) (View, error) {
 			v.PublicPages = append(v.PublicPages, path)
 		}
 		v.PublicOperations = append([]string{}, pkg.Manifest.PublicOperations...)
+	}
+	// Pending updates ask for decisions about the candidate signed manifest.
+	if r.PendingPackageID != "" {
+		candidate, err := s.loadPackage(ctx, r.PendingPackageID)
+		if err != nil {
+			return View{}, err
+		}
+		for _, declared := range candidate.Manifest.Permissions {
+			for i := range v.Permissions {
+				if v.Permissions[i].Scope == declared.Scope {
+					v.Permissions[i].Reason = declared.Reason
+				}
+			}
+		}
 	}
 	return v, nil
 }

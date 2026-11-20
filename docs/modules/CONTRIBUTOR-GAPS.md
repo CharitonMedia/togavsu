@@ -39,7 +39,7 @@ Status is `fixed` (with where) or `open`. "Follow-up" names the CORE item in
 | `Installable` looped forever when a field entry held back a value the core requires (`tabs[1].placement`), since removing it left the same refusal | Codex review of PR 57 | fixed in PR 57: a refusal of a part already held back stops with `pending_edit`, each pass must change the files, and the passes are bounded | none |
 | No writer for `pending.yaml`, so module tests hand-write the YAML | review of PR 57 | fixed in this PR: `WritePending(entries)`, `AddPending(src, entry)` (in place, comments kept) and `togavsu-module pending`; each reads its result back with `ParsePending` | none |
 | No way to keep a pending part in a build on purpose, to prove the live core still refuses it at approval | review of PR 57 | open | kit follow-up: an `Installable` option that keeps named parts, for acceptance tests that sign with `SignFile` |
-| `coretest` has one client login and no stand-ins for mail, the rendition service, the converter or Doc Tender, so modules that need them build their own fakes | client-portal, documents, email, lawpay-docuseal | fixed in core-update-2a for mail (CORE-29) and Doc Tender markdown renditions (`SeedMarkdownRendition` / `OpenMarkdownRendition`); converter fixed in core-update-2d (this PR): `c.Converter`, `SetResult`, `Fail`, `Calls`; OCR stand-ins remain open | CORE-36 |
+| `coretest` has one client login and no stand-ins for mail, the rendition service, the converter or Doc Tender, so modules that need them build their own fakes | client-portal, documents, email, lawpay-docuseal | fixed in core-update-2a for mail (CORE-29) and Doc Tender markdown renditions (`SeedMarkdownRendition` / `OpenMarkdownRendition`); converter fixed in core-update-2d: `c.Converter`, `SetResult`, `Fail`, `Calls`; Doc Tender jobs/OCR/document-reader stand-ins fixed in core-update-2f: `c.DocTender` and `RunDocTender`, `TestCoreUpdate2FDocTenderCategoryHint` | CORE-36 |
 | Marketplace submission by an outside author has not been exercised end to end | kit review | fixed in this PR: documents went from `package -installable` with a throwaway key to a listed module on a local marketplace and was installed from that listing by a `coretest` core, using only the kit and docs; MODULE-KIT.md, Submitting to the marketplace, is that walk-through, run as written. The rows below are what it found | none |
 | MODULE-KIT.md said nothing about submitting, and called `BuildPackage`'s plain tar what the marketplace reads | documents dry run | fixed in this PR: Submitting to the marketplace; the marketplace takes the same signed `Archive` bytes | none |
 | The docs never said how to make a key file | documents dry run | fixed in this PR: `openssl rand -base64 32 > signing.key` (any 32 random bytes) | none |
@@ -83,3 +83,66 @@ Status is `fixed` (with where) or `open`. "Follow-up" names the CORE item in
 | Manifest/migration inventory tokenizes Goose Down; runtime refusals cannot honestly be held back | batch 2, CORE-36 | fixed in this PR: Up inventory and runtime pending criterion/strict retirement | `TestRuntimePendingCriteriaAndGooseUpInventory` |
 | Module conversion tests must alter the host converter | batch 2, CORE-29/36 | fixed in this PR: coretest in-process converter stand-in | `TestCoreUpdate2DPurgeRestrictAndConverter` |
 | No click-to-call phone-row slot | phone | fixed in this PR: contact_phone_items with approved contacts:read and viewer frames | Public-kit read/mail/settings/phone test |
+
+
+## Batch 2 documents and intake gaps closed by core-update-2f
+
+| Gap | Found by | Status | Evidence |
+| --- | --- | --- | --- |
+| Modules approval tab omits manifest permission reasons | documents MOD-DOC-01; intake MOD-ITK-01 | fixed: signed declared reason returned and escaped beside every decision, including candidate updates | `TestCoreUpdate2FPermissionReasons` |
+| CSRF parsing consumes urlencoded /m/ form body and proxy returns 502 | intake client autosave | fixed: exact bytes restored, original parser ceiling and session CSRF enforced | `TestCoreUpdate2FProxyRestoresFormAfterCSRF` |
+| Trashing a core file emits no subscribed file.trashed delivery | intake cleanup | fixed: production event/queue, approved derived read scopes and sender core | `TestCoreUpdate2FFileTrashDelivery` |
+| Availability cannot return occupancy across matter walls | intake busy review | fixed: explicit view=busy has only starts_at/ends_at/all_day; detail reads retain not_found | `TestCoreUpdate2FBusyAcrossWalls` |
+| Additional named people cannot be checked or registered by a service | intake MOD-ITK-14 | fixed: names input retained/checked; createConflictRecord service author is module, source service | `TestCoreUpdate2FNamedConflictService`, `TestCoreUpdate2FAdditionalConflictNames` |
+| County get refuses an approved settings:read service | documents | fixed: scoped getCounty service read with live operation limit | `TestCoreUpdate2FCountyService` |
+| Background draft cannot publish status/human author or update its status | documents contract publication | fixed: status and validated optional on_behalf_of_user_id; own-module scoped status write; wall/role checks stay independent | `TestCoreUpdate2FPublicationAuthorAndStatus` |
+| document.generated is rejected by the generic contract namespace rule | documents contract generation | fixed: exact named event allowed for documents.generate.v1 in the existing single targeted envelope; sender binding unchanged | `TestCoreUpdate2FDocumentGeneratedContractEnvelope` |
+| Modules cannot run real Doc Tender jobs without host services | documents MOD-DOC-22 | fixed: deterministic coretest adapters run real queue/pipeline, preserve category locks and persist failures | `TestCoreUpdate2FDocTenderCategoryHint`, `TestCoreUpdate2FDocTenderFailureIsRealQueueFailure` |
+| Intake card has no binding pre-matter payment approval/recovery contract | intake MOD-ITK-05 | fixed core side: processor.payment.v1 durable bounded authorization/recovery; processor module remains external | `TestCoreUpdate2FProcessorDeclineBeforeMatterAndApprovalRecovery`, `TestCoreUpdate2FProcessorConcurrentAndInvalidRequests` |
+
+### Core-update-2f fix pass 1
+
+| Review gap | Result | Regression evidence |
+| --- | --- | --- |
+| Core source labels collide with module status ownership | First-version upload owner is authoritative; only core-exclusive IDs are reserved. Approved IDs such as email, zoom and importer remain valid (corrected in fix pass 2) | `TestCoreUpdate2FFixStatusOwnership`, `TestCoreUpdate2FFixReservedSources`, `TestCoreUpdate2FFixPublishReservedSources` |
+| Named author leaks wall membership before caller access | Caller placement checked first; inaccessible targets have identical `not_found` responses for all authors | `TestCoreUpdate2FFixPublicationCallerFirst` |
+| Author ignores contact/attorney-only placement | Active firm author independently checks actual placement; all author failures share one validation response | `TestCoreUpdate2FFixPublicationAuthorPlacement` |
+| File events disclose hidden file IDs | Ordinary file events use module service read visibility at enqueue; targeted grants/books behavior retained | `TestCoreUpdate2FFixFileEventVisibility`, existing books pump regression |
+| Status ownership lookup distinguishes absent IDs | Missing and other-owner files share `scope_denied` | `TestCoreUpdate2FFixStatusExistenceOracle` |
+| Additional conflict names unbounded | Live Practice settings default to 20 names / 200 Unicode characters; over-limit input rejected before scoring/storage | `TestCoreUpdate2FFixConflictNameLimits` |
+| Processor audit IDs cannot be traced to intent | Stable consumer plus intent entity ID; no new sensitive payload | `TestCoreUpdate2FFixProcessorAuditIdentity` |
+
+
+### Core-update-2f fix pass 2
+
+| Review gap | Result | Regression evidence |
+| --- | --- | --- |
+| Reservation blocks approved module IDs | Approved batch 1/batch 2 IDs, matter-clock, zoom and importer validate, install and authenticate; email contract links and marketplace publishing work. Core-only labels remain refused; source alone still grants no ownership | `TestCoreUpdate2FFix2ApprovedModuleIDs`, `TestCoreUpdate2FFix2PublishApprovedSources`, retained reserved-source/ownership tests |
+| Purged files lose every pending event | Enqueue checks the retained row’s placement, ignoring only purge. Visible file.purged and older pending events deliver once; walled/attorney-only files stay hidden; normal file reads stay not_found | `TestCoreUpdate2FFix2PurgedFileEvents`, `TestCoreUpdate2FFix2FileEventPolicyFailsClosed` |
+| Client contact writes after the matter window | Existing target-base behavior: own shared contact files remain readable, but clients already cannot add contact-only files, directly or through a module. No policy change | `TestCoreUpdate2FFix2ClientOwnContactAfterAccessWindow`, also run against target base 4c215a3 |
+
+### Core-update-2f contract and subscriber documentation
+
+The reserved module IDs are exactly `core`, `upload`, `client_upload`, `editor`,
+`billing`, `drop_folder`, `ui`, `api_token`, `module`, `service`, `system`, `api`,
+`manual`, `timer`, `import`. Approved IDs `email`, `zoom` and `importer` remain
+valid. The regenerated `ModuleManifest.id` description matches the runtime list;
+`TestModuleManifestReservedIDsContract` enumerates `ReservedModuleID` switch cases
+and compares them with the published list, including underscore labels.
+
+The file visibility guard applies to every non-targeted `file.*` event identifying
+a file, including `file.updated`, `file.downloaded`, `file.trashed` and
+`file.purged`. It requires approved `events:read`, a matching subscription,
+approved `files:read` and service-principal read access to the current placement
+at enqueue. Matter walls, attorney-only restrictions and non-matter placement
+checks apply; purge ignores only the retained row's purge marker. Targeted grants
+and books-reader filters retain their existing behavior.
+
+**Behavior change for existing subscribers:** without approved `files:read`, or
+for walled, attorney-only or non-matter files their service principal cannot read,
+subscribers stop receiving `file.updated` and `file.downloaded`. Delegated viewer
+access does not grant background event access. The [batch 1 inventory](MODULE-KIT.md#batch-1-file-event-subscriptions)
+lists all five module specs' subscriptions and read scopes; real-package
+compatibility still needs its separate acceptance run. Existing regression
+evidence remains `TestCoreUpdate2FFixFileEventVisibility` and
+`TestCoreUpdate2FFix2PurgedFileEvents`.

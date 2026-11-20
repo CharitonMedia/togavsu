@@ -187,6 +187,7 @@ VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,0)`, string(id), at, string(domain.SystemUser
 
 // documentsConfig is what openDocuments needs beyond the shared services.
 type documentsConfig struct {
+	DocTenderAdapters func(*doctender.Deps)
 	DataDir           string // for editor run folders
 	DocumentConverter func(context.Context, []byte, string, string) ([]byte, error)
 	WordcraftCLI      string
@@ -267,6 +268,9 @@ func openDocuments(ctx context.Context, d *documents, pool *sql.DB, aud *audit.S
 	}
 	if _, err := exec.LookPath("ffmpeg"); err == nil {
 		deps.Media = doctender.FFmpeg{}
+	}
+	if cfg.DocTenderAdapters != nil {
+		cfg.DocTenderAdapters(&deps)
 	}
 	dt, err := doctender.New(deps)
 	if err != nil {

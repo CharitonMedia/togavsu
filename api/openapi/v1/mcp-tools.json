@@ -5550,7 +5550,7 @@
         "attorney",
         "staff"
       ],
-      "module_delegation": "delegated_viewer",
+      "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
@@ -5560,6 +5560,13 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [
@@ -5760,6 +5767,10 @@
           "Authorization",
           "Host"
         ],
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5768,7 +5779,8 @@
           "path",
           "query",
           "idempotency_key",
-          "context_token"
+          "context_token",
+          "body"
         ]
       }
     },
@@ -6132,18 +6144,37 @@
         "attorney",
         "staff"
       ],
-      "module_delegation": "delegated_viewer",
+      "module_delegation": "delegated_viewer_or_service_principal",
       "transfer": {
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },

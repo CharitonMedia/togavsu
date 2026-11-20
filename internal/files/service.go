@@ -377,6 +377,11 @@ func (s *Service) writable(ctx context.Context, p domain.Principal, f fileRow) e
 
 // canWriteTo checks a new file's placement before any byte is accepted.
 func (s *Service) canWriteTo(ctx context.Context, p domain.Principal, matter, contact domain.ID, attorneyOnly bool) error {
+	if contact != "" {
+		if err := s.contactReachable(ctx, p, contact); err != nil {
+			return err
+		}
+	}
 	probe := fileRow{File: domain.File{MatterID: matter, ContactID: contact, AttorneyOnly: attorneyOnly}}
 	if matter != "" {
 		if _, err := s.dir.Matter(ctx, matter); err != nil {

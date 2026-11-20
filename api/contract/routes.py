@@ -1589,16 +1589,18 @@ def _practice(api: Contract) -> None:
         "/api/v1/matters/{matter_id}/conflict-checks",
         operation_id="runConflictCheck",
         summary="Run a conflict check",
-        description="Searches contacts, matter parties, and conflict records by name, alias, and date of birth. Hits below the score floor are omitted.",
+        description="Searches contacts, matter parties, and conflict records by name, alias, and date of birth. Hits below the score floor are omitted. Additional names are bounded by live practice.conflict_additional_names_max (default 20) and practice.conflict_name_max_chars (default 200 Unicode characters per name). Exceeding either limit returns validation on names before any check is stored.",
         tag="Conflicts",
         features=["conflicts"],
         roles=STAFF,
         scopes=["conflicts:read"],
+        body_schema={"type": "object", "additionalProperties": False, "properties": {"names": {"type": "array", "items": {"type": "string", "minLength": 1}}}},
         response="ConflictCheck",
         success="201",
         events=["conflict_check.created"],
         extra_access=WALL,
     )
+    api.spec["paths"]["/api/v1/matters/{matter_id}/conflict-checks"]["post"]["requestBody"]["required"] = False
     api.add(
         "get",
         "/api/v1/conflict-checks",
@@ -1814,7 +1816,7 @@ def _admin_lists(api: Contract) -> None:
         "getCustomFieldDefinition",
     ):
         method, path = api.operation_ids[operation_id].split(" ", 1)
-        api.spec["paths"][path][method]["x-togavsu-access"]["module_delegation"] = ("delegated_viewer_or_service_principal" if operation_id in ("listPartyRole", "getPartyRole", "listCustomFieldDefinition", "getCustomFieldDefinition") else "delegated_viewer")
+        api.spec["paths"][path][method]["x-togavsu-access"]["module_delegation"] = ("delegated_viewer_or_service_principal" if operation_id in ("getCounty", "listPartyRole", "getPartyRole", "listCustomFieldDefinition", "getCustomFieldDefinition") else "delegated_viewer")
     api.add(
         "post",
         "/api/v1/custom-field-definitions/{definition_id}/retire",
@@ -2810,6 +2812,9 @@ def _calendar(api: Contract) -> None:
         replaceable="calendar",
         extra_access=WALL,
     )
+    busy_read = api.spec["paths"]["/api/v1/calendar-events"]["get"]
+    busy_read["description"] += " view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. Ordinary event gets/lists retain their existing walls."
+    busy_read["responses"]["200"]["content"]["application/json"]["schema"] = {"anyOf": [_page("CalendarEvent"), _page("CalendarBusyBlock")]}
     api.resource(
         collection="/api/v1/deadlines",
         schema="Deadline",
@@ -3030,7 +3035,7 @@ def _files(api: Contract) -> None:
     for method, path, op, summary, body, event, desc in (
         ("post", "/api/v1/files/{file_id}/rename", "renameFile", "Rename a file", "FileRename", "file.updated", "Changes the only name. The extension stays, except when an editor save converts the file to DOCX. A person may rename a locked file. Doc Tender still cannot replace that name."),
         ("post", "/api/v1/files/{file_id}/move", "moveFile", "Move a file between folders", "FileMove", "file.updated", "Changes the folder record. Bytes stay on the same key."),
-        ("post", "/api/v1/files/{file_id}/status", "markFileStatus", "Mark a file status", "FileStatusWrite", "file.updated", "Sets draft, final, executed, or filed. Received is how client and outside files arrive. A signature module service call (CORE-25) may only set executed on that module's signed fee-agreement file."),
+        ("post", "/api/v1/files/{file_id}/status", "markFileStatus", "Mark a file status", "FileStatusWrite", "file.updated", "Sets draft, final, executed, or filed. Received is how client and outside files arrive. An approved files:write service may mark its own published files on accessible matters. CORE-25 additionally permits executed on its signed fee-agreement file."),
         ("post", "/api/v1/files/{file_id}/trash", "trashFile", "Trash a file", None, "file.trashed", "The file stays listed and restorable."),
         ("post", "/api/v1/files/{file_id}/restore", "restoreFile", "Restore a file from trash", None, "file.updated", "Clears trashed_at."),
     ):
@@ -5415,6 +5420,7 @@ def _modules(api: Contract) -> None:
             "context token when present. On a many-provider contract, X-Togavsu-Contract-Provider selects "
             "a linked provider module id (never an address); omit it to use the earliest link. "
             "Neither module learns the other's address. Unlinked contracts answer contract_unlinked (CORE-31). "
+            "For processor.payment.v1, authorize takes ProcessorPaymentWrite and recover takes ProcessorPaymentRecover, with ProcessorPaymentResult (200 terminal; 202 pending). Both require consumer bearer payments:write and current payments:write approvals on both modules. A durable pending receipt precedes any provider attempt; replay recovers without authorizing twice. A changed authorize body for an existing intent conflicts. On this contract, intent_id owns durable idempotency; Idempotency-Key retains its length validation but does not cache HTTP responses. Every repeat rechecks current scopes and links and reads the current recovered result. No core matter/contact/payment is written; only approved permits intake continuation. "
             + MODULE_SENDER_DESCRIPTION
         ),
         tag="Modules",
@@ -5447,7 +5453,7 @@ def _modules(api: Contract) -> None:
         summary="Push a contract event to linked consumers",
         description=(
             "The provider module's bearer with contracts:provide queues a contract event for the named "
-            "linked consumer, delivered like core events (CORE-31). "
+            "linked consumer, delivered like core events (CORE-31). Actions use the contract prefix, with the documented document.generated exception only for documents.generate.v1. The sole envelope uses action and payload; no alternate type/data envelope. "
             + MODULE_SENDER_DESCRIPTION
         ),
         tag="Modules",

@@ -521,7 +521,7 @@ func checkDoc(run ConflictRun) map[string]any {
 	}
 	return map[string]any{
 		"id": run.ID, "created_at": when(run.CreatedAt), "created_by": run.CreatedBy,
-		"updated_at": when(run.CreatedAt), "matter_id": run.MatterID, "hits": hits,
+		"updated_at": when(run.CreatedAt), "matter_id": run.MatterID, "hits": hits, "names": append([]string{}, run.Names...),
 	}
 }
 

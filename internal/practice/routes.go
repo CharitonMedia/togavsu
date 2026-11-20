@@ -2,6 +2,8 @@ package practice
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -566,7 +568,21 @@ func (h *Handler) runCheckJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	row, err := h.Svc.RunConflictCheck(r.Context(), p, domain.ID(r.PathValue("matter_id")))
+	var body struct {
+		Names []string `json:"names"`
+	}
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeErr(w, domain.Invalid("body", "body is invalid"))
+		return
+	}
+	var extra any
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		writeErr(w, domain.Invalid("body", "body must contain one object"))
+		return
+	}
+	row, err := h.Svc.RunConflictCheck(r.Context(), p, domain.ID(r.PathValue("matter_id")), body.Names...)
 	if err != nil {
 		writeErr(w, err)
 		return

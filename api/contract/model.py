@@ -80,7 +80,7 @@ BACKGROUND_READ_OPERATIONS = frozenset({
         "getNote", "listNote", "listFile",
         "getFirmProfile", "listUserDirectory", "listContactAddress", "getContactAddress",
         "listPartyRole", "getPartyRole", "listCustomFieldDefinition", "getCustomFieldDefinition",
-        "listSettings", "getSetting", "getModuleSettings",
+        "listSettings", "getSetting", "getModuleSettings", "getCounty",
 })
 
 # Operations that accept a module service principal with no viewer (CORE-01), and a
@@ -108,6 +108,7 @@ SERVICE_PRINCIPAL_OPERATIONS = BACKGROUND_READ_OPERATIONS | frozenset(
         # CORE-36 / CORE-30 service calls
         "getConflictCheck",
         "runConflictCheck",
+        "createConflictRecord",
         "createContact",
         "getContact",
         "listContact",

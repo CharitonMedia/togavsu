@@ -24,14 +24,24 @@ const gzipMagic = "\x1f\x8b"
 // ErrManifest means the package has no readable manifest or the manifest is incomplete.
 var ErrManifest = errors.New("manifest")
 
-// ErrReservedModuleID means a module tried to use core's delivery identity.
-var ErrReservedModuleID = errors.New("module id \"core\" is reserved for core deliveries")
+// ErrReservedModuleID means a module tried to use a core source or identity.
+var ErrReservedModuleID = errors.New("module id is reserved for a core source or identity")
 
 // CoreSenderID is core's authenticated identity on deliveries to modules.
 const CoreSenderID = "core"
 
-// ReservedModuleID reports whether id is reserved for core's own identity.
-func ReservedModuleID(id string) bool { return id == CoreSenderID }
+// ReservedModuleID reserves core-only identities, never approved module IDs.
+// File ownership uses owner_module_id, so source labels such as email, zoom and
+// importer that also identify modules must remain valid.
+// Include labels with underscores even though the slug grammar also refuses them.
+func ReservedModuleID(id string) bool {
+	switch id {
+	case CoreSenderID, "upload", "client_upload", "editor", "billing", "drop_folder",
+		"ui", "api_token", "module", "service", "system", "api", "manual", "timer", "import":
+		return true
+	}
+	return false
+}
 
 // Manifest is the part of togavsu-module.yaml a listing shows: the module id, its name,
 // the version and the permissions it requests. Raw is the whole manifest, kept so the
