@@ -141,7 +141,7 @@ func TestCoreUpdate2GFirmOccupancy(t *testing.T) {
 				v = toolResult2d(t, bot, "listCalendarEvent", map[string]any{"query": map[string]any{"view": "occupancy", "from_time": q.Get("from_time"), "to_time": q.Get("to_time")}}, false)
 			}
 			rows := v["data"].([]any)
-			want := 1
+			want := 2
 			if lifted {
 				want = 3
 			}

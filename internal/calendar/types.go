@@ -51,6 +51,15 @@ type Event struct {
 	Attendees []domain.ID
 }
 
+// OccupancyCandidate is internal persistence input to the service's occupancy
+// filter, never a response. Only OccupancyBlock may be returned to the caller.
+type OccupancyCandidate struct {
+	StartsAt     int64
+	EndsAt       int64
+	MatterID     domain.ID
+	HasAttendees bool
+}
+
 // Start and End return the stored UTC instants.
 func (e Event) Start() time.Time { return domain.FromUnixMicro(e.StartsAt) }
 func (e Event) End() time.Time   { return domain.FromUnixMicro(e.EndsAt) }
