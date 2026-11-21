@@ -1798,6 +1798,79 @@
       "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. This is a batch 2 modules task. No controller drives it, so it is held in controller-plan.json and is not in batch2-plan.json. docs/modules/CORE-CHANGES-2.md holds the core parts of the batch 2 modules PRD Patrick approved on 2026-11-16, copied unchanged; it is the approved scope for this assignment and outranks docs/modules/CORE-CHANGES.md for CORE-30 onward. Also read docs/modules/CORE-CHANGES.md, docs/modules/MODULE-KIT.md and docs/modules/CONTRIBUTOR-GAPS.md. You start from the batch2 branch, the integration branch for batch 2, and your PR targets batch2, not main. The release-final assignment (PR 60) is still open on main and touches only release reports, docs/release/, scripts/release/, tests/test_full_acceptance.py and tests/test_release_ci.py; never edit those. Close the remaining CONTRIBUTOR-GAPS.md rows that hold the documents and intake modules (CORE-23, CORE-29, CORE-30, CORE-31 and CORE-36), building on core updates 2c to 2f already in batch2: contract events in the approved binding envelope (contract, event, event_id, occurred_at, data) delivered unchanged to every linked, approved consumer, with core event names refused and contract events deduplicated apart from core events; a frame-scoped session CSRF token for module frame forms that only that module's /m/{id}/ cookie writes accept; a firm-wide occupancy read of busy intervals under calendar:read that, like every service call, leaves walled matters' events out; and public processor payment recording that binds a stored approved receipt once to the matter or contact it created and records one payment from the stored receipt, with contact-only payments following that contact's walls everywhere they are read or emitted. A service call runs as the module's service principal, which sits outside every wall (CORE-CHANGES-2.md line 12 and CU2-02): a walled matter's records are left out of its lists and answer not_found on its gets, lifting the wall returns them on the next read, and no wall membership is disclosed. Done when CU2-01, CU2-02, CU2-03, CU2-05 and CU2-07 pass in automated tests, CU2-07 included (matter-clock and the five batch 1 module packages install, run and uninstall unchanged; build them from their public repositories at their main branch in the test, read-only). Before you finish, commit docs/build/reports/core-update-2g.json, written from the tests you actually ran: task_id \"core-update-2g\", status \"pass\" only if every criterion passed, tested_revision (the full SHA you tested; after it only that report may change), tests (each with name, command and exit_code), passed_acceptance_ids and pending_acceptance_ids covering exactly your criteria, and phase_cases, one per case with id, status, command, exit_code and acceptance_ids: \"api-mcp-scopes\" covering CU2-01; \"service-call-walls\" covering CU2-02, including that lifting the wall returns the records on the next read; \"contracts\" covering CU2-03; \"gap-rows-closed\" covering CU2-05; \"batch1-unchanged\" covering CU2-07. Never record a failed or unrun test as passed. Schema migrations: use versions 1600-1649 only, the core-update-2g block already in internal/db/ranges.go; never edit ranges.go and renumber nothing. Every addition is part of the public module API: document it in docs/api/modules.md, docs/contracts/README.md and the OpenAPI spec, mount it on /mcp, refuse it without its scope, and test it against real Postgres beside the code it changes, failure cases included. Nothing in the core checks a module's id or author. Keep pkg/modulekit, pkg/modulekit/coretest and cmd/togavsu-module working for the module repositories, and keep every name exactly as CORE-CHANGES-2.md gives it: nine module repositories are written against it. Never edit docs/modules/ other than CONTRIBUTOR-GAPS.md and MODULE-KIT.md, the PRDs, .github/ other than product-ci.yml, internal/db/ranges.go, controller files or review gates, and never write to a module repository. Never edit marketplace/. Never edit go.mod or go.sum; propose any dependency in your PR for the integration lead. Outside services are fakes and local test servers only; never create a key or secret. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
     },
     {
+      "id": "core-update-2h",
+      "wave": "module-api-2h",
+      "phase": 9,
+      "depends_on": [
+        "core-update-2g"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "cmd/togavsu-module/",
+        "internal/",
+        "pkg/",
+        "web/",
+        "api/",
+        "tests/",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/",
+        ".github/workflows/product-ci.yml",
+        "docs/api/",
+        "docs/modules/CONTRIBUTOR-GAPS.md",
+        "docs/modules/MODULE-KIT.md",
+        "docs/contracts/",
+        "docs/build/reports/core-update-2h.json"
+      ],
+      "excluded_paths": [
+        "internal/db/ranges.go",
+        "internal/frame/frame_test.go",
+        "tests/test_full_acceptance.py",
+        "tests/test_release_ci.py"
+      ],
+      "prd_sections": [
+        "8",
+        "9"
+      ],
+      "batch2_sections": [
+        "4",
+        "5",
+        "6"
+      ],
+      "acceptance_ids": [
+        "CU2-01",
+        "CU2-02",
+        "CU2-05",
+        "CU2-07"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "stage_report": true,
+      "report_path": "docs/build/reports/core-update-2h.json",
+      "phase_acceptance": {
+        "api-mcp-scopes": [
+          "CU2-01"
+        ],
+        "service-call-walls": [
+          "CU2-02"
+        ],
+        "gap-rows-closed": [
+          "CU2-05"
+        ],
+        "batch1-unchanged": [
+          "CU2-07"
+        ]
+      },
+      "full_acceptance": false,
+      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. This is a batch 2 modules task. No controller drives it, so it is held in controller-plan.json and is not in batch2-plan.json. docs/modules/CORE-CHANGES-2.md holds the core parts of the batch 2 modules PRD Patrick approved on 2026-11-16, copied unchanged; it is the approved scope for this assignment and outranks docs/modules/CORE-CHANGES.md for CORE-30 onward. Also read docs/modules/CORE-CHANGES.md, docs/modules/MODULE-KIT.md and docs/modules/CONTRIBUTOR-GAPS.md. You start from the batch2 branch, the integration branch for batch 2, and your PR targets batch2, not main. The release-final assignment (PR 60) is still open on main and touches only release reports, docs/release/, scripts/release/, tests/test_full_acceptance.py and tests/test_release_ci.py; never edit those. Close the CORE-30 row still open for the intake module, building on core updates 2c to 2g already in batch2. On 2026-11-21 Patrick approved one exception to the walls rule below, for occupancy only: the service-principal firm-wide occupancy read (calendar-events?view=occupancy under approved calendar:read, REST and /mcp, added by core update 2g) also returns, as bare busy intervals, the events of walled matters that have no assigned attendee user, so a booking module cannot double-book those times. Such an interval carries start and end only, exactly like every other occupancy interval: no event id, title, matter, contact, attendee, kind, walled flag or any other field, and no ordering, merging, count, paging, cache or error difference that lets a caller tell it from any other interval or learn a wall exists. Walled events that have an assigned attendee stay out of occupancy (the per-user view=busy read already covers them), and the occupancy window, range and paging limits stay as they are. Nothing else changes: every other service read keeps the walls rule. Update only the core 2g occupancy tests whose expectation this exception changes, and say so in the PR body. A service call runs as the module's service principal, which sits outside every wall (CORE-CHANGES-2.md line 12 and CU2-02): a walled matter's records are left out of its lists and answer not_found on its gets, lifting the wall returns them on the next read, and no wall membership is disclosed; the occupancy exception above is the only change to this rule. Done when CU2-01, CU2-02, CU2-05 and CU2-07 pass in automated tests, CU2-07 included (matter-clock and the five batch 1 module packages install, run and uninstall unchanged; build them from their public repositories at their main branch in the test, read-only). Before you finish, commit docs/build/reports/core-update-2h.json, written from the tests you actually ran: task_id \"core-update-2h\", status \"pass\" only if every criterion passed, tested_revision (the full SHA you tested; after it only that report may change), tests (each with name, command and exit_code), passed_acceptance_ids and pending_acceptance_ids covering exactly your criteria, and phase_cases, one per case with id, status, command, exit_code and acceptance_ids: \"api-mcp-scopes\" covering CU2-01; \"service-call-walls\" covering CU2-02, including that lifting the wall returns the records on the next read; \"gap-rows-closed\" covering CU2-05; \"batch1-unchanged\" covering CU2-07. Never record a failed or unrun test as passed. Schema migrations: use versions 1650-1699 only, the core-update-2h block already in internal/db/ranges.go; never edit ranges.go and renumber nothing. Every addition is part of the public module API: document it in docs/api/modules.md, docs/contracts/README.md and the OpenAPI spec, mount it on /mcp, refuse it without its scope, and test it against real Postgres beside the code it changes, failure cases included. Nothing in the core checks a module's id or author. Keep pkg/modulekit, pkg/modulekit/coretest and cmd/togavsu-module working for the module repositories, and keep every name exactly as CORE-CHANGES-2.md gives it: nine module repositories are written against it. Never edit docs/modules/ other than CONTRIBUTOR-GAPS.md and MODULE-KIT.md, the PRDs, .github/ other than product-ci.yml, internal/db/ranges.go, controller files or review gates, and never write to a module repository. Never edit marketplace/. Never edit go.mod or go.sum; propose any dependency in your PR for the integration lead. Outside services are fakes and local test servers only; never create a key or secret. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
       "id": "marketplace-paid",
       "wave": "marketplace-2",
       "phase": 9,
