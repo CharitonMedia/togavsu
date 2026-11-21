@@ -128,3 +128,12 @@ regressions. `TestCU207Batch1ModulesUnchanged` also appends the three signing
 milestones using the unchanged installed LawPay/DocuSeal package's module token
 and approval. This verifies its append API compatibility; it does not exercise
 an external signing provider.
+
+## Fix pass 4
+
+Payment-keyed module extensions and published views now reuse billing's live
+payment read check when the payment has no matter. They follow the contact's
+current parties and walls without duplicating that policy in the module runtime.
+`TestCoreUpdate2GContactPaymentExtensionWalls` covers Include (extensions and
+published views), scoped ReadView, the HTTP view and payment include endpoint,
+allowed users and the next read after the wall is lifted, on real Postgres.

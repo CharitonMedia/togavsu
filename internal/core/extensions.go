@@ -97,7 +97,7 @@ func (x *extensions) openModules(a *App, cfg Config, ui *UI, now func() time.Tim
 		}
 	}
 	svc, err := modules.New(modules.Deps{DB: a.Pool, Key: cfg.Key, Audit: a.Audit, Settings: a.Settings, Walls: a.Practice.Policy.Walls,
-		PaymentReadable: a.paymentReadableForModule, RecordProcessorPayment: a.recordProcessorReceipt, Phone: a.Practice.GetPhone, Contacts: a.Practice, BooksContactOK: a.booksContactReadableForModule, FileReadable: a.fileReadableForModule, Signing: x.Market, Users: a.Users, Tokens: modules.IdentityTokens{Svc: a.Identity}, Help: ui.Help,
+		PaymentRecordReadable: a.paymentRecordReadable, PaymentReadable: a.paymentReadableForModule, RecordProcessorPayment: a.recordProcessorReceipt, Phone: a.Practice.GetPhone, Contacts: a.Practice, BooksContactOK: a.booksContactReadableForModule, FileReadable: a.fileReadableForModule, Signing: x.Market, Users: a.Users, Tokens: modules.IdentityTokens{Svc: a.Identity}, Help: ui.Help,
 		Widgets: ui.Catalog, Nav: ui.Dashboard, Runtime: rt, Backups: backups, Now: now})
 	if err != nil {
 		return err
@@ -356,6 +356,10 @@ func (a *App) recordProcessorReceipt(ctx context.Context, p domain.Principal, in
 		return existing, nil
 	}
 	return a.Billing.RecordApprovedOperatingPayment(ctx, p, billing.PaymentInput{MatterID: in.MatterID, ContactID: in.ContactID, AmountCents: result.AmountCents, Destination: result.Destination, Method: "card", Status: billing.PayCompleted, ReferenceNumber: result.ReferenceNumber, Source: provider})
+}
+
+func (a *App) paymentRecordReadable(ctx context.Context, p domain.Principal, id domain.ID) (bool, error) {
+	return a.Billing.PaymentEventReadable(ctx, p, domain.Event{RecordType: "payment", RecordID: id})
 }
 
 func (a *App) paymentReadableForModule(ctx context.Context, module string, ev domain.Event) (bool, error) {

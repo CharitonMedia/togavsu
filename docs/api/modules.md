@@ -336,3 +336,10 @@ pending/declined/trust receipts and supplied money fields are refused. Normal
 viewer/task processor and arbitrary-payment write checks retain their policy.
 
 See [Core update 2g](core-update-2g.md) for the complete continuation and regression inventory.
+
+Contact-only payment extensions returned by `include=` and published module views
+use billing's current contact-party wall check, just like `GET /payments/{id}`.
+A contact subsequently placed only on a matter the viewer cannot read hides its
+existing payment's module rows; an allowed viewer retains access and removing the
+wall restores the rows on the next read. Matter-bound payments retain their own
+matter's policy.
