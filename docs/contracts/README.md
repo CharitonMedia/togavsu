@@ -218,3 +218,11 @@ and module-bound frame CSRF. See [module APIs](../api/modules.md) and
 check legacy provider-created raw event keys as well as the `contract:` key, so
 upgrading does not redeliver an already accepted event. Contact-only payment and
 refund events follow the parent payment's contact walls on reads and delivery.
+
+Ordinary timeline appends under shared roots are classified by `record_type`:
+`payment`, `payment_refund` and `processor_initialization` use the current money
+record visibility checks regardless of their action name. An appended
+`payment.future_event` on a `fee_agreement` follows ordinary matter visibility
+on Activities and REST/MCP event reads and remains eligible for subscribed
+module delivery. Exact emitted core actions such as `payment.created` remain
+reserved from module appends. Binding contract envelopes still reserve core roots.

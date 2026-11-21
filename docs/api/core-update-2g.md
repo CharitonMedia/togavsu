@@ -137,3 +137,13 @@ current parties and walls without duplicating that policy in the module runtime.
 `TestCoreUpdate2GContactPaymentExtensionWalls` covers Include (extensions and
 published views), scoped ReadView, the HTTP view and payment include endpoint,
 allowed users and the next read after the wall is lifted, on real Postgres.
+
+Money-event classification uses the exact record types `payment`,
+`payment_refund` and `processor_initialization`, independently of action names.
+An appended `payment.future_event` on a fee agreement therefore follows ordinary
+matter visibility and reaches subscribed modules. Real money records retain the
+same billing gates, including when their action uses a different root.
+`TestCoreUpdate2GNonMoneyPaymentMilestoneReadable` proves Activities, REST,
+MCP and signed subscription delivery, non-money matter walls, and continued
+hiding of a walled payment's `payment.created` and differently named money event.
+Both fix-pass-4 regressions fail against the unchanged `a00d981` implementation.

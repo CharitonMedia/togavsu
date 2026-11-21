@@ -1,9 +1,6 @@
 package domain
 
-import (
-	"strings"
-	"time"
-)
+import "time"
 
 // Meta is the column set every core table carries.
 type Meta struct {
@@ -597,8 +594,8 @@ func (Event) TableName() string { return "events" }
 
 // PaymentEvent identifies money events whose current parent payment policy applies.
 func (e Event) PaymentEvent() bool {
-	return e.RecordType == "payment" || strings.HasPrefix(e.RecordType, "payment_") ||
-		e.RecordType == "processor_initialization" || strings.HasPrefix(e.Action, "payment.")
+	return e.RecordType == "payment" || e.RecordType == "payment_refund" ||
+		e.RecordType == "processor_initialization"
 }
 
 // StorageBackend is one place file bytes can live.
