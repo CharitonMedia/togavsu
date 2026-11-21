@@ -74,13 +74,16 @@ func (s *Service) Record(ctx context.Context, who domain.Principal, change Chang
 	}
 	actor := who.UserID
 	if actor.IsZero() {
-		// A module-bound token has no user. The row is the System actor with source
-		// module or service (CORE-01), and provenance keeps the module id in the reason.
+		// A background service names its module as actor (CORE-01). Legacy
+		// module-source calls retain the system actor and module provenance.
 		moduleCall := (who.Source == domain.SourceModule || who.Source == domain.SourceService) && who.ModuleID != ""
 		if who.Source != domain.SourceSystem && !moduleCall {
 			return domain.AuditEntry{}, domain.Unauthenticated("actor is required")
 		}
 		actor = domain.SystemUserID
+		if who.Source == domain.SourceService && moduleCall {
+			actor = who.EventActor()
+		}
 	}
 	old, newValue := change.Old, change.New
 	if change.Secret || sensitive(change.Field) {

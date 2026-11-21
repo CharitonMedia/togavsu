@@ -79,7 +79,7 @@
     "runtime_fixtures": 52
   },
   "artifacts": {
-    "api/openapi/v1/openapi.json": "e9966e8d4ae3d86b0e00a18b7eb4c9771901c067e0ed324b08abd90b02d23f97",
+    "api/openapi/v1/openapi.json": "9294c5a5a12ac42900271aac3480d1ee79230b8c7944f17cd7cb503aaeb562c6",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
     "api/openapi/v1/mcp-tools.json": "858327bfb2f66ceb282df97f7bb649328892040b8870b06e5b239ecc5fee7e28",
     "docs/api/coverage.md": "351d436084bf743ee70b4662434c3a4cf7f0e82c1cf7111dad7849bc927fe032"

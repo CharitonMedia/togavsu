@@ -12,6 +12,7 @@ func RuntimeCriteria() []string {
 		"calendar.busy_across_walls", "conflict.named_people", "module.county_read",
 		"file.service_status", "file.publication_author", "contract.document_generated",
 		"coretest.doc_tender", "contract.processor_payment",
+		"contract.binding_events", "module.frame_session_csrf", "calendar.firm_occupancy", "processor.receipt_recording",
 	}
 }
 

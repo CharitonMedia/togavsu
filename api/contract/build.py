@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from contract.model import MALWARE_DELIVERY, PAYMENT_PROCESSOR, PAYMENT_REFUND, Contract
@@ -17,6 +18,33 @@ OPENAPI_PATH = ROOT / "api" / "openapi" / "v1" / "openapi.json"
 MCP_PATH = ROOT / "api" / "openapi" / "v1" / "mcp-tools.json"
 COVERAGE_PATH = ROOT / "docs" / "api" / "coverage.md"
 MARKETPLACE_PATH = ROOT / "api" / "openapi" / "marketplace" / "openapi.json"
+
+
+def emitted_actions(source: str) -> set[str]:
+    """Collect direct emits, action assignments/helpers and event constants.
+
+    Constant values cover indirect emits. Historical adapter actions remain in
+    build_spec's protocol aliases even if no current writer emits them.
+    """
+    action = r'"([a-z_]+(?:\.[a-z_]+)+)"'
+    names = set(re.findall(r'\bAction:\s*' + action, source))
+    # Trust's Event uses Name; settings and other named structs do not emit events.
+    event_literals = re.findall(r'\bEvent\s*\{\s*\{?([^{}]*)', source)
+    for literal in event_literals:
+        names.update(re.findall(r'\bName:\s*' + action, literal))
+    names.update(re.findall(r'\b(?:Action|action)\s*(?::=|=)\s*' + action, source))
+    references = set()
+    for call in re.findall(r'(?:\.(?:event|emit)|\bchangedFields)\([^;{}]*', source):
+        names.update(re.findall(action, call))
+        references.update(re.findall(r"\b[A-Za-z_]\w*\b", call))
+    references.update(re.findall(r"\b(?:Action|action)\s*(?::|=)\s*([A-Za-z_]\w*)", source))
+    for literal in event_literals:
+        references.update(re.findall(r"\bName:\s*([A-Za-z_]\w*)", literal))
+    for declaration in re.findall(r'\bconst\s+(?:\([^)]*\)|[^\n]+)', source):
+        for name, value in re.findall(r'\b([A-Za-z_]\w*)(?:\s+string)?\s*=\s*' + action, declaration):
+            if name in references:
+                names.add(value)
+    return names
 
 
 def build_spec() -> dict:
@@ -37,6 +65,20 @@ def build_spec() -> dict:
     spec["x-togavsu-scope-catalog"] = [{"scope": key, "description": value} for key, value in sorted(SCOPES.items())]
     spec["x-togavsu-scope-patterns"] = SCOPE_PATTERNS
     spec["webhooks"] = _webhooks()
+    # One shared registry drives both core append refusal and contract namespaces.
+    # Include emit sites, assignments, helpers and constants as well as operations (some internal
+    # events, such as conflict.checked, have no operation event annotation).
+    # Historical protocol aliases stay reserved even though current emits use
+    # calendar_event.* and individual domain roots. Keep them in this one registry.
+    names = {"core.*", "calendar.*", "trust.entry_reversed"} | set(spec["x-togavsu-event-scopes"])
+    for item in spec["paths"].values():
+        for op in item.values():
+            if isinstance(op, dict):
+                names.update(op.get("x-togavsu-events", []))
+    for path in sorted((ROOT / "internal").rglob("*.go")):
+        if not path.name.endswith("_test.go"):
+            names.update(emitted_actions(path.read_text()))
+    spec["x-togavsu-core-events"] = sorted(names)
     _check(spec)
     return spec
 
@@ -256,6 +298,8 @@ def render_coverage(spec: dict) -> str:
             access = operation["x-togavsu-access"]
             roles = ", ".join(access["roles"]) or "public"
             scopes = ", ".join(access["scopes"]) or "none"
+            for view, extra in sorted(access.get("view_scopes", {}).items()):
+                scopes += " (view=" + view + ": " + ", ".join(extra) + ")"
             features = ", ".join(operation["x-togavsu-features"])
             lines.append(
                 f"| {features} | `{method.upper()}` | `{path}` | `{operation['operationId']}` | {parity}:{tool} | {roles} | {scopes} |"
@@ -284,6 +328,8 @@ def render_mcp(spec: dict) -> dict:
                 "scopes": access["scopes"],
                 "roles": access["roles"],
             }
+            if access.get("view_scopes"):
+                tool["view_scopes"] = access["view_scopes"]
             if access.get("module_delegation"):
                 tool["module_delegation"] = access["module_delegation"]
             limit = next((parameter for parameter in operation.get("parameters") or [] if parameter.get("name") == "limit"), None)
@@ -432,7 +478,9 @@ def _check(spec: dict) -> None:
         for method, operation in item.items():
             if method.startswith("x-"):
                 continue
-            for scope in operation["x-togavsu-access"]["scopes"]:
+            access = operation["x-togavsu-access"]
+            conditional = [scope for scopes in access.get("view_scopes", {}).values() for scope in scopes]
+            for scope in access["scopes"] + conditional:
                 used.add(scope)
                 if scope not in SCOPES:
                     raise SystemExit(f"scope {scope} is not in the catalog")

@@ -55,10 +55,46 @@ func (s *Service) Payment(ctx context.Context, p domain.Principal, id domain.ID)
 	if err != nil {
 		return Payment{}, err
 	}
-	if err := s.allow(ctx, p, domain.ResPayment, domain.ActionRead, row.MatterID); err != nil {
+	if err := s.allowPayment(ctx, p, domain.ActionRead, row); err != nil {
 		return Payment{}, err
 	}
 	return row, nil
+}
+
+// PaymentEventReadable applies the live payment policy to money event records.
+// Refund IDs differ from payment IDs; never treat a missing parent as visible.
+func (s *Service) PaymentEventReadable(ctx context.Context, p domain.Principal, ev domain.Event) (bool, error) {
+	id := ev.RecordID
+	switch ev.RecordType {
+	case "payment":
+	case "payment_refund":
+		row, err := s.refund(ctx, id)
+		if err != nil {
+			return paymentEventVisibility(err)
+		}
+		id = row.PaymentID
+	case "processor_initialization":
+		var row ProcessorInit
+		if err := s.d.Store.Get(ctx, kindProcessorInit, string(id), &row); err != nil {
+			return paymentEventVisibility(err)
+		}
+		// Initialization may precede creation of the reserved payment.
+		return paymentEventVisibility(s.allowPayment(ctx, p, domain.ActionRead, Payment{Payment: domain.Payment{MatterID: row.MatterID, ContactID: row.ContactID}}))
+	default:
+		return false, nil
+	}
+	_, err := s.Payment(ctx, p, id)
+	return paymentEventVisibility(err)
+}
+
+// Missing records and denied reads are invisible, while unexpected failures remain
+// errors so callers can log them without exposing an unreadable money record.
+func paymentEventVisibility(err error) (bool, error) {
+	var api *domain.APIError
+	if errors.Is(err, ErrNotFound) || errors.As(err, &api) && (api.Code == domain.CodeNotFound || api.Code == domain.CodeForbidden) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // Payments lists payments on matters the caller can see.
@@ -78,7 +114,7 @@ func (s *Service) Payments(ctx context.Context, p domain.Principal, f PaymentFil
 			f.Status != "" && r.Status != f.Status {
 			continue
 		}
-		if s.allow(ctx, p, domain.ResPayment, domain.ActionRead, r.MatterID) == nil {
+		if s.allowPayment(ctx, p, domain.ActionRead, r) == nil {
 			out = append(out, r)
 		}
 	}
@@ -330,7 +366,7 @@ func (s *Service) UpdatePaymentStatus(ctx context.Context, p domain.Principal, i
 		if err != nil {
 			return err
 		}
-		if err := s.allow(t.ctx, p, domain.ResPayment, domain.ActionWrite, row.MatterID); err != nil {
+		if err := s.allowPayment(t.ctx, p, domain.ActionWrite, row); err != nil {
 			return err
 		}
 		out = row
@@ -395,7 +431,7 @@ func (s *Service) ReversePayment(ctx context.Context, p domain.Principal, id dom
 		if err != nil {
 			return err
 		}
-		if err := s.allow(t.ctx, p, domain.ResPayment, domain.ActionApproveInvoice, row.MatterID); err != nil {
+		if err := s.allowPayment(t.ctx, p, domain.ActionApproveInvoice, row); err != nil {
 			return err
 		}
 		if !row.TrustEntryID.IsZero() {
@@ -593,4 +629,26 @@ func viewerless(p domain.Principal) error {
 		return domain.Forbidden("a module writes a payment with a processor authorization or a viewer")
 	}
 	return nil
+}
+
+// allowPayment keeps contact-only receipt payments behind the contact's walls
+// when that contact is subsequently attached to a matter. Existing matter-bound
+// payments continue to use only their own matter's policy.
+func (s *Service) allowPayment(ctx context.Context, p domain.Principal, act domain.Action, row Payment) error {
+	if err := s.allow(ctx, p, domain.ResPayment, act, row.MatterID); err != nil {
+		return err
+	}
+	if !row.MatterID.IsZero() {
+		return nil
+	}
+	parties := s.d.Practice.Parties("", row.ContactID)
+	if len(parties) == 0 {
+		return nil
+	}
+	for _, party := range parties {
+		if s.allow(ctx, p, domain.ResPayment, act, party.MatterID) == nil {
+			return nil
+		}
+	}
+	return domain.NotFound("payment")
 }

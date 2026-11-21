@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"github.com/CharitonMedia/togavsu/internal/identity"
 	"html"
 	"io"
 	"net/http"
@@ -105,7 +106,12 @@ func TestCoreUpdate2FProxyRestoresFormAfterCSRF(t *testing.T) {
 		_, _ = io.Copy(io.Discard, res.Body)
 		return res.StatusCode
 	}
-	body := "csrf=" + url.QueryEscape(x.staff.csrf) + "&answer=hello+world&answer=second%2Bvalue&empty="
+	caller, err := x.app.Identity.Authenticate(context.Background(), identity.Presented{SessionToken: x.staff.kit().Session()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	frameCSRF := x.app.Identity.FrameCSRF(caller.Principal.SessionID, "matter-clock")
+	body := "csrf=" + url.QueryEscape(frameCSRF) + "&answer=hello+world&answer=second%2Bvalue&empty="
 	if code := post(body); code != http.StatusNoContent {
 		t.Fatalf("proxy form: %d", code)
 	}

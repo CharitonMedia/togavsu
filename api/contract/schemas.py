@@ -1077,7 +1077,7 @@ SCHEMAS = _register(
         "Payment": _meta(
             {
                 "contact_id": _uuid(),
-                "matter_id": _uuid(),
+                "matter_id": _null(_uuid("Null only for an approved contact-only processor receipt payment.")),
                 "amount_cents": _cents(),
                 "destination": _PAY_DEST,
                 "method": _PAY_METHOD,
@@ -1447,6 +1447,30 @@ SCHEMAS = _register(
             },
             ["trust_account_id", "statement_on", "statement_balance_cents"],
             "The caller enters the statement. The server computes the ledger total, the client sum, and both differences.",
+        ),
+        "BindingContractEvent": _obj(
+            {"contract": {"type":"string", "minLength":1}, "event": {"type":"string", "minLength":1},
+             "event_id": {"type":"string", "format":"uuid"}, "occurred_at": _dt(),
+             "data": {"type":"object", "additionalProperties":True}},
+            ["contract", "event", "event_id", "occurred_at", "data"],
+            "Binding batch 2 event, unchanged to all approved linked consumers. Contract equals route; event cannot use a core event namespace. Deduplicate event_id permanently.",
+        ),
+        "TargetedContractEvent": _obj(
+            {"id":{"type":"string", "minLength":1}, "contract":{"type":"string", "minLength":1},
+             "consumer_id":{"type":"string", "minLength":1}, "occurred_at":_dt(),
+             "action":{"type":"string", "minLength":1}, "payload":{}},
+            ["id", "contract", "consumer_id", "occurred_at", "action"],
+            "Also accepted unchanged: targeted 2f envelope, delivered only to consumer_id. Existing action-prefix rules apply.",
+        ),
+        "ProcessorPaymentRecord": _obj(
+            {"intent_id":{"type":"string", "pattern":"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$"},
+             "matter_id":_uuid(), "contact_id":_uuid()},
+            ["intent_id", "contact_id"],
+            "Record an approved operating receipt once, bound to the consuming module and newly created matter (contact must be its party), or a newly created contact when matter_id is omitted. No viewer or provider call. Money fields are forbidden; repeats return the same Payment.",
+        ),
+        "CalendarOccupancyBlock": _obj(
+            {"starts_at":_dt(), "ends_at":_dt()}, ["starts_at", "ends_at"],
+            "Service-only firm-wide occupancy under calendar:read, including unassigned events but excluding every walled matter. Start/end only; exact requested interval overlap; no other fields.",
         ),
         "CalendarBusyBlock": _obj(
             {"starts_at": _dt(), "ends_at": _dt(), "all_day": {"type": "boolean"}},
@@ -2920,7 +2944,7 @@ SCHEMAS = _register(
             {
                 "id": _uuid(),
                 "at": _dt(),
-                "actor_id": _null(_uuid()),
+                "actor_id": _null({"type":"string","description":"User UUID, or the authenticated module id for a background service actor."}),
                 "actor_kind": _ACTOR,
                 "role": {"type": "string"},
                 "source": {"type": "string", "description": "ui, api token id, or module id."},
@@ -4079,7 +4103,7 @@ QUERY = {
         },
         "description": "Up to 100 user ids. When set, only those users are returned.",
     },
-    "view": _query("view", _enum(["day", "week", "month", "busy"]), "Calendar view. busy returns occupancy only across matter walls; requires user_id, from_time and to_time and refuses matter_id/kind filters."),
+    "view": _query("view", _enum(["day", "week", "month", "busy", "occupancy"]), "Calendar view. busy returns occupancy only across matter walls; requires user_id, from_time and to_time and refuses matter_id/kind filters."),
     "disposition": _query("disposition", _enum(["inline", "attachment"]), "Download disposition."),
     "confirm": _query("confirm", {"type": "boolean"}, "Must be true to download a quarantined version."),
     "confirm_quarantine": _query("confirm_quarantine", {"type": "boolean"}, "Must be true to download a quarantined file. Omitted or false returns quarantine_confirmation_required and no bytes."),

@@ -132,7 +132,7 @@ reference_number = EXCLUDED.reference_number, status = EXCLUDED.status, invoice_
 trust_entry_id = COALESCE(EXCLUDED.trust_entry_id, payments.trust_entry_id), source = EXCLUDED.source,
 refunded_cents = EXCLUDED.refunded_cents, refund_state = EXCLUDED.refund_state, imported = EXCLUDED.imported`,
 		string(pay.ID), pay.CreatedAt.UnixMicro(), pay.UpdatedAt.UnixMicro(), string(by),
-		string(pay.ContactID), string(pay.MatterID), int64(pay.AmountCents), pay.Destination, pay.Method,
+		string(pay.ContactID), nullID(pay.MatterID), int64(pay.AmountCents), pay.Destination, pay.Method,
 		pay.ReferenceNumber, pay.Status, nullID(pay.InvoiceID), nullID(pay.TrustEntryID), pay.Source,
 		int64(pay.RefundedCents), refundState, imported)
 	return err

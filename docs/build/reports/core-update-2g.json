@@ -1,0 +1,358 @@
+{
+  "task_id": "core-update-2g",
+  "status": "pending",
+  "tested_revision": "eaaaaa25a7d654e65382c01eb3162e793626aed8",
+  "revision_policy": "This is the final code-and-test commit. The bound assignment permits only this evidence report to change afterward. The PR body separately names the final report-only handoff commit and records its full standard-suite and focused verification after committing this report. No source, tests or generated output follow tested_revision.",
+  "target_base_revision": "17702dfd961f76781aa98667bd6c05866fd59950",
+  "fix_pass_4_base_revision": "a00d981d6cb30d055b74004be933f097a2adb835",
+  "tests": [
+    {
+      "name": "fix4-focused-A",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-focused-A A go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/billing ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCoreUpdate2G|TestCoreUpdate2E|TestFrameCSRF|TestCoreEventRegistry|TestCoreUpdate2FProxyRestoresFormAfterCSRF|TestBindingEventUUID|TestCoreUpdate2FAccepts|TestModuleClean)'",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 32,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-focused-B",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-focused-B B go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/billing ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCoreUpdate2G|TestCoreUpdate2E|TestFrameCSRF|TestCoreEventRegistry|TestCoreUpdate2FProxyRestoresFormAfterCSRF|TestBindingEventUUID|TestCoreUpdate2FAccepts|TestModuleClean)'",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 32,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-full-race-A",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-full-race-A A go test -timeout 0 -race -count=1 -p 1 -json ./...",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 1285,
+        "fail": 3,
+        "skip": 42
+      }
+    },
+    {
+      "name": "fix4-full-race-B",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-full-race-B B go test -timeout 0 -race -count=1 -p 1 -json ./...",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 1285,
+        "fail": 3,
+        "skip": 42
+      }
+    },
+    {
+      "name": "fix4-acceptance-A",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-acceptance-A A go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 39,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-batch1-B",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-batch1-B B go test -timeout 0 -race -count=1 -p 1 -json ./internal/core -run '^TestCU207Batch1ModulesUnchanged$'",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 1,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-vet-finalcode",
+      "command": "python3 scripts/ci/core2g-check.py fix4-vet-finalcode A go vet ./...",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-api-contract-finalcode",
+      "command": "PATH=/out/check-venv/bin:$PATH python3 scripts/ci/core2g-check.py fix4-api-contract-finalcode A sh api/check.sh",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-api-runtime",
+      "command": "TOGAVSU_API_VENV=/out/api-venv python3 scripts/ci/core2g-check.py fix4-api-runtime A sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-generated-finalcode",
+      "command": "PATH=/out/check-venv/bin:$PATH python3 scripts/ci/core2g-check.py fix4-generated-finalcode A python3 scripts/ci/core2g-generated.py",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-qa",
+      "command": "PATH=/out/check-venv/bin:$PATH python3 scripts/ci/core2g-check.py fix4-qa A sh scripts/ci/test-qa.sh",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-qa-unittest",
+      "command": "PATH=/out/check-venv/bin:$PATH python3 scripts/ci/core2g-check.py fix4-qa-unittest A python3 -m unittest discover -s tests -p 'test_*.py'",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-qa-integrity",
+      "command": "PATH=/out/check-venv/bin:$PATH python3 scripts/ci/core2g-check.py fix4-qa-integrity A python3 -m tests.harness",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-setup",
+      "command": "python3 scripts/ci/core2g-check.py fix4-setup A python3 scripts/check_setup.py",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-compose-static",
+      "command": "python3 scripts/ci/core2g-check.py fix4-compose-static A python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-debt",
+      "command": "python3 scripts/ci/core2g-check.py fix4-debt A python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-formatting",
+      "command": "python3 scripts/ci/core2g-check.py fix4-formatting A sh -c 'test -z \"$(gofmt -l cmd internal pkg api web examples)\" && git diff --check'",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-pending-gate",
+      "command": "python3 scripts/ci/core2g-check.py fix4-pending-gate A sh scripts/ci/pending-gate.sh",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fix4-backup-integration",
+      "command": "python3 scripts/ci/core2g-check.py fix4-backup-integration B sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      }
+    }
+  ],
+  "passed_acceptance_ids": [
+    "CU2-02",
+    "CU2-03",
+    "CU2-05",
+    "CU2-07"
+  ],
+  "pending_acceptance_ids": [
+    "CU2-01"
+  ],
+  "phase_cases": [
+    {
+      "id": "api-mcp-scopes",
+      "status": "pending",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-full-race-A A go test -timeout 0 -race -count=1 -p 1 -json ./...",
+      "exit_code": 1,
+      "acceptance_ids": [
+        "CU2-01"
+      ]
+    },
+    {
+      "id": "service-call-walls",
+      "status": "pass",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-acceptance-A A go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-02"
+      ]
+    },
+    {
+      "id": "contracts",
+      "status": "pass",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-acceptance-A A go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-03"
+      ]
+    },
+    {
+      "id": "gap-rows-closed",
+      "status": "pass",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-acceptance-A A go test -timeout 0 -race -count=1 -p 1 -json ./api ./internal/calendar ./internal/db ./internal/identity ./internal/core ./internal/modules ./pkg/modulekit/coretest ./pkg/modulekit ./internal/settings -run '^(TestCORE(23|29|30|31)|TestCoreUpdate2D(ServiceWallsEveryRecord|ReadsWallsMailSettingsAndPhone|ContractForwardingTargetAndLimit)|TestCoreUpdate2G|TestFrameCSRF|TestCoreEventRegistry)'",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-05"
+      ]
+    },
+    {
+      "id": "batch1-unchanged",
+      "status": "pass",
+      "command": "TOGAVSU_BATCH1_MODS=/out/batch1-compat python3 scripts/ci/core2g-check.py fix4-batch1-B B go test -timeout 0 -race -count=1 -p 1 -json ./internal/core -run '^TestCU207Batch1ModulesUnchanged$'",
+      "exit_code": 0,
+      "acceptance_ids": [
+        "CU2-07"
+      ]
+    }
+  ],
+  "fix_pass_4": [
+    {
+      "finding": "P1",
+      "test": "TestCoreUpdate2GContactPaymentExtensionWalls",
+      "result": "Billing payment visibility is reused for contact-only module rows; Include, published Include, scoped ReadView and HTTP published view hide the row outside the contact wall, retain allowed-user access and restore it after wall removal."
+    },
+    {
+      "finding": "P2",
+      "test": "TestCoreUpdate2GNonMoneyPaymentMilestoneReadable",
+      "result": "A module-appended payment.future_event on fee_agreement appears in Activities and REST/MCP events and is delivered with a verified signature. Walled payment.created and a differently named payment-record event remain hidden."
+    }
+  ],
+  "batch1_module_sources": [
+    {
+      "repository": "https://github.com/CharitonMedia/togavsu-documents",
+      "query": "main",
+      "revision": "fc4c7661cc089d5f662a38ce85045f4c2b4ad719",
+      "version": "v0.0.0-20261114212949-fc4c7661cc08",
+      "checksum": "h1:z1K0EpYdwPAnnbDHbQ2aQN3zQZqr7wrEbefRBCxiMWs=",
+      "directory": "/out/batch1-compat/togavsu-documents"
+    },
+    {
+      "repository": "https://github.com/CharitonMedia/togavsu-email",
+      "query": "main",
+      "revision": "31e57e9463c0f317f6d3d682b68293b0386b57c9",
+      "version": "v0.0.0-20261114212952-31e57e9463c0",
+      "checksum": "h1:vQKGifzK8f1c5YxX042CrWWUrWCTYMnxYAy+nI2AJA0=",
+      "directory": "/out/batch1-compat/togavsu-email"
+    },
+    {
+      "repository": "https://github.com/CharitonMedia/togavsu-client-portal",
+      "query": "main",
+      "revision": "57b909d0e93ccc5f44cecc935c86e5b435ff94d2",
+      "version": "v0.0.0-20261114212958-57b909d0e93c",
+      "checksum": "h1:JXcHsZ63S4+UzIlIbr5CMDvxdlKkI9Vd1mWd/V9Xqn8=",
+      "directory": "/out/batch1-compat/togavsu-client-portal"
+    },
+    {
+      "repository": "https://github.com/CharitonMedia/togavsu-lawpay-docuseal",
+      "query": "main",
+      "revision": "915ded5720706c94e59a240a92c3cfff6f05f01a",
+      "version": "v0.0.0-20261114213008-915ded572070",
+      "checksum": "h1:Yy9hz9s7WJu1u0U8NcVQLPeQP4NdPr0/83Hww0lVriU=",
+      "directory": "/out/batch1-compat/togavsu-lawpay-docuseal"
+    },
+    {
+      "repository": "https://github.com/CharitonMedia/togavsu-quickbooks",
+      "query": "main",
+      "revision": "9269820406a2394ed4255e4d9d04ab306eb1869d",
+      "version": "v0.0.0-20261114213013-9269820406a2",
+      "checksum": "h1:2Ms8+qjZCjPJQpyis0DOgUflnTm/eOFoHsvPa3+wlC0=",
+      "directory": "/out/batch1-compat/togavsu-quickbooks"
+    }
+  ],
+  "batch1_sources_unchanged": true,
+  "baseline_regressions": [
+    {
+      "name": "fix4-baseline-final",
+      "command": "python3 scripts/ci/core2g-check.py fix4-baseline-final A go test -timeout 0 -count=1 -p 1 -json ./internal/core ./pkg/modulekit/coretest -run '^(TestCoreUpdate2GContactPaymentExtensionWalls|TestCoreUpdate2GNonMoneyPaymentMilestoneReadable)$'",
+      "exit_code": 1,
+      "top_level_tests": {
+        "pass": 0,
+        "fail": 2,
+        "skip": 0
+      },
+      "revision": "a00d981d6cb30d055b74004be933f097a2adb835",
+      "expected_exit_code": 1,
+      "result": "Both final Postgres regressions overlaid on the unchanged a00d981 implementation fail for the reported visibility defects. Early fixture-setup attempts are superseded by this completed run."
+    }
+  ],
+  "prior_pass_evidence": {
+    "tested_revision": "4d6b57cee1c99231cd5644ac90a8b5bcbe9c035a",
+    "source": "Pass-3 report and handoff supplied with the assignment; replaced by the current final-code matrix above.",
+    "github_product_ci_revision": "a00d981d6cb30d055b74004be933f097a2adb835",
+    "github_product_ci_passed": [
+      "Full acceptance",
+      "QA harness tests",
+      "Backup integration",
+      "API contract tests",
+      "API bootstrap validation"
+    ],
+    "ci_evidence_source": "Integration lead handoff supplied by the user; no remote CI access attempted."
+  },
+  "simplification": {
+    "fix_pass_4_added": 253,
+    "fix_pass_4_removed": 7,
+    "fix_pass_4_net": 246,
+    "whole_pr_added_excluding_report": 3224,
+    "whole_pr_removed_excluding_report": 218,
+    "whole_pr_net_excluding_report": 3006,
+    "debt_entries": 69,
+    "debt_markers": 111,
+    "new_dependencies": 0,
+    "new_debt": 0
+  },
+  "limitations": [
+    "CU2-01 remains pending until equipped-host product checks and optional fixtures pass on the final head. No complete product acceptance or passing independent checkpoint is claimed.",
+    "Docker is absent: image builds, Supervisor image, live Compose, smoke, module-container and Docker Desktop clean-install checks were not run locally. Existing Go tests execute unchanged; their actual skips/failures are recorded.",
+    "Tesseract is absent: the QA prerequisite script exits 1; Python discovery runs 86 tests with one OCR sampling failure. Harness integrity passes.",
+    "Real sshd, sudo and runner-account prerequisites, pinned editor/browser assets, corpus/performance/live-S3 fixtures and visual QC remain equipped-host work.",
+    "Supervisor image, Supervisor tests and Core tests run in CI on every push. Current-head CI evidence must be collected by the integration lead."
+  ]
+}

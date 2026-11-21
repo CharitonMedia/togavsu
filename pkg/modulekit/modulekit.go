@@ -145,15 +145,16 @@ func KnownScope(scope string) bool { return identity.KnownScope(scope) }
 
 // CORE-32 public-page step tokens and CSRF helpers (also used by CORE-31 HMAC signing).
 const (
-	ContextHeader         = modules.ContextHeader
-	PublicStepHeader      = modules.PublicStepHeader
-	PublicCSRFCookie      = modules.PublicCSRFCookie
-	PublicCSRFHeader      = modules.PublicCSRFHeader
-	PublicCSRFPassHeader  = modules.PublicCSRFPassHeader
-	SignatureHeader       = modules.SignatureHeader
-	TimestampHeader       = modules.TimestampHeader
-	SenderHeader          = modules.SenderHeader
-	SenderSignatureHeader = modules.SenderSignatureHeader
+	ContextHeader          = modules.ContextHeader
+	PublicStepHeader       = modules.PublicStepHeader
+	PublicCSRFCookie       = modules.PublicCSRFCookie
+	PublicCSRFHeader       = modules.PublicCSRFHeader
+	FrameSessionCSRFHeader = modules.FrameSessionCSRFHeader
+	PublicCSRFPassHeader   = modules.PublicCSRFPassHeader
+	SignatureHeader        = modules.SignatureHeader
+	TimestampHeader        = modules.TimestampHeader
+	SenderHeader           = modules.SenderHeader
+	SenderSignatureHeader  = modules.SenderSignatureHeader
 )
 
 // StepToken is a verified public-page step token (CORE-32).

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CharitonMedia/togavsu/internal/billing"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/modules"
@@ -95,7 +97,7 @@ func (x *extensions) openModules(a *App, cfg Config, ui *UI, now func() time.Tim
 		}
 	}
 	svc, err := modules.New(modules.Deps{DB: a.Pool, Key: cfg.Key, Audit: a.Audit, Settings: a.Settings, Walls: a.Practice.Policy.Walls,
-		Phone: a.Practice.GetPhone, Contacts: a.Practice, BooksContactOK: a.booksContactReadableForModule, FileReadable: a.fileReadableForModule, Signing: x.Market, Users: a.Users, Tokens: modules.IdentityTokens{Svc: a.Identity}, Help: ui.Help,
+		PaymentRecordReadable: a.paymentRecordReadable, PaymentReadable: a.paymentReadableForModule, RecordProcessorPayment: a.recordProcessorReceipt, Phone: a.Practice.GetPhone, Contacts: a.Practice, BooksContactOK: a.booksContactReadableForModule, FileReadable: a.fileReadableForModule, Signing: x.Market, Users: a.Users, Tokens: modules.IdentityTokens{Svc: a.Identity}, Help: ui.Help,
 		Widgets: ui.Catalog, Nav: ui.Dashboard, Runtime: rt, Backups: backups, Now: now})
 	if err != nil {
 		return err
@@ -198,6 +200,11 @@ func (a *App) extend(h http.Handler) http.Handler {
 	}
 	routed := a.ext.Modules.Router(a.principal, a.ext.modH.Include(h))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/m/") && r.Method == http.MethodGet {
+			if c, err := a.caller(r); err == nil && c.CSRFToken != "" {
+				r = r.WithContext(modules.WithFrameSessionCSRF(r.Context(), a.Identity.FrameCSRF(c.Principal.SessionID, frameModuleID(r.URL.Path))))
+			}
+		}
 		// Cookie-authenticated frame writes must honor the same session-bound
 		// CSRF result as core writes. Opaque frames without cookies keep their
 		// module context credential; the module verifies that credential.
@@ -330,4 +337,36 @@ func moduleRow(name string, row modules.Row) practice.ModuleRow {
 		out.Fields = append(out.Fields, practice.ModuleField{Name: k, Value: row[k]})
 	}
 	return out
+}
+
+// recordProcessorReceipt receives only a locked, approved broker receipt. Reuse
+// practice visibility before the trusted billing sink; service callers stay
+// outside walls. The receipt binding and billing/audit/event rows commit together.
+func (a *App) recordProcessorReceipt(ctx context.Context, p domain.Principal, in modules.ProcessorPaymentRecord, provider string, result modules.ProcessorPaymentResult, existing json.RawMessage) (json.RawMessage, error) {
+	p.Roles = []domain.Role{domain.RoleStaff}
+	if !in.MatterID.IsZero() {
+		if _, err := a.Practice.GetMatter(ctx, p, in.MatterID); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := a.Practice.GetContact(ctx, p, in.ContactID); err != nil {
+		return nil, err
+	}
+	if len(existing) > 0 {
+		return existing, nil
+	}
+	return a.Billing.RecordApprovedOperatingPayment(ctx, p, billing.PaymentInput{MatterID: in.MatterID, ContactID: in.ContactID, AmountCents: result.AmountCents, Destination: result.Destination, Method: "card", Status: billing.PayCompleted, ReferenceNumber: result.ReferenceNumber, Source: provider})
+}
+
+func (a *App) paymentRecordReadable(ctx context.Context, p domain.Principal, id domain.ID) (bool, error) {
+	return a.Billing.PaymentEventReadable(ctx, p, domain.Event{RecordType: "payment", RecordID: id})
+}
+
+func (a *App) paymentReadableForModule(ctx context.Context, module string, ev domain.Event) (bool, error) {
+	return a.Billing.PaymentEventReadable(ctx, domain.Principal{ModuleID: module, Source: domain.SourceService, Roles: []domain.Role{domain.RoleAccountant}}, ev)
+}
+
+func frameModuleID(path string) string {
+	id, _, _ := strings.Cut(strings.TrimPrefix(path, "/m/"), "/")
+	return id
 }

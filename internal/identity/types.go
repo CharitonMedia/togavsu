@@ -48,6 +48,8 @@ type Enrollment struct {
 
 // Caller is an authenticated session or bearer token.
 type Caller struct {
+	// CSRFToken is derived only from a successfully authenticated browser session.
+	CSRFToken string
 	Principal domain.Principal
 	Scopes    []string
 }
@@ -57,6 +59,7 @@ type Presented struct {
 	SessionToken string
 	Bearer       string
 	CSRF         string
+	FrameModule  string // Set only for the /m/{id}/ cookie write path.
 	Write        bool
 }
 

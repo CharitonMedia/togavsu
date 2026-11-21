@@ -146,3 +146,17 @@ lists all five module specs' subscriptions and read scopes; real-package
 compatibility still needs its separate acceptance run. Existing regression
 evidence remains `TestCoreUpdate2FFixFileEventVisibility` and
 `TestCoreUpdate2FFix2PurgedFileEvents`.
+
+
+## Batch 2 remaining gaps closed by core-update-2g
+
+| Module gap / failing acceptance | Status | Core evidence |
+| --- | --- | --- |
+| Binding event envelope returns 400 (`TestDocumentsGenerateV1Contract`, `TestContractGeneratedEnvelopeCoretest`) | fixed: binding contract/event/event_id/occurred_at/data fanout, original envelope and provider sender, durable recipient dedupe; targeted 2f shape retained | `TestCoreUpdate2GBindingEnvelope`, existing 2d/2f contract and 2e sender tests |
+| Client frame has no session CSRF for its rendered POST (`TestReviewClientPageAutosave`) | fixed: module-bound session HMAC header on authenticated GET, hidden `csrf`, no-store; strict POST check retained | `TestCoreUpdate2GFrameSessionCSRF`, existing 2f body-restoration test |
+| Firm occupancy for service callers (`TestReviewBusyAcrossWalls`) | fixed: service-only firm-wide `view=occupancy` uses approved `calendar:read` and returns start/end only for visible assigned/unassigned events; every walled matter is omitted and lifting its wall returns events on the next read | `TestCoreUpdate2GFirmOccupancy`, existing 2f busy and CU2-02 wall cases |
+| Public processor approval cannot record its charge without a viewer | fixed: once-bound receipt `record` continuation under current approved consumer scopes/link, no provider call; contact or matter target, atomic payment/audit/events and replay | `TestCoreUpdate2GProcessorRecording`, `TestCoreUpdate2GProcessorContactAndRefusals` |
+
+These close the remaining behaviors beyond 2f's original rows; external module
+suites still need to run against this core revision. No external module pass is
+claimed by the core regression tests.

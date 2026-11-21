@@ -61,7 +61,7 @@ CORE-30 marks the wider service-call set `delegated_viewer_or_service_principal`
 
 ## Module service contracts (CORE-31)
 
-Manifest `provides` and `consumes` name versioned contracts such as `phone.provider.v1`. The admin approves each consumer↔provider link (`POST /api/v1/modules/contract-links`, `DELETE …/contract-links/{link_id}`, `GET …/contract-links`) after both sides have approved `contracts:call` / `contracts:provide`. The consumer calls `POST /api/v1/modules/contracts/{contract}/{operation}` with scope `contracts:call`; the core proxies to the linked provider's declared path, HMAC-signed like events (`X-Togavsu-Signature`), carrying `X-Togavsu-Context-Token` when present. Operation names `events` and `providers` are reserved (they collide with `POST …/events` and `GET …/providers`) and are refused at manifest validation. On a many-provider contract the consumer lists linked provider module ids with `GET /api/v1/modules/contracts/{contract}/providers` and selects one with `X-Togavsu-Contract-Provider` (module id only; never an address). When the header is omitted the earliest link by `created_at`/`id` is used. Providers push events with `POST /api/v1/modules/contracts/{contract}/events` (`contracts:provide`); the event envelope names one linked consumer and preserves its id and payload; actions must already be scoped under the contract name. One provider per contract per firm unless **every** linked provider declares `many: true` (a `many: false` provider already linked blocks a second provider even if the new one sets `many: true`). Modules never learn each other's address. Unlinked calls answer `contract_unlinked`. Every proxied call and pushed event writes an audit record (consumer, provider, contract, operation/action, result) without any address. Body size is limited by `modules.contract_call_max_bytes` (25 MiB). Disabling a module keeps its approved links; removing it deletes them.
+Manifest `provides` and `consumes` name versioned contracts such as `phone.provider.v1`. The admin approves each consumer↔provider link (`POST /api/v1/modules/contract-links`, `DELETE …/contract-links/{link_id}`, `GET …/contract-links`) after both sides have approved `contracts:call` / `contracts:provide`. The consumer calls `POST /api/v1/modules/contracts/{contract}/{operation}` with scope `contracts:call`; the core proxies to the linked provider's declared path, HMAC-signed like events (`X-Togavsu-Signature`), carrying `X-Togavsu-Context-Token` when present. Operation names `events` and `providers` are reserved (they collide with `POST …/events` and `GET …/providers`) and are refused at manifest validation. On a many-provider contract the consumer lists linked provider module ids with `GET /api/v1/modules/contracts/{contract}/providers` and selects one with `X-Togavsu-Contract-Provider` (module id only; never an address). When the header is omitted the earliest link by `created_at`/`id` is used. Providers push events with `POST /api/v1/modules/contracts/{contract}/events` (`contracts:provide`); the binding batch 2 event envelope broadcasts unchanged to approved linked consumers; the existing targeted envelope is also accepted unchanged. See the event shapes below. One provider per contract per firm unless **every** linked provider declares `many: true` (a `many: false` provider already linked blocks a second provider even if the new one sets `many: true`). Modules never learn each other's address. Unlinked calls answer `contract_unlinked`. Every proxied call and pushed event writes an audit record (consumer, provider, contract, operation/action, result) without any address. Body size is limited by `modules.contract_call_max_bytes` (25 MiB). Disabling a module keeps its approved links; removing it deletes them.
 
 ## Public module pages (CORE-32)
 
@@ -106,8 +106,7 @@ applicable contract runtime settings, including `modules.contract_call_max_bytes
 when the module has an approved contract permission.
 
 Forwarded context is signed for the selected provider and invalidated by unlinking.
-Provider events use the [targeted envelope](#core-brokered-contract-events), preserving values
-and event id, with no implicit broadcast. Oversized provider responses are 413
+Provider events use the [binding envelope or accepted targeted envelope](#core-brokered-contract-events), preserving their fields and values. Oversized provider responses are 413
 `too_large`. Events, contract calls and routed system mail use
 `X-Togavsu-Signature: t=<unix>,v1=<hex>`: HMAC-SHA256 of `"<unix>." + raw body`,
 plus `X-Togavsu-Timestamp` with the same Unix seconds. Receivers check the authenticated
@@ -127,29 +126,20 @@ show the person via the module. Background actions use the module as actor.
 
 ## Core-brokered contract events
 
-The provider sends `POST /api/v1/modules/contracts/{contract}/events` using its approved
-`contracts:provide` bearer. `ContractEventWrite` and OpenAPI accept this envelope:
-
-```json
-{
-  "id": "provider-stable-event-id",
-  "contract": "phone.provider.v1",
-  "consumer_id": "phone",
-  "occurred_at": "2026-11-19T12:00:00Z",
-  "action": "phone.provider.v1.ringing",
-  "payload": {"call_id": "synthetic-example"}
-}
-```
-
-`id`, `contract`, `consumer_id`, `occurred_at` and `action` are required. The route and
-body contract must match. The timestamp is RFC3339. Actions stay in the contract's
-namespace, so providers cannot forge core events. `payload` is arbitrary JSON. The core
-preserves the envelope's values, targets only the named enabled consumer's approved
-link to the provider, and deduplicates by recipient/event id. An unlinked target fails.
-The core signs delivery with the recipient's secret and timestamped HMAC; verify it with
-`modulekit.VerifyWebhookSender` to authenticate the pushing provider as well as the body.
-The sender header is recorded at push time and survives unlinking and retries; a
-payload naming another provider cannot change it. No contract payload grants access to core records.
+The binding batch 2 envelope is `contract`, `event`, `event_id` (UUID),
+`occurred_at` (RFC3339), `data` (JSON object), posted by the provider to
+`/api/v1/modules/contracts/{contract}/events` with approved `contracts:provide`.
+The body contract equals the route and event cannot use any core event namespace.
+Every enabled consumer declaring that contract with approved `contracts:call` and
+an admin-approved link receives the original fields/values through the durable
+signed retry queue. Deduplicate permanently per recipient and `event_id`.
+The 2f targeted `id`, `contract`, `consumer_id`, `occurred_at`, `action`, `payload`
+envelope is also accepted unchanged, with its existing action-prefix rules and
+single linked recipient. Its action must also stay outside every core event
+namespace; choosing a contract with a core root does not bypass that reservation. See [full schemas and examples](../contracts/README.md).
+Both deliveries bind `X-Togavsu-Sender` to the authenticated provider using the
+unchanged 2e v1/v2 signatures, including after unlinking and retry. Payload data
+never grants core read permission.
 
 Contract calls carry a freshly signed provider-audience context when the consumer sent
 a viewer context. The provider verifies/delegates it with its own bearer; live links,
@@ -289,8 +279,7 @@ The named `document.generated` action is accepted only for
 `documents.generate.v1`, in the existing `action`/`payload` targeted envelope
 above. [Contract definitions](../contracts/README.md) document it and the
 binding `processor.payment.v1` pre-matter authorization/recovery protocol.
-There is one envelope. Phone and workflow event deliveries and 2e sender binding
-are unchanged. A `type`/`data` top-level envelope is not accepted.
+The binding `event`/`data` envelope is now accepted for every contract as well. Phone and workflow targeted deliveries and 2e sender binding remain unchanged.
 
 Processor authorize/recover use `callModuleContract` on REST/MCP, conditional
 `payments:write` on the current consumer bearer and approvals of both modules,
@@ -308,3 +297,49 @@ must durably deduplicate charges and recover results after response loss.
 Processor receipt audit transitions use the stable entity ID
 `module-processor/{consumer_module_id}/{intent_id}`. The audit status and existing
 provenance are unchanged; no card token, card data or amount is added.
+
+
+## Core update 2g: module continuations
+
+On a successfully authenticated `/m/{module_id}/…` **GET**, the module receives
+`X-Togavsu-Session-CSRF` (`modulekit.FrameSessionCSRFHeader`) derived from the
+current browser session and this module ID using identity’s existing secret. It is a
+frame-scoped HMAC token, never the core API CSRF token. Render it as `<input type="hidden" name="csrf" value="…">`
+with HTML escaping, or use `forms.RenderOptions.CSRFToken`. An ordinary cookie-jar
+form POST then passes the session-and-module frame CSRF check. `X-CSRF-Token` remains
+accepted on POST. Missing/other-session/other-module tokens fail before proxying. Core `/api/v1`
+writes refuse frame tokens. Core strips
+caller-supplied CSRF headers, cookies and Authorization before forwarding; a
+bearer-only or unauthenticated request gets no session CSRF header. Never put this
+token in a URL or shared storage. Frame responses are `Cache-Control: no-store`.
+This does not replace module context verification or public `/p/` CSRF.
+
+A calendar service principal with approved **`calendar:read`** can read
+`GET /api/v1/calendar-events?view=occupancy&from_time=…&to_time=…`
+(or `listCalendarEvent` on MCP). Assigned and unassigned events on unwalled
+matters, and events with no matter, are included. Every walled matter is omitted,
+even when the module's installer belongs to that wall. Removing the wall returns
+the events on the next read. Each row has **only** `starts_at`, `ends_at`;
+no ids, titles, attendees, all-day flag or wall metadata. Normal pagination and
+the existing available-dates maximum interval apply. User/matter/kind filters
+are refused. A viewer cannot use this view. No additional scope is required.
+
+`view=busy&user_id=…` and ordinary detail/list wall rules are unchanged.
+
+An approved `processor.payment.v1` intent may be recorded once by its consumer,
+without a viewer, through the [record continuation](../contracts/README.md#record-the-approved-receipt).
+`record` takes `ProcessorPaymentRecord`, returns `Payment` (200), checks current
+`contracts:call`/`payments:write`, approvals and link, binds the newly created target
+and records stored money fields atomically. It never calls the processor. Replays
+return the same payment; changed targets, unknown/other-module intents,
+pending/declined/trust receipts and supplied money fields are refused. Normal
+viewer/task processor and arbitrary-payment write checks retain their policy.
+
+See [Core update 2g](core-update-2g.md) for the complete continuation and regression inventory.
+
+Contact-only payment extensions returned by `include=` and published module views
+use billing's current contact-party wall check, just like `GET /payments/{id}`.
+A contact subsequently placed only on a matter the viewer cannot read hides its
+existing payment's module rows; an allowed viewer retains access and removing the
+wall restores the rows on the next read. Matter-bound payments retain their own
+matter's policy.

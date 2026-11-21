@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -215,6 +216,20 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 		case !m.Approved["events:read"] || !Subscribed(m.Manifest.Events, ev.Action):
 			continue
 		}
+		// Payments and their related money events follow the contact's current walls too.
+		if recipient == "" && ev.PaymentEvent() {
+			if s.d.PaymentReadable == nil {
+				continue
+			}
+			visible, err := s.d.PaymentReadable(ctx, m.ID, ev)
+			if err != nil {
+				log.Printf("modules: drop event %s for %s: payment visibility: %v", ev.ID, m.ID, err)
+				continue
+			}
+			if !visible {
+				continue
+			}
+		}
 		// Ordinary file events expose file identifiers. Check the same live service
 		// principal read policy before queueing them. Targeted grants stay separate.
 		if recipient == "" && ev.RecordType == "file" && strings.HasPrefix(ev.Action, "file.") {
@@ -223,7 +238,8 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 			}
 			ok, err := s.d.FileReadable(ctx, m.ID, ev.RecordID)
 			if err != nil {
-				return queued, err
+				log.Printf("modules: drop event %s for %s: file visibility: %v", ev.ID, m.ID, err)
+				continue
 			}
 			if !ok {
 				continue
@@ -232,7 +248,8 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 		if m.Approved["books:read"] {
 			drop, err := s.dropBooksEvent(ctx, m.ID, ev)
 			if err != nil {
-				return queued, err
+				log.Printf("modules: drop event %s for %s: books visibility: %v", ev.ID, m.ID, err)
+				continue
 			}
 			if drop {
 				continue

@@ -20,3 +20,14 @@ type ProcessorPaymentWrite = modules.ProcessorPaymentWrite
 // ProcessorPaymentResult is approved, declined or pending. Only an approved result
 // permits the consumer to continue its paid intake matter writes.
 type ProcessorPaymentResult = modules.ProcessorPaymentResult
+
+// BindingContractEvent is the batch 2 event envelope. Push it to the contract's
+// /events endpoint using the authenticated provider bearer. Consumers verify with
+// VerifyWebhookSender (or coretest.ReadDelivery) and deduplicate EventID forever.
+type BindingContractEvent = modules.BindingContractEvent
+
+// ProcessorPaymentRecord binds a stored approval through the contract record operation.
+type ProcessorPaymentRecord = modules.ProcessorPaymentRecord
+
+// ID is the public core record identifier used in typed continuation requests.
+type ID = domain.ID

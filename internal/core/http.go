@@ -228,6 +228,9 @@ func (a *App) caller(r *http.Request) (identity.Caller, error) {
 
 func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 	in := identity.Presented{Write: !safeMethod(r.Method)}
+	if strings.HasPrefix(r.URL.Path, "/m/") {
+		in.FrameModule, _, _ = strings.Cut(strings.TrimPrefix(r.URL.Path, "/m/"), "/")
+	}
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		in.SessionToken = c.Value
 	}
@@ -295,7 +298,7 @@ func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 		if entryTypeScoped[t.Name] {
 			return c, nil
 		}
-		if err := c.RequireScopes(t.Scopes...); err != nil {
+		if err := c.RequireScopes(t.requiredScopes(r)...); err != nil {
 			return identity.Caller{}, shared(err)
 		}
 	}
@@ -359,7 +362,7 @@ func shared(err error) error {
 	}
 	switch api.Code {
 	case "csrf_required":
-		return domain.Forbidden(api.Message)
+		return err
 	// CORE-36: keep scope_denied in the JSON body (status stays 403 via APIError.HTTPStatus).
 	case "scope_denied":
 		return err
@@ -382,6 +385,7 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 		return c.Principal, err
 	}
 	p, err := a.delegate(r, c.Principal)
+	p.Scopes = c.Scopes
 	if err != nil {
 		return p, err
 	}
@@ -393,6 +397,18 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 	}
 	if err := a.requirePublicStepRouteScopes(r, c); err != nil {
 		return p, err
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/api/v1/calendar-events" && r.URL.Query().Get("view") == "occupancy" {
+		if err := c.RequireScopes("calendar:read"); err != nil {
+			return p, shared(err)
+		}
+		if a.ext == nil || a.ext.Modules == nil {
+			return p, domain.Forbidden("occupancy module unavailable")
+		}
+		installed, err := a.ext.Modules.Installed(r.Context(), p.ModuleID)
+		if err != nil || !installed.Enabled || !installed.Approved["calendar:read"] {
+			return p, domain.Forbidden("calendar:read approval required")
+		}
 	}
 	if moduleOwn(p) {
 		runtime := moduleRuntimeRoute(r, p)
@@ -524,7 +540,7 @@ func (a *App) requirePublicStepRouteScopes(r *http.Request, c identity.Caller) e
 	if !ok || entryTypeScoped[t.Name] {
 		return nil
 	}
-	if err := c.RequireScopes(t.Scopes...); err != nil {
+	if err := c.RequireScopes(t.requiredScopes(r)...); err != nil {
 		return shared(err)
 	}
 	return nil

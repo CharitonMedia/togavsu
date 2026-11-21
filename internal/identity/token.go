@@ -109,3 +109,11 @@ func codeMatches(hash, plain string) bool {
 	got := digest(normalizeCode(plain))
 	return constantTimeEqual([]byte(got), []byte(hash))
 }
+
+// FrameCSRF derives a cookie-session token usable only by one module frame.
+// The authenticated caller supplies the session ID; no request header selects it.
+func (s *Service) FrameCSRF(sessionID domain.ID, moduleID string) string {
+	mac := hmac.New(sha256.New, s.key)
+	_, _ = mac.Write([]byte("module-frame-csrf\x00" + string(sessionID) + "\x00" + moduleID))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}

@@ -287,3 +287,10 @@ func TestSupervisorClient(t *testing.T) {
 		t.Fatal("wrong supervisor secret accepted")
 	}
 }
+
+func TestCoreUpdate2GOccupancyUsesCalendarRead(t *testing.T) {
+	raw := strings.Replace(string(sampleManifest(t)), "permissions:\n", "permissions:\n  - scope: calendar:read\n    reason: Synthetic intake scheduling.\n", 1)
+	if _, err := modules.ParseManifest([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+}

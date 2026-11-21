@@ -287,6 +287,20 @@ func (s *Service) allowed(ctx context.Context, p domain.Principal, record string
 		if err != nil {
 			return nil, err
 		}
+		if dec.Allow && record == "payment" && matters[id].IsZero() {
+			if s.d.PaymentRecordReadable == nil {
+				continue
+			}
+			// The billing service owns the contact-party wall rule. Never infer
+			// visibility from an empty matter on a contact-only receipt payment.
+			visible, err := s.d.PaymentRecordReadable(ctx, p, id)
+			if err != nil {
+				return nil, err
+			}
+			if !visible {
+				continue
+			}
+		}
 		if dec.Allow {
 			out[id] = dec
 		}

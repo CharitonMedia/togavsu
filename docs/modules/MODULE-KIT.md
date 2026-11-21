@@ -853,7 +853,7 @@ separate acceptance criteria.
 
 ### Document and payment contracts
 
-Use the sole [targeted contract-event envelope](../contracts/README.md):
+The [targeted contract-event envelope](../contracts/README.md) remains accepted:
 `id`, `contract`, `consumer_id`, `occurred_at`, `action`, `payload`.
 For `documents.generate.v1`, the documented generated action is
 `document.generated`. The core preserves that envelope and event id, deduplicates
@@ -873,7 +873,7 @@ module itself is external. Both modules need the declared contract, approved lin
 and payment scope. `intent_id` defines durable financial idempotency;
 `Idempotency-Key` keeps its normal length bound but does not cache this contract
 response. Every retry rechecks current scopes and links and returns the current
-recovered intent result. A pre-matter approval is not a core payment-write grant.
+recovered intent result. A pre-matter approval is not an unrestricted payment-write grant; its consumer can use the scoped `record` continuation described below.
 
 For synthetic processor acceptance, use `p := coretest.NewProcessor()` and
 `c.Serve(providerID, p.Handler)` before installing its signed manifest. Declare
@@ -882,3 +882,57 @@ admin. `p.DeclineNext("card_declined")` scripts a decline;
 `p.LoseNextApprovalResponse()` records approval then answers 503, exercising real
 core recovery. `p.Calls()` omits tokens and records verified consumer/operation/intent;
 `p.Charges()` counts new approvals. No outside processor is called.
+
+
+## Core update 2g: binding events, browser forms, occupancy and recorded receipts
+
+The batch 2 binding contract event shape is
+`{"contract":"<name>","event":"<type>","event_id":"<uuid>","occurred_at":"<RFC3339>","data":{…}}`.
+Post it as the provider to `/api/v1/modules/contracts/{contract}/events`.
+`modulekit.BindingContractEvent` exposes this shape. It reaches every enabled
+consumer declaring the contract with approved `contracts:call` and an admin-approved
+link to this provider. Core preserves the original fields and values; `event` may
+not use any core event namespace. `event_id` must be a UUID and `data` an object.
+Verify the 2e sender-bound delivery, then durably dedupe `event_id` permanently.
+The old targeted `id`/`consumer_id`/`action`/`payload` format remains accepted and
+unchanged, with its existing single-recipient and action-prefix rules. Both use
+the same durable signed retry queue. See [contracts](../contracts/README.md).
+For acceptance, `c.PushContractEvent(providerID, event)` uses the real core;
+`coretest.ReadDelivery` reads and verifies the consumer's original envelope.
+
+Authenticated frame GETs receive a module-bound HMAC token derived from the session in
+`modulekit.FrameSessionCSRFHeader` (`X-Togavsu-Session-CSRF`). Pass it to
+`forms.RenderOptions.CSRFToken`, or render an HTML-escaped hidden input named
+`csrf` in a urlencoded form. The browser cookie jar suffices for its POST.
+Missing, another module's or another session's token is refused. Core API writes
+refuse frame tokens; modules never receive the core-wide CSRF token. Caller headers cannot select the
+token; unauthenticated/bearer-only requests receive none. Never place it in a URL
+or shared cache. Frame responses are `Cache-Control: no-store`. Module context
+verification and public-page CSRF remain separate requirements.
+
+`calendar-events?view=occupancy&from_time=…&to_time=…` is a service-only read under
+approved `calendar:read`. It includes assigned and unassigned events visible to
+the service principal, excluding every walled matter. Lifting the wall returns
+its events on the next read. Rows contain **only** `starts_at` and `ends_at`.
+Use normal pagination and the existing interval range. User/matter/kind filters
+are refused. See [the API continuation notes](../api/core-update-2g.md).
+
+After processor approval, create the matter/contact and call
+`/api/v1/modules/contracts/processor.payment.v1/record` with
+`modulekit.ProcessorPaymentRecord{IntentID: intent, MatterID: modulekit.ID(matter), ContactID: modulekit.ID(contact)}`.
+Omit MatterID for a newly created contact-only payment. The consumer needs its
+current `contracts:call` and `payments:write`, both modules' approvals and the link.
+No viewer/context or money fields are accepted. Core binds the target once and
+uses only the stored approval's operating amount, provider and reference, recording
+one completed card payment. HTTP 200 repeats return that same payment, including
+lost-response recovery, without any processor call or second charge. Other-module,
+unknown, pending/declined/trust receipts and changed targets are refused. Matter
+and contact walls are checked on replay too. See the full binding and refusal
+rules in the [record contract](../contracts/README.md#record-the-approved-receipt).
+`c.RecordProcessorPayment(consumerID, request)` exercises this through coretest.
+
+`Accepts().core_items` still includes CORE-23/29/30/31/36. New granular
+`runtime_criteria` are `contract.binding_events`, `module.frame_session_csrf`,
+`calendar.firm_occupancy` and `processor.receipt_recording`. Remove corresponding
+runtime pending entries and run the module criteria. Unrestricted background
+payment writes (`processor.payment_principal`) remain unavailable.

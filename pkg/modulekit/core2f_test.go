@@ -23,7 +23,7 @@ func TestCoreUpdate2FAccepts(t *testing.T) {
 			t.Errorf("Accepts core_items missing %s", want)
 		}
 	}
-	for _, want := range []string{"module.permission_reasons", "module.form_proxy", "file.trashed_delivery", "calendar.busy_across_walls", "conflict.named_people", "module.county_read", "file.service_status", "file.publication_author", "contract.document_generated", "coretest.doc_tender", "contract.processor_payment"} {
+	for _, want := range []string{"module.permission_reasons", "module.form_proxy", "file.trashed_delivery", "calendar.busy_across_walls", "conflict.named_people", "module.county_read", "file.service_status", "file.publication_author", "contract.document_generated", "coretest.doc_tender", "contract.processor_payment", "contract.binding_events", "module.frame_session_csrf", "calendar.firm_occupancy", "processor.receipt_recording"} {
 		if !modulekit.RuntimeSupported(want) {
 			t.Errorf("Accepts runtime missing %s", want)
 		}

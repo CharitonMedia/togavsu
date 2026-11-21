@@ -65,7 +65,7 @@ func TestCU207Batch1ModulesUnchanged(t *testing.T) {
 	// Do not use a stub Default: every module under test registers its own out-of-process
 	// binary via Serve before install/approve.
 	x.rt.Default = nil
-	_, contact := x.matter("CU2-07 synthetic matter", "", nil)
+	matter, contact := x.matter("CU2-07 synthetic matter", "", nil)
 
 	dbHost, dbName := cu207DBHostName(t, x.cfg.DatabaseURL)
 	binDir := t.TempDir()
@@ -114,6 +114,23 @@ func TestCU207Batch1ModulesUnchanged(t *testing.T) {
 		}
 		if strings.Contains(page.body, "ok:"+id) {
 			t.Fatalf("%s still answered with stub body", id)
+		}
+		if id == "lawpay-docuseal" {
+			t.Run(id+"-signing-milestones", func(t *testing.T) {
+				// Match the unchanged module's signing event requests using its
+				// installed bearer and approvals, including viewerless execution.
+				caller := newClient(t, x.srv.URL)
+				caller.bearer = x.rt.Last(id).Secrets["togavsu_api_token"]
+				for _, action := range []string{"fee_agreement.sent_for_signature", "fee_agreement.client_signed", "fee_agreement.executed"} {
+					result := caller.must(http.StatusCreated, "POST", "/api/v1/events", map[string]any{
+						"action": action, "record_type": "fee_agreement", "record_id": "synthetic-signing-agreement",
+						"matter_id": matter, "summary": "Synthetic signing milestone", "client_visible": true,
+					})
+					if x.count("SELECT COUNT(*) FROM core.events WHERE id=$1 AND action=$2 AND module_id=$3", str(t, result.json, "id"), action, id) != 1 {
+						t.Fatalf("%s milestone not stored with the module actor", action)
+					}
+				}
+			})
 		}
 		// Exercise the installed manifest and real core sender, without changing any
 		// module package. Client-portal deliberately subscribes to nothing (PRD 8.6).

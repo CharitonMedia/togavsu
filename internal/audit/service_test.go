@@ -138,7 +138,7 @@ func TestModulePrincipalIsAudited(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.Source != string(domain.SourceService) || !strings.Contains(row.Reason, "module=matter-clock") {
+	if row.ActorID != domain.ID("matter-clock") || row.Source != string(domain.SourceService) || !strings.Contains(row.Reason, "module=matter-clock") {
 		t.Fatalf("service row %+v", row)
 	}
 	for _, who := range []domain.Principal{

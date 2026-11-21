@@ -1,6 +1,8 @@
 package modules
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -94,6 +96,34 @@ func (h *Handler) pushContractEvent(w http.ResponseWriter, r *http.Request, c Ca
 		writeErr(w, scopeDenied("contracts:provide"))
 		return
 	}
+	var raw json.RawMessage
+	if err := decode(r, &raw); err != nil {
+		writeErr(w, err)
+		return
+	}
+	var fields map[string]json.RawMessage
+	if err := uniqueEventKeys(raw); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		writeErr(w, domain.Invalid("body", "send a contract event object"))
+		return
+	}
+	if _, binding := fields["event"]; binding || fields["event_id"] != nil || fields["data"] != nil {
+		var in BindingContractEvent
+		if err := strictProcessorJSON(raw, &in); err != nil {
+			writeErr(w, err)
+			return
+		}
+		if err := h.Svc.pushBindingContractEvent(r.Context(), c.Principal, r.PathValue("contract"), in, raw); err != nil {
+			writeErr(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(raw))
 	var in ContractEventWrite
 	if err := decode(r, &in); err != nil {
 		writeErr(w, err)

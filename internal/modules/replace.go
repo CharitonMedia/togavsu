@@ -313,6 +313,15 @@ func (s *Service) proxy(module, strip, token string) http.Handler {
 				pr.Out.Header.Del("Authorization")
 				pr.Out.Header.Del(ContextHeader)
 				pr.Out.Header.Del("X-Csrf-Token")
+				pr.Out.Header.Del(FrameSessionCSRFHeader)
+				if strip != "" && pr.In.Method == http.MethodGet {
+					pr.Out.Header.Set("Cache-Control", "no-store")
+					pr.Out.Header.Del("If-None-Match")
+					pr.Out.Header.Del("If-Modified-Since")
+					if csrf, _ := pr.In.Context().Value(frameSessionCSRFKey{}).(string); csrf != "" {
+						pr.Out.Header.Set(FrameSessionCSRFHeader, csrf)
+					}
+				}
 				switch {
 				case inbound != "":
 					pr.Out.Header.Set(ContextHeader, inbound)
@@ -326,6 +335,12 @@ func (s *Service) proxy(module, strip, token string) http.Handler {
 				// opaque origin even when opened outside its sandboxed frame, so its script
 				// can't use the viewer's core session.
 				resp.Header.Del("Set-Cookie")
+				if strip != "" {
+					resp.Header.Set("Cache-Control", "no-store")
+					resp.Header.Del("Expires")
+					resp.Header.Del("ETag")
+					resp.Header.Del("Last-Modified")
+				}
 				if strip != "" || strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
 					// CORE-09: the header lists every capability a staff or client frame may
 					// need; the frame's own sandbox attribute is the tighter of the two.
@@ -344,4 +359,17 @@ func (s *Service) proxy(module, strip, token string) http.Handler {
 		}
 		rp.ServeHTTP(w, r)
 	})
+}
+
+// FrameSessionCSRFHeader supplies authenticated /m/ GETs with the current
+// browser session's module-bound frame token. Core API and other frames refuse it.
+// Render it in a hidden form field named csrf.
+const FrameSessionCSRFHeader = "X-Togavsu-Session-CSRF"
+
+type frameSessionCSRFKey struct{}
+
+// WithFrameSessionCSRF is used by the core after authenticating a cookie session.
+// Inbound headers and cookies are never used as the source of this value.
+func WithFrameSessionCSRF(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, frameSessionCSRFKey{}, token)
 }

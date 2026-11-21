@@ -44,15 +44,18 @@ type ProcessorPaymentResult struct {
 }
 
 type processorContractReceipt struct {
-	ProviderID string                 `json:"provider_id"`
-	Result     ProcessorPaymentResult `json:"result"`
+	ProviderID string                  `json:"provider_id"`
+	Result     ProcessorPaymentResult  `json:"result"`
+	ApprovedAt int64                   `json:"approved_at,omitempty"`
+	Binding    *ProcessorPaymentRecord `json:"binding,omitempty"`
+	Payment    json.RawMessage         `json:"payment,omitempty"`
 }
 
 func strictProcessorJSON(body []byte, target any) error {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(target); err != nil {
-		return domain.Invalid("body", "use the processor.payment.v1 request schema")
+		return domain.Invalid("body", "use this contract operation's request schema")
 	}
 	if err := dec.Decode(new(any)); err != io.EOF {
 		return domain.Invalid("body", "send one JSON object")
@@ -72,6 +75,12 @@ func (s *Service) callProcessorPayment(ctx context.Context, p domain.Principal, 
 	// attribution consistent with other service-principal operations.
 	if p.UserID.IsZero() {
 		p.Source = domain.SourceService
+	}
+	if operation == "record" {
+		if contextToken != "" {
+			return 0, nil, nil, domain.Forbidden("receipt recording does not accept viewer context")
+		}
+		return s.recordProcessorPayment(ctx, p, body)
 	}
 	var in ProcessorPaymentWrite
 	switch operation {
@@ -175,6 +184,9 @@ func (s *Service) callProcessorPayment(ctx context.Context, p domain.Principal, 
 		return 0, nil, nil, domain.Conflict("processor returned an invalid result; recover this pending intent")
 	}
 	receipt.Result = result
+	if result.Status == "approved" {
+		receipt.ApprovedAt = s.now().UnixMicro()
+	}
 	receipt, err = s.completeProcessorReceipt(ctx, p, actor, receipt)
 	if err != nil {
 		return 0, nil, nil, err

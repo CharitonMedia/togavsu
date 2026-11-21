@@ -92,7 +92,8 @@ func TestCoreUpdate2ESenderPersistsAcrossUnlink(t *testing.T) {
 	// Duplicate ids cannot replace the original pusher or payload, even from another
 	// linked provider. The event remains the first accepted immutable delivery.
 	c.ModuleClient(google).Must(http.StatusNoContent, "POST", "/api/v1/modules/contracts/"+contract+"/events", envelope)
-	if c.Count(`SELECT COUNT(*) FROM core.module_deliveries WHERE event_id=$1 AND created_by=$2`, envelope["id"], zoom) != 1 {
+	eventKey := "contract:" + envelope["id"].(string)
+	if c.Count(`SELECT COUNT(*) FROM core.module_deliveries WHERE event_id=$1 AND created_by=$2`, eventKey, zoom) != 1 {
 		t.Fatal("pusher was not persisted")
 	}
 	c.DeliverEvents()
@@ -104,7 +105,7 @@ func TestCoreUpdate2ESenderPersistsAcrossUnlink(t *testing.T) {
 		t.Fatalf("contract call sender: %+v", calls)
 	}
 	mu.Unlock()
-	if c.Count(`SELECT COUNT(*) FROM core.module_deliveries WHERE event_id=$1 AND status='pending' AND attempts=1`, envelope["id"]) != 1 {
+	if c.Count(`SELECT COUNT(*) FROM core.module_deliveries WHERE event_id=$1 AND status='pending' AND attempts=1`, eventKey) != 1 {
 		t.Fatal("refused event was not queued for retry")
 	}
 	c.Admin.Must(http.StatusNoContent, "DELETE", "/api/v1/modules/contract-links/"+links[zoom], nil)
@@ -114,7 +115,7 @@ func TestCoreUpdate2ESenderPersistsAcrossUnlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Exec(`UPDATE core.module_deliveries SET next_attempt_at=0 WHERE event_id=$1`, envelope["id"]); err != nil {
+	if _, err := db.Exec(`UPDATE core.module_deliveries SET next_attempt_at=0 WHERE event_id=$1`, eventKey); err != nil {
 		t.Fatal(err)
 	}
 	c.DeliverEvents()
@@ -138,7 +139,7 @@ func TestCoreUpdate2ESenderPersistsAcrossUnlink(t *testing.T) {
 			t.Fatalf("core event sender %q", d.sender)
 		}
 	}
-	if c.Count(`SELECT COUNT(*) FROM core.module_deliveries WHERE event_id=$1 AND status='delivered' AND attempts=2 AND created_by=$2`, envelope["id"], zoom) != 1 {
+	if c.Count(`SELECT COUNT(*) FROM core.module_deliveries WHERE event_id=$1 AND status='delivered' AND attempts=2 AND created_by=$2`, eventKey, zoom) != 1 {
 		t.Fatal("retry lost persisted sender")
 	}
 	// The unlinked provider cannot queue a new event after unlink, while the old
@@ -223,11 +224,11 @@ func TestCoreUpdate2EReservedSender(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Exec(`UPDATE core.module_deliveries SET created_by='core' WHERE event_id='synthetic-reserved-sender'`); err != nil {
+	if _, err := db.Exec(`UPDATE core.module_deliveries SET created_by='core' WHERE event_id='contract:synthetic-reserved-sender'`); err != nil {
 		t.Fatal(err)
 	}
 	c.DeliverEvents()
-	if delivered.Load() || c.Count(`SELECT COUNT(*) FROM core.module_deliveries WHERE event_id='synthetic-reserved-sender' AND status='pending' AND attempts=1 AND last_error LIKE '%reserved%'`) != 1 {
+	if delivered.Load() || c.Count(`SELECT COUNT(*) FROM core.module_deliveries WHERE event_id='contract:synthetic-reserved-sender' AND status='pending' AND attempts=1 AND last_error LIKE '%reserved%'`) != 1 {
 		t.Fatal("module-originated reserved sender reached the receiver or was not refused")
 	}
 }
