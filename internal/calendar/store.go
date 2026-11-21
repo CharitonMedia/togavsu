@@ -20,6 +20,9 @@ type Store interface {
 	// EventsBetween lists, in start order, at least every event overlapping [from, to):
 	// callers still apply the exact window test.
 	EventsBetween(ctx context.Context, from, to time.Time) ([]Event, error)
+	// OccupancyCandidates projects EventsBetween into intervals and the inputs to
+	// the service's occupancy wall policy. It uses the same start/id order.
+	OccupancyCandidates(ctx context.Context, from, to time.Time) ([]OccupancyCandidate, error)
 	// EventsAfter is EventsBetween in start order from just after the event at (start,
 	// id) (zero after: from the first), at most limit events.
 	EventsAfter(ctx context.Context, from, to time.Time, after Event, limit int) ([]Event, error)
@@ -136,6 +139,18 @@ func (m *Memory) EventsAfter(ctx context.Context, _, _ time.Time, after Event, l
 // EventsBetween is Events; the caller's window test does the narrowing.
 func (m *Memory) EventsBetween(ctx context.Context, _, _ time.Time) ([]Event, error) {
 	return m.Events(ctx)
+}
+
+func (m *Memory) OccupancyCandidates(ctx context.Context, from, to time.Time) ([]OccupancyCandidate, error) {
+	rows, err := m.EventsBetween(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+	var out []OccupancyCandidate
+	for _, row := range rows {
+		out = append(out, OccupancyCandidate{StartsAt: row.StartsAt, EndsAt: row.EndsAt, MatterID: row.MatterID, HasAttendees: len(row.Attendees) > 0})
+	}
+	return out, nil
 }
 
 func (m *Memory) Events(context.Context) ([]Event, error) {

@@ -52,7 +52,7 @@ func (s *Service) ListBusy(ctx context.Context, p domain.Principal, f EventFilte
 	return out, nil
 }
 
-// OccupancyBlock contains only the interval of a visible event.
+// OccupancyBlock contains only a busy interval, including unassigned walled events.
 type OccupancyBlock struct {
 	StartsAt string `json:"starts_at"`
 	EndsAt   string `json:"ends_at"`
@@ -83,13 +83,16 @@ func (s *Service) ListOccupancy(ctx context.Context, p domain.Principal, f Event
 	if f.From.IsZero() || f.To.IsZero() || !f.To.After(f.From) || f.To.After(f.From.UTC().AddDate(zero, maxRangeMonths(), zero)) {
 		return nil, domain.Invalid("to_time", "occupancy needs an ordered from_time/to_time interval within the available dates range")
 	}
-	rows, err := s.d.Store.EventsBetween(ctx, f.From, f.To)
+	rows, err := s.d.Store.OccupancyCandidates(ctx, f.From, f.To)
 	if err != nil {
 		return nil, err
 	}
 	out := []OccupancyBlock{}
 	for _, row := range rows {
-		if !matchEvent(row, f) || (!row.MatterID.IsZero() && !s.visible(ctx, p, row.MatterID)) {
+		// Unassigned intervals never consult wall policy, regardless of placement.
+		// Assigned intervals retain the same authoritative service policy as lists.
+		if !overlaps(domain.FromUnixMicro(row.StartsAt), domain.FromUnixMicro(row.EndsAt), f.From, f.To) ||
+			(row.HasAttendees && !row.MatterID.IsZero() && !s.visible(ctx, p, row.MatterID)) {
 			continue
 		}
 		out = append(out, OccupancyBlock{StartsAt: fmtTime(row.StartsAt), EndsAt: fmtTime(row.EndsAt)})

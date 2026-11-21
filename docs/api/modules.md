@@ -317,10 +317,16 @@ This does not replace module context verification or public `/p/` CSRF.
 A calendar service principal with approved **`calendar:read`** can read
 `GET /api/v1/calendar-events?view=occupancy&from_time=…&to_time=…`
 (or `listCalendarEvent` on MCP). Assigned and unassigned events on unwalled
-matters, and events with no matter, are included. Every walled matter is omitted,
-even when the module's installer belongs to that wall. Removing the wall returns
-the events on the next read. Each row has **only** `starts_at`, `ends_at`;
-no ids, titles, attendees, all-day flag or wall metadata. Normal pagination and
+matters, and events with no matter, are included. Core update 2h also includes
+events on walled matters when they have **no assigned attendee user**: no row in
+`calendar_event_attendees` for the event. Any attendee row, including one for an
+inactive user, keeps a walled event out. The installer's wall membership grants
+no access. Removing a wall leaves unassigned occupancy unchanged and returns
+assigned events on the next read. Each row has **only** `starts_at`, `ends_at`;
+no ids, titles, attendees, all-day flag or wall metadata. All intervals use the
+same ordering and pagination, without merging, separate counts or wall-dependent
+cache/error handling. Cancellation deletes the event; deleted events contribute
+no interval, on either placement. Normal pagination and
 the existing available-dates maximum interval apply. User/matter/kind filters
 are refused. A viewer cannot use this view. No additional scope is required.
 

@@ -337,6 +337,8 @@ def render_mcp(spec: dict) -> dict:
                 tool["limit"] = dict(limit["schema"])
             if "transfer" in mcp:
                 tool["transfer"] = mcp["transfer"]
+            if "description" in mcp:
+                tool["description"] = mcp["description"]
             payment_status = operation["x-togavsu-access"].get("payment_status")
             if payment_status:
                 tool["payment_status"] = payment_status

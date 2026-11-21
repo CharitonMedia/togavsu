@@ -212,7 +212,7 @@ exception only for `documents.generate.v1`. Actions also stay outside every core
 event namespace, even if their contract prefix matches. Dedupe remains per recipient/`id`.
 The two formats cannot be mixed. Neither format uses top-level `type`.
 
-Core update 2g also provides wall-filtered service occupancy under `calendar:read`
+Core update 2g also provides service occupancy under `calendar:read`
 and module-bound frame CSRF. See [module APIs](../api/modules.md) and
 [the complete continuation notes](../api/core-update-2g.md). Contract event inserts
 check legacy provider-created raw event keys as well as the `contract:` key, so
@@ -226,3 +226,17 @@ record visibility checks regardless of their action name. An appended
 on Activities and REST/MCP event reads and remains eligible for subscribed
 module delivery. Exact emitted core actions such as `payment.created` remain
 reserved from module appends. Binding contract envelopes still reserve core roots.
+
+
+## Core update 2h: unassigned occupancy across walls
+
+On REST `GET /api/v1/calendar-events?view=occupancy` and MCP
+`listCalendarEvent`, an approved `calendar:read` service principal also receives
+busy intervals for walled events with no assigned attendee user: no rows in
+`calendar_event_attendees`. Each row contains only `starts_at` and `ends_at`,
+with the same ordering and pagination as every other interval. Any attendee row,
+including an inactive user, keeps a walled event out. Lifting a wall leaves an
+unassigned interval unchanged. Cancellation deletes the event and its attendees;
+deleted events contribute no interval. Window/range limits, approval and viewer
+refusals are unchanged. All other service lists/gets still omit walled records
+or answer `not_found`; user reads retain their policy. See [module APIs](../api/modules.md).

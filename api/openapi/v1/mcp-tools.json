@@ -11162,7 +11162,8 @@
           "query",
           "context_token"
         ]
-      }
+      },
+      "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only under calendar:read and returns only starts_at and ends_at for visible assigned or unassigned events. Events on walled matters are also included when they have no assigned attendee user (no calendar_event_attendees rows); any assigned user, including an inactive user, keeps a walled event out. These bare intervals use the same ordering and pagination with no wall metadata or separate counts. Removing a wall leaves unassigned occupancy unchanged and returns assigned events on the next read. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls."
     },
     {
       "name": "createCalendarEvent",

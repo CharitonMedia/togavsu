@@ -212,6 +212,33 @@ func (p *Postgres) EventsBetween(ctx context.Context, from, to time.Time) ([]Eve
 	return p.events(ctx, `WHERE starts_at < $1 AND (ends_at > $2 OR starts_at >= $2)`, hi, lo)
 }
 
+// OccupancyCandidates loads only the interval, placement and attendee presence in
+// one query for all events. Walls remain the service policy's responsibility:
+// practice_records, not the relational matter_walls copy, is authoritative.
+// No event details or attendee identities are loaded. Inactive users still count.
+func (p *Postgres) OccupancyCandidates(ctx context.Context, from, to time.Time) ([]OccupancyCandidate, error) {
+	rows, err := p.q(ctx).QueryContext(ctx, `SELECT e.starts_at, e.ends_at, e.matter_id,
+EXISTS (SELECT 1 FROM calendar_event_attendees a WHERE a.event_id = e.id)
+FROM calendar_events e
+WHERE e.starts_at < $1 AND (e.ends_at > $2 OR e.starts_at >= $2)
+ORDER BY e.starts_at, e.id`, to.UnixMicro(), from.UnixMicro())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OccupancyCandidate
+	for rows.Next() {
+		var row OccupancyCandidate
+		var matter sql.NullString
+		if err := rows.Scan(&row.StartsAt, &row.EndsAt, &matter, &row.HasAttendees); err != nil {
+			return nil, err
+		}
+		row.MatterID = domain.ID(matter.String)
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // EventsAfter reads one ordered batch through the start index of migration 1263.
 func (p *Postgres) EventsAfter(ctx context.Context, from, to time.Time, after Event, limit int) ([]Event, error) {
 	lo, hi := int64(math.MinInt64), int64(math.MaxInt64)

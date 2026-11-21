@@ -20,14 +20,15 @@ type tool struct {
 	Transfer struct {
 		Headers []string `json:"headers"`
 	} `json:"transfer"`
-	Name       string              `json:"name"`
-	Method     string              `json:"method"`
-	Path       string              `json:"path"`
-	Scopes     []string            `json:"scopes"`
-	ViewScopes map[string][]string `json:"view_scopes,omitempty"`
-	Roles      []string            `json:"roles"`
-	Delegation string              `json:"module_delegation,omitempty"`
-	segs       []string
+	Name        string              `json:"name"`
+	Description string              `json:"description,omitempty"`
+	Method      string              `json:"method"`
+	Path        string              `json:"path"`
+	Scopes      []string            `json:"scopes"`
+	ViewScopes  map[string][]string `json:"view_scopes,omitempty"`
+	Roles       []string            `json:"roles"`
+	Delegation  string              `json:"module_delegation,omitempty"`
+	segs        []string
 }
 
 // requiredScopes uses the trusted contract's scope for a specialized list view.
@@ -241,9 +242,13 @@ func (a *App) listTools() []map[string]any {
 			}
 			properties["headers"] = map[string]any{"type": "object", "properties": headers, "additionalProperties": false}
 		}
+		description := t.Description
+		if description == "" {
+			description = t.Method + " " + t.Path
+		}
 		out = append(out, map[string]any{
 			"name":        t.Name,
-			"description": t.Method + " " + t.Path,
+			"description": description,
 			"inputSchema": map[string]any{
 				"type":       "object",
 				"properties": properties,

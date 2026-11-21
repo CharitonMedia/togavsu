@@ -912,8 +912,10 @@ verification and public-page CSRF remain separate requirements.
 
 `calendar-events?view=occupancy&from_time=…&to_time=…` is a service-only read under
 approved `calendar:read`. It includes assigned and unassigned events visible to
-the service principal, excluding every walled matter. Lifting the wall returns
-its events on the next read. Rows contain **only** `starts_at` and `ends_at`.
+the service principal. Core update 2h also includes walled events with no
+assigned attendee user (no `calendar_event_attendees` rows). Any assigned user,
+including an inactive user, keeps a walled event out. Lifting a wall leaves
+unassigned occupancy unchanged and returns assigned events on the next read. Rows contain **only** `starts_at` and `ends_at`.
 Use normal pagination and the existing interval range. User/matter/kind filters
 are refused. See [the API continuation notes](../api/core-update-2g.md).
 
