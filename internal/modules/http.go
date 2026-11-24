@@ -98,6 +98,7 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("GET /api/v1/webhook-deliveries", h.scoped("webhooks:read", h.deliveries))
 	m.HandleFunc("POST /api/v1/ai/calls", h.write("ai:use", h.aiCall))
 	m.HandleFunc("GET /api/v1/ai/calls", h.scoped("ai:admin", h.aiCalls))
+	m.HandleFunc("GET /modules/{module_id}/navigate", h.scoped("", h.navigate))
 	m.HandleFunc("GET /modules/{module_id}/tabs/{tab}", h.scoped("", h.tabPage))
 	m.HandleFunc("GET /modules/{module_id}/tabs/{tab}/context-token", h.scoped("", h.staffTabContextToken))
 	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}", h.scoped("", h.widgetPage))
@@ -864,7 +865,7 @@ var coreFrameNavigatePrefixes = []string{
 // core page). Absolute and protocol-relative URLs are refused.
 func BridgeNavigateURL(moduleID, page string, params map[string]string) (string, bool) {
 	page = strings.TrimSpace(page)
-	if page == "" || !strings.HasPrefix(page, "/") || strings.HasPrefix(page, "//") || strings.Contains(page, "://") {
+	if !safeNavigationPage(page) {
 		return "", false
 	}
 	path, rawQuery, _ := strings.Cut(page, "?")
@@ -1018,6 +1019,7 @@ func FrameBridgeScript(moduleID string, staff bool, refreshPath string) string {
   function allowed(page) {
     if (typeof page !== "string" || page.charAt(0) !== "/" || page.indexOf("//") === 0 || page.indexOf("://") >= 0) return false;
     var path = page.split("?")[0];
+    if (path.indexOf("%") >= 0 || path.indexOf("\\") >= 0 || path.indexOf("#") >= 0 || path.split("/").some(function (part) { return part === "." || part === ".."; })) return false;
     var pref = "/modules/" + moduleId + "/";
     if (path.indexOf(pref + "tabs/") === 0 || path.indexOf(pref + "widgets/") === 0 || path.indexOf(pref + "matter-items/") === 0) return true;
     var cores = ["/practice/", "/billing/", "/trust/", "/calendar/", "/files/", "/help", "/me/", "/settings/"];
@@ -1031,6 +1033,14 @@ func FrameBridgeScript(moduleID string, staff bool, refreshPath string) string {
     if (!frame || ev.source !== frame.contentWindow || !ev.data || typeof ev.data !== "object") return;
     var d = ev.data, t = d.type;` + editor + `
     if (t === "togavsu:navigate" && d.page) {
+      if (typeof d.page === "string" && d.page.indexOf("/modules/") === 0 && d.page.indexOf("/modules/" + moduleId + "/") !== 0) {
+        var nav = new URLSearchParams({page: d.page, params: JSON.stringify(d.params || {})});
+        fetch("/modules/" + encodeURIComponent(moduleId) + "/navigate?" + nav.toString(), {credentials: "same-origin", headers: {"Accept": "application/json"}})
+          .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+          .then(function (body) { if (body.url) go(body.url); })
+          .catch(function () {});
+        return;
+      }
       if (!allowed(d.page)) return;
       var u = d.page;
       if (d.params && typeof d.params === "object") {
