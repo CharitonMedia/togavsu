@@ -72,6 +72,21 @@ func (p *Postgres) tx(ctx context.Context, f func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 
+// WithEventLock merges patches against the latest row across core processes.
+func (p *Postgres) WithEventLock(ctx context.Context, id domain.ID, fn func(context.Context) error) error {
+	return audit.WithTx(ctx, p.DB, func(ctx context.Context) error {
+		var locked string
+		err := p.q(ctx).QueryRowContext(ctx, `SELECT id FROM calendar_events WHERE id = $1 FOR UPDATE`, string(id)).Scan(&locked)
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.NotFound("calendar event")
+		}
+		if err != nil {
+			return err
+		}
+		return fn(ctx)
+	})
+}
+
 // PutEvent upserts the event and replaces its attendees in one transaction.
 func (p *Postgres) PutEvent(ctx context.Context, row Event) error {
 	return p.tx(ctx, func(tx *sql.Tx) error {

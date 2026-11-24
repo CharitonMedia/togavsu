@@ -561,7 +561,7 @@ type CalendarEvent struct {
 	Location      string `db:"location"`
 	TravelMinutes int    `db:"travel_minutes"`
 	Notes         string `db:"notes"`
-	// Video is stored by composed-core migration 1650, outside db.Embedded.
+	// Video is stored by composed-core migration 1700, outside db.Embedded.
 	Video *CalendarVideo `db:"-"`
 }
 

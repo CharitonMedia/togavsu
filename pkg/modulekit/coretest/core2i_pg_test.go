@@ -22,7 +22,7 @@ func TestCoreUpdate2IAllDayOccupancy(t *testing.T) {
 	r := c.Attorney.Must(201, "POST", "/api/v1/calendar-events", map[string]any{
 		"title": "PRIVATE TITLE", "notes": "PRIVATE NOTES", "kind": "other", "matter_id": c.Walled,
 		"all_day": true, "starts_at": "2026-11-24T00:00:00Z", "ends_at": "2026-11-25T00:00:00Z",
-		"video": map[string]any{"requested": true, "provider": "PRIVATE-PROVIDER"},
+		"video": map[string]any{"requested": true, "provider": "private-provider"},
 	})
 	from, _ := time.Parse(time.RFC3339, "2026-11-24T00:00:00Z")
 	to := from.AddDate(0, 0, 2)
@@ -84,6 +84,24 @@ func TestCoreUpdate2IDeactivatedAttendee(t *testing.T) {
 				if want == 1 && !reflect.DeepEqual(rows[0], map[string]any{"starts_at": event.JSON["starts_at"], "ends_at": event.JSON["ends_at"], "all_day": false}) {
 					t.Fatalf("busy leak: %v", rows)
 				}
+			}
+		}
+		for _, who := range []*coretest.Client{bot, c.Attorney.Client, c.Admin.Client} {
+			q := url.Values{"view": {"busy"}, "user_id": {c.Attorney.ID}, "from_time": {"2026-11-24T00:00:00Z"}, "to_time": {"2026-11-25T00:00:00Z"}}
+			got := who.Must(200, "GET", "/api/v1/calendar-events?"+q.Encode(), nil).JSON["data"].([]any)
+			if len(got) != want {
+				t.Fatalf("viewer-dependent busy: %v want %d", got, want)
+			}
+			if want == 1 && !reflect.DeepEqual(got[0], map[string]any{"starts_at": event.JSON["starts_at"], "ends_at": event.JSON["ends_at"], "all_day": false}) {
+				t.Fatal(got)
+			}
+			query := map[string]any{}
+			for k := range q {
+				query[k] = q.Get(k)
+			}
+			mcp := toolResult2d(t, who, "listCalendarEvent", map[string]any{"query": query}, false)
+			if !reflect.DeepEqual(mcp["data"], got) {
+				t.Fatalf("busy transports: %v %v", got, mcp)
 			}
 		}
 		bot.Must(404, "GET", "/api/v1/calendar-events/"+id, nil)
@@ -160,7 +178,7 @@ func TestCoreUpdate2IVideo(t *testing.T) {
 	mu.Unlock()
 	meeting := "opaque-provider-meeting"
 	video.ProviderMeetingID = &meeting
-	got := toolResult2d(t, bot, "updateCalendarEvent", map[string]any{"path": map[string]any{"calendar_event_id": id}, "body": map[string]any{"video": video, "location": "https://meet.example.test/join"}}, false)
+	got := toolResult2d(t, bot, "updateCalendarEvent", map[string]any{"path": map[string]any{"calendar_event_id": id}, "body": map[string]any{"video": map[string]any{"provider_meeting_id": meeting}, "location": "https://meet.example.test/join"}}, false)
 	want["provider_meeting_id"] = meeting
 	if !reflect.DeepEqual(got["video"], want) || got["location"] != "https://meet.example.test/join" {
 		t.Fatalf("MCP update: %v", got)
@@ -193,12 +211,17 @@ func TestCoreUpdate2IVideo(t *testing.T) {
 		t.Fatal("requested false changed implicitly")
 	}
 	for _, bad := range []any{
-		map[string]any{}, map[string]any{"requested": nil}, map[string]any{"requested": "yes"},
+		map[string]any{"requested": "yes"},
 		map[string]any{"requested": true, "host_user_id": "not-a-user"},
 		map[string]any{"requested": true, "host_user_id": "019b6968-4600-7001-8000-000000000009"},
 		map[string]any{"requested": true, "host_user_id": ""},
 		map[string]any{"requested": true, "provider_meeting_id": strings.Repeat("a", 201)},
 		map[string]any{"requested": true, "unknown": "field"},
+		map[string]any{"requested": true, "provider": "Phone-Zoom"}, map[string]any{"requested": true, "provider": "a"},
+		map[string]any{"requested": true, "provider": "-phone"}, map[string]any{"requested": true, "provider": "phone-"},
+		map[string]any{"requested": true, "provider": ""}, map[string]any{"requested": true, "provider": strings.Repeat("a", 43)},
+		map[string]any{"requested": true, "provider": "phone_zoom"}, map[string]any{"requested": true, "provider": "phöne"},
+		"video", []any{}, true,
 	} {
 		invalid := bot.Must(400, "PATCH", path, map[string]any{"video": bad})
 		if invalid.JSON["code"] != "invalid_input" {
@@ -206,6 +229,18 @@ func TestCoreUpdate2IVideo(t *testing.T) {
 		}
 		body["video"] = bad
 		bot.Must(400, "POST", "/api/v1/calendar-events", body)
+	}
+	for _, bad := range []any{map[string]any{}, map[string]any{"requested": nil}} {
+		body["video"] = bad
+		bot.Must(400, "POST", "/api/v1/calendar-events", body)
+	}
+	for _, provider := range []any{nil, "ab", strings.Repeat("a", 42)} {
+		got := bot.Must(200, "PATCH", path, map[string]any{"video": map[string]any{"provider": provider}}).JSON
+		if got["video"].(map[string]any)["provider"] != provider {
+			t.Fatalf("provider boundary: %v", got)
+		}
+		body["video"] = map[string]any{"requested": true, "provider": provider}
+		bot.Must(201, "POST", "/api/v1/calendar-events", body)
 	}
 	c.Admin.Must(200, "POST", "/api/v1/users/"+c.Staff.ID+"/deactivate", nil)
 	if result := bot.Must(400, "PATCH", path, map[string]any{"video": map[string]any{"requested": true, "host_user_id": c.Staff.ID}}); result.JSON["code"] != "invalid_input" {

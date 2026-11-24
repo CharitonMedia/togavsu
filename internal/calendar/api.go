@@ -96,23 +96,12 @@ func parseInstant(field, v string) (time.Time, error) {
 func (b eventBody) patch() (EventPatch, error) {
 	var p EventPatch
 	if b.Video != nil {
-		var video *domain.CalendarVideo
+		var video *VideoPatch
 		if !bytes.Equal(bytes.TrimSpace(b.Video), []byte("null")) {
-			var body struct {
-				Requested         *bool      `json:"requested"`
-				Provider          *string    `json:"provider"`
-				HostUserID        *domain.ID `json:"host_user_id"`
-				ProviderMeetingID *string    `json:"provider_meeting_id"`
+			video = &VideoPatch{}
+			if err := json.Unmarshal(b.Video, video); err != nil {
+				return p, err
 			}
-			dec := json.NewDecoder(bytes.NewReader(b.Video))
-			dec.DisallowUnknownFields()
-			if err := dec.Decode(&body); err != nil {
-				return p, invalidVideo("video", "invalid video object")
-			}
-			if body.Requested == nil {
-				return p, invalidVideo("video.requested", "requested is required")
-			}
-			video = &domain.CalendarVideo{Requested: *body.Requested, Provider: body.Provider, HostUserID: body.HostUserID, ProviderMeetingID: body.ProviderMeetingID}
 		}
 		p.Video = &video
 	}
@@ -150,7 +139,15 @@ func (b eventBody) input() (EventInput, error) {
 	}
 	in := EventInput{Title: *p.Title, Kind: *p.Kind, StartsAt: *p.StartsAt, EndsAt: *p.EndsAt}
 	if p.Video != nil {
-		in.Video = *p.Video
+		if *p.Video != nil {
+			var fields map[string]json.RawMessage
+			_ = json.Unmarshal(b.Video, &fields)
+			requested, ok := fields["requested"]
+			if !ok || bytes.Equal(bytes.TrimSpace(requested), []byte("null")) {
+				return EventInput{}, invalidVideo("video.requested", "requested is required")
+			}
+		}
+		in.Video = (*p.Video).merge(nil)
 	}
 	if p.AllDay != nil {
 		in.AllDay = *p.AllDay

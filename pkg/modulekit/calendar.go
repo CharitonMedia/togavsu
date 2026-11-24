@@ -13,6 +13,10 @@ type CalendarOccupancyBlock = calendar.OccupancyBlock
 type CalendarBusyBlock = calendar.BusyBlock
 
 // CalendarVideo is an optional calendar event video booking object. Requested is
-// required on the wire; nullable fields let the meetings consumer choose defaults.
+// required on create; nullable fields let the meetings consumer choose defaults.
 // The event's location carries the join link.
 type CalendarVideo = domain.CalendarVideo
+
+// CalendarVideoPatch updates only supplied video fields. Nil preserves a field;
+// a pointer to nil clears a nullable field. Requested null resets it to false.
+type CalendarVideoPatch = calendar.VideoPatch

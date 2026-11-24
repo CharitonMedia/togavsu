@@ -21,7 +21,7 @@ func (s *Service) BulkEvents(ctx context.Context, p domain.Principal, ins []Even
 	for i := range ins {
 		cp := ins[i]
 		cp.Attendees = append([]domain.ID(nil), ins[i].Attendees...)
-		if err := s.validateEvent(ctx, p, &cp, nil); err != nil {
+		if err := s.validateEvent(ctx, p, &cp, Event{}); err != nil {
 			return nil, indexed(i, err)
 		}
 	}

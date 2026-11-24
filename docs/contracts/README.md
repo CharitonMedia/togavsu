@@ -240,18 +240,22 @@ of 2h's times-only disclosure**: no event id, title, matter, kind, attendee,
 video or wall metadata. Ordering, window/range limits and pagination stay the
 same. Other service reads and user detail reads retain walls.
 
-Video bookings carry optional `video` with required boolean `requested`, nullable
-`provider` (module id), nullable active `host_user_id`, and nullable opaque
+Video bookings carry optional `video` with boolean `requested` (required on
+create), nullable `provider` (manifest module id, 2 to 42 lowercase slug
+characters), nullable `host_user_id`, and nullable opaque
 `provider_meeting_id` (at most 200 characters). Location carries the join link.
 Create/update use the existing event write policy. On PATCH, omission preserves,
-null clears and an object replaces video, with requested still required. Calendar
-notifications retain the existing record-reference envelope; modules read video
+null clears and an object merges supplied fields, including concurrent updates.
+Requested is optional on PATCH; field null clears it (requested resets to false).
+New or changed hosts must be active; an unchanged deactivated host may remain.
+Calendar notifications retain the existing record-reference envelope; modules read video
 with the event's other fields through the scoped get operation.
 
 A frame may navigate to another enabled module's declared staff tab only when
 an admin-approved contract link connects them in either direction. Live server
 resolution filters query/message params to the target's `tabs[].params`.
+Matter tabs also preserve `matter_id` only after viewer matter-access checks.
 Unlinked/disabled modules, client tabs and other cross-module surfaces are refused.
 See [module APIs](../api/modules.md) for the message and bridge route, and public
-`modulekit.CalendarVideo` / `CalendarOccupancyBlock` / `CalendarBusyBlock` and
+`modulekit.CalendarVideo` / `CalendarVideoPatch` / `CalendarOccupancyBlock` / `CalendarBusyBlock` and
 `c.CalendarOccupancy` for typed callers and real-core acceptance fixtures.

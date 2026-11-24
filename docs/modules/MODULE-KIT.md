@@ -941,3 +941,12 @@ rules in the [record contract](../contracts/README.md#record-the-approved-receip
 `calendar.firm_occupancy` and `processor.receipt_recording`. Remove corresponding
 runtime pending entries and run the module criteria. Unrestricted background
 payment writes (`processor.payment_principal`) remain unavailable.
+
+Core update 2i fix pass: `CalendarVideoPatch` represents partial video writes.
+Omitted fields preserve their values; a pointer to nil clears a nullable field.
+Requested is required on create and optional on PATCH (null resets it to false).
+Video PATCH merges concurrent field updates under the event transaction lock.
+Provider ids use the manifest's 2-to-42-character lowercase slug rule. New or
+changed hosts must be active; an unchanged host may remain after deactivation.
+Linked matter tabs preserve `matter_id` after checking viewer access, even when
+it is absent from `tabs[].params`; other undeclared params are dropped.

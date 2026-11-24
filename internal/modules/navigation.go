@@ -62,6 +62,21 @@ func (s *Service) NavigateURL(ctx context.Context, p domain.Principal, source, p
 			allowed[key] = values
 		}
 	}
+	if tab.Placement == "matter" {
+		matter, err := domain.ParseID(q.Get("matter_id"))
+		if err != nil {
+			return "", false
+		}
+		decision, err := s.canReadMatter(ctx, p, matter)
+		if err != nil || !decision.Allow {
+			return "", false
+		}
+		var found string
+		if err := s.q(ctx).QueryRowContext(ctx, `SELECT id FROM core.matters WHERE id = $1`, string(matter)).Scan(&found); err != nil {
+			return "", false
+		}
+		allowed.Set("matter_id", string(matter))
+	}
 	u.RawQuery = allowed.Encode()
 	return u.String(), true
 }

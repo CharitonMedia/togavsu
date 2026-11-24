@@ -28,10 +28,9 @@ func normalizeAllDay(start, end time.Time, loc *time.Location) (time.Time, time.
 	return dayStart(sd, loc).UTC(), dayStart(ed, loc).UTC()
 }
 
-// validateEvent checks an event. stored holds attendees already saved on the
-// row (nil for a new event); they may stay after deactivation so unrelated
-// edits still work. Newly added attendees must be active.
-func (s *Service) validateEvent(ctx context.Context, p domain.Principal, in *EventInput, stored []domain.ID) error {
+// validateEvent allows stored attendees and the unchanged video host to remain
+// after deactivation. New assignments must be active.
+func (s *Service) validateEvent(ctx context.Context, p domain.Principal, in *EventInput, stored Event) error {
 	in.Title = strings.TrimSpace(in.Title)
 	if in.Title == "" {
 		return domain.Invalid("title", "title is required")
@@ -62,12 +61,17 @@ func (s *Service) validateEvent(ctx context.Context, p domain.Principal, in *Eve
 				return invalidVideo("video.host_user_id", "must be an active core user UUID")
 			}
 			in.Video.HostUserID = &id
-			if _, err := s.activeUser(ctx, "video.host_user_id", id); err != nil {
-				if api, ok := err.(*domain.APIError); ok && api.Code == domain.CodeValidation {
-					return invalidVideo(api.Field, api.Message)
+			if stored.Video == nil || stored.Video.HostUserID == nil || *stored.Video.HostUserID != id {
+				if _, err := s.activeUser(ctx, "video.host_user_id", id); err != nil {
+					if api, ok := err.(*domain.APIError); ok && api.Code == domain.CodeValidation {
+						return invalidVideo(api.Field, api.Message)
+					}
+					return err
 				}
-				return err
 			}
+		}
+		if in.Video.Provider != nil && !domain.ValidModuleID(*in.Video.Provider) {
+			return invalidVideo("video.provider", "must be a module id (2 to 42 lowercase slug characters)")
 		}
 		if in.Video.ProviderMeetingID != nil && utf8.RuneCountInString(*in.Video.ProviderMeetingID) > 200 {
 			return invalidVideo("video.provider_meeting_id", "must be at most 200 characters")
@@ -80,7 +84,7 @@ func (s *Service) validateEvent(ctx context.Context, p domain.Principal, in *Eve
 			continue
 		}
 		seen[id] = true
-		if id.IsZero() || !containsID(stored, id) {
+		if id.IsZero() || !containsID(stored.Attendees, id) {
 			if _, err := s.activeUser(ctx, "attendee_user_ids", id); err != nil {
 				return err
 			}
@@ -99,7 +103,7 @@ func (s *Service) CreateEvent(ctx context.Context, p domain.Principal, in EventI
 	if err := s.gate(ctx, p, domain.ActionWrite, ""); err != nil {
 		return Event{}, err
 	}
-	if err := s.validateEvent(ctx, p, &in, nil); err != nil {
+	if err := s.validateEvent(ctx, p, &in, Event{}); err != nil {
 		return Event{}, err
 	}
 	m, err := s.meta(p)
@@ -176,6 +180,25 @@ func (s *Service) GetEvent(ctx context.Context, p domain.Principal, id domain.ID
 
 // UpdateEvent applies a patch. The current and the new matter must both be visible.
 func (s *Service) UpdateEvent(ctx context.Context, p domain.Principal, id domain.ID, patch EventPatch) (Event, error) {
+	if err := s.gate(ctx, p, domain.ActionRead, ""); err != nil {
+		return Event{}, err
+	}
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	var next Event
+	err := s.d.Store.WithEventLock(ctx, id, func(ctx context.Context) error {
+		var err error
+		next, err = s.updateEvent(ctx, p, id, patch)
+		return err
+	})
+	if err != nil {
+		return Event{}, err
+	}
+	return next, nil
+}
+
+// updateEvent merges against the locked current row, including audit old values.
+func (s *Service) updateEvent(ctx context.Context, p domain.Principal, id domain.ID, patch EventPatch) (Event, error) {
 	prev, err := s.GetEvent(ctx, p, id)
 	if err != nil {
 		return Event{}, err
@@ -190,7 +213,7 @@ func (s *Service) UpdateEvent(ctx context.Context, p domain.Principal, id domain
 		MatterID: prev.MatterID, Location: prev.Location, TravelMinutes: prev.TravelMinutes, Notes: prev.Notes, Attendees: prev.Attendees, Video: prev.Video,
 	}
 	if patch.Video != nil {
-		in.Video = *patch.Video
+		in.Video = (*patch.Video).merge(prev.Video)
 	}
 	if patch.Title != nil {
 		in.Title = *patch.Title
@@ -240,7 +263,7 @@ func (s *Service) UpdateEvent(ctx context.Context, p domain.Principal, id domain
 			}
 		}
 	}
-	if err := s.validateEvent(ctx, p, &in, prev.Attendees); err != nil {
+	if err := s.validateEvent(ctx, p, &in, prev); err != nil {
 		return Event{}, err
 	}
 	next := prev
@@ -250,7 +273,7 @@ func (s *Service) UpdateEvent(ctx context.Context, p domain.Principal, id domain
 	next.Location, next.TravelMinutes, next.Notes, next.Attendees = in.Location, in.TravelMinutes, in.Notes, in.Attendees
 	next.Video = in.Video
 	var before Event
-	err = s.commit(ctx, p,
+	err = s.commitLocked(ctx, p,
 		func(ctx context.Context) error {
 			var err error
 			if before, err = s.d.Store.Event(ctx, next.ID); err != nil {

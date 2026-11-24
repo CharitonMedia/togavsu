@@ -14,16 +14,25 @@ class Core2IContract(unittest.TestCase):
         cls.schemas = cls.spec['components']['schemas']
         cls.tools = json.loads((root / 'openapi/v1/mcp-tools.json').read_text())['tools']
 
-    def test_video_is_nullable_but_requested_is_required(self):
+    def test_video_create_and_patch_semantics(self):
         for schema in ('CalendarEvent', 'CalendarEventWrite', 'CalendarEventWritePatch'):
             validator = Draft202012Validator(self.schemas[schema]['properties']['video'],
                                             resolver=__import__('jsonschema').RefResolver.from_schema(self.spec))
             for value in (None, {'requested': False}, {'requested': True, 'provider': None,
                           'host_user_id': None, 'provider_meeting_id': 'é' * 200}):
                 validator.validate(value)
-            for value in ({}, {'requested': None}, {'requested': 'true'},
+            validator.validate({'requested': True, 'provider': 'a' * 42})
+            if schema.endswith('Patch'):
+                for value in ({}, {'requested': None}, {'provider_meeting_id': 'meeting'}):
+                    validator.validate(value)
+            else:
+                for value in ({}, {'requested': None}):
+                    with self.assertRaises(ValidationError):
+                        validator.validate(value)
+            for value in ({'requested': 'true'},
                           {'requested': True, 'provider_meeting_id': 'é' * 201},
-                          {'requested': True, 'secret': 'extra'}):
+                          {'requested': True, 'secret': 'extra'},
+                          *({'requested': True, 'provider': p} for p in ('', 'a', 'Phone-Zoom', '-phone', 'phone-', 'a' * 43))):
                 with self.subTest(schema=schema, value=value), self.assertRaises(ValidationError):
                     validator.validate(value)
         self.assertIn('invalid_input', self.schemas['Problem']['properties']['code']['enum'])

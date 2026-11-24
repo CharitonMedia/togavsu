@@ -249,6 +249,8 @@ def _register(schemas: dict[str, dict]) -> dict[str, dict]:
             patch.pop("required", None)
             note = " Patch: every field is optional."
             patch["description"] = (patch.get("description") or name) + note
+            if name == "CalendarEventWrite":
+                patch["properties"]["video"] = _null(_ref("CalendarVideoPatch"))
             generated[name + "Patch"] = patch
     schemas.update(generated)
     return schemas
@@ -1497,10 +1499,17 @@ SCHEMAS = _register(
             "Approved requires reference_number, declined forbids it; pending forbids both optional fields. All results must match the original intent/amount/destination. Only approved permits paid-intake continuation. No core matter/contact/payment write occurs in the broker.",
         ),
         "CalendarVideo": _obj(
-            {"requested":{"type":"boolean"}, "provider":_null({"type":"string"}),
+            {"requested":{"type":"boolean"}, "provider":_null({"type":"string", "pattern":"^[a-z][a-z0-9-]{0,40}[a-z0-9]$", "minLength":2, "maxLength":42}),
              "host_user_id":_null(_uuid()), "provider_meeting_id":_null({"type":"string", "maxLength":200})},
             ["requested"],
-            "Video booking metadata. Null or absent means no video booking. Host must be an active core user; location holds the join link. On PATCH an omitted video preserves it, null clears it, and an object replaces it (requested remains required). Updating the meeting id does not implicitly change requested.",
+            "Video booking metadata. Requested is required on create. Provider follows the manifest module-id rule (2 to 42 lowercase slug characters). New or changed hosts must be active core users; unchanged hosts may remain after deactivation. Location holds the join link.",
+        ),
+        "CalendarVideoPatch": _obj(
+            {"requested": _null({"type":"boolean"}),
+             "provider":_null({"type":"string", "pattern":"^[a-z][a-z0-9-]{0,40}[a-z0-9]$", "minLength":2, "maxLength":42}),
+             "host_user_id":_null(_uuid()), "provider_meeting_id":_null({"type":"string", "maxLength":200})},
+            [],
+            "PATCH merges supplied fields against the current video object under a row lock. Omitted fields are preserved; null clears a field (requested resets to false). Whole video null clears the object. A patch on absent video starts with requested false and null fields. New or changed hosts must be active; an unchanged deactivated host is preserved.",
         ),
         "CalendarEvent": _meta(
             {

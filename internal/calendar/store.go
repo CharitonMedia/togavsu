@@ -13,6 +13,9 @@ import (
 // Store is the calendar persistence seam. Memory satisfies it; a Postgres store
 // over calendar_events, calendar_event_attendees and deadlines is the upgrade path.
 type Store interface {
+	// WithEventLock serializes read/merge/write for one event. Postgres holds the
+	// row lock through the audit transaction's commit or rollback.
+	WithEventLock(context.Context, domain.ID, func(context.Context) error) error
 	PutEvent(ctx context.Context, row Event) error
 	DeleteEvent(ctx context.Context, id domain.ID) error
 	Event(ctx context.Context, id domain.ID) (Event, error)
@@ -68,6 +71,7 @@ type IdemRecord struct {
 
 // Memory is the in-process Store.
 type Memory struct {
+	updateMu  sync.Mutex
 	mu        sync.RWMutex
 	events    map[domain.ID]Event
 	deadlines map[domain.ID]Deadline
@@ -86,6 +90,12 @@ func NewMemory() *Memory {
 		events: map[domain.ID]Event{}, deadlines: map[domain.ID]Deadline{}, feeds: map[domain.ID]Feed{},
 		sent: map[string]bool{}, idem: map[string]IdemRecord{},
 	}
+}
+
+func (m *Memory) WithEventLock(ctx context.Context, _ domain.ID, fn func(context.Context) error) error {
+	m.updateMu.Lock()
+	defer m.updateMu.Unlock()
+	return fn(ctx)
 }
 
 func (m *Memory) PutEvent(_ context.Context, row Event) error {

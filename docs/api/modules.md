@@ -346,14 +346,19 @@ Calendar create/update/get/list (REST and MCP) accept or return optional `video`
 {"requested":true,"provider":"phone-zoom","host_user_id":null,"provider_meeting_id":null}
 ```
 
-`requested` is required whenever an object is supplied, including on PATCH.
-Absent/null video means no video booking; on PATCH, omission preserves the stored
-object, null clears it, and an object replaces it. `provider` is a module id or
-null to let the consumer choose the firm's default. `host_user_id` is null or an
-active core user's UUID; a malformed, missing or deactivated user is
-`invalid_input`. `provider_meeting_id` is an opaque string of at most 200
-characters or null. Setting it does not infer or change `requested`. Optional
-fields omitted from a supplied object become null. **`location` holds the join
+`requested` is required on create when video is an object. On PATCH, omission
+preserves video, null clears the whole object, and an object merges only its
+supplied fields. `requested` is optional on PATCH. Null clears a field (for
+`requested`, it resets the boolean to false); an object patched onto absent video
+starts with false and null fields. Concurrent writers to different fields merge
+against the current row under the event's transaction lock.
+`provider` is null or a manifest module id matching
+`^[a-z][a-z0-9-]{0,40}[a-z0-9]$` (2 to 42 ASCII characters).
+`host_user_id` is null or a core user's UUID. New or changed hosts must be active;
+an unchanged host may remain after deactivation so unrelated edits still work.
+Malformed, missing or newly assigned deactivated hosts return `invalid_input`.
+`provider_meeting_id` is an opaque string of at most 200 characters or null.
+Setting it does not infer or change `requested`. **`location` holds the join
 link.** Staff and approved `calendar:write` service principals use the existing
 CORE-30 write/delegation rules. Video is readable wherever the event is readable;
 occupancy/busy disclose none of it. Existing signed `calendar_event.created` and
@@ -376,13 +381,15 @@ attorney or admin. Missing/unlinked/disabled modules, client tabs, cross-module
 widgets/panels and malformed/external paths are refused. Unlinking or disabling
 is effective on the next navigation. Params from both `page`'s query and `params`
 are retained only if named in the **target tab's `tabs[].params`**; undeclared
-params are dropped. `params` overrides matching query keys. Navigation grants no
-record access: target context-token issuance and matter walls still apply.
+params are dropped. For a `matter` placement tab, `matter_id` is also passed
+through without a declaration, only after checking that the viewer may read that
+matter. Missing, malformed or inaccessible matter context is refused. `params`
+overrides matching query keys. Navigation grants no record access: target context-token issuance and matter walls still apply.
 Same-module and core-page navigation retain their existing allowlist.
 
-The public kit exposes `CalendarVideo`, `CalendarOccupancyBlock` and
+The public kit exposes `CalendarVideo`, `CalendarVideoPatch`, `CalendarOccupancyBlock` and
 `CalendarBusyBlock`; `c.CalendarOccupancy(moduleID, from, to)` uses the real
-service endpoint in coretest. Core migration **1650** stores video as a nullable
+service endpoint in coretest. Core migration **1700** stores video as a nullable
 whole JSON object without changing old event rows.
 
 An approved `processor.payment.v1` intent may be recorded once by its consumer,

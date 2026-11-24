@@ -93,7 +93,7 @@ type EventPatch struct {
 	Notes         *string
 	Attendees     *[]domain.ID
 	// Video nil preserves the value; a pointer to nil clears it.
-	Video **domain.CalendarVideo
+	Video **VideoPatch
 }
 
 // EventFilter selects events. From and To bound the overlap window; zero values are open.

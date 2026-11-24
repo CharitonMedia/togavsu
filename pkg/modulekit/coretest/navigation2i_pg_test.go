@@ -19,7 +19,7 @@ func TestCoreUpdate2ILinkedNavigation(t *testing.T) {
 	install2d(t, c, consumer, []string{"contracts:call"}, "consumes:\n  - contract: "+contract+"\n", func(files map[string][]byte) {
 		// Add a second home tab with an explicit param declaration.
 		text := string(files[modulekit.ManifestFile])
-		text = strings.Replace(text, "tabs:\n", "tabs:\n  - id: start\n    title: Start intake\n    placement: home\n    path: /start\n    params: [phone]\n  - id: client-only\n    title: Client only\n    placement: client\n    path: /client-only\n", 1)
+		text = strings.Replace(text, "tabs:\n", "tabs:\n  - id: matter-start\n    title: Start on matter\n    placement: matter\n    path: /matter-start\n    params: [phone]\n  - id: start\n    title: Start intake\n    placement: home\n    path: /start\n    params: [phone]\n  - id: client-only\n    title: Client only\n    placement: client\n    path: /client-only\n", 1)
 		files[modulekit.ManifestFile] = []byte(text)
 	})
 	nav := func(who *coretest.User, source, page string, params map[string]string, status int) coretest.Resp {
@@ -37,6 +37,33 @@ func TestCoreUpdate2ILinkedNavigation(t *testing.T) {
 		t.Fatalf("params not filtered: %v", result.JSON)
 	}
 	nav(c.Staff, consumer, "/modules/"+provider+"/tabs/hours", nil, 200)
+	matterTarget := "/modules/" + consumer + "/tabs/matter-start"
+	for _, source := range []string{"query", "params"} {
+		page := matterTarget
+		supplied := map[string]string{"phone": "123", "secret": "drop"}
+		if source == "query" {
+			page += "?matter_id=" + c.Open
+		} else {
+			supplied["matter_id"] = c.Open
+		}
+		result := nav(c.Staff, provider, page, supplied, 200)
+		resolved, err := url.Parse(result.JSON["url"].(string))
+		if err != nil || resolved.Query().Get("matter_id") != c.Open || resolved.Query().Get("phone") != "123" || len(resolved.Query()) != 2 {
+			t.Fatalf("matter context lost (%s): %v %v", source, result.JSON, err)
+		}
+		c.Staff.Must(200, "GET", resolved.String(), nil)
+	}
+	nav(c.Staff, provider, matterTarget, map[string]string{"matter_id": c.Walled}, 403)
+	result = nav(c.Attorney, provider, matterTarget, map[string]string{"matter_id": c.Walled}, 200)
+	if !strings.Contains(result.JSON["url"].(string), "matter_id="+c.Walled) {
+		t.Fatal(result.JSON)
+	}
+	for _, missing := range []string{"", "bad", "019b6968-4600-7001-8000-000000000009"} {
+		nav(c.Staff, provider, matterTarget, map[string]string{"matter_id": missing}, 403)
+	}
+	// Message params override query matter context before the visibility check.
+	nav(c.Staff, provider, matterTarget+"?matter_id="+c.Open, map[string]string{"matter_id": c.Walled}, 403)
+
 	nav(c.Client, provider, target, params, 403)
 	nav(c.Accountant, provider, target, params, 403)
 	for _, page := range []string{
