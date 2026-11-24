@@ -8,6 +8,7 @@ from contract.metadata import CORE_EXTENSION_TARGETS, CORE_PAGE_TARGETS, MODULE_
 from contract.settings import SETTINGS, setting_keys
 
 PROBLEM_CODES = [
+    "invalid_input",
  "too_large",
     "validation_failed",
     "unauthenticated",
@@ -1469,8 +1470,8 @@ SCHEMAS = _register(
             "Record an approved operating receipt once, bound to the consuming module and newly created matter (contact must be its party), or a newly created contact when matter_id is omitted. No viewer or provider call. Money fields are forbidden; repeats return the same Payment.",
         ),
         "CalendarOccupancyBlock": _obj(
-            {"starts_at":_dt(), "ends_at":_dt()}, ["starts_at", "ends_at"],
-            "Service-only firm-wide occupancy under calendar:read, including events on walled matters only when they have no assigned attendee user (no calendar_event_attendees rows). Walled events with any assigned user stay out; inactive users still count as assigned. Start/end only; exact requested interval overlap; no other fields.",
+            {"starts_at":_dt(), "ends_at":_dt(), "all_day":{"type":"boolean"}}, ["starts_at", "ends_at", "all_day"],
+            "Service-only firm-wide occupancy under calendar:read, including events on walled matters only when they have no assigned attendee user (no active attendee users; inactive users do not count). Start/end and all_day only: all_day is the sole widening of the times-only shape; exact requested interval overlap; no identifiers, video or other details.",
         ),
         "CalendarBusyBlock": _obj(
             {"starts_at": _dt(), "ends_at": _dt(), "all_day": {"type": "boolean"}},
@@ -1495,6 +1496,12 @@ SCHEMAS = _register(
             ["intent_id", "status", "amount_cents", "destination"],
             "Approved requires reference_number, declined forbids it; pending forbids both optional fields. All results must match the original intent/amount/destination. Only approved permits paid-intake continuation. No core matter/contact/payment write occurs in the broker.",
         ),
+        "CalendarVideo": _obj(
+            {"requested":{"type":"boolean"}, "provider":_null({"type":"string"}),
+             "host_user_id":_null(_uuid()), "provider_meeting_id":_null({"type":"string", "maxLength":200})},
+            ["requested"],
+            "Video booking metadata. Null or absent means no video booking. Host must be an active core user; location holds the join link. On PATCH an omitted video preserves it, null clears it, and an object replaces it (requested remains required). Updating the meeting id does not implicitly change requested.",
+        ),
         "CalendarEvent": _meta(
             {
                 "title": {"type": "string"},
@@ -1502,6 +1509,7 @@ SCHEMAS = _register(
                 "starts_at": _dt(),
                 "ends_at": _dt(),
                 "all_day": {"type": "boolean"},
+                "video": _null(_ref("CalendarVideo")),
                 "matter_id": _null(_uuid()),
                 "location": {"type": "string"},
                 "travel_minutes": {"type": "integer", "minimum": 0},
@@ -1519,6 +1527,7 @@ SCHEMAS = _register(
                 "starts_at": _dt(),
                 "ends_at": _dt(),
                 "all_day": {"type": "boolean"},
+                "video": _null(_ref("CalendarVideo")),
                 "matter_id": _null(_uuid()),
                 "location": {"type": "string"},
                 "travel_minutes": {"type": "integer", "minimum": 0},

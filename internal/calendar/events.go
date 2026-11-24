@@ -2,9 +2,11 @@ package calendar
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -52,6 +54,25 @@ func (s *Service) validateEvent(ctx context.Context, p domain.Principal, in *Eve
 	if in.TravelMinutes < none {
 		return domain.Invalid("travel_minutes", "travel minutes cannot be negative")
 	}
+	if in.Video != nil {
+		in.Video = in.Video.Clone()
+		if in.Video.HostUserID != nil {
+			id, err := domain.ParseID(string(*in.Video.HostUserID))
+			if err != nil {
+				return invalidVideo("video.host_user_id", "must be an active core user UUID")
+			}
+			in.Video.HostUserID = &id
+			if _, err := s.activeUser(ctx, "video.host_user_id", id); err != nil {
+				if api, ok := err.(*domain.APIError); ok && api.Code == domain.CodeValidation {
+					return invalidVideo(api.Field, api.Message)
+				}
+				return err
+			}
+		}
+		if in.Video.ProviderMeetingID != nil && utf8.RuneCountInString(*in.Video.ProviderMeetingID) > 200 {
+			return invalidVideo("video.provider_meeting_id", "must be at most 200 characters")
+		}
+	}
 	seen := map[domain.ID]bool{}
 	var att []domain.ID
 	for _, id := range in.Attendees {
@@ -87,7 +108,7 @@ func (s *Service) CreateEvent(ctx context.Context, p domain.Principal, in EventI
 	}
 	row := Event{CalendarEvent: domain.CalendarEvent{
 		Meta: m, Title: in.Title, Kind: in.Kind, StartsAt: domain.UnixMicroUTC(in.StartsAt), EndsAt: domain.UnixMicroUTC(in.EndsAt),
-		AllDay: in.AllDay, MatterID: in.MatterID, Location: in.Location, TravelMinutes: in.TravelMinutes, Notes: in.Notes,
+		AllDay: in.AllDay, MatterID: in.MatterID, Location: in.Location, TravelMinutes: in.TravelMinutes, Notes: in.Notes, Video: in.Video,
 	}, Attendees: in.Attendees}
 	err = s.commit(ctx, p,
 		func(ctx context.Context) error { return s.d.Store.PutEvent(ctx, row) },
@@ -110,8 +131,18 @@ func eventChanges(a, b Event) []change {
 		{"location", a.Location, b.Location},
 		{"travel_minutes", intText(a.ID, a.TravelMinutes), intText(b.ID, b.TravelMinutes)},
 		{"notes", a.Notes, b.Notes},
+		{"video", videoText(a.Video), videoText(b.Video)},
 		{"attendee_user_ids", joinIDs(a.Attendees), joinIDs(b.Attendees)},
 	}
+}
+
+func invalidVideo(field, message string) *domain.APIError {
+	return &domain.APIError{Code: domain.CodeInvalidInput, Field: field, Message: message}
+}
+
+func videoText(v *domain.CalendarVideo) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }
 
 func boolText(a, b Event, v bool) string {
@@ -156,7 +187,10 @@ func (s *Service) UpdateEvent(ctx context.Context, p domain.Principal, id domain
 	}
 	in := EventInput{
 		Title: prev.Title, Kind: prev.Kind, StartsAt: prev.Start(), EndsAt: prev.End(), AllDay: prev.AllDay,
-		MatterID: prev.MatterID, Location: prev.Location, TravelMinutes: prev.TravelMinutes, Notes: prev.Notes, Attendees: prev.Attendees,
+		MatterID: prev.MatterID, Location: prev.Location, TravelMinutes: prev.TravelMinutes, Notes: prev.Notes, Attendees: prev.Attendees, Video: prev.Video,
+	}
+	if patch.Video != nil {
+		in.Video = *patch.Video
 	}
 	if patch.Title != nil {
 		in.Title = *patch.Title
@@ -214,6 +248,7 @@ func (s *Service) UpdateEvent(ctx context.Context, p domain.Principal, id domain
 	next.Title, next.Kind, next.AllDay, next.MatterID = in.Title, in.Kind, in.AllDay, in.MatterID
 	next.StartsAt, next.EndsAt = domain.UnixMicroUTC(in.StartsAt), domain.UnixMicroUTC(in.EndsAt)
 	next.Location, next.TravelMinutes, next.Notes, next.Attendees = in.Location, in.TravelMinutes, in.Notes, in.Attendees
+	next.Video = in.Video
 	var before Event
 	err = s.commit(ctx, p,
 		func(ctx context.Context) error {

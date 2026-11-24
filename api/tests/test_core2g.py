@@ -33,11 +33,11 @@ class Core2GContract(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValidationError):
                 validator.validate(dict(body, **{field: 'changed'}))
 
-    def test_firm_occupancy_is_start_end_only(self):
+    def test_firm_occupancy_is_start_end_and_all_day_only(self):
         validator = Draft202012Validator(self.schemas['CalendarOccupancyBlock'])
-        body = dict(starts_at='2026-11-20T12:00:00Z', ends_at='2026-11-20T13:00:00Z')
+        body = dict(starts_at='2026-11-20T12:00:00Z', ends_at='2026-11-20T13:00:00Z', all_day=False)
         validator.validate(body)
-        for field in ('id', 'title', 'matter_id', 'attendee_user_ids', 'all_day', 'wall'):
+        for field in ('id', 'title', 'matter_id', 'attendee_user_ids', 'video', 'wall'):
             with self.subTest(field=field), self.assertRaises(ValidationError):
                 validator.validate(dict(body, **{field: 'secret'}))
         op = self.spec['paths']['/api/v1/calendar-events']['get']

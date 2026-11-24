@@ -92,6 +92,7 @@ func (m *Memory) PutEvent(_ context.Context, row Event) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	row.Attendees = append([]domain.ID(nil), row.Attendees...)
+	row.Video = row.Video.Clone()
 	m.events[row.ID] = row
 	return nil
 }
@@ -114,6 +115,7 @@ func (m *Memory) Event(_ context.Context, id domain.ID) (Event, error) {
 		return Event{}, repository.ErrNotFound
 	}
 	row.Attendees = append([]domain.ID(nil), row.Attendees...)
+	row.Video = row.Video.Clone()
 	return row, nil
 }
 
@@ -148,7 +150,7 @@ func (m *Memory) OccupancyCandidates(ctx context.Context, from, to time.Time) ([
 	}
 	var out []OccupancyCandidate
 	for _, row := range rows {
-		out = append(out, OccupancyCandidate{StartsAt: row.StartsAt, EndsAt: row.EndsAt, MatterID: row.MatterID, HasAttendees: len(row.Attendees) > 0})
+		out = append(out, OccupancyCandidate{StartsAt: row.StartsAt, EndsAt: row.EndsAt, MatterID: row.MatterID, AllDay: row.AllDay, Attendees: row.Attendees})
 	}
 	return out, nil
 }
@@ -159,6 +161,7 @@ func (m *Memory) Events(context.Context) ([]Event, error) {
 	out := make([]Event, 0, len(m.events))
 	for _, row := range m.events {
 		row.Attendees = append([]domain.ID(nil), row.Attendees...)
+		row.Video = row.Video.Clone()
 		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool {

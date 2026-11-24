@@ -32,7 +32,7 @@ func eventJSON(e Event) map[string]any {
 		"created_by": e.CreatedBy, "title": e.Title, "kind": e.Kind,
 		"starts_at": fmtTime(e.StartsAt), "ends_at": fmtTime(e.EndsAt), "all_day": e.AllDay,
 		"matter_id": nullID(e.MatterID), "location": e.Location, "travel_minutes": e.TravelMinutes,
-		"notes": e.Notes, "attendee_user_ids": att,
+		"notes": e.Notes, "attendee_user_ids": att, "video": e.Video,
 	}
 }
 
@@ -70,16 +70,17 @@ func nullID(id domain.ID) any {
 // --- request bodies ---
 
 type eventBody struct {
-	Title         *string      `json:"title"`
-	Kind          *string      `json:"kind"`
-	StartsAt      *string      `json:"starts_at"`
-	EndsAt        *string      `json:"ends_at"`
-	AllDay        *bool        `json:"all_day"`
-	MatterID      *string      `json:"matter_id"`
-	Location      *string      `json:"location"`
-	TravelMinutes *int         `json:"travel_minutes"`
-	Notes         *string      `json:"notes"`
-	Attendees     *[]domain.ID `json:"attendee_user_ids"`
+	Video         json.RawMessage `json:"video"`
+	Title         *string         `json:"title"`
+	Kind          *string         `json:"kind"`
+	StartsAt      *string         `json:"starts_at"`
+	EndsAt        *string         `json:"ends_at"`
+	AllDay        *bool           `json:"all_day"`
+	MatterID      *string         `json:"matter_id"`
+	Location      *string         `json:"location"`
+	TravelMinutes *int            `json:"travel_minutes"`
+	Notes         *string         `json:"notes"`
+	Attendees     *[]domain.ID    `json:"attendee_user_ids"`
 }
 
 // parseInstant reads RFC 3339 and keeps the written offset, which all-day events
@@ -94,6 +95,27 @@ func parseInstant(field, v string) (time.Time, error) {
 
 func (b eventBody) patch() (EventPatch, error) {
 	var p EventPatch
+	if b.Video != nil {
+		var video *domain.CalendarVideo
+		if !bytes.Equal(bytes.TrimSpace(b.Video), []byte("null")) {
+			var body struct {
+				Requested         *bool      `json:"requested"`
+				Provider          *string    `json:"provider"`
+				HostUserID        *domain.ID `json:"host_user_id"`
+				ProviderMeetingID *string    `json:"provider_meeting_id"`
+			}
+			dec := json.NewDecoder(bytes.NewReader(b.Video))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&body); err != nil {
+				return p, invalidVideo("video", "invalid video object")
+			}
+			if body.Requested == nil {
+				return p, invalidVideo("video.requested", "requested is required")
+			}
+			video = &domain.CalendarVideo{Requested: *body.Requested, Provider: body.Provider, HostUserID: body.HostUserID, ProviderMeetingID: body.ProviderMeetingID}
+		}
+		p.Video = &video
+	}
 	p.Title, p.Kind, p.AllDay, p.Location, p.TravelMinutes, p.Notes, p.Attendees = b.Title, b.Kind, b.AllDay, b.Location, b.TravelMinutes, b.Notes, b.Attendees
 	if b.StartsAt != nil {
 		t, err := parseInstant("starts_at", *b.StartsAt)
@@ -127,6 +149,9 @@ func (b eventBody) input() (EventInput, error) {
 		return EventInput{}, err
 	}
 	in := EventInput{Title: *p.Title, Kind: *p.Kind, StartsAt: *p.StartsAt, EndsAt: *p.EndsAt}
+	if p.Video != nil {
+		in.Video = *p.Video
+	}
 	if p.AllDay != nil {
 		in.AllDay = *p.AllDay
 	}
