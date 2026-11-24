@@ -865,7 +865,7 @@ var coreFrameNavigatePrefixes = []string{
 // core page). Absolute and protocol-relative URLs are refused.
 func BridgeNavigateURL(moduleID, page string, params map[string]string) (string, bool) {
 	page = strings.TrimSpace(page)
-	if !safeNavigationPage(page) {
+	if !safeNavigationPage(page) || strings.Contains(page, "://") {
 		return "", false
 	}
 	path, rawQuery, _ := strings.Cut(page, "?")

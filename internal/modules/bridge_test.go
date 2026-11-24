@@ -29,6 +29,7 @@ func TestBridgeNavigateURL(t *testing.T) {
 	}
 	deny := []string{
 		"https://evil.example/",
+		"/practice/matters?redirect=https://evil.example/",
 		"http://evil.example/practice/matters",
 		"//evil.example/practice",
 		"/modules/other-mod/tabs/hours",
