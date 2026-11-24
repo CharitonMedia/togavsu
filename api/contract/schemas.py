@@ -2367,6 +2367,7 @@ SCHEMAS = _register(
         "Setting": _obj(
             {
                 "key": {"type": "string"},
+                "label": {"type": "string", "description": "Plain name shown on the admin Settings page."},
                 "type": _enum(["string", "integer", "number", "boolean", "json", "uuid"]),
                 "tab": {"type": "string"},
                 "value": {"description": "Current value. A secret setting returns null and sets configured instead."},
@@ -2376,8 +2377,8 @@ SCHEMAS = _register(
                 "help": {"type": "string"},
                 "allowed": {"description": "Allowed values when the setting has a closed set."},
             },
-            ["key", "type", "tab", "configured", "locked", "help"],
-            "One settings-registry row.",
+            ["key", "label", "type", "tab", "configured", "locked", "help"],
+            "One settings-registry row with key, label, type, tab, value, default, configured, locked, help, and optional allowed.",
         ),
         "SettingKey": _enum(setting_keys()),
         "SettingUpdate": _obj({"value": {"description": "New value, checked against the registry type and allowed set."}}, ["value"]),
@@ -3221,7 +3222,7 @@ SCHEMAS = _register(
                         ["version", "released_at"],
                     )
                 ),
-                "price_note": {"type": "string", "description": "Empty when the module is free."},
+                "price_note": {"type": "string", "description": "The provider's listing price information, including any provider disclaimer. Togavsu never sells or bills modules."},
                 "flagged": {"type": "boolean"},
                 "flag_note": {"type": "string"},
                 "pulled": {"type": "boolean"},

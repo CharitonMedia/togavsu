@@ -86,6 +86,7 @@ The record set follows Nolan PMS Unified closely, cleaned up. All tables carry i
 - users: name, email, roles, active flag, default hourly rate, linked contact (for client users).
 - sessions, password credentials (Argon2id), TOTP secrets, recovery codes, API tokens.
 - TOTP two-factor is optional for every role by default; an admin can require it for any role, admin included. Any user can turn it on for their own account. (Changed 2026-11-13 at Patrick's direction; it was required for admin, attorney, staff and accountant.)
+- Sign In Without a Password is an admin setting on the Security tab, off by default, for test and demo installs. While it is on, a known, active account signs in with its email alone, except where the next step would be enrolling two-factor: then the real password is still required. A user with two-factor set up still gives a code. Each sign-in that skips the password is recorded in the audit log, and turning the setting off does not sign out anyone already signed in. (Added 2026-11-17 at Patrick's direction for his test install: "remove the password requirement completely.")
 
 **Firm settings**
 
@@ -268,7 +269,7 @@ Tabs:
 
 - **Firm profile:** firm name, short name, address, phone, email, website, logo, time zone, matter number format and prefix (default YYYY-NNNN).
 - **Users and roles:** add, edit and deactivate users; roles; default hourly rate; bar number and state for attorneys; linked contact for client users; matter walls.
-- **Security:** two-factor by role (default optional for every role, admin included; the admin can require it for any role), longest idle time before sign-out (default 12 hours), failed sign-ins before lockout (default 5), lockout length (default 15 minutes), API rate limit (default 600 requests a minute per token).
+- **Security:** two-factor by role (default optional for every role, admin included; the admin can require it for any role), Sign In Without a Password (default off; test and demo installs only, section 5), longest idle time before sign-out (default 12 hours), failed sign-ins before lockout (default 5), lockout length (default 15 minutes), API rate limit (default 600 requests a minute per token).
 - **Practice:** practice areas and their stages, matter markers, custom fields, party roles, case number patterns (default Missouri docket numbers), lowest conflict score shown (default 60 out of 100).
 - **Time and billing:** time increment (default 6 minutes; 1, 6, 10 or 15), default rates, activity types, expense types, default expense markup (default 0 percent), invoice numbering, payment terms (default due in 30 days), grace period (default 15 days), late interest (default off; the rate when on), fee items catalog, default client message on invoices.
 - **Trust:** trust accounts (bank, account name, IOLTA flag, last four digits), extra recipients for trust flag emails (the admins and the responsible attorney always get them and can't be removed), default evergreen minimum for new matters (default none), monthly reconciliation reminder day (default the 5th).

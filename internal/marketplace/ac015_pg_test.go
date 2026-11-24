@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -714,6 +715,96 @@ type noWalls struct{}
 
 func (noWalls) View(context.Context, domain.Principal, domain.ID) (domain.WallView, error) {
 	return domain.WallView{}, nil
+}
+
+// TestComposeMarketplaceHTTPTrust: plain http to togavsu-marketplace reaches the
+// marketplace (via a test transport) but never stores or trusts marketplace keys; a
+// package signed only by a marketplace key is refused until that key is a trusted local
+// key. Loopback/https behavior stays on the existing tests that use httptest.NewServer.
+func TestComposeMarketplaceHTTPTrust(t *testing.T) {
+	w := newWorld(t)
+	pkg := w.publish("matter-clock", "0.1.0")
+	marketHost := strings.TrimPrefix(w.market.URL, "http://")
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				host = addr
+			}
+			if host == marketplace.ComposeMarketplaceHost {
+				addr = marketHost
+			}
+			var d net.Dialer
+			return d.DialContext(ctx, network, addr)
+		},
+	}
+	// Cache the marketplace keys over loopback first, so the switch below must clear them.
+	if _, err := w.svc.FetchForInstall(w.ctx, w.admin, "matter-clock", "0.1.0"); err != nil {
+		t.Fatalf("loopback install caches keys: %v", err)
+	}
+	if n := w.count(`SELECT count(*) FROM marketplace_signing_keys`); n == 0 {
+		t.Fatal("loopback stored no marketplace keys")
+	}
+	const composeAddr = "http://togavsu-marketplace:8090"
+	w.set.set("modules.marketplace_address", composeAddr)
+	au, err := audit.New(audit.NewPostgres(w.db), w.clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := marketplace.New(marketplace.Deps{
+		DB: w.db, Audit: au, Settings: w.set, Users: users{w.adminA, w.staffU, w.adminB, w.inactive},
+		Installed: w.inst, Now: w.clock,
+		Client: &marketplace.Client{
+			Address: func(ctx context.Context) string { return composeAddr },
+			HTTP:    &http.Client{Transport: transport},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Listings still come from the compose host.
+	ls, err := svc.Listings(w.ctx, w.admin, "")
+	if err != nil || len(ls) != 1 || ls[0].ID != "matter-clock" {
+		t.Fatalf("browse over compose http %+v %v", ls, err)
+	}
+	// No marketplace key is stored or trusted.
+	if _, err := svc.FetchForInstall(w.ctx, w.admin, "matter-clock", "0.1.0"); status(err) != http.StatusUnprocessableEntity {
+		t.Fatalf("marketplace-only signer over compose http: %v", err)
+	}
+	if n := w.count(`SELECT count(*) FROM marketplace_signing_keys`); n != 0 {
+		t.Fatalf("compose http stored %d marketplace keys", n)
+	}
+	// The same package installs once its key is a trusted local key.
+	name, pemText := "Author key", marketplace.PublicKeyPEM(w.priv.Public().(ed25519.PublicKey))
+	if _, err := svc.CreateKey(w.ctx, w.admin, marketplace.KeyInput{Name: &name, PublicKeyPEM: &pemText}); err != nil {
+		t.Fatal(err)
+	}
+	v, err := svc.FetchForInstall(w.ctx, w.admin, "matter-clock", "0.1.0")
+	if err != nil || v.Signer.Source != "local" || v.ModuleID != "matter-clock" {
+		t.Fatalf("local-key install over compose http %+v %v", v, err)
+	}
+	_ = pkg
+}
+
+// TestCachedMarketplaceKeysSurviveUnsetAddress: an empty or placeholder Marketplace
+// Address keeps the cached marketplace keys, so Install from a file still verifies a
+// package signed by a marketplace-published key.
+func TestCachedMarketplaceKeysSurviveUnsetAddress(t *testing.T) {
+	w := newWorld(t)
+	pkg := w.publish("matter-clock", "0.1.0")
+	if _, err := w.svc.FetchForInstall(w.ctx, w.admin, "matter-clock", "0.1.0"); err != nil {
+		t.Fatal(err)
+	}
+	for _, addr := range []string{"", "togavsu-marketplace"} {
+		w.set.set("modules.marketplace_address", addr)
+		v, err := w.svc.VerifyLocal(w.ctx, w.admin, pkg, marketplace.Sign(w.priv, pkg), w.keyID)
+		if err != nil || v.Signer.Source != "marketplace" {
+			t.Fatalf("address %q: file install with cached marketplace key %+v %v", addr, v, err)
+		}
+		if n := w.count(`SELECT count(*) FROM marketplace_signing_keys`); n == 0 {
+			t.Fatalf("address %q cleared the cached marketplace keys", addr)
+		}
+	}
 }
 
 // TestPGCurrentVersionFlagStaysOnThatVersion: a flag on the current version warns at its

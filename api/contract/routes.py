@@ -4475,7 +4475,7 @@ def _admin(api: Contract) -> None:
         "/api/v1/settings",
         operation_id="listSettings",
         summary="List settings",
-        description="Admins see every registry setting. A module with settings:read and approved contracts:call or contracts:provide sees only its contract runtime settings, including modules.contract_call_max_bytes. Secrets are never returned.",
+        description="Every registry setting with its key, label, type, tab, value, default, configured, locked, help, and optional allowed. Admins see every setting. A module with settings:read and approved contracts:call or contracts:provide sees only its contract runtime settings, including modules.contract_call_max_bytes. Secrets are never returned; configured is.",
         tag="Settings",
         features=["settings"],
         roles=ADMIN,

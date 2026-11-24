@@ -3,15 +3,17 @@
 # field key once. The backup passphrase file is created empty so UID 65532 can
 # fill it at first-run; an empty file is not a passphrase.
 #
-# Three volumes, by who may read them (PRD section 6):
-#   /appsecrets    database_url (togavsu_app), field_key, supervisor_token, domain;
-#                  every core mounts it read-only.
-#   /adminsecrets  admin_database_url, the Postgres superuser. Only the migrate one-shot
-#                  and the supervisor mount it; a serving core never does.
-#   /backupkey     backup_passphrase, the one secret the core writes.
+# Four volumes, by who may read them (PRD section 6):
+#   /appsecrets     database_url (togavsu_app), field_key, supervisor_token, domain;
+#                   every core mounts it read-only.
+#   /adminsecrets   admin_database_url, the Postgres superuser. Only the migrate one-shot
+#                   and the supervisor mount it; a serving core never does.
+#   /backupkey      backup_passphrase, the one secret the core writes.
+#   /marketsecrets  operator_token for togavsu-marketplace only (compose profile marketplace).
+#                   Never into appsecrets or any volume the core, supervisor or caddy mount.
 set -eu
 umask 077
-mkdir -p /pgsecrets /appsecrets /adminsecrets /backupkey
+mkdir -p /pgsecrets /appsecrets /adminsecrets /backupkey /marketsecrets
 
 # Matches deploy/core.Dockerfile USER and the Postgres image's postgres user.
 core_uid=65532
@@ -93,3 +95,14 @@ chmod 600 /backupkey/backup_passphrase
 chown "root:${postgres_gid}" /pgsecrets /pgsecrets/postgres_password /pgsecrets/app_password
 chmod 750 /pgsecrets
 chmod 640 /pgsecrets/postgres_password /pgsecrets/app_password
+
+# Marketplace operator token: at least 32 random bytes, written once, never overwritten.
+# root:65532 0640 in a 0750 directory so only bootstrap and togavsu-marketplace (uid 65532) read it.
+if [ ! -s /marketsecrets/operator_token ]; then
+  head -c 32 /dev/urandom | base64 -w 0 > /marketsecrets/operator_token
+  printf '\n' >> /marketsecrets/operator_token
+fi
+chown "root:${core_gid}" /marketsecrets
+chmod 750 /marketsecrets
+chown "root:${core_gid}" /marketsecrets/operator_token
+chmod 640 /marketsecrets/operator_token

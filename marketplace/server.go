@@ -123,6 +123,8 @@ func writeErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.As(err, &inv):
 		problem(w, http.StatusBadRequest, "validation", inv.Error())
+	case errors.Is(err, shared.ErrDigestMismatch):
+		problem(w, http.StatusBadRequest, "digest_mismatch", "the digest does not match the package bytes")
 	case errors.Is(err, ErrNotFound):
 		problem(w, http.StatusNotFound, "not_found", "not found")
 	case errors.Is(err, ErrPulled):
@@ -343,6 +345,10 @@ func (s *Server) apiUpload(w http.ResponseWriter, r *http.Request) {
 	pkg, err := base64.StdEncoding.DecodeString(b.PackageBase64)
 	if err != nil {
 		writeErr(w, invalid("package_base64", "the package must be standard base64"))
+		return
+	}
+	if b.Digest != "" && b.Digest != shared.Digest(pkg) {
+		writeErr(w, shared.ErrDigestMismatch)
 		return
 	}
 	if err := checkUploadPackageMeta(b.ListingID, b.Version, b.Immutable, b.Manifest, pkg); err != nil {

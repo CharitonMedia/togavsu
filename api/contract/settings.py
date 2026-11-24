@@ -49,6 +49,13 @@ SETTINGS: list[dict] = [
     _s("security.totp_required.staff", "boolean", "security", False, "Staff two-factor required when true."),
     _s("security.totp_required.accountant", "boolean", "security", False, "Accountant two-factor required when true."),
     _s("security.totp_required.client", "boolean", "security", False, "Client two-factor required when true."),
+    _s(
+        "security.password_optional",
+        "boolean",
+        "security",
+        False,
+        "Lets users sign in with their email alone. For test and demo installs only: anyone who knows an account's email can sign in. Turning it off does not sign out anyone already signed in; each sign-in without a password is in the audit log. Default off.",
+    ),
     _s("security.idle_timeout_seconds", "integer", "security", 12 * 60 * 60, "Longest idle time before sign-out.", minimum=60),
     _s("security.failed_sign_in_limit", "integer", "security", 5, "Failed sign-ins before lockout.", minimum=1),
     _s("security.lockout_seconds", "integer", "security", 15 * 60, "Lockout length after repeated failed sign-ins.", minimum=1),
@@ -61,6 +68,13 @@ SETTINGS: list[dict] = [
         "Days after closed_on that a client may still read the matter, its shared files and invoices. Default 14. Reopening restores access.",
         minimum=0,
         maximum=3650,
+    ),
+    _s(
+        "practice.case_number_examples",
+        "json",
+        "practice",
+        ["23AR-CV00825"],
+        "Type one real case number per line in each format your courts use. Togavsu learns the format from the example.",
     ),
     _s(
         "practice.case_number_patterns",

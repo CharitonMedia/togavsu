@@ -6,6 +6,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/pressly/goose/v3 v3.24.1
 	golang.org/x/crypto v0.31.0
+	rsc.io/qr v0.2.0
 )
 
 require (
@@ -22,5 +23,4 @@ require (
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	rsc.io/qr v0.2.0 // indirect
 )

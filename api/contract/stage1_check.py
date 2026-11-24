@@ -448,6 +448,21 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json", "docs/api/coverage.md"],
                 "change": "CORE-35 adds Module.price / price_display. CORE-37 extends bulkInvoice with preview (200), invoice.imported, Invoice/InvoiceClient imported fields, InvoiceWrite source/external_ref/document_of_record_file_id/due_on, and Payment.imported.",
             },
+            {
+                "id": "settings-plain-labels",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "Setting gains required label (plain admin name). listSettings description lists key, label, type, tab, value, default, configured, locked, help, and optional allowed. The MCP catalog still describes query as one object, and coverage does not list schema fields, so their bytes stay the same.",
+            },
+            {
+                "id": "settings-case-number-examples",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "The settings catalog publishes practice.case_number_examples for plain case-number formats while preserving the raw practice.case_number_patterns setting.",
+            },
+            {
+                "id": "settings-password-optional",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "The settings catalog and SettingKey enum publish security.password_optional, default false, for Sign In Without a Password.",
+            },
         ],
         "intentional_corrections": [
             {

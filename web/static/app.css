@@ -76,10 +76,24 @@ th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertic
 .tabs{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 16px}
 .tabs a{padding:6px 10px;border-radius:6px;text-decoration:none;border:1px solid var(--line);background:var(--surface);font-size:.9rem}
 .tabs a.active{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700}
-.settings-table code{font-size:.82rem}
+.settings-table{width:100%;table-layout:fixed}
+.settings-table th:nth-child(1),.settings-table td:nth-child(1){width:28%}
+.settings-table th:nth-child(2),.settings-table td:nth-child(2){width:42%}
+.settings-table th:nth-child(3),.settings-table td:nth-child(3){width:18%}
+.settings-table th:nth-child(4),.settings-table td:nth-child(4){width:12%}
+.settings-table code,.setting-default,.setting-value{font-size:.82rem;overflow-wrap:anywhere;word-break:break-word;white-space:pre-line}
 .help-text{margin:2px 0 0;color:var(--muted);font-size:.85rem}
-.setting-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.setting-form textarea{min-width:280px}
+.setting-key{margin:2px 0 0;color:var(--muted);font-size:.75rem}
+.setting-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap;max-width:100%}
+.setting-form textarea,.setting-form input:not([type=checkbox]):not([type=radio]):not([type=color]),.setting-form select{max-width:100%;min-width:0;box-sizing:border-box}
+.setting-form textarea{width:100%;min-width:0}
+.setting-amount{width:5rem}
+.settings-advanced{margin-top:1rem}
+.settings-advanced summary{cursor:pointer;font-weight:600;padding:.4rem 0}
+.notify-grid{width:100%;font-size:.9rem;display:flex;flex-direction:column;gap:4px}
+.notify-head,.notify-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center}
+.notify-head{font-weight:600;color:var(--muted);font-size:.8rem}
+.color-row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0 0 6px;max-width:100%}
 tr.changed td:first-child{border-left:3px solid var(--accent)}
 .home-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .grid-stack{min-height:120px}
@@ -114,16 +128,54 @@ tr.changed td:first-child{border-left:3px solid var(--accent)}
 .tabbar{display:none}
 :root[data-mode=dark] .search-results a.selected{background:#2a313b}
 @media (max-width:700px){
-  body.shell{grid-template-columns:1fr;grid-template-areas:"top" "main"}
+  body.shell{grid-template-columns:1fr;grid-template-areas:"top" "main";max-width:100%}
   .sidebar{display:none}
   .topbar .label,.topbar .timers,#search-scope{display:none}
-  .page{padding:14px 12px 80px}
+  /* Topbar flex items default to min-width:auto; the search input's intrinsic
+     size (~20ch) plus icon buttons overflow a 390px viewport. */
+  .topbar{min-width:0;max-width:100%;overflow:visible}
+  .search{min-width:0;flex:1 1 auto;max-width:none}
+  .search input{min-width:0;width:100%}
+  details.menu:not([open]) > .panel{display:none}
+  .menu .panel{max-width:calc(100vw - 16px);right:0;left:auto}
+  .page{padding:14px 12px 80px;min-width:0;max-width:100%}
   .tabbar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--header);color:var(--header-text);justify-content:space-around;padding:6px 0;z-index:6}
   .tabbar a{display:flex;flex-direction:column;align-items:center;font-size:.75rem;text-decoration:none}
   .form-grid{grid-template-columns:1fr}
   .topic-list{columns:1}
   .grid-stack:not(.gs-ready) .grid-stack-item{grid-column:1/-1}
+  /* Stack settings rows. Drop table-layout:fixed and the desktop nth-child % widths so
+     four width:100% columns cannot inflate the table min-width past the viewport. */
+  .settings-table{table-layout:auto;width:100%;max-width:100%}
+  .settings-table,.settings-table thead,.settings-table tbody,.settings-table tr,.settings-table th,.settings-table td{display:block;width:auto;max-width:100%}
+  .settings-table th:nth-child(n),.settings-table td:nth-child(n){width:auto;max-width:100%}
+  .settings-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .settings-table tr{border:1px solid var(--line);border-radius:8px;padding:10px;margin:0 0 10px;background:var(--surface);max-width:100%}
+  .settings-table td{border:0;padding:4px 0}
+  .settings-table td:nth-child(3)::before{content:"Default: ";color:var(--muted);font-size:.85rem}
+  .settings-table td:nth-child(4) form,.settings-table td:nth-child(4) button{max-width:100%}
+  .tabs{max-width:100%}
+  .tabs a{max-width:100%;box-sizing:border-box}
+  .setting-form{flex-direction:column;align-items:stretch;max-width:100%}
+  .color-row{flex-direction:column;align-items:flex-start}
+  .card{max-width:100%;min-width:0}
+  /* Modules marketplace catalog: keep listings and search inside a phone viewport. */
+  #marketplace,.listing,.market-search{max-width:100%;min-width:0;overflow-wrap:anywhere;word-break:break-word}
+  .market-search{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .market-search input{min-width:0;flex:1 1 8rem;max-width:100%;box-sizing:border-box}
+  .listing h3,.listing code,.listing-perms{max-width:100%;overflow-wrap:anywhere}
+  /* Install-from-file (#pkg) and update file inputs: grid items default to
+     min-width:auto and input[type=file] has a large intrinsic width, so the
+     Modules tab overflows a 390px viewport (QC modules-marketplace-phone). */
+  #install-module,#install-module > *,.form-grid input[type=file]{max-width:100%;min-width:0}
+  .form-grid input[type=file]{width:100%;box-sizing:border-box}
+  #replacements,#trusted-keys{max-width:100%;min-width:0;overflow-x:auto}
 }
+.listing{margin:0 0 14px;padding:0 0 12px;border-bottom:1px solid var(--line);max-width:100%;min-width:0}
+.listing:last-child{border-bottom:0;padding-bottom:0}
+.listing-perms{margin:8px 0}
+.listing-perms ul{margin:6px 0 0;padding-left:1.2rem}
+.market-search{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
 @media (prefers-color-scheme:dark){:root[data-mode=device]{--surface:#1f242b;--text:#e8e6e1;--muted:#a9b0ba;--line:#343b45}}
 :root[data-mode=dark]{--surface:#1f242b;--text:#e8e6e1;--muted:#a9b0ba;--line:#343b45}
 /* Account screens: user chip picture, role and scope checkboxes, one-time secrets. */

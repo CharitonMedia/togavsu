@@ -59693,7 +59693,7 @@
       "get": {
         "operationId": "listSettings",
         "summary": "List settings",
-        "description": "Admins see every registry setting. A module with settings:read and approved contracts:call or contracts:provide sees only its contract runtime settings, including modules.contract_call_max_bytes. Secrets are never returned.",
+        "description": "Every registry setting with its key, label, type, tab, value, default, configured, locked, help, and optional allowed. Admins see every setting. A module with settings:read and approved contracts:call or contracts:provide sees only its contract runtime settings, including modules.contract_call_max_bytes. Secrets are never returned; configured is.",
         "tags": [
           "Settings"
         ],
@@ -79689,6 +79689,10 @@
           "key": {
             "type": "string"
           },
+          "label": {
+            "type": "string",
+            "description": "Plain name shown on the admin Settings page."
+          },
           "type": {
             "type": "string",
             "enum": [
@@ -79724,13 +79728,14 @@
         },
         "required": [
           "key",
+          "label",
           "type",
           "tab",
           "configured",
           "locked",
           "help"
         ],
-        "description": "One settings-registry row."
+        "description": "One settings-registry row with key, label, type, tab, value, default, configured, locked, help, and optional allowed."
       },
       "SettingKey": {
         "type": "string",
@@ -79752,11 +79757,13 @@
           "security.totp_required.staff",
           "security.totp_required.accountant",
           "security.totp_required.client",
+          "security.password_optional",
           "security.idle_timeout_seconds",
           "security.failed_sign_in_limit",
           "security.lockout_seconds",
           "security.api_rate_limit_per_minute",
           "client_access.days_after_close",
+          "practice.case_number_examples",
           "practice.case_number_patterns",
           "practice.conflict_score_floor",
           "practice.conflict_additional_names_max",
@@ -83131,7 +83138,7 @@
           },
           "price_note": {
             "type": "string",
-            "description": "Empty when the module is free."
+            "description": "The provider's listing price information, including any provider disclaimer. Togavsu never sells or bills modules."
           },
           "flagged": {
             "type": "boolean"
@@ -91126,6 +91133,15 @@
       "help": "Client two-factor required when true."
     },
     {
+      "key": "security.password_optional",
+      "type": "boolean",
+      "tab": "security",
+      "default": false,
+      "secret": false,
+      "locked": false,
+      "help": "Lets users sign in with their email alone. For test and demo installs only: anyone who knows an account's email can sign in. Turning it off does not sign out anyone already signed in; each sign-in without a password is in the audit log. Default off."
+    },
+    {
       "key": "security.idle_timeout_seconds",
       "type": "integer",
       "tab": "security",
@@ -91175,6 +91191,17 @@
       "minimum": 0,
       "maximum": 3650,
       "help": "Days after closed_on that a client may still read the matter, its shared files and invoices. Default 14. Reopening restores access."
+    },
+    {
+      "key": "practice.case_number_examples",
+      "type": "json",
+      "tab": "practice",
+      "default": [
+        "23AR-CV00825"
+      ],
+      "secret": false,
+      "locked": false,
+      "help": "Type one real case number per line in each format your courts use. Togavsu learns the format from the example."
     },
     {
       "key": "practice.case_number_patterns",

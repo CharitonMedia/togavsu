@@ -85,6 +85,50 @@ if "COSIGN_VERIFY_FLAGS: ${COSIGN_VERIFY_FLAGS:---insecure-ignore-tlog=true}" no
 dockerfile = (root / "Dockerfile").read_text()
 if "COPY deploy/release/cosign.pub /usr/share/togavsu/cosign.pub" not in dockerfile:
     problems.append("the supervisor image does not ship deploy/release/cosign.pub")
+
+# Marketplace profile: only under profiles: ["marketplace"], mounts marketsecrets
+# read-only and marketdata at /var/lib/togavsu-marketplace, publishes no port; only
+# bootstrap and togavsu-marketplace mount marketsecrets.
+def service_block(text, name):
+    needle = "  %s:" % name
+    if needle not in text:
+        return None
+    lines = []
+    for line in text.split(needle, 1)[1].splitlines()[1:]:
+        if not line.startswith(" ") or (line.startswith("  ") and not line.startswith("   ")):
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+mkt = service_block(text, "togavsu-marketplace")
+if mkt is None:
+    problems.append("togavsu-marketplace service is missing")
+else:
+    if 'profiles: ["marketplace"]' not in mkt:
+        problems.append("togavsu-marketplace is not only under the marketplace profile")
+    if "marketsecrets:/marketsecrets:ro" not in mkt:
+        problems.append("togavsu-marketplace does not mount marketsecrets read-only")
+    if "marketdata:/var/lib/togavsu-marketplace" not in mkt:
+        problems.append("togavsu-marketplace does not mount marketdata at /var/lib/togavsu-marketplace")
+    in_ports = False
+    for line in mkt.splitlines():
+        stripped = line.strip().rstrip(":")
+        if stripped == "ports":
+            in_ports = True
+            continue
+        if in_ports:
+            if line.strip().startswith("- "):
+                problems.append("togavsu-marketplace publishes a port: " + line.strip())
+            elif line.startswith("    ") and not line.startswith("     "):
+                in_ports = False
+for name, (env, vols) in svc.items():
+    if any(v.split(":")[0] == "marketsecrets" for v in vols) and name not in ("bootstrap", "togavsu-marketplace"):
+        problems.append(name + " mounts marketsecrets")
+boot_vols = svc.get("bootstrap", ([], []))[1]
+if not any(v.split(":")[0] == "marketsecrets" for v in boot_vols):
+    problems.append("bootstrap does not mount marketsecrets")
+
 if problems:
     print("compose.yaml:", "; ".join(problems), file=sys.stderr)
     sys.exit(1)

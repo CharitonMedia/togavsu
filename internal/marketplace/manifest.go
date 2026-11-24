@@ -10,6 +10,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/modules/yamlsubset"
@@ -65,6 +66,107 @@ func ValidModuleID(id string) bool { return moduleID.MatchString(id) && !Reserve
 
 // ValidVersion reports whether v is a version string the marketplace accepts.
 func ValidVersion(v string) bool { return versionForm.MatchString(v) }
+
+// NewerVersion reports whether listed is a newer release than installed by semantic
+// version precedence: dotted numeric parts first, then a release ranks above its own
+// pre-release (1.0.0 > 1.0.0-rc1), and pre-release identifiers compare as semver says
+// (numeric ones numerically and below alphanumeric ones, a longer set above its prefix).
+// Build metadata (+...) is ignored. Equal versions are not newer. Unparseable versions
+// fall back to string inequality.
+func NewerVersion(listed, installed string) bool {
+	if listed == "" || listed == installed {
+		return false
+	}
+	if installed == "" {
+		return true
+	}
+	lp, okL := versionParts(listed)
+	ip, okI := versionParts(installed)
+	if !okL || !okI {
+		return listed != installed
+	}
+	for i := 0; i < 4; i++ {
+		if lp[i] != ip[i] {
+			return lp[i] > ip[i]
+		}
+	}
+	return comparePrerelease(prerelease(listed), prerelease(installed)) > 0
+}
+
+// prerelease returns the pre-release identifiers of v (between the first "-" and any
+// "+"), or nil for a release.
+func prerelease(v string) []string {
+	if i := strings.IndexByte(v, '+'); i >= 0 {
+		v = v[:i]
+	}
+	i := strings.IndexByte(v, '-')
+	if i < 0 {
+		return nil
+	}
+	return strings.Split(v[i+1:], ".")
+}
+
+// comparePrerelease orders two pre-release identifier lists by semver precedence and
+// returns -1, 0 or 1. No identifiers (a release) ranks above any pre-release.
+func comparePrerelease(a, b []string) int {
+	switch {
+	case len(a) == 0 && len(b) == 0:
+		return 0
+	case len(a) == 0:
+		return 1
+	case len(b) == 0:
+		return -1
+	}
+	for i := 0; i < len(a) && i < len(b); i++ {
+		an, aErr := strconv.Atoi(a[i])
+		bn, bErr := strconv.Atoi(b[i])
+		aNum, bNum := aErr == nil, bErr == nil
+		switch {
+		case aNum && bNum:
+			if an != bn {
+				if an > bn {
+					return 1
+				}
+				return -1
+			}
+		case aNum:
+			return -1
+		case bNum:
+			return 1
+		default:
+			if c := strings.Compare(a[i], b[i]); c != 0 {
+				return c
+			}
+		}
+	}
+	switch {
+	case len(a) > len(b):
+		return 1
+	case len(a) < len(b):
+		return -1
+	}
+	return 0
+}
+
+func versionParts(v string) ([4]int, bool) {
+	v = strings.TrimPrefix(v, "v")
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) == 0 || len(parts) > 4 {
+		return [4]int{}, false
+	}
+	var out [4]int
+	for i, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 {
+			return [4]int{}, false
+		}
+		out[i] = n
+	}
+	return out, true
+}
 
 // ReadManifest finds togavsu-module.yaml at the root of a package (a tar archive, gzip
 // compressed or not) and reads it. Call it only after Verify passes. The whole archive is

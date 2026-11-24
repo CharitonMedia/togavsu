@@ -585,12 +585,16 @@ func TestUIAdminSettings(t *testing.T) {
 			t.Errorf("PRD default %s is not on its tab %s", d.Key, d.Tab)
 			continue
 		}
-		def := d.Default
-		if def == "" {
-			def = "(none)"
+		// Hidden CSRF tokens can contain a short raw default by chance.
+		row = regexp.MustCompile(`(<input[^>]*name="csrf"[^>]*value=")[^"]*(")`).ReplaceAllString(row, "${1}${2}")
+		def := settings.DisplayPlain(d, d.Default)
+		if !strings.Contains(html.UnescapeString(row), def) {
+			t.Errorf("%s does not show its plain default %q on %s", d.Key, def, d.Tab)
 		}
-		if !strings.Contains(html.UnescapeString(row), "<code>"+def+"</code>") {
-			t.Errorf("%s does not show its default %q on %s", d.Key, def, d.Tab)
+		if settings.PlainOf(d) == settings.PlainDuration || settings.PlainOf(d) == settings.PlainBytes {
+			if strings.Contains(row, d.Default) && d.Default != def {
+				t.Errorf("%s still shows raw default %q", d.Key, d.Default)
+			}
 		}
 		if d.Locked || d.Secret {
 			continue
@@ -628,6 +632,8 @@ func TestUIAdminSettings(t *testing.T) {
 	// An invalid value is refused with its reason; a non-admin cannot write.
 	if loc := e.admin.form("/admin/settings/billing.time_increment_minutes", url.Values{"value": {"7"}, "tab": {"time_billing"}}).loc; !strings.Contains(loc, "error=") {
 		t.Fatalf("invalid increment accepted: %s", loc)
+	} else if errText := queryParam(loc, "error"); !strings.Contains(errText, "Time Increment") || strings.Contains(errText, "billing.time_increment_minutes") {
+		t.Fatalf("invalid increment error names the key, not the label: %q", errText)
 	}
 	if loc := e.atty.do("POST", "/admin/settings/billing.time_increment_minutes", url.Values{"csrf": {e.atty.csrf}, "value": {"15"}}).loc; !strings.Contains(loc, "error=") {
 		t.Fatalf("attorney changed a setting: %s", loc)
@@ -652,6 +658,241 @@ func TestUIAdminSettings(t *testing.T) {
 	e.admin.form("/admin/settings/mail.smtp_password", url.Values{"value": {"synthetic-secret-value"}, "tab": {"notifications_mail"}})
 	if r := e.admin.must(http.StatusOK, "GET", "/admin?tab=notifications_mail", nil); strings.Contains(r.body, "synthetic-secret-value") {
 		t.Fatal("secret shown on the admin page")
+	}
+}
+
+// TestUIAdminSettingsLabels covers the desk-fix plain names: each row leads with the
+// label, help, then muted key; the Name heading and visually hidden label use it; save
+// and error notices name the setting by label; GET /api/v1/settings includes label.
+func TestUIAdminSettingsLabels(t *testing.T) {
+	e := newEnv(t)
+	const key = "billing.time_increment_minutes"
+	label := settings.LabelOf(key)
+	page := e.admin.must(http.StatusOK, "GET", "/admin?tab=time_billing", nil).body
+	if !strings.Contains(page, "<th>Name</th>") || strings.Contains(page, "<th>Setting</th>") {
+		t.Fatalf("settings table heading is not Name")
+	}
+	row := between(page, `<tr id="s-`+key+`"`, "</tr>")
+	if row == "" {
+		t.Fatalf("row for %s missing", key)
+	}
+	labelAt := strings.Index(row, label)
+	helpAt := strings.Index(row, `<p class="help-text">`)
+	keyAt := strings.Index(row, `<p class="setting-key">`+key+`</p>`)
+	if labelAt < 0 || helpAt < 0 || keyAt < 0 || !(labelAt < helpAt && helpAt < keyAt) {
+		t.Fatalf("row order want label, help, muted key; got label=%d help=%d key=%d in %s", labelAt, helpAt, keyAt, row)
+	}
+	if !strings.Contains(row, `<details><summary>Advanced</summary><p class="setting-key">`+key+`</p></details>`) {
+		t.Fatal("raw setting key must stay behind closed Advanced details")
+	}
+	if !strings.Contains(row, `<label class="visually-hidden" for="v-`+key+`">`+label+`</label>`) {
+		t.Fatalf("visually hidden label is not %q: %s", label, row)
+	}
+	api := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/"+key, nil)
+	if api.json["label"] != label || api.json["key"] != key {
+		t.Fatalf("GET setting JSON: %s", api.body)
+	}
+	list := e.admin.must(http.StatusOK, "GET", "/api/v1/settings", nil)
+	found := false
+	for _, item := range items(t, list) {
+		if item["key"] == key {
+			found = true
+			if item["label"] != label {
+				t.Fatalf("listSettings label for %s: %v", key, item["label"])
+			}
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("%s missing from listSettings", key)
+	}
+	save := e.admin.form("/admin/settings/"+key, url.Values{"value": {"15"}, "tab": {"time_billing"}, "kind": {"int"}})
+	if notice := queryParam(save.loc, "notice"); !strings.Contains(notice, "Saved "+label+":") || strings.Contains(notice, key) {
+		t.Fatalf("save notice: %q", notice)
+	}
+	bad := e.admin.form("/admin/settings/"+key, url.Values{"value": {"7"}, "tab": {"time_billing"}, "kind": {"int"}})
+	if errText := queryParam(bad.loc, "error"); !strings.Contains(errText, label) || strings.Contains(errText, key) {
+		t.Fatalf("error text: %q", errText)
+	}
+	// Special validations wrap a domain reason without the key; the UI keeps that hint.
+	const patternKey = "doctender.naming_pattern"
+	patternLabel := settings.LabelOf(patternKey)
+	patternBad := e.admin.form("/admin/settings/"+patternKey, url.Values{"value": {"no-ext-token"}, "tab": {"doc_tender"}, "kind": {"string"}})
+	if errText := queryParam(patternBad.loc, "error"); !strings.Contains(errText, patternLabel) || !strings.Contains(errText, "needs <ext>") || strings.Contains(errText, patternKey) {
+		t.Fatalf("naming pattern error should keep the domain reason: %q", errText)
+	}
+	// API validation bodies still name the key (contract), while the page uses the label.
+	if r := e.admin.do("PATCH", "/api/v1/settings/"+key, map[string]any{"value": 7}); r.code != http.StatusBadRequest || !strings.Contains(r.body, key) || strings.Contains(r.body, label) {
+		t.Fatalf("API error should keep the key: %d %s", r.code, r.body)
+	}
+	reset := e.admin.form("/admin/settings/"+key+"/reset", url.Values{"tab": {"time_billing"}})
+	if notice := queryParam(reset.loc, "notice"); !strings.Contains(notice, "Reset "+label+" to its default.") || strings.Contains(notice, key) {
+		t.Fatalf("reset notice: %q", notice)
+	}
+}
+
+func queryParam(loc, name string) string {
+	u, err := url.Parse(loc)
+	if err != nil {
+		return ""
+	}
+	return u.Query().Get(name)
+}
+
+// TestUIAdminSettingsPlainValues covers desk-fix plain editors: duration and
+// case-number examples convert on the server, Advanced stays closed by default,
+// and raw JSON/regex stay out of the main Firm/Practice/Files/AI tables.
+func TestUIAdminSettingsPlainValues(t *testing.T) {
+	e := newEnv(t)
+	practice := e.admin.must(http.StatusOK, "GET", "/admin?tab=practice", nil).body
+	if !strings.Contains(practice, `id="s-practice.case_number_examples"`) {
+		t.Fatal("Case Number Formats row missing")
+	}
+	if !strings.Contains(practice, "23AR-CV00825") || strings.Contains(between(practice, `<tr id="s-practice.case_number_examples"`, "</tr>"), `^\d{2}`) {
+		t.Fatal("examples row should show the sample, not the regexp")
+	}
+	if !strings.Contains(practice, `<details class="settings-advanced">`) || strings.Contains(practice, `<details class="settings-advanced" open`) {
+		t.Fatal("Advanced should be present and closed by default")
+	}
+	if !strings.Contains(practice, `id="s-practice.case_number_patterns"`) {
+		t.Fatal("patterns row should sit behind Advanced")
+	}
+	openAdv := e.admin.must(http.StatusOK, "GET", "/admin?tab=practice&advanced=1", nil).body
+	if !strings.Contains(openAdv, `<details class="settings-advanced" open`) {
+		t.Fatal("advanced=1 should open Advanced")
+	}
+	// Plain duration save stores Duration.String() for the same length.
+	e.admin.form("/admin/settings/security.idle_timeout", url.Values{
+		"tab": {"security"}, "kind": {"duration"}, "plain": {"duration"}, "amount": {"6"}, "unit": {"hours"},
+	})
+	cur := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/security.idle_timeout", nil)
+	if fmt.Sprint(cur.json["value"]) != (6 * time.Hour).String() {
+		t.Fatalf("idle timeout stored %v, want %s", cur.json["value"], (6 * time.Hour).String())
+	}
+	sec := e.admin.must(http.StatusOK, "GET", "/admin?tab=security", nil).body
+	row := between(sec, `<tr id="s-security.idle_timeout"`, "</tr>")
+	if !strings.Contains(row, `value="6"`) || !strings.Contains(row, `value="hours" selected`) || strings.Contains(row, "6h0m0s") {
+		t.Fatalf("idle timeout should show plain amount 6 hours: %s", row)
+	}
+	if !strings.Contains(row, `setting-default">12 hours<`) {
+		t.Fatalf("idle timeout default should read 12 hours: %s", row)
+	}
+	// Case number examples derive patterns in one save.
+	e.admin.form("/admin/settings/practice.case_number_examples", url.Values{
+		"tab": {"practice"}, "kind": {"json"}, "plain": {"case_examples"}, "value": {"23AR-CV00825\n2026-CV-1"},
+	})
+	ex := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/practice.case_number_examples", nil)
+	pat := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/practice.case_number_patterns", nil)
+	if !sameJSON(fmt.Sprint(ex.json["value"]), `["23AR-CV00825","2026-CV-1"]`) {
+		t.Fatalf("examples: %v", ex.json["value"])
+	}
+	wantPat, _ := json.Marshal([]string{domain.DefaultCasePattern, `^\d{4}-[A-Z]{2}-\d+$`})
+	if !sameJSON(fmt.Sprint(pat.json["value"]), string(wantPat)) {
+		t.Fatalf("patterns: %v", pat.json["value"])
+	}
+	files := e.admin.must(http.StatusOK, "GET", "/admin?tab=files_storage", nil).body
+	if !strings.Contains(between(files, `<tr id="s-files.max_upload_bytes"`, "</tr>"), "2 GB") {
+		t.Fatal("Largest Upload should show 2 GB")
+	}
+	// Non-MB-aligned stored bytes keep unit "bytes" so an unchanged Save does not rescale.
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/files.max_upload_bytes", map[string]any{"value": 1500000})
+	files = e.admin.must(http.StatusOK, "GET", "/admin?tab=files_storage", nil).body
+	uploadRow := between(files, `<tr id="s-files.max_upload_bytes"`, "</tr>")
+	if !strings.Contains(uploadRow, `value="1500000"`) || !strings.Contains(uploadRow, `value="bytes" selected`) {
+		t.Fatalf("non-aligned bytes should pre-fill amount 1500000 unit bytes: %s", uploadRow)
+	}
+	e.admin.form("/admin/settings/files.max_upload_bytes", url.Values{
+		"tab": {"files_storage"}, "kind": {"int"}, "plain": {"bytes"}, "amount": {"1500000"}, "unit": {"bytes"},
+	})
+	up := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/files.max_upload_bytes", nil)
+	if fmt.Sprint(up.json["value"]) != "1500000" {
+		t.Fatalf("unchanged bytes save rescaled: %v", up.json["value"])
+	}
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/files.max_upload_bytes", map[string]any{"value": 2147483648})
+	// Custom patterns (API) replace the examples textarea with the Advanced hint.
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/practice.case_number_patterns", map[string]any{
+		"value": []string{`^\d{4}-CV-\d+$`},
+	})
+	customPractice := e.admin.must(http.StatusOK, "GET", "/admin?tab=practice", nil).body
+	exRow := between(customPractice, `<tr id="s-practice.case_number_examples"`, "</tr>")
+	if !strings.Contains(exRow, "Custom patterns are in use; see Advanced.") {
+		t.Fatalf("custom patterns hint missing: %s", exRow)
+	}
+	// Current-value cell shows the hint instead of the stored examples; Default may still list them.
+	valueCell := between(exRow, "<td>", `<td class="setting-default"`)
+	if strings.Contains(valueCell, "23AR-CV00825") || strings.Contains(valueCell, "2026-CV-1") {
+		t.Fatalf("examples should not fill the current value when custom patterns are in use: %s", valueCell)
+	}
+	ai := e.admin.must(http.StatusOK, "GET", "/admin?tab=ai", nil).body
+	if !strings.Contains(between(ai, `<tr id="s-ai.model_prices"`, "</tr>"), "None set") {
+		t.Fatal("Model Prices plain summary missing")
+	}
+	if strings.Contains(between(ai, `<tr id="s-ai.model_prices"`, "</tr>"), `name="value"`) {
+		t.Fatal("Model Prices main row should be read-only")
+	}
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/ai.model_prices", map[string]any{
+		"value": map[string]any{"gpt-frac": map[string]any{"input": 0.4, "output": 15.5}},
+	})
+	ai = e.admin.must(http.StatusOK, "GET", "/admin?tab=ai", nil).body
+	priceRow := between(ai, `<tr id="s-ai.model_prices"`, "</tr>")
+	if !strings.Contains(priceRow, "0.4 in") || !strings.Contains(priceRow, "15.5 out") {
+		t.Fatalf("model prices must show fractional cents exactly: %s", priceRow)
+	}
+	// Word-list, retry, notifications and colors saves through the admin form.
+	e.admin.form("/admin/settings/practice.party_roles", url.Values{
+		"tab": {"practice"}, "kind": {"json"}, "plain": {"lines"},
+		"value": {"client\nopposing party\ncustom role"},
+	})
+	roles := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/practice.party_roles", nil)
+	if !sameJSON(fmt.Sprint(roles.json["value"]), `["client","opposing party","custom role"]`) {
+		t.Fatalf("party roles form save: %v", roles.json["value"])
+	}
+	practice = e.admin.must(http.StatusOK, "GET", "/admin?tab=practice", nil).body
+	rolesDefault := between(between(practice, `<tr id="s-practice.party_roles"`, "</tr>"), `setting-default">`, "<")
+	if !strings.Contains(rolesDefault, "\n") {
+		t.Fatalf("party roles Default must keep one role per line in HTML: %q", rolesDefault)
+	}
+	e.admin.form("/admin/settings/doctender.retry_schedule", url.Values{
+		"tab": {"doc_tender"}, "kind": {"json"}, "plain": {"retry"},
+		"value": {"Right away\n15 minutes\n2 hours"},
+	})
+	retry := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/doctender.retry_schedule", nil)
+	if !sameJSON(fmt.Sprint(retry.json["value"]), `["0s","15m0s","2h0m0s"]`) {
+		t.Fatalf("retry form save: %v", retry.json["value"])
+	}
+	e.admin.form("/admin/settings/notifications.defaults", url.Values{
+		"tab": {"notifications_mail"}, "kind": {"json"}, "plain": {"notifications"},
+		"trust_flag.email": {"on"}, "trust_flag.in_app": {"on"},
+		"deadline_reminder.in_app": {"on"},
+	})
+	notify := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/notifications.defaults", nil)
+	notifyVal := fmt.Sprint(notify.json["value"])
+	if !strings.Contains(notifyVal, "trust_flag") || !strings.Contains(notifyVal, "deadline_reminder") {
+		t.Fatalf("notifications form save: %v", notify.json["value"])
+	}
+	e.admin.form("/admin/settings/appearance.colors", url.Values{
+		"tab": {"appearance"}, "kind": {"json"}, "plain": {"colors"},
+		"color_staff_sidebar_mode": {"custom"}, "color_staff_sidebar": {"#112233"},
+		"color_staff_header_mode": {"preset"}, "color_staff_header": {"#abcdef"},
+	})
+	colors := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/appearance.colors", nil)
+	if !sameJSON(fmt.Sprint(colors.json["value"]), `{"staff_sidebar":"#112233"}`) {
+		t.Fatalf("colors form save: %v", colors.json["value"])
+	}
+	// Sub-millisecond search.delay round-trips through the plain editor.
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/search.delay", map[string]any{"value": "500µs"})
+	lists := e.admin.must(http.StatusOK, "GET", "/admin?tab=lists_search", nil).body
+	delayRow := between(lists, `<tr id="s-search.delay"`, "</tr>")
+	if !strings.Contains(delayRow, `value="500"`) || !strings.Contains(delayRow, `value="microseconds" selected`) {
+		t.Fatalf("500µs should pre-fill 500 microseconds: %s", delayRow)
+	}
+	e.admin.form("/admin/settings/search.delay", url.Values{
+		"tab": {"lists_search"}, "kind": {"duration"}, "plain": {"duration"},
+		"amount": {"500"}, "unit": {"microseconds"},
+	})
+	delay := e.admin.must(http.StatusOK, "GET", "/api/v1/settings/search.delay", nil)
+	if fmt.Sprint(delay.json["value"]) != (500 * time.Microsecond).String() {
+		t.Fatalf("unchanged sub-ms save: %v", delay.json["value"])
 	}
 }
 
