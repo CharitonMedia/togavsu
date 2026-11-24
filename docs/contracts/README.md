@@ -228,15 +228,30 @@ module delivery. Exact emitted core actions such as `payment.created` remain
 reserved from module appends. Binding contract envelopes still reserve core roots.
 
 
-## Core update 2h: unassigned occupancy across walls
+## Core updates 2h/2i: occupancy, video and navigation
 
 On REST `GET /api/v1/calendar-events?view=occupancy` and MCP
-`listCalendarEvent`, an approved `calendar:read` service principal also receives
-busy intervals for walled events with no assigned attendee user: no rows in
-`calendar_event_attendees`. Each row contains only `starts_at` and `ends_at`,
-with the same ordering and pagination as every other interval. Any attendee row,
-including an inactive user, keeps a walled event out. Lifting a wall leaves an
-unassigned interval unchanged. Cancellation deletes the event and its attendees;
-deleted events contribute no interval. Window/range limits, approval and viewer
-refusals are unchanged. All other service lists/gets still omit walled records
-or answer `not_found`; user reads retain their policy. See [module APIs](../api/modules.md).
+`listCalendarEvent`, approved `calendar:read` service principals receive walled
+intervals with no **active** attendee user. In 2i, deactivated attendees no longer
+count as assigned; reactivation hides the walled interval on the next read.
+`view=busy` also includes these unassigned walled intervals. Each interval is
+exactly `starts_at`, `ends_at`, `all_day`. The all-day flag is the **only widening
+of 2h's times-only disclosure**: no event id, title, matter, kind, attendee,
+video or wall metadata. Ordering, window/range limits and pagination stay the
+same. Other service reads and user detail reads retain walls.
+
+Video bookings carry optional `video` with required boolean `requested`, nullable
+`provider` (module id), nullable active `host_user_id`, and nullable opaque
+`provider_meeting_id` (at most 200 characters). Location carries the join link.
+Create/update use the existing event write policy. On PATCH, omission preserves,
+null clears and an object replaces video, with requested still required. Calendar
+notifications retain the existing record-reference envelope; modules read video
+with the event's other fields through the scoped get operation.
+
+A frame may navigate to another enabled module's declared staff tab only when
+an admin-approved contract link connects them in either direction. Live server
+resolution filters query/message params to the target's `tabs[].params`.
+Unlinked/disabled modules, client tabs and other cross-module surfaces are refused.
+See [module APIs](../api/modules.md) for the message and bridge route, and public
+`modulekit.CalendarVideo` / `CalendarOccupancyBlock` / `CalendarBusyBlock` and
+`c.CalendarOccupancy` for typed callers and real-core acceptance fixtures.

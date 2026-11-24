@@ -35,7 +35,7 @@ Module secrets are `PUT`/`GET`/`DELETE /api/v1/modules/{id}/secrets/{name}` (`mo
 
 ## Frame bridge (CORE-09)
 
-Staff and client frames listen for `togavsu:editor.open`, `togavsu:navigate` and `togavsu:context.refresh`. Navigate uses the widget-target allowlist (a tab/widget/matter-item of the same module, or a core page). Context refresh uses `…/context-token` on the frame path and keeps the query string (including `matter_id`). Staff routes: `GET /modules/{module_id}/tabs|widgets|matter-items/…/context-token`. Client: `GET /portal/{module_id}/{tab_id}/context-token`. Neither frame kind gets `allow-same-origin` on the module iframe.
+Staff and client frames listen for `togavsu:editor.open`, `togavsu:navigate` and `togavsu:context.refresh`. Navigate allows a tab/widget/matter-item of the same module, a core page, or a staff tab of another enabled module with an admin-approved contract link in either direction (see core update 2i below). Context refresh uses `…/context-token` on the frame path and keeps the query string (including `matter_id`). Staff routes: `GET /modules/{module_id}/tabs|widgets|matter-items/…/context-token`. Client: `GET /portal/{module_id}/{tab_id}/context-token`. Neither frame kind gets `allow-same-origin` on the module iframe.
 
 ## Client portal (CORE-10–CORE-15)
 
@@ -317,20 +317,73 @@ This does not replace module context verification or public `/p/` CSRF.
 A calendar service principal with approved **`calendar:read`** can read
 `GET /api/v1/calendar-events?view=occupancy&from_time=…&to_time=…`
 (or `listCalendarEvent` on MCP). Assigned and unassigned events on unwalled
-matters, and events with no matter, are included. Core update 2h also includes
-events on walled matters when they have **no assigned attendee user**: no row in
-`calendar_event_attendees` for the event. Any attendee row, including one for an
-inactive user, keeps a walled event out. The installer's wall membership grants
-no access. Removing a wall leaves unassigned occupancy unchanged and returns
-assigned events on the next read. Each row has **only** `starts_at`, `ends_at`;
-no ids, titles, attendees, all-day flag or wall metadata. All intervals use the
-same ordering and pagination, without merging, separate counts or wall-dependent
-cache/error handling. Cancellation deletes the event; deleted events contribute
-no interval, on either placement. Normal pagination and
-the existing available-dates maximum interval apply. User/matter/kind filters
-are refused. A viewer cannot use this view. No additional scope is required.
+matters, and events with no matter, are included. The approved 2h exception also
+includes walled events with no assigned attendee user. **Core update 2i defines
+assigned as having at least one active attendee user**. Deactivated users do not
+count. Reactivating any attendee hides that walled interval on the next read.
+The installer's wall membership grants no access. Removing a wall leaves
+unassigned occupancy unchanged and returns assigned events on the next read.
 
-`view=busy&user_id=…` and ordinary detail/list wall rules are unchanged.
+Each interval contains **only `starts_at`, `ends_at`, `all_day`**. `all_day` is
+true when the underlying event is all-day. This flag is the **only widening of
+the times-only shape** approved in 2h: no id, title, matter, kind, attendee,
+video, walled flag or other event detail is disclosed. Every interval uses the
+same ordering and pagination, without merging, separate counts or wall-dependent
+cache/error handling. Deletion contributes no interval. Existing window/range
+and pagination limits, scope and service-only checks remain unchanged.
+User/matter/kind filters are refused; a viewer cannot use occupancy.
+
+`view=busy&user_id=…` still requires an active user and returns only start, end
+and all_day across walls. It also includes walled events with no active attendee,
+even when the requested user is not an attendee. Events with active attendees
+retain the existing user filter. Ordinary event list/get reads retain all walls.
+
+### Core update 2i: calendar video metadata and linked navigation
+
+Calendar create/update/get/list (REST and MCP) accept or return optional `video`:
+
+```json
+{"requested":true,"provider":"phone-zoom","host_user_id":null,"provider_meeting_id":null}
+```
+
+`requested` is required whenever an object is supplied, including on PATCH.
+Absent/null video means no video booking; on PATCH, omission preserves the stored
+object, null clears it, and an object replaces it. `provider` is a module id or
+null to let the consumer choose the firm's default. `host_user_id` is null or an
+active core user's UUID; a malformed, missing or deactivated user is
+`invalid_input`. `provider_meeting_id` is an opaque string of at most 200
+characters or null. Setting it does not infer or change `requested`. Optional
+fields omitted from a supplied object become null. **`location` holds the join
+link.** Staff and approved `calendar:write` service principals use the existing
+CORE-30 write/delegation rules. Video is readable wherever the event is readable;
+occupancy/busy disclose none of it. Existing signed `calendar_event.created` and
+`calendar_event.updated` notifications identify the record; consumers fetch
+`video` through getCalendarEvent, just like the other event fields. Notifications
+retain their existing envelope and wall checks.
+
+For a staff frame to hand off a call, post:
+
+```javascript
+parent.postMessage({type: "togavsu:navigate", page: "/modules/intake/tabs/start", params: {phone: "+15555550123"}}, "*");
+```
+
+The target must be a declared staff tab (`home` or `matter`) of an enabled module,
+and an admin-approved contract link must currently connect source and target,
+in either direction. Both frame bridges resolve this through authenticated
+`GET /modules/{source}/navigate?page=…&params=<JSON string map>`, returning
+`{"url":"…"}`. Source must also be enabled and the viewer must be staff,
+attorney or admin. Missing/unlinked/disabled modules, client tabs, cross-module
+widgets/panels and malformed/external paths are refused. Unlinking or disabling
+is effective on the next navigation. Params from both `page`'s query and `params`
+are retained only if named in the **target tab's `tabs[].params`**; undeclared
+params are dropped. `params` overrides matching query keys. Navigation grants no
+record access: target context-token issuance and matter walls still apply.
+Same-module and core-page navigation retain their existing allowlist.
+
+The public kit exposes `CalendarVideo`, `CalendarOccupancyBlock` and
+`CalendarBusyBlock`; `c.CalendarOccupancy(moduleID, from, to)` uses the real
+service endpoint in coretest. Core migration **1650** stores video as a nullable
+whole JSON object without changing old event rows.
 
 An approved `processor.payment.v1` intent may be recorded once by its consumer,
 without a viewer, through the [record continuation](../contracts/README.md#record-the-approved-receipt).

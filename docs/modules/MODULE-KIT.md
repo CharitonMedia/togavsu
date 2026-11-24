@@ -911,13 +911,16 @@ or shared cache. Frame responses are `Cache-Control: no-store`. Module context
 verification and public-page CSRF remain separate requirements.
 
 `calendar-events?view=occupancy&from_time=…&to_time=…` is a service-only read under
-approved `calendar:read`. It includes assigned and unassigned events visible to
-the service principal. Core update 2h also includes walled events with no
-assigned attendee user (no `calendar_event_attendees` rows). Any assigned user,
-including an inactive user, keeps a walled event out. Lifting a wall leaves
-unassigned occupancy unchanged and returns assigned events on the next read. Rows contain **only** `starts_at` and `ends_at`.
-Use normal pagination and the existing interval range. User/matter/kind filters
-are refused. See [the API continuation notes](../api/core-update-2g.md).
+approved `calendar:read`. It includes unwalled events and walled events with no
+active attendee user (2i: deactivated attendees do not count). Reactivation hides
+that walled interval on the next read. Rows contain **only** `starts_at`, `ends_at`
+and `all_day`: the flag is the sole widening of 2h's times-only shape. No ids,
+titles, matters, attendees, video or wall metadata are exposed. Existing range,
+filter and paging checks remain. `modulekit.CalendarOccupancyBlock` and
+`c.CalendarOccupancy(moduleID, from, to)` provide the same shape in coretest.
+`view=busy` also includes walled events with no active attendee user. See
+[calendar video and linked navigation](../api/modules.md#core-update-2i-calendar-video-metadata-and-linked-navigation)
+for `modulekit.CalendarVideo`, location join links and cross-module staff handoffs.
 
 After processor approval, create the matter/contact and call
 `/api/v1/modules/contracts/processor.payment.v1/record` with

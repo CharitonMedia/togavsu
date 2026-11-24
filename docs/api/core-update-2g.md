@@ -7,7 +7,7 @@ This update finishes their remaining batch 2 behaviors without a version bump.
 | --- | --- | --- |
 | Binding event returns 400 | Every contract accepts contract/event/event_id/occurred_at/data. Original fields fan out through the durable signed queue to all enabled, approved linked consumers. Core namespaces, malformed UUID/time/data and mixed envelopes fail. Targeted 2f envelopes retain their rules and delivery. | `TestCoreUpdate2GBindingEnvelope`, retained 2d/2e/2f contract tests |
 | Client frame cannot render session CSRF | Authenticated /m/ GET passes module-bound `X-Togavsu-Session-CSRF`; hidden `csrf` works with a browser cookie jar. Responses are no-store; missing and other-session tokens still fail before POST reaches the module. | `TestCoreUpdate2GFrameSessionCSRF`, retained body-restoration test |
-| Firm occupancy for service callers | Service-only calendar `view=occupancy` under approved calendar:read returns starts_at/ends_at only for visible assigned/unassigned events; walled events with assigned attendees are omitted until their wall is lifted. Core update 2h includes unassigned walled events as identical bare intervals. Existing user busy and detail reads retain their policy. | `TestCoreUpdate2GFirmOccupancy`, retained CU2-02 and busy tests |
+| Firm occupancy for service callers | Service-only calendar `view=occupancy` under approved calendar:read returns starts_at/ends_at/all_day only (2i) for visible assigned/unassigned events; walled events with active assigned attendees are omitted until their wall is lifted. Core update 2h includes unassigned walled events as identical bare intervals. In 2i, busy also includes walled events without active attendees; detail reads retain their walls. | `TestCoreUpdate2GFirmOccupancy`, retained CU2-02 and busy tests |
 | Approved public charge cannot be recorded without a viewer | Consumer `processor.payment.v1/record` binds its stored approval once to its newly created matter/contact. Stored money fields alone record one completed operating card payment. Atomic binding/payment/audit/events and same-payment replay never call the provider. | `TestCoreUpdate2GProcessorRecording`, `TestCoreUpdate2GProcessorContactAndRefusals`, `TestCoreUpdate2GLegacyReceiptApprovalOrder` |
 
 New runtime criteria: `contract.binding_events`, `module.frame_session_csrf`,
@@ -68,7 +68,8 @@ intent, payment, matter (when set) and contact IDs; it no longer repeats an
   Duplicate top-level JSON keys in either envelope return HTTP 400.
 - Firm occupancy uses approved `calendar:read` on REST and MCP. Both stores
   filter exact interval overlap before pagination. Core update 2h includes
-  unassigned walled events as bare intervals; assigned walled events stay out
+  unassigned walled events as bare intervals; 2i adds only all_day and counts
+  only active attendees as assigned. Active assigned walled events stay out
   until the wall is removed, without revealing wall membership.
 
 Regression evidence: `TestCoreUpdate2GContactPaymentPumpWalls`,

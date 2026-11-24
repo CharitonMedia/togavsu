@@ -165,4 +165,17 @@ claimed by the core regression tests.
 
 | Module gap / failing acceptance | Status | Core evidence |
 | --- | --- | --- |
-| CORE-30 firm occupancy for service callers (`TestReviewBusyAcrossWalls`) | closed: approved `calendar:read` occupancy also returns start/end only for walled events with no assigned attendee user; assigned walled events stay out and all other reads retain walls | `TestCoreUpdate2HUnassignedOccupancy`, `TestCoreUpdate2HOccupancyHeaders`, updated `TestCoreUpdate2GFirmOccupancy` and `TestCoreUpdate2GOccupancyMemoryWindow` |
+| CORE-30 firm occupancy for service callers (`TestReviewBusyAcrossWalls`) | closed in 2h, refined in 2i: approved `calendar:read` occupancy returns start/end/all_day for walled events with no active attendee user; active assigned walled events stay out and all other detail reads retain walls | `TestCoreUpdate2HUnassignedOccupancy`, `TestCoreUpdate2HOccupancyHeaders`, updated `TestCoreUpdate2GFirmOccupancy` and `TestCoreUpdate2GOccupancyMemoryWindow` |
+
+
+## Batch 2 calendar and contract gaps closed by core-update-2i
+
+| Module gap | Status | Core evidence |
+| --- | --- | --- |
+| Intake cannot distinguish all-day walled occupancy from timed busy blocks | fixed: all_day is the sole widening of times-only intervals on REST/MCP and public kit | `TestCoreUpdate2IAllDayOccupancy` |
+| Walled events with only deactivated attendees disappear from booking availability | fixed: only active users count as assigned; occupancy and busy update on reactivation | `TestCoreUpdate2IDeactivatedAttendee` |
+| MOD-PHN-10 cannot identify a video booking, host or provider meeting on a calendar event | fixed: optional video metadata on create/update/get/list and notification-driven fetch; migration 1650; join link remains location | `TestCoreUpdate2IVideo` |
+| Phone cannot hand staff to intake with a call number | fixed: live approved link in either direction permits another enabled module's staff tab; target-declared params only | `TestCoreUpdate2ILinkedNavigation` |
+
+These are core Postgres regressions. They do not claim external module-suite or
+full-product acceptance; the independent exact-revision checkpoint remains pending.
