@@ -552,16 +552,17 @@ func (v *CalendarVideo) Clone() *CalendarVideo {
 // CalendarEvent is a firm calendar item.
 type CalendarEvent struct {
 	Meta
-	Title         string         `db:"title"`
-	Kind          string         `db:"kind"`
-	StartsAt      int64          `db:"starts_at"`
-	EndsAt        int64          `db:"ends_at"`
-	AllDay        bool           `db:"all_day"`
-	MatterID      ID             `db:"matter_id"`
-	Location      string         `db:"location"`
-	TravelMinutes int            `db:"travel_minutes"`
-	Notes         string         `db:"notes"`
-	Video         *CalendarVideo `db:"video"`
+	Title         string `db:"title"`
+	Kind          string `db:"kind"`
+	StartsAt      int64  `db:"starts_at"`
+	EndsAt        int64  `db:"ends_at"`
+	AllDay        bool   `db:"all_day"`
+	MatterID      ID     `db:"matter_id"`
+	Location      string `db:"location"`
+	TravelMinutes int    `db:"travel_minutes"`
+	Notes         string `db:"notes"`
+	// Video is stored by composed-core migration 1650, outside db.Embedded.
+	Video *CalendarVideo `db:"-"`
 }
 
 func (CalendarEvent) TableName() string { return "calendar_events" }
