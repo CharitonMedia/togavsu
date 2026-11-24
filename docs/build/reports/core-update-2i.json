@@ -1,0 +1,440 @@
+{
+  "task_id": "core-update-2i",
+  "status": "partial",
+  "implementation_status": "complete",
+  "verification_status": "partial",
+  "branch": "claude/togavsu-core-update-2i",
+  "base_revision": "2256eed70e249d5d714391a43da14e87b95049f8",
+  "tested_revision": "b1ae438aaa7c786d36287229a02e42fed6e50765",
+  "revision_scope": "Exact-head focused regressions, API checks and vet passed. Broader sweeps and their start revisions are recorded separately. Only this report is committed after tested_revision.",
+  "passed_acceptance_ids": [
+    "CU2-02",
+    "CU2-03",
+    "CU2-05"
+  ],
+  "pending_acceptance_ids": [
+    "CU2-01",
+    "CU2-07"
+  ],
+  "scope_items": [
+    {
+      "id": "all-day-occupancy",
+      "status": "implemented_and_tested",
+      "test": "TestCoreUpdate2IAllDayOccupancy",
+      "change": "Every occupancy interval has starts_at, ends_at and all_day. The flag is the sole widening of 2h times-only disclosure; no event, matter, kind, attendee or video metadata is exposed. REST, MCP, kit types and real-core fixture agree."
+    },
+    {
+      "id": "active-attendee-assignment",
+      "status": "implemented_and_tested",
+      "test": "TestCoreUpdate2IDeactivatedAttendee",
+      "change": "Only active attendee users count as assigned. Walled events with no active attendees appear in occupancy and per-user busy with the restricted shape; reactivation hides them on the next read unless the existing per-user attendee rule includes them. Other walls, windows, ordering and pagination remain in force. Both stores use current user state; lookup errors fail closed."
+    },
+    {
+      "id": "calendar-video",
+      "status": "implemented_and_tested",
+      "test": "TestCoreUpdate2IVideo",
+      "change": "Optional persisted video object with required requested boolean, nullable provider, nullable active core host UUID and nullable opaque meeting id (200 Unicode characters maximum). Invalid video returns invalid_input. PATCH omission preserves, null clears, an object replaces. Location remains the join link. Read/list/create/update and typed kit support are covered. Existing calendar notifications carry record references; recipients fetch video through normal scoped reads just as other fields. No notification envelope or event grant was widened."
+    },
+    {
+      "id": "linked-navigation",
+      "status": "implemented_and_tested",
+      "test": "TestCoreUpdate2ILinkedNavigation",
+      "change": "Both frame bridges use live authenticated resolution for cross-module targets. Enabled source/target, staff viewer, declared staff tab and an approved link in either direction are required. Query and message params are filtered against target tabs[].params. Unlinked/disabled/client-tab/widget/external/traversal targets are refused; current same-module/core refusals are retained."
+    }
+  ],
+  "new_regressions_passed": [
+    "TestCoreUpdate2IActiveAssignmentMemoryAndErrors",
+    "TestCoreUpdate2IVideoMemoryOwnership",
+    "TestCoreUpdate2IAllDayOccupancy",
+    "TestCoreUpdate2IDeactivatedAttendee",
+    "TestCoreUpdate2IVideo",
+    "TestCoreUpdate2ILinkedNavigation"
+  ],
+  "migration": {
+    "version": 1650,
+    "file": "internal/core/migrations/1650_calendar_video.sql",
+    "allocation": "Next free version in the existing core-update-2h range 1650-1699; ranges.go and earlier migrations unchanged.",
+    "storage": "Nullable whole-object JSON in TEXT; existing rows remain null; expand-only Up."
+  },
+  "tests": [
+    {
+      "name": "full",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./api ./internal/domain ./internal/db ./internal/calendar ./internal/modules ./pkg/modulekit ./pkg/modulekit/coretest ./web ./internal/core",
+      "exit_code": 1,
+      "database_host": "pga",
+      "counts_including_subtests": {
+        "pass": 568,
+        "fail": 2,
+        "skip": 6
+      },
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/api",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/domain",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/db",
+          "status": "fail"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/calendar",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/modules",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit/coretest",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/web",
+          "status": "skip"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/core",
+          "status": "fail"
+        }
+      ],
+      "failures": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/db",
+          "name": "TestSchemaContract",
+          "output": "=== RUN   TestSchemaContract\n    schema_test.go:165: calendar_events missing column video\n--- FAIL: TestSchemaContract (0.05s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestCU207Batch1ModulesUnchanged",
+          "output": "=== RUN   TestCU207Batch1ModulesUnchanged\n    cu207_batch1_pg_test.go:248: documents package missing at /work/core/.core-2i-batch1-fixtures/togavsu-documents: stat /work/core/.core-2i-batch1-fixtures/togavsu-documents/package/togavsu-module.yaml: no such file or directory\n--- FAIL: TestCU207Batch1ModulesUnchanged (14.38s)"
+        }
+      ],
+      "skips": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "name": "TestBannerBridgeRejectsOriginFilter",
+          "output": "=== RUN   TestBannerBridgeRejectsOriginFilter\n    public_csrf_test.go:84: node not available for behavioural banner-bridge check\n--- SKIP: TestBannerBridgeRejectsOriginFilter (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "name": "TestModuleContainerOnDocker",
+          "output": "=== RUN   TestModuleContainerOnDocker\n    supervisor_docker_test.go:27: TOGAVSU_MODULE_IT_IMAGE, _DIGEST and _NETWORK are unset; run scripts/ci/test-module-container.sh\n--- SKIP: TestModuleContainerOnDocker (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsLawCraftEditor",
+          "output": "=== RUN   TestDocumentsLawCraftEditor\n    documents_pg_test.go:776: TOGAVSU_WORDCRAFT_CLI is not set (build wordcraft-cli with web/editor/build.sh)\n--- SKIP: TestDocumentsLawCraftEditor (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsScreens",
+          "output": "=== RUN   TestDocumentsScreens\n    documents_pg_test.go:1733: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestDocumentsScreens (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestExtensionsScreens",
+          "output": "=== RUN   TestExtensionsScreens\n    extensions_ai_pg_test.go:212: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestExtensionsScreens (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestReleasePerfP95",
+          "output": "=== RUN   TestReleasePerfP95\n    perf_pg_test.go:37: set TOGAVSU_PERF=1 to run the AC-017 performance test\n--- SKIP: TestReleasePerfP95 (0.00s)"
+        }
+      ],
+      "race_diagnostics": 0,
+      "started_revision": "4ea88d6ba98fa916b827d6ecfe6d53f43282c03f",
+      "note": "Sweep began before the base-schema tag correction; TestSchemaContract was corrected and rechecked in schema-recheck and final-packages. CU2-07 is still pending. This is not a clean exact-head checkpoint."
+    },
+    {
+      "name": "final-packages",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./api ./internal/domain ./internal/db ./internal/calendar ./internal/modules ./pkg/modulekit ./pkg/modulekit/coretest ./web",
+      "exit_code": 0,
+      "database_host": "pga",
+      "counts_including_subtests": {
+        "pass": 414,
+        "skip": 2
+      },
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/api",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/domain",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/db",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/calendar",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/modules",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit/coretest",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/web",
+          "status": "skip"
+        }
+      ],
+      "failures": [],
+      "skips": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "name": "TestBannerBridgeRejectsOriginFilter",
+          "output": "=== RUN   TestBannerBridgeRejectsOriginFilter\n    public_csrf_test.go:84: node not available for behavioural banner-bridge check\n--- SKIP: TestBannerBridgeRejectsOriginFilter (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "name": "TestModuleContainerOnDocker",
+          "output": "=== RUN   TestModuleContainerOnDocker\n    supervisor_docker_test.go:27: TOGAVSU_MODULE_IT_IMAGE, _DIGEST and _NETWORK are unset; run scripts/ci/test-module-container.sh\n--- SKIP: TestModuleContainerOnDocker (0.00s)"
+        }
+      ],
+      "race_diagnostics": 0,
+      "started_revision": "21d056c23d4d2c3114012b2a434c4a9b7cafa957",
+      "note": "The final legacy URL-text refusal guard was checked separately, then the exact-head regressions ran. No other feature implementation changed during this rerun."
+    },
+    {
+      "name": "race",
+      "command": "go test -count=1 -race -short -timeout 0 -p 1 -json ./internal/core/ ./internal/practice/",
+      "exit_code": 1,
+      "database_host": "pgb",
+      "counts_including_subtests": {
+        "pass": 219,
+        "fail": 1,
+        "skip": 4
+      },
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/core",
+          "status": "fail"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/practice",
+          "status": "pass"
+        }
+      ],
+      "failures": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestCU207Batch1ModulesUnchanged",
+          "output": "=== RUN   TestCU207Batch1ModulesUnchanged\n    cu207_batch1_pg_test.go:248: documents package missing at /work/core/.core-2i-batch1-fixtures/togavsu-documents: stat /work/core/.core-2i-batch1-fixtures/togavsu-documents/package/togavsu-module.yaml: no such file or directory\n--- FAIL: TestCU207Batch1ModulesUnchanged (5.94s)"
+        }
+      ],
+      "skips": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsLawCraftEditor",
+          "output": "=== RUN   TestDocumentsLawCraftEditor\n    documents_pg_test.go:776: TOGAVSU_WORDCRAFT_CLI is not set (build wordcraft-cli with web/editor/build.sh)\n--- SKIP: TestDocumentsLawCraftEditor (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsScreens",
+          "output": "=== RUN   TestDocumentsScreens\n    documents_pg_test.go:1733: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestDocumentsScreens (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestExtensionsScreens",
+          "output": "=== RUN   TestExtensionsScreens\n    extensions_ai_pg_test.go:212: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestExtensionsScreens (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestReleasePerfP95",
+          "output": "=== RUN   TestReleasePerfP95\n    perf_pg_test.go:37: set TOGAVSU_PERF=1 to run the AC-017 performance test\n--- SKIP: TestReleasePerfP95 (0.00s)"
+        }
+      ],
+      "race_diagnostics": 0,
+      "started_revision": "4ea88d6ba98fa916b827d6ecfe6d53f43282c03f",
+      "note": "Required race command, with the existing local batch-1 fixture override to prevent automatic clones. It is supporting race evidence, not an exact-head checkpoint; only the missing-fixture CU2-07 case failed."
+    },
+    {
+      "name": "head-regressions",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "database_host": "pga",
+      "counts_including_subtests": {
+        "pass": 36
+      },
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/calendar",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/modules",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit/coretest",
+          "status": "pass"
+        }
+      ],
+      "failures": [],
+      "skips": [],
+      "race_diagnostics": 0,
+      "revision": "b1ae438aaa7c786d36287229a02e42fed6e50765"
+    },
+    {
+      "name": "schema-recheck",
+      "command": "go test -count=1 -timeout 0 ./internal/db ./internal/domain",
+      "exit_code": 0,
+      "revision": "21d056c23d4d2c3114012b2a434c4a9b7cafa957"
+    },
+    {
+      "name": "api-head",
+      "command": "sh api/check.sh",
+      "exit_code": 0,
+      "revision": "b1ae438aaa7c786d36287229a02e42fed6e50765"
+    },
+    {
+      "name": "vet-head",
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "revision": "b1ae438aaa7c786d36287229a02e42fed6e50765"
+    },
+    {
+      "name": "formatting",
+      "command": "gofmt -l <changed Go files>",
+      "exit_code": 0,
+      "result": "No output; all changed Go files were formatted."
+    },
+    {
+      "name": "diff-check",
+      "command": "git diff --check; git diff 2256eed --check",
+      "exit_code": 0
+    },
+    {
+      "name": "debt-audit",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "result": "ponytail markers: 113; ledger entries: 70"
+    }
+  ],
+  "phase_cases": [
+    {
+      "id": "all-day-occupancy",
+      "status": "pass",
+      "test": "TestCoreUpdate2IAllDayOccupancy",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "revision": "b1ae438aaa7c786d36287229a02e42fed6e50765"
+    },
+    {
+      "id": "active-attendee-assignment",
+      "status": "pass",
+      "test": "TestCoreUpdate2IDeactivatedAttendee",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "revision": "b1ae438aaa7c786d36287229a02e42fed6e50765"
+    },
+    {
+      "id": "calendar-video",
+      "status": "pass",
+      "test": "TestCoreUpdate2IVideo",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "revision": "b1ae438aaa7c786d36287229a02e42fed6e50765"
+    },
+    {
+      "id": "linked-navigation",
+      "status": "pass",
+      "test": "TestCoreUpdate2ILinkedNavigation",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "revision": "b1ae438aaa7c786d36287229a02e42fed6e50765"
+    }
+  ],
+  "changed_2g_2h_tests": [
+    {
+      "name": "TestCoreUpdate2GFirmOccupancy",
+      "change": "Require exactly three keys, with all_day false on its timed fixtures."
+    },
+    {
+      "name": "TestCoreUpdate2HUnassignedOccupancy",
+      "change": "Expected intervals include all_day false; deactivating the sole attendee now restores occupancy. Wall/window/paging/error/cancellation assertions retained."
+    },
+    {
+      "name": "API 2g/2h occupancy contract tests",
+      "change": "Require all_day while continuing to reject identifiers, video and other extra details."
+    }
+  ],
+  "files": [
+    "api/contract/routes.py",
+    "api/contract/schemas.py",
+    "api/openapi/v1/mcp-tools.json",
+    "api/openapi/v1/openapi.json",
+    "api/tests/test_core2g.py",
+    "api/tests/test_core2h.py",
+    "api/tests/test_core2i.py",
+    "docs/api/core-update-2g.md",
+    "docs/api/modules.md",
+    "docs/api/stage1-inventory.json",
+    "docs/contracts/README.md",
+    "docs/modules/CONTRIBUTOR-GAPS.md",
+    "docs/modules/MODULE-KIT.md",
+    "internal/calendar/api.go",
+    "internal/calendar/busy.go",
+    "internal/calendar/core2i_test.go",
+    "internal/calendar/events.go",
+    "internal/calendar/postgres.go",
+    "internal/calendar/store.go",
+    "internal/calendar/types.go",
+    "internal/core/migrations/1650_calendar_video.sql",
+    "internal/domain/apierr.go",
+    "internal/domain/records.go",
+    "internal/modules/bridge_test.go",
+    "internal/modules/http.go",
+    "internal/modules/navigation.go",
+    "pkg/modulekit/calendar.go",
+    "pkg/modulekit/coretest/calendar.go",
+    "pkg/modulekit/coretest/core2g_pg_test.go",
+    "pkg/modulekit/coretest/core2h_pg_test.go",
+    "pkg/modulekit/coretest/core2i_pg_test.go",
+    "pkg/modulekit/coretest/navigation2i_pg_test.go",
+    "web/static/module-bridge.js"
+  ],
+  "simplification": {
+    "added_excluding_report": 1007,
+    "removed_excluding_report": 108,
+    "net_excluding_report": 899,
+    "debt_entries": 70,
+    "baseline_debt_entries": 70,
+    "debt_markers": 113,
+    "new_debt": 0,
+    "new_dependencies": 0,
+    "new_migrations": 1,
+    "review": "Reused existing user lookup, wall policy, module installation/contract links, REST/MCP dispatch and signed notification-reference model. No extra registry, service, cache, timeout or discretionary limit."
+  },
+  "limitations": [
+    "The legacy TestCU207Batch1ModulesUnchanged requires five batch-1 package checkouts. They are absent. TOGAVSU_BATCH1_MODS was set to /work/core/.core-2i-batch1-fixtures so its automatic git clones could not add remotes. The test ran and failed explicitly for the missing documents manifest; it was not skipped or weakened.",
+    "Docker is unavailable. Image-based build, Compose, smoke and clean-install scripts were not run. Existing TestModuleContainerOnDocker skipped itself for its Docker prerequisite.",
+    "Existing TestBannerBridgeRejectsOriginFilter skipped because Node is absent. The Go suites also retain their existing editor/browser-QC/performance prerequisite skips, listed with outputs in the test records. No new skip was added. A browser execution of the frame scripts was not available; server resolution and rendered bridge wiring were tested.",
+    "An independent exact-base/head checkpoint and full-product acceptance are pending. This implementation does not supply its own passing review.",
+    "Session-memory files were unavailable locally; SSH to Render-1 failed with no user for UID 1000. No LLM-wiki/codebase-memory client or repository index was available. No Ready claim was made.",
+    "No external intake/phone module suite was run or changed. Only /work/core source was edited, plus the explicitly requested /work/core-2i-report.md artifact. No push, remote addition, GitHub API call, dependency change, secret or .env edit was made."
+  ],
+  "follow_ups": [
+    "Supply approved local batch-1 fixtures and rerun CU2-07/full core and core/practice race commands.",
+    "Run image-based checks on a Docker-equipped host.",
+    "Obtain an independent exact-base/head checkpoint before integration."
+  ]
+}
