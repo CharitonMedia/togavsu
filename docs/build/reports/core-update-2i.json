@@ -1,21 +1,14 @@
 {
-  "task_id": "core-update-2i",
+  "task_id": "unassigned",
   "status": "partial",
   "implementation_status": "complete",
   "verification_status": "partial",
-  "branch": "claude/togavsu-core-update-2i-fix1",
-  "base_revision": "04b494a029e1d00fc8327fdfa4ac5df4dcb83052",
-  "tested_revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc",
-  "revision_scope": "Fix pass 1. Runtime implementation is 6896c88, API artifact hashes are 9756fce, and the adapted stale-write unit fixture is 4072afe. Exact-head focused and touched-package runs use tested_revision. Race/API start revisions are recorded individually; their relevant runtime/contract sources match tested_revision. Only this report is committed after tested_revision.",
-  "passed_acceptance_ids": [
-    "CU2-02",
-    "CU2-03",
-    "CU2-05"
-  ],
-  "pending_acceptance_ids": [
-    "CU2-01",
-    "CU2-07"
-  ],
+  "branch": "pr93",
+  "base_revision": "328713d534216a2d6527966a21b0427085e743b5",
+  "tested_revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+  "revision_scope": "PR 93 review repairs on pr93 against base_revision. Current verification is recorded in review_fixes and review-* tests at tested_revision. Earlier tests, phase_cases and fix_pass_1 describe their individually recorded historical revisions, not current task acceptance. Only this report changes after the final code commit.",
+  "passed_acceptance_ids": [],
+  "pending_acceptance_ids": [],
   "scope_items": [
     {
       "id": "all-day-occupancy",
@@ -27,7 +20,7 @@
       "id": "active-attendee-assignment",
       "status": "implemented_and_tested",
       "test": "TestCoreUpdate2IDeactivatedAttendee",
-      "change": "Walled events with no active attendee produce the same restricted interval for wall members and other authorized callers, on REST/MCP. Unwalled unassigned events retain the requested-user filter; detail reads retain walls. Active attendee assignment and reactivation behavior remain unchanged."
+      "change": "Service occupancy alone includes unassigned walled intervals, including events whose attendees are all deactivated, under Patrick’s 2026-11-24 ruling. Per-user busy retains the requested-user attendee filter; detail reads retain walls. Active attendee assignment and reactivation behavior remain unchanged."
     },
     {
       "id": "calendar-video",
@@ -57,7 +50,7 @@
   "migration": {
     "version": 1700,
     "file": "internal/core/migrations/1700_calendar_video.sql",
-    "allocation": "New core-update-2i block 1700-1749 in internal/db/ranges.go. The unshipped 1650 migration was renamed without changing its SQL; 1650-1699 remains reserved for core-update-2h.",
+    "allocation": "Core migration 1700 in the core-update-2i range 1700-1749 in internal/db/ranges.go; expand-only SQL.",
     "storage": "Nullable whole-object JSON in TEXT; existing rows remain null; expand-only Up."
   },
   "tests": [
@@ -546,6 +539,65 @@
       "exit_code": 0,
       "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc",
       "result": "113 markers; 70 ledger entries, unchanged."
+    },
+    {
+      "name": "review-unit",
+      "command": "go test -count=1 ./internal/settings/... ./internal/calendar/... ./internal/marketplace/...",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "log": "/work/core-pr93-review-unit.log",
+      "result": "All three packages pass, including the settings checker, the restored busy filter and both bot-finding regressions."
+    },
+    {
+      "name": "review-format",
+      "command": "gofmt -l .",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "log": "/work/core-pr93-review-gofmt.log",
+      "result": "No output; no unformatted files."
+    },
+    {
+      "name": "review-vet",
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "log": "/work/core-pr93-review-vet.log",
+      "result": "No output; exit 0."
+    },
+    {
+      "name": "review-settings-postgres",
+      "command": "go test -count=1 -v ./internal/db -run '^TestPostgresSettingsCaseExamplesAudit$'",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "log": "/work/core-pr93-review-settings-pg.log",
+      "result": "Pass: durable audit rollback and external notification failure after commit.",
+      "database_host": "pga"
+    },
+    {
+      "name": "review-debt",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "log": "/work/core-pr93-review-debt.log",
+      "result": "113 markers; 70 ledger entries; no new debt."
+    },
+    {
+      "name": "review-packages",
+      "command": "go test ./internal/settings/... ./internal/calendar/... ./internal/modules/... ./pkg/modulekit/...",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "database_host": "pga",
+      "log": "/work/core-pr93-review-packages.log",
+      "result": "All seven packages pass. Existing prerequisite-dependent tests do not establish Docker, browser or clean-install acceptance."
+    },
+    {
+      "name": "review-calendar-postgres",
+      "command": "go test -count=1 -v ./pkg/modulekit/coretest -run '^TestCoreUpdate2(FBusyAcrossWalls|G.*Occupancy|H.*Occupancy|I(BusyViewerIndependent|DeactivatedAttendee|AllDayOccupancy|MigrationAllocation))'",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "database_host": "pga",
+      "log": "/work/core-pr93-review-calendar-pg.log",
+      "result": "Nine top-level tests pass, including REST/MCP subtests, scope refusal, occupancy headers, unassigned/deactivated occupancy, per-user busy isolation, all_day and migration allocation. No skips in this targeted run."
     }
   ],
   "phase_cases": [
@@ -669,7 +721,7 @@
     "The core/practice race run start revision differs only in API inventory metadata and an unrelated calendar unit-test fixture from tested_revision; no core/practice runtime code changed. No race diagnostic was observed.",
     "An independent exact-base/head checkpoint and full-product acceptance remain pending. This implementation report supplies no passing independent review.",
     "Required session-memory files were absent locally; SSH to Render-1 failed with no user entry for UID 1000. No LLM-wiki/codebase-memory tool or repository index was available; no Ready claim was made.",
-    "Work was confined to /work/core-fix and the requested /work/core-2i-report.md, plus temporary verification artifacts under /work. /work/core was not changed. No push, remote addition, GitHub call, dependency change, secret/key or .env edit was made."
+    "Historical fix-pass work boundaries are recorded in prior reports. PR 93 review fixes stay in /work/core-pr93 plus the two existing /work core reports and verification artifacts. No push, remote addition, secret/key or .env edit."
   ],
   "follow_ups": [
     "Supply approved local batch-1 fixtures and rerun CU2-07/full core and core/practice race commands.",
@@ -704,9 +756,9 @@
       {
         "id": "busy-viewer-independence",
         "priority": "P3",
-        "status": "implemented_and_tested",
+        "status": "superseded_by_review_fixes",
         "test": "TestCoreUpdate2IBusyViewerIndependent / TestCoreUpdate2IDeactivatedAttendee",
-        "change": "Walled events with no active attendee produce the same restricted interval for wall members and other authorized callers, on REST/MCP. Unwalled unassigned events retain the requested-user filter; detail reads retain walls."
+        "change": "Service occupancy alone includes unassigned walled intervals, including events whose attendees are all deactivated, under Patrick’s 2026-11-24 ruling. Per-user busy retains the requested-user attendee filter; detail reads retain walls."
       },
       {
         "id": "video-provider-module-id",
@@ -727,7 +779,7 @@
         "priority": "P3",
         "status": "implemented_and_tested",
         "test": "TestCoreUpdate2IMigrationAllocation / TestRangesAndEmbedded",
-        "change": "Allocated core-update-2i versions 1700-1749 and renamed the unshipped video migration 1650 to 1700. Existing ranges and migration SQL are unchanged. Fresh Postgres installs record 1700, not 1650; range guards pass."
+        "change": "Core video migration 1700 uses the core-update-2i range 1700-1749 in internal/db/ranges.go. Fresh Postgres installs record 1700; range guards pass."
       }
     ],
     "checks": [
@@ -756,5 +808,76 @@
       "Initial broad sweep was stopped with exit 143 when the old reentrant stale-write test fixture stalled under the new event lock. The fixture now deliberately models a nonparticipating writer, keeping all stale-conflict assertions. Full calendar recheck passed and the complete sweep was rerun."
     ],
     "independent_review": "pending"
+  },
+  "scope_basis": "Batch 2 gap fixes approved by Patrick, not a registered task in docs/build/tasks.json. No task acceptance IDs are claimed. CU2 references in historical logs describe wider batch 2 criteria, not acceptance assigned to this work.",
+  "review_fixes": {
+    "base_revision": "328713d534216a2d6527966a21b0427085e743b5",
+    "tested_revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+    "scope": "Batch 2 gap fixes approved by Patrick, unassigned in tasks.json; no registered acceptance claimed.",
+    "findings": [
+      {
+        "id": 1,
+        "status": "fixed",
+        "change": "ListBusy retains its requested-user attendee filter. Only service occupancy discloses unassigned walled intervals. Existing per-user assigned busy disclosure is preserved.",
+        "tests": [
+          "TestCoreUpdate2IBusyExcludesUnassignedWalled",
+          "TestCoreUpdate2IBusyViewerIndependent",
+          "TestCoreUpdate2IDeactivatedAttendee",
+          "TestCoreUpdate2FBusyAcrossWalls"
+        ]
+      },
+      {
+        "id": 2,
+        "status": "fixed",
+        "change": "task_id is unassigned; passed/pending acceptance IDs are empty; named base and final code revisions recorded. CONTRIBUTOR-GAPS identifies Patrick-approved batch 2 gap fixes, not a registered task. tasks.json is unchanged."
+      },
+      {
+        "id": 3,
+        "status": "fixed",
+        "change": "CORE-CHANGES-2 fixed decisions and CU2-02 record Patrick’s 2026-11-24 ruling: walled events whose attendee users are all deactivated count as unassigned on the service occupancy read only. The historical 2h report now explains the superseded definition."
+      },
+      {
+        "id": 4,
+        "status": "fixed",
+        "change": "Video documentation and reports identify core migration 1700 in the core-update-2i range 1700-1749 allocated by internal/db/ranges.go, including the existing /work/core-2i-report.md."
+      },
+      {
+        "id": 5,
+        "status": "confirmed_and_fixed",
+        "change": "NewerVersion previously treated an unparseable unequal version pair as newer. Unknown numeric precedence now returns false. Overflow and malformed versions are covered in both comparison directions.",
+        "tests": [
+          "TestNewerVersion"
+        ]
+      },
+      {
+        "id": 6,
+        "status": "confirmed_and_fixed",
+        "change": "A post-commit external SettingChanged failure previously returned an error for visible committed values. Both durable SQL audit rows already share the settings transaction through ChangeLogger (also forwarded by SealingStore). External notifications now attempt both records and cannot turn a committed save/reset into a failure. Failure of the second durable audit insert still rolls back both values and both durable audit rows.",
+        "tests": [
+          "TestSetCaseNumberExamplesCommittedAuditFailure",
+          "TestSetCaseNumberExamplesFailedPairRecordsNoAudit",
+          "TestPostgresSettingsCaseExamplesAudit"
+        ]
+      }
+    ],
+    "simplification": {
+      "insertions_excluding_report": 183,
+      "deletions_excluding_report": 44,
+      "net_excluding_report": 139,
+      "debt_entries": 70,
+      "debt_markers": 113,
+      "new_debt": 0,
+      "review": "Removed the user-filter bypass; reused existing matching, transactional audit logging and comparison parsing. No new dependency, timeout, limit, migration, or deliberate shortcut."
+    },
+    "independent_review": "Required Opus read-only checkpoint must rerun at the final PR base/head; this repair report is not a passing independent review.",
+    "checks": [
+      "review-unit",
+      "review-format",
+      "review-vet",
+      "review-settings-postgres",
+      "review-debt",
+      "review-packages",
+      "review-calendar-postgres"
+    ]
   }
 }
