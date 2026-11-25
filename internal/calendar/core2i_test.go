@@ -60,3 +60,23 @@ func TestCoreUpdate2IVideoMemoryOwnership(t *testing.T) {
 		t.Fatal("read aliases stored video")
 	}
 }
+
+func TestCoreUpdate2IBusyExcludesUnassignedWalled(t *testing.T) {
+	f := newFixture(t)
+	walled := f.walled("Synthetic booking")
+	start := at(t, "2026-11-24 10:00")
+	f.event(f.attorney, EventInput{Title: "Unassigned", Kind: KindBlock, MatterID: walled.ID, StartsAt: start, EndsAt: start.Add(time.Hour)})
+	f.event(f.attorney, EventInput{Title: "Inactive attendee", Kind: KindBlock, MatterID: walled.ID, StartsAt: start.Add(time.Hour), EndsAt: start.Add(2 * time.Hour), Attendees: []domain.ID{f.attorney.UserID}})
+	f.deactivate(f.attorney.UserID)
+	filter := EventFilter{From: start, To: start.Add(2 * time.Hour), UserID: f.other.UserID}
+	rows, err := f.svc.ListBusy(f.ctx, f.staff, filter)
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("unassigned walled events leaked into another user's busy view: %v %v", rows, err)
+	}
+	filter.UserID = ""
+	p := domain.Principal{Source: domain.SourceService, ModuleID: "booking", Roles: []domain.Role{domain.RoleStaff}, Scopes: []string{"calendar:read"}}
+	occupancy, err := f.svc.ListOccupancy(f.ctx, p, filter)
+	if err != nil || len(occupancy) != 2 {
+		t.Fatalf("unassigned walled occupancy missing: %v %v", occupancy, err)
+	}
+}

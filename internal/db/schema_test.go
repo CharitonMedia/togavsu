@@ -806,3 +806,52 @@ func eventModuleMigration(t *testing.T) []Migration {
 	}
 	return migrations
 }
+
+func TestPostgresSettingsCaseExamplesAudit(t *testing.T) {
+	ctx := context.Background()
+	db := openCoreDB(t)
+	if err := ApplyReference(ctx, db, "postgres"); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := settings.New(SettingsStore{DB: db, Dialect: "postgres"}, failAudit{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A failure inserting the second durable audit row must roll back both
+	// values and the first audit row, before any external notification.
+	if _, err := db.ExecContext(ctx, `ALTER TABLE audit_log ADD CONSTRAINT refuse_derived_audit CHECK (entity_id <> 'practice.case_number_patterns')`); err != nil {
+		t.Fatal(err)
+	}
+	examples := `["2026-CV-1"]`
+	if _, err := reg.Set(ctx, "practice.case_number_examples", examples, actor()); err == nil {
+		t.Fatal("expected transactional audit failure")
+	}
+	for _, def := range settings.Definitions() {
+		if def.Key == "practice.case_number_examples" || def.Key == "practice.case_number_patterns" {
+			if got, err := reg.Get(ctx, def.Key); err != nil || got != def.Default {
+				t.Fatalf("failed pair changed %s: %q %v", def.Key, got, err)
+			}
+		}
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log WHERE entity_id IN ('practice.case_number_examples', 'practice.case_number_patterns')`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed pair left audit rows: %d %v", count, err)
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE audit_log DROP CONSTRAINT refuse_derived_audit`); err != nil {
+		t.Fatal(err)
+	}
+	// The external auditor fails, but both durable audit rows and values commit.
+	if _, err := reg.Set(ctx, "practice.case_number_examples", examples, actor()); err != nil {
+		t.Fatalf("committed save reported as failed: %v", err)
+	}
+	for _, key := range []string{"practice.case_number_examples", "practice.case_number_patterns"} {
+		value, err := reg.Get(ctx, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var audited string
+		if err := db.QueryRowContext(ctx, `SELECT new_value FROM audit_log WHERE entity = 'setting' AND entity_id = $1`, key).Scan(&audited); err != nil || audited != value {
+			t.Fatalf("%s durable audit: %q value: %q error: %v", key, audited, value, err)
+		}
+	}
+}

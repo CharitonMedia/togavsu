@@ -203,6 +203,10 @@ func TestNewerVersion(t *testing.T) {
 		listed, installed string
 		newer             bool
 	}{
+		{"1.0.0", "999999999999999999999.0", false},
+		{"999999999999999999999.0", "1.0.0", false},
+		{"1.0.0", "unknown", false},
+		{"unknown", "1.0.0", false},
 		{"1.0.0", "1.0.0-rc1", true},
 		{"1.0.0-rc1", "1.0.0", false},
 		{"1.0.0-beta", "1.0.0-alpha", true},

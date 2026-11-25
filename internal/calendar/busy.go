@@ -44,23 +44,7 @@ func (s *Service) ListBusy(ctx context.Context, p domain.Principal, f EventFilte
 	}
 	out := []BusyBlock{}
 	for _, row := range rows {
-		matches := matchEvent(row, f)
-		if !matches && !row.MatterID.IsZero() {
-			active, err := s.hasActiveAttendee(ctx, row.Attendees)
-			if err != nil {
-				return nil, err
-			}
-			if !active {
-				wall, err := s.d.Policy.Walls.View(ctx, p, row.MatterID)
-				if err != nil {
-					return nil, err
-				}
-				window := f
-				window.UserID = ""
-				matches = wall.Walled && matchEvent(row, window)
-			}
-		}
-		if matches {
+		if matchEvent(row, f) {
 			out = append(out, BusyBlock{StartsAt: fmtTime(row.StartsAt), EndsAt: fmtTime(row.EndsAt), AllDay: row.AllDay})
 			if f.Max > zero && len(out) == f.Max {
 				break

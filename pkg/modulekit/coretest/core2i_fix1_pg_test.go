@@ -103,9 +103,9 @@ func TestCoreUpdate2IBusyViewerIndependent(t *testing.T) {
 	event := c.Attorney.Must(201, "POST", "/api/v1/calendar-events", body)
 	body["matter_id"] = c.Open
 	c.Attorney.Must(201, "POST", "/api/v1/calendar-events", body)
-	query := map[string]any{"view": "busy", "user_id": c.Staff.ID, "from_time": "2026-11-24T00:00:00Z", "to_time": "2026-11-25T00:00:00Z"}
-	path := "/api/v1/calendar-events?view=busy&user_id=" + c.Staff.ID + "&from_time=2026-11-24T00:00:00Z&to_time=2026-11-25T00:00:00Z"
-	want := []any{map[string]any{"starts_at": event.JSON["starts_at"], "ends_at": event.JSON["ends_at"], "all_day": false}}
+	query := map[string]any{"view": "busy", "user_id": c.Admin.ID, "from_time": "2026-11-24T00:00:00Z", "to_time": "2026-11-25T00:00:00Z"}
+	path := "/api/v1/calendar-events?view=busy&user_id=" + c.Admin.ID + "&from_time=2026-11-24T00:00:00Z&to_time=2026-11-25T00:00:00Z"
+	want := []any{}
 	for _, who := range []*coretest.Client{c.ModuleClient("busy-fix-booking"), c.Staff.Client, c.Admin.Client, c.Attorney.Client} {
 		got := who.Must(200, "GET", path, nil).JSON["data"]
 		if !reflect.DeepEqual(got, want) {
@@ -115,6 +115,24 @@ func TestCoreUpdate2IBusyViewerIndependent(t *testing.T) {
 		if !reflect.DeepEqual(mcp["data"], want) {
 			t.Fatal(mcp)
 		}
+	}
+	bot := c.ModuleClient("busy-fix-booking")
+	occupancy := []any{
+		map[string]any{"starts_at": event.JSON["starts_at"], "ends_at": event.JSON["ends_at"], "all_day": false},
+		map[string]any{"starts_at": event.JSON["starts_at"], "ends_at": event.JSON["ends_at"], "all_day": false},
+	}
+	query["view"] = "occupancy"
+	delete(query, "user_id")
+	got := bot.Must(200, "GET", "/api/v1/calendar-events?view=occupancy&from_time=2026-11-24T00:00:00Z&to_time=2026-11-25T00:00:00Z", nil).JSON["data"]
+	mcp := toolResult2d(t, bot, "listCalendarEvent", map[string]any{"query": query}, false)
+	if !reflect.DeepEqual(got, occupancy) || !reflect.DeepEqual(mcp["data"], occupancy) {
+		t.Fatalf("unassigned intervals missing from occupancy: REST %v MCP %v", got, mcp)
+	}
+	// Busy still includes a walled interval assigned to the requested user.
+	c.Attorney.Must(200, "PATCH", "/api/v1/calendar-events/"+str(t, event.JSON, "id"), map[string]any{"attendee_user_ids": []string{c.Admin.ID}})
+	assigned := c.Staff.Must(200, "GET", path, nil).JSON["data"]
+	if !reflect.DeepEqual(assigned, occupancy[:1]) {
+		t.Fatalf("assigned busy interval missing: %v", assigned)
 	}
 	c.Staff.Must(404, "GET", "/api/v1/calendar-events/"+str(t, event.JSON, "id"), nil)
 	c.Attorney.Must(200, "GET", "/api/v1/calendar-events/"+str(t, event.JSON, "id"), nil)

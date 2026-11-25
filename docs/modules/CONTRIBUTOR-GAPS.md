@@ -168,13 +168,18 @@ claimed by the core regression tests.
 | CORE-30 firm occupancy for service callers (`TestReviewBusyAcrossWalls`) | closed in 2h, refined in 2i: approved `calendar:read` occupancy returns start/end/all_day for walled events with no active attendee user; active assigned walled events stay out and all other detail reads retain walls | `TestCoreUpdate2HUnassignedOccupancy`, `TestCoreUpdate2HOccupancyHeaders`, updated `TestCoreUpdate2GFirmOccupancy` and `TestCoreUpdate2GOccupancyMemoryWindow` |
 
 
-## Batch 2 calendar and contract gaps closed by core-update-2i
+## Batch 2 calendar and contract gap fixes (core update 2i)
+
+These are batch 2 gap fixes approved by Patrick, not a registered task in
+`docs/build/tasks.json`. The regression evidence below claims no registered task
+acceptance IDs. Patrick’s 2026-11-24 deactivated-attorney ruling applies to
+service occupancy only (see CORE-CHANGES-2.md).
 
 | Module gap | Status | Core evidence |
 | --- | --- | --- |
 | Intake cannot distinguish all-day walled occupancy from timed busy blocks | fixed: all_day is the sole widening of times-only intervals on REST/MCP and public kit | `TestCoreUpdate2IAllDayOccupancy` |
-| Walled events with only deactivated attendees disappear from booking availability | fixed: only active users count as assigned; occupancy and busy update on reactivation; busy intervals agree for wall members and other callers | `TestCoreUpdate2IDeactivatedAttendee` |
-| MOD-PHN-10 cannot identify a video booking, host or provider meeting on a calendar event | fixed: optional video metadata on create/update/get/list and notification-driven fetch; migration 1700; partial PATCH merges concurrent fields, preserves unchanged inactive hosts and validates provider ids; join link remains location | `TestCoreUpdate2IVideo`, `TestCoreUpdate2IVideoPatchAndInactiveHost`, `TestCoreUpdate2IVideoConcurrentMerge`, `TestCoreUpdate2IMigrationAllocation` |
+| Walled events with only deactivated attendees disappear from booking availability | fixed: only active users count as assigned; service occupancy updates on reactivation; per-user busy retains its requested-user attendee filter and excludes unassigned events | `TestCoreUpdate2IDeactivatedAttendee` |
+| MOD-PHN-10 cannot identify a video booking, host or provider meeting on a calendar event | fixed: optional video metadata on create/update/get/list and notification-driven fetch; core migration 1700 in the core-update-2i range 1700-1749 (`internal/db/ranges.go`); partial PATCH merges concurrent fields, preserves unchanged inactive hosts and validates provider ids; join link remains location | `TestCoreUpdate2IVideo`, `TestCoreUpdate2IVideoPatchAndInactiveHost`, `TestCoreUpdate2IVideoConcurrentMerge`, `TestCoreUpdate2IMigrationAllocation` |
 | Phone cannot hand staff to intake with a call number | fixed: live approved link in either direction permits another enabled module's staff tab; target-declared params plus matter context checked against viewer access | `TestCoreUpdate2ILinkedNavigation` |
 
 These are core Postgres regressions. They do not claim external module-suite or

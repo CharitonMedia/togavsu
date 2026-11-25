@@ -332,10 +332,11 @@ func (r *Registry) setCaseExamples(ctx context.Context, def Definition, value st
 	if err != nil {
 		return Change{}, err
 	}
+	// The pair is committed. SQL stores have already recorded both durable audit
+	// rows through ChangeLogger in that transaction. These external notifications
+	// are best effort: try each one, but never report committed values as failed.
 	for _, c := range audits {
-		if err := r.audit.SettingChanged(ctx, c); err != nil {
-			return Change{}, err
-		}
+		_ = r.audit.SettingChanged(ctx, c)
 	}
 	return change, nil
 }

@@ -918,7 +918,8 @@ and `all_day`: the flag is the sole widening of 2h's times-only shape. No ids,
 titles, matters, attendees, video or wall metadata are exposed. Existing range,
 filter and paging checks remain. `modulekit.CalendarOccupancyBlock` and
 `c.CalendarOccupancy(moduleID, from, to)` provide the same shape in coretest.
-`view=busy` also includes walled events with no active attendee user. See
+`view=busy` retains its requested-user attendee filter and excludes unassigned
+walled events. The deactivated-attendee exception applies only to service occupancy. See
 [calendar video and linked navigation](../api/modules.md#core-update-2i-calendar-video-metadata-and-linked-navigation)
 for `modulekit.CalendarVideo`, location join links and cross-module staff handoffs.
 

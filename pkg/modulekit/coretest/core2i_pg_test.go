@@ -76,6 +76,10 @@ func TestCoreUpdate2IDeactivatedAttendee(t *testing.T) {
 	assert := func(want int) {
 		t.Helper()
 		for _, view := range []string{"busy", "occupancy"} {
+			want := want
+			if view == "busy" {
+				want = 0 // The requested attorney is never an attendee.
+			}
 			for _, transport := range []string{"REST", "MCP"} {
 				rows := read(view, transport)
 				if len(rows) != want {
@@ -89,11 +93,8 @@ func TestCoreUpdate2IDeactivatedAttendee(t *testing.T) {
 		for _, who := range []*coretest.Client{bot, c.Attorney.Client, c.Admin.Client} {
 			q := url.Values{"view": {"busy"}, "user_id": {c.Attorney.ID}, "from_time": {"2026-11-24T00:00:00Z"}, "to_time": {"2026-11-25T00:00:00Z"}}
 			got := who.Must(200, "GET", "/api/v1/calendar-events?"+q.Encode(), nil).JSON["data"].([]any)
-			if len(got) != want {
-				t.Fatalf("viewer-dependent busy: %v want %d", got, want)
-			}
-			if want == 1 && !reflect.DeepEqual(got[0], map[string]any{"starts_at": event.JSON["starts_at"], "ends_at": event.JSON["ends_at"], "all_day": false}) {
-				t.Fatal(got)
+			if len(got) != 0 {
+				t.Fatalf("unassigned event leaked into another user's busy view: %v", got)
 			}
 			query := map[string]any{}
 			for k := range q {

@@ -334,9 +334,9 @@ and pagination limits, scope and service-only checks remain unchanged.
 User/matter/kind filters are refused; a viewer cannot use occupancy.
 
 `view=busy&user_id=…` still requires an active user and returns only start, end
-and all_day across walls. It also includes walled events with no active attendee,
-even when the requested user is not an attendee. Events with active attendees
-retain the existing user filter. Ordinary event list/get reads retain all walls.
+and all_day across walls, filtered to that user as an attendee. Unassigned
+walled events are disclosed only on the service occupancy read. Ordinary event
+list/get reads retain all walls.
 
 ### Core update 2i: calendar video metadata and linked navigation
 
@@ -390,7 +390,8 @@ Same-module and core-page navigation retain their existing allowlist.
 The public kit exposes `CalendarVideo`, `CalendarVideoPatch`, `CalendarOccupancyBlock` and
 `CalendarBusyBlock`; `c.CalendarOccupancy(moduleID, from, to)` uses the real
 service endpoint in coretest. Core migration **1700** stores video as a nullable
-whole JSON object without changing old event rows.
+whole JSON object without changing old event rows, in the **core-update-2i
+range 1700-1749** allocated by `internal/db/ranges.go`.
 
 An approved `processor.payment.v1` intent may be recorded once by its consumer,
 without a viewer, through the [record continuation](../contracts/README.md#record-the-approved-receipt).

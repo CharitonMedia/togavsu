@@ -234,7 +234,8 @@ On REST `GET /api/v1/calendar-events?view=occupancy` and MCP
 `listCalendarEvent`, approved `calendar:read` service principals receive walled
 intervals with no **active** attendee user. In 2i, deactivated attendees no longer
 count as assigned; reactivation hides the walled interval on the next read.
-`view=busy` also includes these unassigned walled intervals. Each interval is
+`view=busy` retains its requested-user attendee filter and excludes unassigned
+walled intervals; only service occupancy includes them. Each interval is
 exactly `starts_at`, `ends_at`, `all_day`. The all-day flag is the **only widening
 of 2h's times-only disclosure**: no event id, title, matter, kind, attendee,
 video or wall metadata. Ordering, window/range limits and pagination stay the

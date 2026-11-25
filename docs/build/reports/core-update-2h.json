@@ -252,7 +252,7 @@
       ]
     }
   ],
-  "occupancy_definition": "No assigned attendee user means no calendar_event_attendees row with this event_id. user_id is NOT NULL and references users. Any attendee row, including an inactive user, counts as assigned. Calendar events have no cancellation status or free/busy flag; DELETE removes the event and attendees. Other event kinds and all-day behavior remain unchanged.",
+  "occupancy_definition": "Historical 2h implementation counted any calendar_event_attendees row as assigned. Superseded by Patrick’s 2026-11-24 ruling recorded in CORE-CHANGES-2.md: walled events whose attendee users are all deactivated count as unassigned on the service occupancy read only. An active attendee keeps a walled event out of occupancy. Per-user busy retains its requested-user attendee filter. Calendar events have no cancellation status or free/busy flag; DELETE removes the event and attendees.",
   "implementation": [
     "One portable SQL query projects all occupancy candidates into interval, matter placement and EXISTS attendee presence, in the original starts_at/id order. It does not read event details or attendee identities.",
     "All unassigned events follow the same service loop without consulting walls. Assigned events use the existing authoritative practice wall policy; matter_walls is not the live practice source of truth. No separate query/merge/count/cache/error path identifies an unassigned interval as walled.",

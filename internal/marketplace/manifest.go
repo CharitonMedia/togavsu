@@ -72,7 +72,7 @@ func ValidVersion(v string) bool { return versionForm.MatchString(v) }
 // pre-release (1.0.0 > 1.0.0-rc1), and pre-release identifiers compare as semver says
 // (numeric ones numerically and below alphanumeric ones, a longer set above its prefix).
 // Build metadata (+...) is ignored. Equal versions are not newer. Unparseable versions
-// fall back to string inequality.
+// have unknown precedence and are not considered newer.
 func NewerVersion(listed, installed string) bool {
 	if listed == "" || listed == installed {
 		return false
@@ -83,7 +83,7 @@ func NewerVersion(listed, installed string) bool {
 	lp, okL := versionParts(listed)
 	ip, okI := versionParts(installed)
 	if !okL || !okI {
-		return listed != installed
+		return false
 	}
 	for i := 0; i < 4; i++ {
 		if lp[i] != ip[i] {

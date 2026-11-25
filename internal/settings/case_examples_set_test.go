@@ -90,3 +90,57 @@ func TestSetCaseNumberExamplesFailedPairRecordsNoAudit(t *testing.T) {
 		t.Fatal("examples were stored though the pair failed")
 	}
 }
+
+// failCaseAudit fails one external notification after the values commit.
+type failCaseAudit struct {
+	failKey string
+	keys    []string
+}
+
+func (a *failCaseAudit) SettingChanged(_ context.Context, change settings.Change) error {
+	a.keys = append(a.keys, change.Key)
+	if change.Key == a.failKey {
+		return errors.New("external audit unavailable")
+	}
+	return nil
+}
+
+func TestSetCaseNumberExamplesCommittedAuditFailure(t *testing.T) {
+	for _, key := range []string{"practice.case_number_examples", "practice.case_number_patterns"} {
+		t.Run(key, func(t *testing.T) {
+			ctx := context.Background()
+			audit := &failCaseAudit{failKey: key}
+			reg, err := settings.New(settings.NewMemory(), audit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			who := domain.Principal{UserID: domain.SystemUserID, Roles: []domain.Role{domain.RoleAdmin}, Source: domain.SourceUI}
+			examples := `["2026-CV-1"]`
+			change, err := reg.Set(ctx, "practice.case_number_examples", examples, who)
+			if err != nil || change.Key != "practice.case_number_examples" {
+				t.Fatalf("committed save reported as failed: %+v %v", change, err)
+			}
+			for k, want := range map[string]string{
+				"practice.case_number_examples": examples,
+				"practice.case_number_patterns": `["^\\d{4}-[A-Z]{2}-\\d+$"]`,
+			} {
+				if got, err := reg.Get(ctx, k); err != nil || got != want {
+					t.Fatalf("%s: %q, want %q: %v", k, got, want, err)
+				}
+			}
+			if len(audit.keys) != 2 || audit.keys[0] != "practice.case_number_examples" || audit.keys[1] != "practice.case_number_patterns" {
+				t.Fatalf("both notifications must be attempted: %v", audit.keys)
+			}
+			if _, err := reg.Reset(ctx, "practice.case_number_examples", who); err != nil {
+				t.Fatalf("committed reset reported as failed: %v", err)
+			}
+			for _, def := range settings.Definitions() {
+				if def.Key == "practice.case_number_examples" || def.Key == "practice.case_number_patterns" {
+					if got, err := reg.Get(ctx, def.Key); err != nil || got != def.Default {
+						t.Fatalf("reset %s: %q %v", def.Key, got, err)
+					}
+				}
+			}
+		})
+	}
+}
