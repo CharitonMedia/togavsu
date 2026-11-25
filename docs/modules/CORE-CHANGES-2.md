@@ -51,7 +51,9 @@ Order: CORE-36 first, because modules and later items depend on the fixes; then 
 
 CU2-01 Every CORE item's tests pass against Postgres, and each new operation is in openapi.json, on /mcp, and refused without its scope.
 
-CU2-02 A service call on every CORE-30 operation leaves out a walled matter's records and answers not_found on a walled get; lifting the wall returns them on the next read. The one exception is the occupancy read, which also returns the events of walled matters with no assigned attendee user as start and end intervals only (Patrick's 2026-11-21 ruling, section 1). Patrick clarified on 2026-11-24 that walled events whose attendee users are all deactivated count as unassigned on the service occupancy read only; per-user busy reads retain their requested-user attendee filter.
+CU2-02 A service call on every CORE-30 operation leaves out a walled matter's records and answers not_found on a walled get; lifting the wall returns them on the next read. The one exception is the occupancy read, which also returns the events of walled matters with no assigned attendee user as start and end intervals only (Patrick's 2026-11-21 ruling, section 1).
+
+Note to CU2-02: Patrick clarified on 2026-11-24 that walled events whose attendee users are all deactivated count as unassigned on the service occupancy read only; per-user busy reads retain their requested-user attendee filter (section 1).
 
 CU2-03 A contract call reaches only a provider the admin linked; unlinking stops it at once with contract_unlinked; neither module ever receives the other's address.
 
