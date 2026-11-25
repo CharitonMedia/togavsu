@@ -31,25 +31,27 @@ func (s *Service) NavigateURL(ctx context.Context, p domain.Principal, source, p
 	if err != nil {
 		return "", false
 	}
-	parts := strings.Split(u.Path, "/")
-	if len(parts) < 3 || parts[1] != "modules" || parts[2] == source {
+	modulePath, isModule := strings.CutPrefix(u.Path, "/modules/")
+	targetID, targetPath, _ := strings.Cut(modulePath, "/")
+	if !isModule || targetID == source {
 		return BridgeNavigateURL(source, page, params)
 	}
-	if len(parts) != 5 || parts[3] != "tabs" {
+	tabID, isTab := strings.CutPrefix(targetPath, "tabs/")
+	if !isTab || strings.Contains(tabID, "/") {
 		return "", false
 	}
-	target, err := s.Installed(ctx, parts[2])
+	target, err := s.Installed(ctx, targetID)
 	if err != nil || !target.Enabled {
 		return "", false
 	}
-	tab, ok := target.Manifest.Tab(parts[4])
+	tab, ok := target.Manifest.Tab(tabID)
 	if !ok || (tab.Placement != "home" && tab.Placement != "matter") {
 		return "", false
 	}
 	var links int
 	err = s.q(ctx).QueryRowContext(ctx, `SELECT COUNT(*) FROM core.module_contract_links
  WHERE (consumer_id = $1 AND provider_id = $2) OR (consumer_id = $2 AND provider_id = $1)`, source, target.ID).Scan(&links)
-	if err != nil || links == 0 {
+	if err != nil || links == zero {
 		return "", false
 	}
 	q := u.Query()

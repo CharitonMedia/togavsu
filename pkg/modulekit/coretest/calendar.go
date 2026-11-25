@@ -2,6 +2,7 @@ package coretest
 
 import (
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 func (c *Core) CalendarOccupancy(module string, from, to time.Time) []modulekit.CalendarOccupancyBlock {
 	c.T.Helper()
 	q := url.Values{"view": {"occupancy"}, "from_time": {from.Format(time.RFC3339)}, "to_time": {to.Format(time.RFC3339)}}
-	r := c.ModuleClient(module).Must(200, "GET", "/api/v1/calendar-events?"+q.Encode(), nil)
+	r := c.ModuleClient(module).Must(http.StatusOK, "GET", "/api/v1/calendar-events?"+q.Encode(), nil)
 	var result struct {
 		Data []modulekit.CalendarOccupancyBlock `json:"data"`
 	}

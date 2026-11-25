@@ -73,7 +73,7 @@ func (s *Service) validateEvent(ctx context.Context, p domain.Principal, in *Eve
 		if in.Video.Provider != nil && !domain.ValidModuleID(*in.Video.Provider) {
 			return invalidVideo("video.provider", "must be a module id (2 to 42 lowercase slug characters)")
 		}
-		if in.Video.ProviderMeetingID != nil && utf8.RuneCountInString(*in.Video.ProviderMeetingID) > 200 {
+		if in.Video.ProviderMeetingID != nil && utf8.RuneCountInString(*in.Video.ProviderMeetingID) > domain.CalendarVideoMeetingIDMaxChars {
 			return invalidVideo("video.provider_meeting_id", "must be at most 200 characters")
 		}
 	}

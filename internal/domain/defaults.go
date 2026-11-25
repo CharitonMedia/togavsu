@@ -54,6 +54,8 @@ const (
 	// ProcessorReferenceMaxChars is the fixed processor.payment.v1 wire bound.
 	ProcessorReferenceMaxChars = 200
 	StaffBannerDefaultHeight   = 48
+	// CalendarVideoMeetingIDMaxChars is the published calendar video provider meeting ID bound.
+	CalendarVideoMeetingIDMaxChars = 200
 	// FormsMaxRepeatingIndex is the highest accepted repeating-row index (0..N) in
 	// pkg/modulekit/forms ParseFormAnswers (CORE-33); larger forged indices are ignored.
 	FormsMaxRepeatingIndex     = 99
