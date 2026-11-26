@@ -178,7 +178,7 @@ func CheckAll(raw []byte) (*Package, []db.Migration, Refusals) {
 	}
 	refs = append(refs, scopeRefusals(m)...)
 	pkg := &Package{Files: files, Manifest: m, Digest: marketplace.Digest(raw)}
-	if !moduleID.MatchString(m.ID) {
+	if !domain.ValidModuleID(m.ID) {
 		return pkg, nil, refs
 	}
 	ms, err := pkg.Migrations()

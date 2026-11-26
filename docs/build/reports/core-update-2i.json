@@ -1,0 +1,883 @@
+{
+  "task_id": "unassigned",
+  "status": "partial",
+  "implementation_status": "complete",
+  "verification_status": "partial",
+  "branch": "pr93",
+  "base_revision": "328713d534216a2d6527966a21b0427085e743b5",
+  "tested_revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+  "revision_scope": "PR 93 review repairs on pr93 against base_revision. Current verification is recorded in review_fixes and review-* tests at tested_revision. Earlier tests, phase_cases and fix_pass_1 describe their individually recorded historical revisions, not current task acceptance. Only this report changes after the final code commit.",
+  "passed_acceptance_ids": [],
+  "pending_acceptance_ids": [],
+  "scope_items": [
+    {
+      "id": "all-day-occupancy",
+      "status": "implemented_and_tested",
+      "test": "TestCoreUpdate2IAllDayOccupancy",
+      "change": "Every occupancy interval has starts_at, ends_at and all_day. The flag is the sole widening of 2h times-only disclosure; no event, matter, kind, attendee or video metadata is exposed. REST, MCP, kit types and real-core fixture agree."
+    },
+    {
+      "id": "active-attendee-assignment",
+      "status": "implemented_and_tested",
+      "test": "TestCoreUpdate2IDeactivatedAttendee",
+      "change": "Service occupancy alone includes unassigned walled intervals, including events whose attendees are all deactivated, under Patrick’s 2026-11-24 ruling. Per-user busy retains the requested-user attendee filter; detail reads retain walls. Active attendee assignment and reactivation behavior remain unchanged."
+    },
+    {
+      "id": "calendar-video",
+      "status": "implemented_and_tested",
+      "test": "TestCoreUpdate2IVideo",
+      "change": "Active-user validation applies only to new or changed hosts. Unrelated title/time/meeting edits and an explicitly unchanged host survive deactivation; clearing then reassigning an inactive host fails. Video omission preserves; null clears; objects merge supplied fields. Requested is required on create and optional on PATCH. Field null clears it (requested resets to false). Postgres row locking serializes read/merge/write plus audit across independent services; concurrent provider and meeting-id updates both survive. OpenAPI, MCP, docs and public CalendarVideoPatch agree. Provider is null or uses the shared manifest module-id syntax: ^[a-z][a-z0-9-]{0,40}[a-z0-9]$, 2 to 42 ASCII characters. Invalid slugs/types and the overlength boundary fail; null and 2/42-character ids succeed."
+    },
+    {
+      "id": "linked-navigation",
+      "status": "implemented_and_tested",
+      "test": "TestCoreUpdate2ILinkedNavigation",
+      "change": "Both frame bridges use live authenticated resolution for cross-module targets. Enabled source/target, staff viewer, declared staff tab and an approved link in either direction are required. Query and message params are filtered against target tabs[].params. Unlinked/disabled/client-tab/widget/external/traversal targets are refused; current same-module/core refusals are retained. Matter-placement linked tabs retain matter_id from query or message params even without a declaration, only for an existing matter the viewer can read. Missing/malformed/inaccessible matter context is refused. Other undeclared params are filtered. The resolved URL opens the real tab page."
+    }
+  ],
+  "new_regressions_passed": [
+    "TestCoreUpdate2IActiveAssignmentMemoryAndErrors",
+    "TestCoreUpdate2IAllDayOccupancy",
+    "TestCoreUpdate2IBusyViewerIndependent",
+    "TestCoreUpdate2IDeactivatedAttendee",
+    "TestCoreUpdate2ILinkedNavigation",
+    "TestCoreUpdate2IMigrationAllocation",
+    "TestCoreUpdate2IVideo",
+    "TestCoreUpdate2IVideoConcurrentMerge",
+    "TestCoreUpdate2IVideoMemoryOwnership",
+    "TestCoreUpdate2IVideoPatchAndInactiveHost"
+  ],
+  "migration": {
+    "version": 1700,
+    "file": "internal/core/migrations/1700_calendar_video.sql",
+    "allocation": "Core migration 1700 in the core-update-2i range 1700-1749 in internal/db/ranges.go; expand-only SQL.",
+    "storage": "Nullable whole-object JSON in TEXT; existing rows remain null; expand-only Up."
+  },
+  "tests": [
+    {
+      "name": "full",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./api ./internal/domain ./internal/db ./internal/calendar ./internal/modules ./pkg/modulekit ./pkg/modulekit/coretest ./web ./internal/core",
+      "exit_code": 1,
+      "database_host": "pga",
+      "counts_including_subtests": {
+        "pass": 568,
+        "fail": 2,
+        "skip": 6
+      },
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/api",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/domain",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/db",
+          "status": "fail"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/calendar",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/modules",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit/coretest",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/web",
+          "status": "skip"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/core",
+          "status": "fail"
+        }
+      ],
+      "failures": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/db",
+          "name": "TestSchemaContract",
+          "output": "=== RUN   TestSchemaContract\n    schema_test.go:165: calendar_events missing column video\n--- FAIL: TestSchemaContract (0.05s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestCU207Batch1ModulesUnchanged",
+          "output": "=== RUN   TestCU207Batch1ModulesUnchanged\n    cu207_batch1_pg_test.go:248: documents package missing at /work/core/.core-2i-batch1-fixtures/togavsu-documents: stat /work/core/.core-2i-batch1-fixtures/togavsu-documents/package/togavsu-module.yaml: no such file or directory\n--- FAIL: TestCU207Batch1ModulesUnchanged (14.38s)"
+        }
+      ],
+      "skips": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "name": "TestBannerBridgeRejectsOriginFilter",
+          "output": "=== RUN   TestBannerBridgeRejectsOriginFilter\n    public_csrf_test.go:84: node not available for behavioural banner-bridge check\n--- SKIP: TestBannerBridgeRejectsOriginFilter (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "name": "TestModuleContainerOnDocker",
+          "output": "=== RUN   TestModuleContainerOnDocker\n    supervisor_docker_test.go:27: TOGAVSU_MODULE_IT_IMAGE, _DIGEST and _NETWORK are unset; run scripts/ci/test-module-container.sh\n--- SKIP: TestModuleContainerOnDocker (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsLawCraftEditor",
+          "output": "=== RUN   TestDocumentsLawCraftEditor\n    documents_pg_test.go:776: TOGAVSU_WORDCRAFT_CLI is not set (build wordcraft-cli with web/editor/build.sh)\n--- SKIP: TestDocumentsLawCraftEditor (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsScreens",
+          "output": "=== RUN   TestDocumentsScreens\n    documents_pg_test.go:1733: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestDocumentsScreens (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestExtensionsScreens",
+          "output": "=== RUN   TestExtensionsScreens\n    extensions_ai_pg_test.go:212: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestExtensionsScreens (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestReleasePerfP95",
+          "output": "=== RUN   TestReleasePerfP95\n    perf_pg_test.go:37: set TOGAVSU_PERF=1 to run the AC-017 performance test\n--- SKIP: TestReleasePerfP95 (0.00s)"
+        }
+      ],
+      "race_diagnostics": 0,
+      "started_revision": "4ea88d6ba98fa916b827d6ecfe6d53f43282c03f",
+      "note": "Sweep began before the base-schema tag correction; TestSchemaContract was corrected and rechecked in schema-recheck and final-packages. CU2-07 is still pending. This is not a clean exact-head checkpoint."
+    },
+    {
+      "name": "final-packages",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./api ./internal/domain ./internal/db ./internal/calendar ./internal/modules ./pkg/modulekit ./pkg/modulekit/coretest ./web",
+      "exit_code": 0,
+      "database_host": "pga",
+      "counts_including_subtests": {
+        "pass": 414,
+        "skip": 2
+      },
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/api",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/domain",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/db",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/calendar",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/modules",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit/coretest",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/web",
+          "status": "skip"
+        }
+      ],
+      "failures": [],
+      "skips": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "name": "TestBannerBridgeRejectsOriginFilter",
+          "output": "=== RUN   TestBannerBridgeRejectsOriginFilter\n    public_csrf_test.go:84: node not available for behavioural banner-bridge check\n--- SKIP: TestBannerBridgeRejectsOriginFilter (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "name": "TestModuleContainerOnDocker",
+          "output": "=== RUN   TestModuleContainerOnDocker\n    supervisor_docker_test.go:27: TOGAVSU_MODULE_IT_IMAGE, _DIGEST and _NETWORK are unset; run scripts/ci/test-module-container.sh\n--- SKIP: TestModuleContainerOnDocker (0.00s)"
+        }
+      ],
+      "race_diagnostics": 0,
+      "started_revision": "21d056c23d4d2c3114012b2a434c4a9b7cafa957",
+      "note": "The final legacy URL-text refusal guard was checked separately, then the exact-head regressions ran. No other feature implementation changed during this rerun."
+    },
+    {
+      "name": "race",
+      "command": "go test -count=1 -race -short -timeout 0 -p 1 -json ./internal/core/ ./internal/practice/",
+      "exit_code": 1,
+      "database_host": "pgb",
+      "counts_including_subtests": {
+        "pass": 219,
+        "fail": 1,
+        "skip": 4
+      },
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/core",
+          "status": "fail"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/practice",
+          "status": "pass"
+        }
+      ],
+      "failures": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestCU207Batch1ModulesUnchanged",
+          "output": "=== RUN   TestCU207Batch1ModulesUnchanged\n    cu207_batch1_pg_test.go:248: documents package missing at /work/core/.core-2i-batch1-fixtures/togavsu-documents: stat /work/core/.core-2i-batch1-fixtures/togavsu-documents/package/togavsu-module.yaml: no such file or directory\n--- FAIL: TestCU207Batch1ModulesUnchanged (5.94s)"
+        }
+      ],
+      "skips": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsLawCraftEditor",
+          "output": "=== RUN   TestDocumentsLawCraftEditor\n    documents_pg_test.go:776: TOGAVSU_WORDCRAFT_CLI is not set (build wordcraft-cli with web/editor/build.sh)\n--- SKIP: TestDocumentsLawCraftEditor (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsScreens",
+          "output": "=== RUN   TestDocumentsScreens\n    documents_pg_test.go:1733: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestDocumentsScreens (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestExtensionsScreens",
+          "output": "=== RUN   TestExtensionsScreens\n    extensions_ai_pg_test.go:212: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestExtensionsScreens (0.00s)"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestReleasePerfP95",
+          "output": "=== RUN   TestReleasePerfP95\n    perf_pg_test.go:37: set TOGAVSU_PERF=1 to run the AC-017 performance test\n--- SKIP: TestReleasePerfP95 (0.00s)"
+        }
+      ],
+      "race_diagnostics": 0,
+      "started_revision": "4ea88d6ba98fa916b827d6ecfe6d53f43282c03f",
+      "note": "Required race command, with the existing local batch-1 fixture override to prevent automatic clones. It is supporting race evidence, not an exact-head checkpoint; only the missing-fixture CU2-07 case failed."
+    },
+    {
+      "name": "head-regressions",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "database_host": "pga",
+      "counts_including_subtests": {
+        "pass": 36
+      },
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/calendar",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/modules",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit/coretest",
+          "status": "pass"
+        }
+      ],
+      "failures": [],
+      "skips": [],
+      "race_diagnostics": 0,
+      "revision": "b1ae438aaa7c786d36287229a02e42fed6e50765"
+    },
+    {
+      "name": "schema-recheck",
+      "command": "go test -count=1 -timeout 0 ./internal/db ./internal/domain",
+      "exit_code": 0,
+      "revision": "21d056c23d4d2c3114012b2a434c4a9b7cafa957"
+    },
+    {
+      "name": "api-head",
+      "command": "sh api/check.sh",
+      "exit_code": 0,
+      "revision": "b1ae438aaa7c786d36287229a02e42fed6e50765"
+    },
+    {
+      "name": "vet-head",
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "revision": "b1ae438aaa7c786d36287229a02e42fed6e50765"
+    },
+    {
+      "name": "formatting",
+      "command": "gofmt -l <changed Go files>",
+      "exit_code": 0,
+      "result": "No output; all changed Go files were formatted."
+    },
+    {
+      "name": "diff-check",
+      "command": "git diff --check; git diff 2256eed --check",
+      "exit_code": 0
+    },
+    {
+      "name": "debt-audit",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "result": "ponytail markers: 113; ledger entries: 70"
+    },
+    {
+      "name": "fix1-targeted-head",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest ./internal/db -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc",
+      "counts_including_subtests": {
+        "pass": 41
+      },
+      "counting_note": "Counts include named tests and subtests; package results are reported separately.",
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/calendar",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/modules",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit/coretest",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/db",
+          "status": "pass"
+        }
+      ],
+      "failures": [],
+      "skips": [],
+      "race_diagnostics": 0,
+      "evidence_file": "/work/corefix1-targeted-head.jsonl",
+      "database_host": "pga"
+    },
+    {
+      "name": "fix1-packages-final",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./api ./internal/domain ./internal/db ./internal/calendar ./internal/modules ./pkg/modulekit ./pkg/modulekit/coretest ./web ./internal/core",
+      "exit_code": 1,
+      "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc",
+      "counts_including_subtests": {
+        "pass": 573,
+        "skip": 6,
+        "fail": 1
+      },
+      "counting_note": "Counts include named tests and subtests; package results are reported separately.",
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/api",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/domain",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/db",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/calendar",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/modules",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/pkg/modulekit/coretest",
+          "status": "pass"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/web",
+          "status": "skip"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/core",
+          "status": "fail"
+        }
+      ],
+      "failures": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestCU207Batch1ModulesUnchanged",
+          "output": "=== RUN   TestCU207Batch1ModulesUnchanged\n    cu207_batch1_pg_test.go:248: documents package missing at /work/core-fix/.core-2i-batch1-fixtures/togavsu-documents: stat /work/core-fix/.core-2i-batch1-fixtures/togavsu-documents/package/togavsu-module.yaml: no such file or directory\n--- FAIL: TestCU207Batch1ModulesUnchanged (3.53s)\n"
+        }
+      ],
+      "skips": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "name": "TestBannerBridgeRejectsOriginFilter",
+          "output": "=== RUN   TestBannerBridgeRejectsOriginFilter\n    public_csrf_test.go:84: node not available for behavioural banner-bridge check\n--- SKIP: TestBannerBridgeRejectsOriginFilter (0.00s)\n"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/modules",
+          "name": "TestModuleContainerOnDocker",
+          "output": "=== RUN   TestModuleContainerOnDocker\n    supervisor_docker_test.go:27: TOGAVSU_MODULE_IT_IMAGE, _DIGEST and _NETWORK are unset; run scripts/ci/test-module-container.sh\n--- SKIP: TestModuleContainerOnDocker (0.00s)\n"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsLawCraftEditor",
+          "output": "=== RUN   TestDocumentsLawCraftEditor\n    documents_pg_test.go:776: TOGAVSU_WORDCRAFT_CLI is not set (build wordcraft-cli with web/editor/build.sh)\n--- SKIP: TestDocumentsLawCraftEditor (0.00s)\n"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsScreens",
+          "output": "=== RUN   TestDocumentsScreens\n    documents_pg_test.go:1733: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestDocumentsScreens (0.00s)\n"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestExtensionsScreens",
+          "output": "=== RUN   TestExtensionsScreens\n    extensions_ai_pg_test.go:212: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestExtensionsScreens (0.00s)\n"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestReleasePerfP95",
+          "output": "=== RUN   TestReleasePerfP95\n    perf_pg_test.go:37: set TOGAVSU_PERF=1 to run the AC-017 performance test\n--- SKIP: TestReleasePerfP95 (0.00s)\n"
+        }
+      ],
+      "race_diagnostics": 0,
+      "evidence_file": "/work/corefix1-packages-final.jsonl",
+      "database_host": "pga"
+    },
+    {
+      "name": "fix1-race",
+      "command": "go test -count=1 -race -short -timeout 0 -p 1 -json ./internal/core/ ./internal/practice/",
+      "exit_code": 1,
+      "revision": "6896c88f7f4f1409ec8b67c9537a4803b66f329f",
+      "counts_including_subtests": {
+        "pass": 219,
+        "fail": 1,
+        "skip": 4
+      },
+      "counting_note": "Counts include named tests and subtests; package results are reported separately.",
+      "packages": [
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/core",
+          "status": "fail"
+        },
+        {
+          "name": "github.com/CharitonMedia/togavsu/internal/practice",
+          "status": "pass"
+        }
+      ],
+      "failures": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestCU207Batch1ModulesUnchanged",
+          "output": "=== RUN   TestCU207Batch1ModulesUnchanged\n    cu207_batch1_pg_test.go:248: documents package missing at /work/core-fix/.core-2i-batch1-fixtures/togavsu-documents: stat /work/core-fix/.core-2i-batch1-fixtures/togavsu-documents/package/togavsu-module.yaml: no such file or directory\n--- FAIL: TestCU207Batch1ModulesUnchanged (17.96s)\n"
+        }
+      ],
+      "skips": [
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsLawCraftEditor",
+          "output": "=== RUN   TestDocumentsLawCraftEditor\n    documents_pg_test.go:776: TOGAVSU_WORDCRAFT_CLI is not set (build wordcraft-cli with web/editor/build.sh)\n--- SKIP: TestDocumentsLawCraftEditor (0.00s)\n"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestDocumentsScreens",
+          "output": "=== RUN   TestDocumentsScreens\n    documents_pg_test.go:1733: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestDocumentsScreens (0.00s)\n"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestExtensionsScreens",
+          "output": "=== RUN   TestExtensionsScreens\n    extensions_ai_pg_test.go:212: TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set\n--- SKIP: TestExtensionsScreens (0.00s)\n"
+        },
+        {
+          "package": "github.com/CharitonMedia/togavsu/internal/core",
+          "name": "TestReleasePerfP95",
+          "output": "=== RUN   TestReleasePerfP95\n    perf_pg_test.go:37: set TOGAVSU_PERF=1 to run the AC-017 performance test\n--- SKIP: TestReleasePerfP95 (0.00s)\n"
+        }
+      ],
+      "race_diagnostics": 0,
+      "evidence_file": "/work/corefix1-race.jsonl",
+      "database_host": "pgb",
+      "note": "Started at the implementation commit. The only later pre-report changes were API artifact hashes and a calendar unit-test fixture. Core/practice runtime code is identical to tested_revision."
+    },
+    {
+      "name": "fix1-vet",
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc",
+      "evidence_file": "/work/corefix1-vet-head.log"
+    },
+    {
+      "name": "fix1-api",
+      "command": "sh api/check.sh",
+      "exit_code": 0,
+      "revision": "9756fce51f98c41370049c603fc043160f6ffa77",
+      "result": "147 Python tests, both OpenAPI validators, broken-reference rejection and generated-artifact consistency passed.",
+      "evidence_file": "/work/corefix1-api-final.log"
+    },
+    {
+      "name": "fix1-formatting",
+      "command": "gofmt -l <21 changed Go files>",
+      "exit_code": 0,
+      "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc",
+      "result": "No unformatted files."
+    },
+    {
+      "name": "fix1-diff-check",
+      "command": "git diff --check; git diff 04b494a --check",
+      "exit_code": 0,
+      "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc"
+    },
+    {
+      "name": "fix1-debt",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc",
+      "result": "113 markers; 70 ledger entries, unchanged."
+    },
+    {
+      "name": "review-unit",
+      "command": "go test -count=1 ./internal/settings/... ./internal/calendar/... ./internal/marketplace/...",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "log": "/work/core-pr93-review-unit.log",
+      "result": "All three packages pass, including the settings checker, the restored busy filter and both bot-finding regressions."
+    },
+    {
+      "name": "review-format",
+      "command": "gofmt -l .",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "log": "/work/core-pr93-review-gofmt.log",
+      "result": "No output; no unformatted files."
+    },
+    {
+      "name": "review-vet",
+      "command": "go vet ./...",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "log": "/work/core-pr93-review-vet.log",
+      "result": "No output; exit 0."
+    },
+    {
+      "name": "review-settings-postgres",
+      "command": "go test -count=1 -v ./internal/db -run '^TestPostgresSettingsCaseExamplesAudit$'",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "log": "/work/core-pr93-review-settings-pg.log",
+      "result": "Pass: durable audit rollback and external notification failure after commit.",
+      "database_host": "pga"
+    },
+    {
+      "name": "review-debt",
+      "command": "python3 scripts/release/check_debt.py",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "log": "/work/core-pr93-review-debt.log",
+      "result": "113 markers; 70 ledger entries; no new debt."
+    },
+    {
+      "name": "review-packages",
+      "command": "go test ./internal/settings/... ./internal/calendar/... ./internal/modules/... ./pkg/modulekit/...",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "database_host": "pga",
+      "log": "/work/core-pr93-review-packages.log",
+      "result": "All seven packages pass. Existing prerequisite-dependent tests do not establish Docker, browser or clean-install acceptance."
+    },
+    {
+      "name": "review-calendar-postgres",
+      "command": "go test -count=1 -v ./pkg/modulekit/coretest -run '^TestCoreUpdate2(FBusyAcrossWalls|G.*Occupancy|H.*Occupancy|I(BusyViewerIndependent|DeactivatedAttendee|AllDayOccupancy|MigrationAllocation))'",
+      "exit_code": 0,
+      "revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+      "database_host": "pga",
+      "log": "/work/core-pr93-review-calendar-pg.log",
+      "result": "Nine top-level tests pass, including REST/MCP subtests, scope refusal, occupancy headers, unassigned/deactivated occupancy, per-user busy isolation, all_day and migration allocation. No skips in this targeted run."
+    }
+  ],
+  "phase_cases": [
+    {
+      "id": "all-day-occupancy",
+      "status": "pass",
+      "test": "TestCoreUpdate2IAllDayOccupancy",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest ./internal/db -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc"
+    },
+    {
+      "id": "active-attendee-assignment",
+      "status": "pass",
+      "test": "TestCoreUpdate2IDeactivatedAttendee",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest ./internal/db -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc"
+    },
+    {
+      "id": "calendar-video",
+      "status": "pass",
+      "test": "TestCoreUpdate2IVideo",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest ./internal/db -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc"
+    },
+    {
+      "id": "linked-navigation",
+      "status": "pass",
+      "test": "TestCoreUpdate2ILinkedNavigation",
+      "command": "go test -count=1 -timeout 0 -p 1 -json ./internal/calendar ./internal/modules ./pkg/modulekit/coretest ./internal/db -run '^(TestCoreUpdate2[IGH]|TestBridgeNavigateURL)'",
+      "exit_code": 0,
+      "revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc"
+    }
+  ],
+  "changed_2g_2h_tests": [
+    {
+      "name": "TestCoreUpdate2GFirmOccupancy",
+      "change": "Require exactly three keys, with all_day false on its timed fixtures."
+    },
+    {
+      "name": "TestCoreUpdate2HUnassignedOccupancy",
+      "change": "Expected intervals include all_day false; deactivating the sole attendee now restores occupancy. Wall/window/paging/error/cancellation assertions retained."
+    },
+    {
+      "name": "API 2g/2h occupancy contract tests",
+      "change": "Require all_day while continuing to reject identifiers, video and other extra details."
+    }
+  ],
+  "files": [
+    "api/contract/routes.py",
+    "api/contract/schemas.py",
+    "api/openapi/v1/mcp-tools.json",
+    "api/openapi/v1/openapi.json",
+    "api/tests/test_core2g.py",
+    "api/tests/test_core2h.py",
+    "api/tests/test_core2i.py",
+    "docs/api/core-update-2g.md",
+    "docs/api/modules.md",
+    "docs/api/stage1-inventory.json",
+    "docs/contracts/README.md",
+    "docs/modules/CONTRIBUTOR-GAPS.md",
+    "docs/modules/MODULE-KIT.md",
+    "internal/calendar/api.go",
+    "internal/calendar/bulk.go",
+    "internal/calendar/busy.go",
+    "internal/calendar/commit_test.go",
+    "internal/calendar/core2i_test.go",
+    "internal/calendar/events.go",
+    "internal/calendar/postgres.go",
+    "internal/calendar/service.go",
+    "internal/calendar/store.go",
+    "internal/calendar/types.go",
+    "internal/calendar/video.go",
+    "internal/core/migrations/1700_calendar_video.sql",
+    "internal/db/ranges.go",
+    "internal/domain/apierr.go",
+    "internal/domain/module_id.go",
+    "internal/domain/records.go",
+    "internal/modules/bridge_test.go",
+    "internal/modules/http.go",
+    "internal/modules/manifest.go",
+    "internal/modules/navigation.go",
+    "internal/modules/refusal.go",
+    "pkg/modulekit/calendar.go",
+    "pkg/modulekit/coretest/calendar.go",
+    "pkg/modulekit/coretest/core2g_pg_test.go",
+    "pkg/modulekit/coretest/core2h_pg_test.go",
+    "pkg/modulekit/coretest/core2i_fix1_pg_test.go",
+    "pkg/modulekit/coretest/core2i_pg_test.go",
+    "pkg/modulekit/coretest/navigation2i_pg_test.go",
+    "pkg/modulekit/coretest/video_concurrent2i_pg_test.go",
+    "web/static/module-bridge.js"
+  ],
+  "simplification": {
+    "added_excluding_report": 1007,
+    "removed_excluding_report": 108,
+    "net_excluding_report": 899,
+    "debt_entries": 70,
+    "baseline_debt_entries": 70,
+    "debt_markers": 113,
+    "new_debt": 0,
+    "new_dependencies": 0,
+    "new_migrations": 1,
+    "review": "Reused existing user lookup, wall policy, module installation/contract links, REST/MCP dispatch and signed notification-reference model. No extra registry, service, cache, timeout or discretionary limit.",
+    "fix_pass_1": {
+      "added_excluding_report": 631,
+      "removed_excluding_report": 84,
+      "net_excluding_report": 547,
+      "debt_entries": 70,
+      "debt_markers": 113,
+      "new_debt": 0,
+      "new_dependencies": 0,
+      "review": "Reused the audit transaction, shared manifest-id rule, matter policy and existing calendar write policy. Whole JSON remains parsed in Go. No JSON SQL operators, new dependencies, timeouts or discretionary limits. The local write mutex precedes the row lock to avoid inverted lock ordering."
+    }
+  },
+  "limitations": [
+    "CU2-07 still requires five unavailable batch-1 package checkouts. TOGAVSU_BATCH1_MODS=/work/core-fix/.core-2i-batch1-fixtures prevents automatic GitHub clones. The test is executed and fails explicitly for the missing documents manifest; it is not skipped or weakened.",
+    "Docker, Node, the LawCraft CLI and browser-QC prerequisites are unavailable. Existing prerequisite skips and the exact outputs are recorded in the test results. No new skip was added. Docker image/Compose/clean-install scripts were not run.",
+    "The core/practice race run start revision differs only in API inventory metadata and an unrelated calendar unit-test fixture from tested_revision; no core/practice runtime code changed. No race diagnostic was observed.",
+    "An independent exact-base/head checkpoint and full-product acceptance remain pending. This implementation report supplies no passing independent review.",
+    "Required session-memory files were absent locally; SSH to Render-1 failed with no user entry for UID 1000. No LLM-wiki/codebase-memory tool or repository index was available; no Ready claim was made.",
+    "Historical fix-pass work boundaries are recorded in prior reports. PR 93 review fixes stay in /work/core-pr93 plus the two existing /work core reports and verification artifacts. No push, remote addition, secret/key or .env edit."
+  ],
+  "follow_ups": [
+    "Supply approved local batch-1 fixtures and rerun CU2-07/full core and core/practice race commands.",
+    "Run image-based checks on a Docker-equipped host.",
+    "Obtain an independent exact-base/head checkpoint before integration."
+  ],
+  "prior_implementation": {
+    "branch": "claude/togavsu-core-update-2i",
+    "base_revision": "2256eed70e249d5d714391a43da14e87b95049f8",
+    "tested_revision": "b1ae438aaa7c786d36287229a02e42fed6e50765",
+    "revision_scope": "Exact-head focused regressions, API checks and vet passed. Broader sweeps and their start revisions are recorded separately. Only this report is committed after tested_revision."
+  },
+  "fix_pass_1": {
+    "base_revision": "04b494a029e1d00fc8327fdfa4ac5df4dcb83052",
+    "tested_revision": "4072afea6fee4ea3145e6d4bf6957161f5389bdc",
+    "implementation_revision": "6896c88f7f4f1409ec8b67c9537a4803b66f329f",
+    "findings": [
+      {
+        "id": "inactive-video-host",
+        "priority": "P2",
+        "status": "implemented_and_tested",
+        "test": "TestCoreUpdate2IVideoPatchAndInactiveHost",
+        "change": "Active-user validation applies only to new or changed hosts. Unrelated title/time/meeting edits and an explicitly unchanged host survive deactivation; clearing then reassigning an inactive host fails."
+      },
+      {
+        "id": "video-patch-merge",
+        "priority": "P3",
+        "status": "implemented_and_tested",
+        "test": "TestCoreUpdate2IVideoPatchAndInactiveHost / TestCoreUpdate2IVideoConcurrentMerge",
+        "change": "Video omission preserves; null clears; objects merge supplied fields. Requested is required on create and optional on PATCH. Field null clears it (requested resets to false). Postgres row locking serializes read/merge/write plus audit across independent services; concurrent provider and meeting-id updates both survive. OpenAPI, MCP, docs and public CalendarVideoPatch agree."
+      },
+      {
+        "id": "busy-viewer-independence",
+        "priority": "P3",
+        "status": "superseded_by_review_fixes",
+        "test": "TestCoreUpdate2IBusyViewerIndependent / TestCoreUpdate2IDeactivatedAttendee",
+        "change": "Service occupancy alone includes unassigned walled intervals, including events whose attendees are all deactivated, under Patrick’s 2026-11-24 ruling. Per-user busy retains the requested-user attendee filter; detail reads retain walls."
+      },
+      {
+        "id": "video-provider-module-id",
+        "priority": "P3",
+        "status": "implemented_and_tested",
+        "test": "TestCoreUpdate2IVideo",
+        "change": "Provider is null or uses the shared manifest module-id syntax: ^[a-z][a-z0-9-]{0,40}[a-z0-9]$, 2 to 42 ASCII characters. Invalid slugs/types and the overlength boundary fail; null and 2/42-character ids succeed."
+      },
+      {
+        "id": "linked-matter-navigation",
+        "priority": "P3",
+        "status": "implemented_and_tested",
+        "test": "TestCoreUpdate2ILinkedNavigation",
+        "change": "Matter-placement linked tabs retain matter_id from query or message params even without a declaration, only for an existing matter the viewer can read. Missing/malformed/inaccessible matter context is refused. Other undeclared params are filtered. The resolved URL opens the real tab page."
+      },
+      {
+        "id": "migration-range",
+        "priority": "P3",
+        "status": "implemented_and_tested",
+        "test": "TestCoreUpdate2IMigrationAllocation / TestRangesAndEmbedded",
+        "change": "Core video migration 1700 uses the core-update-2i range 1700-1749 in internal/db/ranges.go. Fresh Postgres installs record 1700; range guards pass."
+      }
+    ],
+    "checks": [
+      "fix1-targeted-head",
+      "fix1-packages-final",
+      "fix1-race",
+      "fix1-vet",
+      "fix1-api",
+      "fix1-formatting",
+      "fix1-diff-check",
+      "fix1-debt"
+    ],
+    "simplification": {
+      "added_excluding_report": 631,
+      "removed_excluding_report": 84,
+      "net_excluding_report": 547,
+      "debt_entries": 70,
+      "debt_markers": 113,
+      "new_debt": 0,
+      "new_dependencies": 0,
+      "review": "Reused the audit transaction, shared manifest-id rule, matter policy and existing calendar write policy. Whole JSON remains parsed in Go. No JSON SQL operators, new dependencies, timeouts or discretionary limits. The local write mutex precedes the row lock to avoid inverted lock ordering."
+    },
+    "corrected_verification_issues": [
+      "Initial pre-commit compile attempt referenced a nonexistent SourceAPI test constant; corrected to SourceUI before the implementation commit.",
+      "Initial api/check.sh failed the generated-artifact hash inventory. Refreshed the two artifact hashes and reran successfully.",
+      "Initial broad sweep was stopped with exit 143 when the old reentrant stale-write test fixture stalled under the new event lock. The fixture now deliberately models a nonparticipating writer, keeping all stale-conflict assertions. Full calendar recheck passed and the complete sweep was rerun."
+    ],
+    "independent_review": "pending"
+  },
+  "scope_basis": "Batch 2 gap fixes approved by Patrick, not a registered task in docs/build/tasks.json. No task acceptance IDs are claimed. CU2 references in historical logs describe wider batch 2 criteria, not acceptance assigned to this work.",
+  "review_fixes": {
+    "base_revision": "328713d534216a2d6527966a21b0427085e743b5",
+    "tested_revision": "ee93e8ac60fc50f2a43e21cb87ba3de696797755",
+    "scope": "Batch 2 gap fixes approved by Patrick, unassigned in tasks.json; no registered acceptance claimed.",
+    "findings": [
+      {
+        "id": 1,
+        "status": "fixed",
+        "change": "ListBusy retains its requested-user attendee filter. Only service occupancy discloses unassigned walled intervals. Existing per-user assigned busy disclosure is preserved.",
+        "tests": [
+          "TestCoreUpdate2IBusyExcludesUnassignedWalled",
+          "TestCoreUpdate2IBusyViewerIndependent",
+          "TestCoreUpdate2IDeactivatedAttendee",
+          "TestCoreUpdate2FBusyAcrossWalls"
+        ]
+      },
+      {
+        "id": 2,
+        "status": "fixed",
+        "change": "task_id is unassigned; passed/pending acceptance IDs are empty; named base and final code revisions recorded. CONTRIBUTOR-GAPS identifies Patrick-approved batch 2 gap fixes, not a registered task. tasks.json is unchanged."
+      },
+      {
+        "id": 3,
+        "status": "fixed",
+        "change": "CORE-CHANGES-2 fixed decisions and CU2-02 record Patrick’s 2026-11-24 ruling: walled events whose attendee users are all deactivated count as unassigned on the service occupancy read only. The historical 2h report now explains the superseded definition."
+      },
+      {
+        "id": 4,
+        "status": "fixed",
+        "change": "Video documentation and reports identify core migration 1700 in the core-update-2i range 1700-1749 allocated by internal/db/ranges.go, including the existing /work/core-2i-report.md."
+      },
+      {
+        "id": 5,
+        "status": "confirmed_and_fixed",
+        "change": "NewerVersion previously treated an unparseable unequal version pair as newer. Unknown numeric precedence now returns false. Overflow and malformed versions are covered in both comparison directions.",
+        "tests": [
+          "TestNewerVersion"
+        ]
+      },
+      {
+        "id": 6,
+        "status": "confirmed_and_fixed",
+        "change": "A post-commit external SettingChanged failure previously returned an error for visible committed values. Both durable SQL audit rows already share the settings transaction through ChangeLogger (also forwarded by SealingStore). External notifications now attempt both records and cannot turn a committed save/reset into a failure. Failure of the second durable audit insert still rolls back both values and both durable audit rows.",
+        "tests": [
+          "TestSetCaseNumberExamplesCommittedAuditFailure",
+          "TestSetCaseNumberExamplesFailedPairRecordsNoAudit",
+          "TestPostgresSettingsCaseExamplesAudit"
+        ]
+      }
+    ],
+    "simplification": {
+      "insertions_excluding_report": 183,
+      "deletions_excluding_report": 44,
+      "net_excluding_report": 139,
+      "debt_entries": 70,
+      "debt_markers": 113,
+      "new_debt": 0,
+      "review": "Removed the user-filter bypass; reused existing matching, transactional audit logging and comparison parsing. No new dependency, timeout, limit, migration, or deliberate shortcut."
+    },
+    "independent_review": "Required Opus read-only checkpoint must rerun at the final PR base/head; this repair report is not a passing independent review.",
+    "checks": [
+      "review-unit",
+      "review-format",
+      "review-vet",
+      "review-settings-postgres",
+      "review-debt",
+      "review-packages",
+      "review-calendar-postgres"
+    ]
+  }
+}

@@ -37,21 +37,21 @@ Status is `fixed` (with where) or `open`. "Follow-up" names the CORE item in
 | A pending entry covered every refusal in its place, so a migration entry hid any other problem in its file | review of PR 57 | fixed in PR 57: each entry kind covers only its refusal kinds, and a held migration is checked as if the core relations it references existed | none |
 | While a foreign key to a core table is held back, nothing checks the ids the module stores, so the later `ADD CONSTRAINT` can fail | review of PR 57 | documented in PR 57: MODULE-KIT.md (validate ids through the API until the constraint lands) | none |
 | `Installable` looped forever when a field entry held back a value the core requires (`tabs[1].placement`), since removing it left the same refusal | Codex review of PR 57 | fixed in PR 57: a refusal of a part already held back stops with `pending_edit`, each pass must change the files, and the passes are bounded | none |
-| No writer for `pending.yaml`, so module tests hand-write the YAML | review of PR 57 | fixed in this PR: `WritePending(entries)`, `AddPending(src, entry)` (in place, comments kept) and `togavsu-module pending`; each reads its result back with `ParsePending` | none |
+| No writer for `pending.yaml`, so module tests hand-write the YAML | review of PR 57 | fixed: `WritePending(entries)`, `AddPending(src, entry)` (in place, comments kept) and `togavsu-module pending`; each reads its result back with `ParsePending` | none |
 | No way to keep a pending part in a build on purpose, to prove the live core still refuses it at approval | review of PR 57 | open | kit follow-up: an `Installable` option that keeps named parts, for acceptance tests that sign with `SignFile` |
 | `coretest` has one client login and no stand-ins for mail, the rendition service, the converter or Doc Tender, so modules that need them build their own fakes | client-portal, documents, email, lawpay-docuseal | fixed in core-update-2a for mail (CORE-29) and Doc Tender markdown renditions (`SeedMarkdownRendition` / `OpenMarkdownRendition`); converter fixed in core-update-2d: `c.Converter`, `SetResult`, `Fail`, `Calls`; Doc Tender jobs/OCR/document-reader stand-ins fixed in core-update-2f: `c.DocTender` and `RunDocTender`, `TestCoreUpdate2FDocTenderCategoryHint` | CORE-36 |
-| Marketplace submission by an outside author has not been exercised end to end | kit review | fixed in this PR: documents went from `package -installable` with a throwaway key to a listed module on a local marketplace and was installed from that listing by a `coretest` core, using only the kit and docs; MODULE-KIT.md, Submitting to the marketplace, is that walk-through, run as written. The rows below are what it found | none |
-| MODULE-KIT.md said nothing about submitting, and called `BuildPackage`'s plain tar what the marketplace reads | documents dry run | fixed in this PR: Submitting to the marketplace; the marketplace takes the same signed `Archive` bytes | none |
-| The docs never said how to make a key file | documents dry run | fixed in this PR: `openssl rand -base64 32 > signing.key` (any 32 random bytes) | none |
-| The public key PEM came only inside `package`'s output, though `verify -pub` and the marketplace's key registration take it alone | documents dry run | fixed in this PR: `togavsu-module key -key signing.key > signing.pub` | none |
-| Nothing in the kit could sign the marketplace's key `proof_message`, so an author couldn't verify a key without writing Ed25519 code | documents dry run | fixed in this PR: `ProveKey(priv, proofMessage)` and `togavsu-module key -prove`, which sign only that message for that key | none |
-| The upload refuses the kit's signed package file as its body (`listing_id`, `digest` and the rest are unknown fields) | documents dry run | fixed in marketplace-paid: `POST /v1/authors/me/packages` takes the kit's signed package file unchanged; MODULE-KIT.md no longer needs the jq step | CORE-CHANGES-2 §17.2 |
-| The author password minimum (12) was undocumented | documents dry run | fixed in this PR: `marketplace/README.md` | none |
-| The listing ignores the manifest's `price` (documents says `Free`, the listing showed no price) and reads only the upload's `price_note` | documents dry run | fixed in marketplace-paid + CORE-35: listing takes the manifest's string or structured price; core stores and shows it on install and never charges it | CORE-35 / CORE-CHANGES-2 §17.1 |
-| There is no public marketplace to submit to: `modules.marketplace_address` defaults to the placeholder `togavsu-marketplace` | documents dry run | open; documented in this PR: run one locally for a dry run | deploy the marketplace, set its address as `domain.MarketplaceAddress`, and name it in MODULE-KIT.md |
-| `check -installable` printed held-back parts in the order the passes found them (client-portal: `tabs[3]`, `[4]`, `[5]`, `[2]`, `[6]`) | client-portal | fixed in this PR: `Held` is in manifest order (manifest parts by the line they start on, then migrations by file name) | none |
-| `Pending.Core` became `CoreItems` with no way to ask for one item, so modules compared joined strings | all five | fixed in this PR: `CoreItems.Has(item)` | none |
-| The upgrade note didn't cover the pending kit's signature changes (`Installable` and `BuildInstallable` return an `InstallablePackage`; `Pending.Core` is `CoreItems`) | all five | fixed in this PR: MODULE-KIT.md, Upgrading | none |
+| Marketplace submission by an outside author has not been exercised end to end | kit review | fixed: documents went from `package -installable` with a throwaway key to a listed module on a local marketplace and was installed from that listing by a `coretest` core, using only the kit and docs; MODULE-KIT.md, Submitting to the marketplace, is that walk-through, run as written. The rows below are what it found | none |
+| MODULE-KIT.md said nothing about submitting, and called `BuildPackage`'s plain tar what the marketplace reads | documents dry run | fixed: Submitting to the marketplace; the marketplace takes the same signed `Archive` bytes | none |
+| The docs never said how to make a key file | documents dry run | fixed: `openssl rand -base64 32 > signing.key` (any 32 random bytes) | none |
+| The public key PEM came only inside `package`'s output, though `verify -pub` and the marketplace's key registration take it alone | documents dry run | fixed: `togavsu-module key -key signing.key > signing.pub` | none |
+| Nothing in the kit could sign the marketplace's key `proof_message`, so an author couldn't verify a key without writing Ed25519 code | documents dry run | fixed: `ProveKey(priv, proofMessage)` and `togavsu-module key -prove`, which sign only that message for that key | none |
+| The upload refuses the kit's signed package file as its body (`listing_id`, `digest` and the rest are unknown fields) | documents dry run | fixed: upload takes the kit's whole signed package file; `togavsu-module publish` | none |
+| The author password minimum (12) was undocumented | documents dry run | fixed: `marketplace/README.md` | none |
+| The listing ignores the manifest's `price` (documents says `Free`, the listing showed no price) and reads only the upload's `price_note` | documents dry run | fixed: CORE-35 and marketplace-paid keep the manifest's string or structured price as provider information; the legacy price_note is a fallback only, and Togavsu never charges | none |
+| There is no public marketplace to submit to: `modules.marketplace_address` defaults to the placeholder `togavsu-marketplace` | documents dry run | partly fixed: Compose profile `marketplace` runs `togavsu-marketplace` on the firm network (`deploy/marketplace/`); Lane A sets the core address and catalog. Still no public internet marketplace | a public marketplace address when one is operated |
+| `check -installable` printed held-back parts in the order the passes found them (client-portal: `tabs[3]`, `[4]`, `[5]`, `[2]`, `[6]`) | client-portal | fixed: `Held` is in manifest order (manifest parts by the line they start on, then migrations by file name) | none |
+| `Pending.Core` became `CoreItems` with no way to ask for one item, so modules compared joined strings | all five | fixed: `CoreItems.Has(item)` | none |
+| The upgrade note didn't cover the pending kit's signature changes (`Installable` and `BuildInstallable` return an `InstallablePackage`; `Pending.Core` is `CoreItems`) | all five | fixed: MODULE-KIT.md, Upgrading | none |
 
 ## Core behavior modules work around
 
@@ -73,16 +73,16 @@ Status is `fixed` (with where) or `open`. "Follow-up" names the CORE item in
 
 | Gap | Found by | Status | Evidence |
 | --- | --- | --- | --- |
-| Background modules cannot read deadlines/calendar, contact matters, addresses, firm zone, roles, custom-field definitions or directory/work email | batch 2 | fixed in this PR under existing approved read scopes | `TestCoreUpdate2DReadsWallsMailSettingsAndPhone` |
-| Background access and directory filters need consistent core wall enforcement | batch 2 | fixed in this PR: service principals remain outside every wall; inside-wall viewer context required; no membership metadata; directory checks caller before candidates | Same test; `TestCoreUpdate2DServiceWallsEveryRecord` |
-| A background module cannot mail contact parties on its named matter | batch 2, CORE-04 | fixed in this PR under mail:send | Public-kit read/mail/settings/phone test |
-| A setup module cannot save its own settings or read applicable contract limits without firm-admin module scope | batch 2, CORE-20/31/36 | fixed in this PR: module_settings:write with admin viewer, allowlisted settings reads | Same public-kit test |
-| Provider cannot delegate forwarded consumer context; event push broadcasts/rewrites; oversize response has wrong code | batch 2, CORE-31 | fixed in this PR, subject to comparing separately held contract definitions absent from the base | `TestCoreUpdate2DContractForwardingTargetAndLimit` |
-| Core webhook timestamp check is missing, accepts empty key, and public hook strips provider Authorization with no opt-in | batch 2, CORE-07/36 | fixed in this PR: v1.0.0 timestamp-authenticated signature, dual-format kit verification and five-minute window and approved per-hook opt-in; public CRC/HMAC helpers | Webhook public-kit and helper tests |
-| Module timeline events do not appear in shared practice feed or name module actors | batch 2 | fixed in this PR: shared stream; delegated user actor plus module attribution | Public-kit read/mail/settings/phone test |
-| Manifest/migration inventory tokenizes Goose Down; runtime refusals cannot honestly be held back | batch 2, CORE-36 | fixed in this PR: Up inventory and runtime pending criterion/strict retirement | `TestRuntimePendingCriteriaAndGooseUpInventory` |
-| Module conversion tests must alter the host converter | batch 2, CORE-29/36 | fixed in this PR: coretest in-process converter stand-in | `TestCoreUpdate2DPurgeRestrictAndConverter` |
-| No click-to-call phone-row slot | phone | fixed in this PR: contact_phone_items with approved contacts:read and viewer frames | Public-kit read/mail/settings/phone test |
+| Background modules cannot read deadlines/calendar, contact matters, addresses, firm zone, roles, custom-field definitions or directory/work email | batch 2 | fixed under existing approved read scopes | `TestCoreUpdate2DReadsWallsMailSettingsAndPhone` |
+| Background access and directory filters need consistent core wall enforcement | batch 2 | fixed: service principals remain outside every wall; inside-wall viewer context required; no membership metadata; directory checks caller before candidates | Same test; `TestCoreUpdate2DServiceWallsEveryRecord` |
+| A background module cannot mail contact parties on its named matter | batch 2, CORE-04 | fixed under mail:send | Public-kit read/mail/settings/phone test |
+| A setup module cannot save its own settings or read applicable contract limits without firm-admin module scope | batch 2, CORE-20/31/36 | fixed: module_settings:write with admin viewer, allowlisted settings reads | Same public-kit test |
+| Provider cannot delegate forwarded consumer context; event push broadcasts/rewrites; oversize response has wrong code | batch 2, CORE-31 | fixed, subject to comparing separately held contract definitions absent from the base | `TestCoreUpdate2DContractForwardingTargetAndLimit` |
+| Core webhook timestamp check is missing, accepts empty key, and public hook strips provider Authorization with no opt-in | batch 2, CORE-07/36 | fixed: v1.0.0 timestamp-authenticated signature, dual-format kit verification and five-minute window and approved per-hook opt-in; public CRC/HMAC helpers | Webhook public-kit and helper tests |
+| Module timeline events do not appear in shared practice feed or name module actors | batch 2 | fixed: shared stream; delegated user actor plus module attribution | Public-kit read/mail/settings/phone test |
+| Manifest/migration inventory tokenizes Goose Down; runtime refusals cannot honestly be held back | batch 2, CORE-36 | fixed: Up inventory and runtime pending criterion/strict retirement | `TestRuntimePendingCriteriaAndGooseUpInventory` |
+| Module conversion tests must alter the host converter | batch 2, CORE-29/36 | fixed: coretest in-process converter stand-in | `TestCoreUpdate2DPurgeRestrictAndConverter` |
+| No click-to-call phone-row slot | phone | fixed: contact_phone_items with approved contacts:read and viewer frames | Public-kit read/mail/settings/phone test |
 
 
 ## Batch 2 documents and intake gaps closed by core-update-2f
@@ -165,4 +165,22 @@ claimed by the core regression tests.
 
 | Module gap / failing acceptance | Status | Core evidence |
 | --- | --- | --- |
-| CORE-30 firm occupancy for service callers (`TestReviewBusyAcrossWalls`) | closed: approved `calendar:read` occupancy also returns start/end only for walled events with no assigned attendee user; assigned walled events stay out and all other reads retain walls | `TestCoreUpdate2HUnassignedOccupancy`, `TestCoreUpdate2HOccupancyHeaders`, updated `TestCoreUpdate2GFirmOccupancy` and `TestCoreUpdate2GOccupancyMemoryWindow` |
+| CORE-30 firm occupancy for service callers (`TestReviewBusyAcrossWalls`) | closed in 2h, refined in 2i: approved `calendar:read` occupancy returns start/end/all_day for walled events with no active attendee user; active assigned walled events stay out and all other detail reads retain walls | `TestCoreUpdate2HUnassignedOccupancy`, `TestCoreUpdate2HOccupancyHeaders`, updated `TestCoreUpdate2GFirmOccupancy` and `TestCoreUpdate2GOccupancyMemoryWindow` |
+
+
+## Batch 2 calendar and contract gap fixes (core update 2i)
+
+These are batch 2 gap fixes approved by Patrick, not a registered task in
+`docs/build/tasks.json`. The regression evidence below claims no registered task
+acceptance IDs. Patrick’s 2026-11-24 deactivated-attorney ruling applies to
+service occupancy only (see CORE-CHANGES-2.md).
+
+| Module gap | Status | Core evidence |
+| --- | --- | --- |
+| Intake cannot distinguish all-day walled occupancy from timed busy blocks | fixed: all_day is the sole widening of times-only intervals on REST/MCP and public kit | `TestCoreUpdate2IAllDayOccupancy` |
+| Walled events with only deactivated attendees disappear from booking availability | fixed: only active users count as assigned; service occupancy updates on reactivation; per-user busy retains its requested-user attendee filter and excludes unassigned events | `TestCoreUpdate2IDeactivatedAttendee` |
+| MOD-PHN-10 cannot identify a video booking, host or provider meeting on a calendar event | fixed: optional video metadata on create/update/get/list and notification-driven fetch; core migration 1700 in the core-update-2i range 1700-1749 (`internal/db/ranges.go`); partial PATCH merges concurrent fields, preserves unchanged inactive hosts and validates provider ids; join link remains location | `TestCoreUpdate2IVideo`, `TestCoreUpdate2IVideoPatchAndInactiveHost`, `TestCoreUpdate2IVideoConcurrentMerge`, `TestCoreUpdate2IMigrationAllocation` |
+| Phone cannot hand staff to intake with a call number | fixed: live approved link in either direction permits another enabled module's staff tab; target-declared params plus matter context checked against viewer access | `TestCoreUpdate2ILinkedNavigation` |
+
+These are core Postgres regressions. They do not claim external module-suite or
+full-product acceptance; the independent exact-revision checkpoint remains pending.

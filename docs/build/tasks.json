@@ -1949,6 +1949,169 @@
         "Core tests"
       ],
       "prompt": "A small bounded assignment that confirms the Cursor build path end to end. internal/frame has no tests. Add internal/frame/frame_test.go only, using the Go standard library (net/http/httptest, html/template), covering: Write with a shell installed via With calls the shell and not Bare; Write with no shell writes the bare document with the title, the area class and the body; Bare escapes Title, Notice and Error, renders Scripts as deferred same-origin script tags, keeps an existing Content-Type header and sets text/html otherwise; a zero or below-100 Status writes 200 and StatusCode reports it; a set Status such as 404 is written. These tests cover the shared shell package section 8.9 rests on; they pass no acceptance criterion. Do not change any other file. Run go vet ./internal/frame/ and go test ./internal/frame/ and report the results and the tested commit SHA in the PR body."
+    },
+    {
+      "id": "desk-fix-settings-labels",
+      "wave": "desk-fix-1",
+      "phase": 8,
+      "depends_on": [],
+      "owned_paths": [
+        "internal/settings/",
+        "internal/dashboard/",
+        "internal/core/",
+        "web/templates/admin/",
+        "web/static/",
+        "api/openapi/v1/",
+        "api/contract/",
+        "tests/",
+        "docs/build/reports/desk-fix-settings-labels.json"
+      ],
+      "prd_sections": [
+        "8.7"
+      ],
+      "acceptance_ids": [],
+      "required_checks": [
+        "Core tests",
+        "API contract tests"
+      ],
+      "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install. The admin Settings page leads every row with the code key (firm.address) instead of a plain name. Read docs/build/desk-fixes/settings-labels.md and follow it exactly. Add a Label field to settings.Definition and set it on every definition in internal/settings/definitions.go to the label in that table, word for word. Make ValidateCatalog refuse a definition with an empty label, so no future setting can ship without one, and add a test that every key in the catalog has a label and that the labels match the table. On the admin settings page (web/templates/admin/admin.html and the dashboard view that feeds it, and the core settings page if it renders the same rows), each row leads with the label in normal text, the help text under it, and the key last, small and muted, so it is still findable; the visually hidden form label and the error text that names a setting use the label, not the key. Rename the first column heading from Setting to Name. Add \"label\" to the settings API JSON (internal/core/http.go settingJSON) and to the OpenAPI and MCP tool descriptions that list setting fields, keeping every existing field. Change nothing else: keys, URLs, form field names, stored values and the audit log stay as they are. Run go vet ./... and go test ./internal/settings/ ./internal/dashboard/ ./internal/core/ and the API contract tests, and report the results and the tested commit SHA in the PR body."
+    },
+    {
+      "id": "desk-fix-settings-plain-values",
+      "wave": "desk-fix-2",
+      "phase": 8,
+      "depends_on": [
+        "desk-fix-settings-labels"
+      ],
+      "owned_paths": [
+        "internal/settings/",
+        "internal/dashboard/",
+        "internal/core/",
+        "internal/practice/",
+        "internal/domain/",
+        "web/templates/admin/",
+        "web/static/",
+        "api/openapi/v1/",
+        "api/contract/",
+        "tests/",
+        "docs/build/reports/desk-fix-settings-plain-values.json"
+      ],
+      "prd_sections": [
+        "8.7"
+      ],
+      "acceptance_ids": [],
+      "required_checks": [
+        "Core tests",
+        "API contract tests"
+      ],
+      "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install. The admin Settings page shows raw regular expressions, JSON and Go durations as values; no attorney can read them. Read docs/build/desk-fixes/settings-plain-values.md and build exactly what it says: the new practice.case_number_examples setting with its derivation into practice.case_number_patterns (with table-driven tests, including that 23AR-CV00825 derives the current default pattern exactly), the Advanced switch per tab (closed by default, server rendered so it works without JavaScript), and a plain editor and plain display for every kind it lists, for both the value and the Default column. The plain forms convert to and from the stored formats in Go on the server; stored values, keys, the API and the audit log keep their current formats, and saving a plain form stores what the old form would have stored for the same input. Give each new setting a label, as the catalog check requires. Write tests for each conversion in both directions and for a save through the admin form. Keep the page usable at phone width. Add phone-width UI QC entries (Width 390) in internal/dashboard/compose/qc_pg_test.go for the Firm, Practice, Files and AI settings tabs, with Advanced closed and open, and make the check fail on horizontal overflow or a control that cannot be reached. Run go vet ./... and go test ./internal/... and the API contract tests, and report the results and the tested commit SHA in the PR body."
+    },
+    {
+      "id": "desk-fix-marketplace-catalog",
+      "wave": "desk-fix-3",
+      "phase": 8,
+      "depends_on": [],
+      "owned_paths": [
+        "internal/marketplace/",
+        "internal/dashboard/",
+        "internal/core/",
+        "internal/settings/",
+        "web/templates/admin/",
+        "web/static/",
+        "api/openapi/v1/",
+        "api/contract/",
+        "tests/",
+        "PONYTAIL-DEBT.md",
+        "internal/modules/",
+        "docs/build/reports/desk-fix-marketplace-catalog.json"
+      ],
+      "prd_sections": [
+        "10"
+      ],
+      "acceptance_ids": [],
+      "required_checks": [
+        "Core tests",
+        "API contract tests"
+      ],
+      "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install: Admin > Modules and marketplace reads as having nothing to install. Read docs/build/desk-fixes/marketplace-catalog.md and build Lane A exactly as it says. Extend the existing #marketplace card (web/templates/admin/admin.html, internal/core/modules_admin.go) and the existing install-listing action; do not add a second card or install route. Move the card to the top of the tab, browse all listings when the search is empty, show the listing's price text or Free (no core-side price fallback), permissions in a closed details, the flagged warning, Install / Installed / Update to X.Y.Z only when the listed version is newer (installed newer shows Installed X.Y.Z, never a downgrade), plain one-sentence errors instead of raw error text, and the unreachable message with the settings link. Keep the PRD 10.2 notice and the signed-by key on every listing. Make BaseURL allow plain http on loopback and on the one host name togavsu-marketplace only, and over http://togavsu-marketplace trust no marketplace-published keys (only trusted local keys verify an install; loopback and https keep today's behavior and tests), with the card note, the trusted-keys hint, the setting's help text and a PONYTAIL-DEBT.md entry as the spec says. Add phone-width UI QC entries (Width 390) in internal/dashboard/compose/qc_pg_test.go for the Modules tab with three listings and make the check fail on horizontal overflow. Extend the existing tests as the spec lists. Do not touch marketplace/, pkg/modulekit/, cmd/togavsu-module/, compose.yaml, deploy/, scripts/ci/ or docs/modules/; Lane B owns them. Change nothing else. Run go vet ./... and go test ./internal/... and record the results and the tested SHA in docs/build/reports/desk-fix-marketplace-catalog.json."
+    },
+    {
+      "id": "desk-fix-marketplace-publish",
+      "wave": "desk-fix-3",
+      "phase": 8,
+      "depends_on": [],
+      "owned_paths": [
+        "marketplace/",
+        "pkg/modulekit/",
+        "cmd/togavsu-module/",
+        "compose.yaml",
+        "deploy/",
+        "docs/modules/",
+        "scripts/ci/check-compose.py",
+        "scripts/ci/test-bootstrap.sh",
+        "scripts/ci/test-compose-first-run.sh",
+        "docs/build/reports/desk-fix-marketplace-publish.json"
+      ],
+      "prd_sections": [
+        "10"
+      ],
+      "acceptance_ids": [],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install: there is no marketplace to install modules from, and the marketplace refuses the kit's own signed package file. Read docs/build/desk-fixes/marketplace-catalog.md and build Lane B exactly as it says: the upload endpoint taking the kit's whole signed package file (digest checked, unknown fields still refused, the old three-field body still working), the listing price defaulting to the manifest's price when no price_note is sent, the togavsu-module publish subcommand with modulekit.Publish behind it (create or sign in the author, register and prove the key, upload each file, already-listed is done, conflicting bytes is an error), and the togavsu-marketplace service in compose.yaml under the compose profile marketplace with its operator token made once by the existing bootstrap secrets step, internal network only. The marketplace operator token goes only in the new marketsecrets volume (bootstrap and togavsu-marketplace mount it, nothing else), the config is the committed deploy/marketplace/config.json mounted read-only at /etc/togavsu-marketplace/config.json, the token file is root:65532 0640 in a 0750 directory, the data volume mounts at /var/lib/togavsu-marketplace, and scripts/ci/check-compose.py, scripts/ci/test-bootstrap.sh and scripts/ci/test-compose-first-run.sh gain the checks the spec lists, including a startup check that the marketplace answers under the marketplace profile. Update marketplace/README.md, docs/modules/MODULE-KIT.md and docs/modules/CONTRIBUTOR-GAPS.md as the spec says. Write the tests the spec lists. Do not touch internal/dashboard/, internal/core/, internal/settings/, web/, api/ or internal/marketplace/; Lane A owns them. Change nothing else. Run go vet ./... and go test ./marketplace/... ./pkg/modulekit/... ./cmd/togavsu-module/... and record the results and the tested SHA in docs/build/reports/desk-fix-marketplace-publish.json."
+    },
+    {
+      "id": "desk-fix-password-optional",
+      "wave": "desk-fix-4",
+      "phase": 8,
+      "depends_on": [],
+      "owned_paths": [
+        "internal/identity/",
+        "internal/core/",
+        "internal/settings/",
+        "api/contract/",
+        "api/openapi/v1/",
+        "tests/",
+        "docs/build/desk-fixes/settings-labels.md",
+        "docs/build/reports/desk-fix-password-optional.json"
+      ],
+      "prd_sections": [
+        "5",
+        "8.7"
+      ],
+      "acceptance_ids": [],
+      "required_checks": [
+        "Core tests",
+        "Core settings checks",
+        "API contract tests"
+      ],
+      "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install: his test install signs in with an email alone, but that switch exists only on the install's local copy, so every update drops it. The trusted PRD now records it (togavsu-core-prd.md section 5 and the 8.7 Security tab, added 2026-11-17 at Patrick's direction). Read docs/build/desk-fixes/password-optional.md and build it exactly as it says: the security.password_optional setting (Sign In Without a Password, Security tab, bool, default false, not a PRD default, the help text as written) in internal/settings and in the published settings contract (api/contract/settings.py and the SettingKey enum and catalog in api/openapi/v1/openapi.json); identity.Service.PasswordOptional; the Login change (off changes nothing; on lets a known active account skip the password, except that the password is still checked whenever the next step would be two-factor enrollment; unknown or inactive accounts, lockout accounting and the TOTP code step unchanged); the password_skipped field on the successful sign-in audit entry; the sign-in page's optional label and dropped required mark through one renderLogin helper; the label in docs/build/desk-fixes/settings-labels.md and internal/settings/labels_test.go; and every test the spec lists, including the enrollment failure path. Change nothing else. Run go vet ./... and go test ./internal/... and the API contract tests, and record the results and the tested SHA in docs/build/reports/desk-fix-password-optional.json."
+    },
+    {
+      "id": "desk-fix-ledger-seal-module-grants",
+      "wave": "desk-fix-5",
+      "phase": 8,
+      "depends_on": [],
+      "owned_paths": [
+        "internal/ledgerseal/",
+        "internal/db/",
+        "internal/core/",
+        "internal/modules/",
+        "tests/",
+        "docs/build/reports/desk-fix-ledger-seal-module-grants.json"
+      ],
+      "prd_sections": [
+        "5",
+        "6"
+      ],
+      "acceptance_ids": [],
+      "required_checks": [
+        "Core tests",
+        "Supervisor tests",
+        "Backup integration"
+      ],
+      "prompt": "A fix from Patrick's testing of Togavsu 1.0 on his own install: once modules are installed, core migrate fails with 'seal ledgers: dependent privileges exist (SQLSTATE 2BP01)', so no core update can be applied. Read docs/build/desk-fixes/ledger-seal-module-grants.md and build it exactly as it says: in internal/ledgerseal Script, revoke only UPDATE, DELETE, TRUNCATE, TRIGGER and MAINTAIN and the grant option on SELECT and INSERT from the application role (and ALL from PUBLIC) instead of REVOKE ALL from the application role, never CASCADE, keeping the existing grants, writer-role lines and VerifySealed unchanged; and add the Postgres tests the spec lists (re-seal after the application role has passed REFERENCES (id) on core.trust_ledger to another role, ApplySealed of a migration naming trust_ledger after that, and installing a ledger-extending module then running the core migrate path twice). Change nothing else; do not touch internal/supervisor/ beyond what its existing tests need (they should need nothing). Run go vet ./... and go test ./internal/... and record the results and the tested SHA in docs/build/reports/desk-fix-ledger-seal-module-grants.json."
     }
   ],
   "max_repairs": 3

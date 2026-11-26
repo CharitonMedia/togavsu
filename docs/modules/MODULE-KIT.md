@@ -148,6 +148,7 @@ go run github.com/CharitonMedia/togavsu/cmd/togavsu-module package -installable 
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module verify -file <id>.signed.json -pub signing.pub
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module key -key signing.key > signing.pub
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module key -key signing.key -prove "<proof_message>"
+go run github.com/CharitonMedia/togavsu/cmd/togavsu-module publish -market http://127.0.0.1:8090 -key signing.key -name "Your Name" -email you@example.com -password-file password.txt <id>.signed.json
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module pending -dir package -field sidebar[*].section -core CORE-08 -reason "File the entry under Money."
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module accepts
 ```
@@ -157,6 +158,8 @@ The key file holds a base64 Ed25519 seed, any 32 random bytes: make a throwaway 
 `package` prints the PEM public key the admin adds as a trusted signing key, and
 `key -key signing.key` prints only that PEM, so `> signing.pub` gives the file `verify -pub`
 and `-previous-pub` take. `key -prove` signs the marketplace's key proof and nothing else.
+`publish` submits signed package files to a marketplace (`modulekit.Publish`); see
+[Submitting to the marketplace](#submitting-to-the-marketplace).
 `pending` adds one entry to `package/pending.yaml` (`AddPending`), creating it if missing;
 `-core` takes one item or several separated by commas. `package` refuses to sign a package `check` refuses. Both
 print every refusal, one line each, as `<file> <path or statement>: <code>: <message>`;
@@ -360,51 +363,48 @@ runs no install check and its operator reviews nothing: it checks only that a ve
 of yours signed the exact bytes and that the manifest has `id`, `name`, `version` and
 `permissions`. `package` refuses to sign what the core would refuse, so submit only what
 `package` built. The listing is named by the manifest's `id`; the first author to list an
-id owns it, and a listed version never changes (a second upload of it is `409 conflict`),
-so ship a fix as a new version.
+id owns it, and a listed version never changes, so ship a fix as a new version. The first listing takes the manifest's string or structured `price` as provider information.
+The legacy `price_note` is only a fallback when the manifest has no price; later packages
+preserve the author's listed price. The author can change it using the price endpoint.
+Togavsu never sells or bills the module.
 
-The Togavsu marketplace has no public address yet (the core's `modules.marketplace_address`
-default is the placeholder `togavsu-marketplace`). For a dry run, run one locally:
+Run a marketplace locally for a dry run, or beside the firm stack with
+`docker compose --profile marketplace up -d` (see `deploy/marketplace/README.md`). A core
+reaches a Compose marketplace at `http://togavsu-marketplace:8090` (plain http: only
+trusted local keys approve installs). For a one-off local process:
 `go run github.com/CharitonMedia/togavsu/marketplace/cmd/marketplace -config market.json`
 with `{"listen": "127.0.0.1:8090", "data_dir": "<dir>", "operator_token_file": "<file of
-32 or more random bytes>", "secure_cookies": false}`. A core reaches it over http only on a
-loopback host.
+32 or more random bytes>", "secure_cookies": false}`.
 
 `togavsu-module` below is `go run github.com/CharitonMedia/togavsu/cmd/togavsu-module`.
+`publish` is the one-command path: it creates the author account if needed (or signs in),
+registers and proves the key, and uploads each signed package file. A version already
+listed with the same digest prints `already listed`; different bytes for that version is
+an error.
 
 ```sh
-M=http://127.0.0.1:8090                       # the marketplace
+M=http://127.0.0.1:8090                       # or http://togavsu-marketplace:8090 on the Compose network
 openssl rand -base64 32 > signing.key         # throwaway key; your release key in a real submission
+printf 'a long enough password\n' > password.txt
 togavsu-module package -installable -dir package -key signing.key -out documents.signed.json
 togavsu-module key -key signing.key > signing.pub
 
-# 1. An author account (password of 12 or more characters), then a session token.
-curl -s -X POST $M/v1/authors -d '{"name":"Your Name","email":"you@example.com","password":"<password>"}'
-T=$(curl -s -X POST $M/v1/sessions -d '{"email":"you@example.com","password":"<password>"}' | jq -r .token)
+togavsu-module publish -market $M -key signing.key -name "Your Name" \
+  -email you@example.com -password-file password.txt documents.signed.json
 
-# 2. Register the public key and prove you hold it, once per key.
-curl -s -X POST $M/v1/authors/me/keys -H "Authorization: Bearer $T" \
-  -d "$(jq -n --rawfile pem signing.pub '{public_key_pem: $pem}')" > key.json
-SIG=$(togavsu-module key -key signing.key -prove "$(jq -r .proof_message key.json)")
-curl -s -X POST $M/v1/authors/me/keys/$(jq -r .key_id key.json)/verify -H "Authorization: Bearer $T" \
-  -d "$(jq -n --arg s "$SIG" '{signature: $s}')"
-
-# 3. Upload the signed package file as the body unchanged. The listing price comes from
-#    the manifest's price (string or structured {amount_cents, currency, interval, note}).
-curl -s -X POST $M/v1/authors/me/packages -H "Authorization: Bearer $T" \
-  -H "Content-Type: application/json" --data-binary @documents.signed.json
-
-# 4. The listing, and the package exactly as a firm's core will fetch it.
+# The listing, and the package exactly as a firm's core will fetch it.
 curl -s $M/v1/listings/documents
 curl -s $M/v1/listings/documents/versions/1.0.0/package > served.json
 togavsu-module verify -file served.json -pub signing.pub
 ```
 
 A firm's admin then installs it from the marketplace (`POST /api/v1/modules` with
-`{"source": "marketplace", "listing_id": "documents"}`), trusting the keys the marketplace
-publishes with no local key, and approves its permissions as for a file install. A
-`coretest` suite can do the same against the local marketplace: set
-`modules.marketplace_address` with `PATCH /api/v1/settings/modules.marketplace_address`
+`{"source": "marketplace", "listing_id": "documents"}`). Over https or loopback the firm
+trusts the keys the marketplace publishes; over `http://togavsu-marketplace:8090` only
+trusted local keys approve an install (add `signing.pub` under Trusted local signing
+keys). Permissions are approved as for a file install. A `coretest` suite can do the same
+against the local marketplace: set `modules.marketplace_address` with
+`PATCH /api/v1/settings/modules.marketplace_address`
 `{"value": "http://127.0.0.1:8090"}` as `c.Admin`, then post the install.
 
 ## pkg/modulekit/forms
@@ -911,13 +911,17 @@ or shared cache. Frame responses are `Cache-Control: no-store`. Module context
 verification and public-page CSRF remain separate requirements.
 
 `calendar-events?view=occupancy&from_time=…&to_time=…` is a service-only read under
-approved `calendar:read`. It includes assigned and unassigned events visible to
-the service principal. Core update 2h also includes walled events with no
-assigned attendee user (no `calendar_event_attendees` rows). Any assigned user,
-including an inactive user, keeps a walled event out. Lifting a wall leaves
-unassigned occupancy unchanged and returns assigned events on the next read. Rows contain **only** `starts_at` and `ends_at`.
-Use normal pagination and the existing interval range. User/matter/kind filters
-are refused. See [the API continuation notes](../api/core-update-2g.md).
+approved `calendar:read`. It includes unwalled events and walled events with no
+active attendee user (2i: deactivated attendees do not count). Reactivation hides
+that walled interval on the next read. Rows contain **only** `starts_at`, `ends_at`
+and `all_day`: the flag is the sole widening of 2h's times-only shape. No ids,
+titles, matters, attendees, video or wall metadata are exposed. Existing range,
+filter and paging checks remain. `modulekit.CalendarOccupancyBlock` and
+`c.CalendarOccupancy(moduleID, from, to)` provide the same shape in coretest.
+`view=busy` retains its requested-user attendee filter and excludes unassigned
+walled events. The deactivated-attendee exception applies only to service occupancy. See
+[calendar video and linked navigation](../api/modules.md#core-update-2i-calendar-video-metadata-and-linked-navigation)
+for `modulekit.CalendarVideo`, location join links and cross-module staff handoffs.
 
 After processor approval, create the matter/contact and call
 `/api/v1/modules/contracts/processor.payment.v1/record` with
@@ -938,3 +942,12 @@ rules in the [record contract](../contracts/README.md#record-the-approved-receip
 `calendar.firm_occupancy` and `processor.receipt_recording`. Remove corresponding
 runtime pending entries and run the module criteria. Unrestricted background
 payment writes (`processor.payment_principal`) remain unavailable.
+
+Core update 2i fix pass: `CalendarVideoPatch` represents partial video writes.
+Omitted fields preserve their values; a pointer to nil clears a nullable field.
+Requested is required on create and optional on PATCH (null resets it to false).
+Video PATCH merges concurrent field updates under the event transaction lock.
+Provider ids use the manifest's 2-to-42-character lowercase slug rule. New or
+changed hosts must be active; an unchanged host may remain after deactivation.
+Linked matter tabs preserve `matter_id` after checking viewer access, even when
+it is absent from `tabs[].params`; other undeclared params are dropped.

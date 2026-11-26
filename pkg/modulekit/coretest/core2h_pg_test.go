@@ -48,7 +48,7 @@ func TestCoreUpdate2HUnassignedOccupancy(t *testing.T) {
 				return str(t, r.JSON, "id")
 			}
 			block := func(offset time.Duration) any {
-				return map[string]any{"starts_at": start.Add(offset).Format(time.RFC3339), "ends_at": start.Add(offset + time.Hour).Format(time.RFC3339)}
+				return map[string]any{"starts_at": start.Add(offset).Format(time.RFC3339), "ends_at": start.Add(offset + time.Hour).Format(time.RFC3339), "all_day": false}
 			}
 			open := create(c.Open, 0, nil)
 			create(c.Open, 2*time.Hour, []string{c.Attorney.ID})
@@ -152,11 +152,11 @@ func TestCoreUpdate2HUnassignedOccupancy(t *testing.T) {
 				t.Fatal("ordinary service list did not restore record on next read")
 			}
 			c.Wall(matter, c.Attorney)
-			// Any assigned user, including an inactive user, keeps the event out.
+			// Active assignment keeps the event out; deactivation restores it (2i).
 			c.Attorney.Must(200, "PATCH", "/api/v1/calendar-events/"+hidden, map[string]any{"attendee_user_ids": []string{c.Staff.ID}})
 			c.Admin.Must(200, "POST", "/api/v1/users/"+c.Staff.ID+"/deactivate", nil)
-			if !reflect.DeepEqual(read(q, 200), baseline) {
-				t.Fatal("assigned inactive attendee treated as unassigned")
+			if !reflect.DeepEqual(read(q, 200), withHidden) {
+				t.Fatal("deactivated sole attendee did not restore occupancy")
 			}
 			c.Attorney.Must(200, "PATCH", "/api/v1/calendar-events/"+hidden, map[string]any{"attendee_user_ids": []string{}})
 			if !reflect.DeepEqual(read(q, 200), withHidden) {

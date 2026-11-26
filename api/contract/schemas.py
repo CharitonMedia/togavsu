@@ -8,6 +8,7 @@ from contract.metadata import CORE_EXTENSION_TARGETS, CORE_PAGE_TARGETS, MODULE_
 from contract.settings import SETTINGS, setting_keys
 
 PROBLEM_CODES = [
+    "invalid_input",
  "too_large",
     "validation_failed",
     "unauthenticated",
@@ -248,6 +249,8 @@ def _register(schemas: dict[str, dict]) -> dict[str, dict]:
             patch.pop("required", None)
             note = " Patch: every field is optional."
             patch["description"] = (patch.get("description") or name) + note
+            if name == "CalendarEventWrite":
+                patch["properties"]["video"] = _null(_ref("CalendarVideoPatch"))
             generated[name + "Patch"] = patch
     schemas.update(generated)
     return schemas
@@ -1469,8 +1472,8 @@ SCHEMAS = _register(
             "Record an approved operating receipt once, bound to the consuming module and newly created matter (contact must be its party), or a newly created contact when matter_id is omitted. No viewer or provider call. Money fields are forbidden; repeats return the same Payment.",
         ),
         "CalendarOccupancyBlock": _obj(
-            {"starts_at":_dt(), "ends_at":_dt()}, ["starts_at", "ends_at"],
-            "Service-only firm-wide occupancy under calendar:read, including events on walled matters only when they have no assigned attendee user (no calendar_event_attendees rows). Walled events with any assigned user stay out; inactive users still count as assigned. Start/end only; exact requested interval overlap; no other fields.",
+            {"starts_at":_dt(), "ends_at":_dt(), "all_day":{"type":"boolean"}}, ["starts_at", "ends_at", "all_day"],
+            "Service-only firm-wide occupancy under calendar:read, including events on walled matters only when they have no assigned attendee user (no active attendee users; inactive users do not count). Start/end and all_day only: all_day is the sole widening of the times-only shape; exact requested interval overlap; no identifiers, video or other details.",
         ),
         "CalendarBusyBlock": _obj(
             {"starts_at": _dt(), "ends_at": _dt(), "all_day": {"type": "boolean"}},
@@ -1495,6 +1498,19 @@ SCHEMAS = _register(
             ["intent_id", "status", "amount_cents", "destination"],
             "Approved requires reference_number, declined forbids it; pending forbids both optional fields. All results must match the original intent/amount/destination. Only approved permits paid-intake continuation. No core matter/contact/payment write occurs in the broker.",
         ),
+        "CalendarVideo": _obj(
+            {"requested":{"type":"boolean"}, "provider":_null({"type":"string", "pattern":"^[a-z][a-z0-9-]{0,40}[a-z0-9]$", "minLength":2, "maxLength":42}),
+             "host_user_id":_null(_uuid()), "provider_meeting_id":_null({"type":"string", "maxLength":200})},
+            ["requested"],
+            "Video booking metadata. Requested is required on create. Provider follows the manifest module-id rule (2 to 42 lowercase slug characters). New or changed hosts must be active core users; unchanged hosts may remain after deactivation. Location holds the join link.",
+        ),
+        "CalendarVideoPatch": _obj(
+            {"requested": _null({"type":"boolean"}),
+             "provider":_null({"type":"string", "pattern":"^[a-z][a-z0-9-]{0,40}[a-z0-9]$", "minLength":2, "maxLength":42}),
+             "host_user_id":_null(_uuid()), "provider_meeting_id":_null({"type":"string", "maxLength":200})},
+            [],
+            "PATCH merges supplied fields against the current video object under a row lock. Omitted fields are preserved; null clears a field (requested resets to false). Whole video null clears the object. A patch on absent video starts with requested false and null fields. New or changed hosts must be active; an unchanged deactivated host is preserved.",
+        ),
         "CalendarEvent": _meta(
             {
                 "title": {"type": "string"},
@@ -1502,6 +1518,7 @@ SCHEMAS = _register(
                 "starts_at": _dt(),
                 "ends_at": _dt(),
                 "all_day": {"type": "boolean"},
+                "video": _null(_ref("CalendarVideo")),
                 "matter_id": _null(_uuid()),
                 "location": {"type": "string"},
                 "travel_minutes": {"type": "integer", "minimum": 0},
@@ -1519,6 +1536,7 @@ SCHEMAS = _register(
                 "starts_at": _dt(),
                 "ends_at": _dt(),
                 "all_day": {"type": "boolean"},
+                "video": _null(_ref("CalendarVideo")),
                 "matter_id": _null(_uuid()),
                 "location": {"type": "string"},
                 "travel_minutes": {"type": "integer", "minimum": 0},
@@ -2367,6 +2385,7 @@ SCHEMAS = _register(
         "Setting": _obj(
             {
                 "key": {"type": "string"},
+                "label": {"type": "string", "description": "Plain name shown on the admin Settings page."},
                 "type": _enum(["string", "integer", "number", "boolean", "json", "uuid"]),
                 "tab": {"type": "string"},
                 "value": {"description": "Current value. A secret setting returns null and sets configured instead."},
@@ -2376,8 +2395,8 @@ SCHEMAS = _register(
                 "help": {"type": "string"},
                 "allowed": {"description": "Allowed values when the setting has a closed set."},
             },
-            ["key", "type", "tab", "configured", "locked", "help"],
-            "One settings-registry row.",
+            ["key", "label", "type", "tab", "configured", "locked", "help"],
+            "One settings-registry row with key, label, type, tab, value, default, configured, locked, help, and optional allowed.",
         ),
         "SettingKey": _enum(setting_keys()),
         "SettingUpdate": _obj({"value": {"description": "New value, checked against the registry type and allowed set."}}, ["value"]),
@@ -3221,7 +3240,7 @@ SCHEMAS = _register(
                         ["version", "released_at"],
                     )
                 ),
-                "price_note": {"type": "string", "description": "Empty when the module is free."},
+                "price_note": {"type": "string", "description": "The provider's listing price information, including any provider disclaimer. Togavsu never sells or bills modules."},
                 "flagged": {"type": "boolean"},
                 "flag_note": {"type": "string"},
                 "pulled": {"type": "boolean"},

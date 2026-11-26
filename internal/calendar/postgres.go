@@ -72,17 +72,40 @@ func (p *Postgres) tx(ctx context.Context, f func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 
+// WithEventLock merges patches against the latest row across core processes.
+func (p *Postgres) WithEventLock(ctx context.Context, id domain.ID, fn func(context.Context) error) error {
+	return audit.WithTx(ctx, p.DB, func(ctx context.Context) error {
+		var locked string
+		err := p.q(ctx).QueryRowContext(ctx, `SELECT id FROM calendar_events WHERE id = $1 FOR UPDATE`, string(id)).Scan(&locked)
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.NotFound("calendar event")
+		}
+		if err != nil {
+			return err
+		}
+		return fn(ctx)
+	})
+}
+
 // PutEvent upserts the event and replaces its attendees in one transaction.
 func (p *Postgres) PutEvent(ctx context.Context, row Event) error {
 	return p.tx(ctx, func(tx *sql.Tx) error {
 		e := row.CalendarEvent
+		var video any
+		if e.Video != nil {
+			body, err := json.Marshal(e.Video)
+			if err != nil {
+				return err
+			}
+			video = string(body)
+		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO calendar_events (id, created_at, updated_at, created_by, title, kind, starts_at, ends_at,
-all_day, matter_id, location, travel_minutes, notes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+all_day, matter_id, location, travel_minutes, notes, video) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, title = EXCLUDED.title, kind = EXCLUDED.kind,
 starts_at = EXCLUDED.starts_at, ends_at = EXCLUDED.ends_at, all_day = EXCLUDED.all_day, matter_id = EXCLUDED.matter_id,
-location = EXCLUDED.location, travel_minutes = EXCLUDED.travel_minutes, notes = EXCLUDED.notes`,
+location = EXCLUDED.location, travel_minutes = EXCLUDED.travel_minutes, notes = EXCLUDED.notes, video = EXCLUDED.video`,
 			string(e.ID), domain.UnixMicroUTC(e.CreatedAt), domain.UnixMicroUTC(e.UpdatedAt), string(e.CreatedBy), e.Title, e.Kind,
-			e.StartsAt, e.EndsAt, bit(e.AllDay), nullID(e.MatterID), e.Location, e.TravelMinutes, e.Notes); err != nil {
+			e.StartsAt, e.EndsAt, bit(e.AllDay), nullID(e.MatterID), e.Location, e.TravelMinutes, e.Notes, video); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM calendar_event_attendees WHERE event_id = $1`, string(e.ID)); err != nil {
@@ -119,7 +142,7 @@ func (p *Postgres) DeleteEvent(ctx context.Context, id domain.ID) error {
 	})
 }
 
-const eventCols = `id, created_at, updated_at, created_by, title, kind, starts_at, ends_at, all_day, matter_id, location, travel_minutes, notes`
+const eventCols = `id, created_at, updated_at, created_by, title, kind, starts_at, ends_at, all_day, matter_id, location, travel_minutes, notes, video`
 
 func (p *Postgres) events(ctx context.Context, where string, args ...any) ([]Event, error) {
 	return p.eventsTail(ctx, where, "", args...)
@@ -139,10 +162,15 @@ func (p *Postgres) eventsTail(ctx context.Context, where, tail string, args ...a
 		var e domain.CalendarEvent
 		var created, updated int64
 		var allDay int
-		var matter sql.NullString
+		var matter, video sql.NullString
 		if err := rows.Scan(&e.ID, &created, &updated, &e.CreatedBy, &e.Title, &e.Kind, &e.StartsAt, &e.EndsAt, &allDay, &matter,
-			&e.Location, &e.TravelMinutes, &e.Notes); err != nil {
+			&e.Location, &e.TravelMinutes, &e.Notes, &video); err != nil {
 			return nil, err
+		}
+		if video.Valid {
+			if err := json.Unmarshal([]byte(video.String), &e.Video); err != nil {
+				return nil, err
+			}
 		}
 		e.CreatedAt, e.UpdatedAt, e.AllDay, e.MatterID = domain.FromUnixMicro(created), domain.FromUnixMicro(updated), allDay == pgTrue, domain.ID(matter.String)
 		idx[e.ID] = len(out)
@@ -212,29 +240,35 @@ func (p *Postgres) EventsBetween(ctx context.Context, from, to time.Time) ([]Eve
 	return p.events(ctx, `WHERE starts_at < $1 AND (ends_at > $2 OR starts_at >= $2)`, hi, lo)
 }
 
-// OccupancyCandidates loads only the interval, placement and attendee presence in
-// one query for all events. Walls remain the service policy's responsibility:
-// practice_records, not the relational matter_walls copy, is authoritative.
-// No event details or attendee identities are loaded. Inactive users still count.
+// OccupancyCandidates loads only intervals, placement and attendee user IDs.
+// Walls and active-user assignment remain the service's responsibility.
 func (p *Postgres) OccupancyCandidates(ctx context.Context, from, to time.Time) ([]OccupancyCandidate, error) {
-	rows, err := p.q(ctx).QueryContext(ctx, `SELECT e.starts_at, e.ends_at, e.matter_id,
-EXISTS (SELECT 1 FROM calendar_event_attendees a WHERE a.event_id = e.id)
-FROM calendar_events e
+	rows, err := p.q(ctx).QueryContext(ctx, `SELECT e.id, e.starts_at, e.ends_at, e.all_day, e.matter_id, a.user_id
+FROM calendar_events e LEFT JOIN calendar_event_attendees a ON a.event_id = e.id
 WHERE e.starts_at < $1 AND (e.ends_at > $2 OR e.starts_at >= $2)
-ORDER BY e.starts_at, e.id`, to.UnixMicro(), from.UnixMicro())
+ORDER BY e.starts_at, e.id, a.id`, to.UnixMicro(), from.UnixMicro())
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []OccupancyCandidate
+	var last domain.ID
 	for rows.Next() {
 		var row OccupancyCandidate
-		var matter sql.NullString
-		if err := rows.Scan(&row.StartsAt, &row.EndsAt, &matter, &row.HasAttendees); err != nil {
+		var id domain.ID
+		var matter, attendee sql.NullString
+		var allDay int
+		if err := rows.Scan(&id, &row.StartsAt, &row.EndsAt, &allDay, &matter, &attendee); err != nil {
 			return nil, err
 		}
-		row.MatterID = domain.ID(matter.String)
-		out = append(out, row)
+		if id != last {
+			row.MatterID, row.AllDay = domain.ID(matter.String), allDay == pgTrue
+			out = append(out, row)
+			last = id
+		}
+		if attendee.Valid {
+			out[len(out)-1].Attendees = append(out[len(out)-1].Attendees, domain.ID(attendee.String))
+		}
 	}
 	return out, rows.Err()
 }

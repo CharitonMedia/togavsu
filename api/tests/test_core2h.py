@@ -1,4 +1,4 @@
-"""Occupancy exception and transport descriptions, without widening its schema."""
+"""Occupancy exception and transport descriptions, with the approved 2i all_day addition."""
 import json
 from pathlib import Path
 import unittest
@@ -19,8 +19,8 @@ class Core2HContract(unittest.TestCase):
             self.assertIn('inactive user', text)
         self.assertEqual(tool['scopes'], ['calendar:read'])
         validator = Draft202012Validator(spec['components']['schemas']['CalendarOccupancyBlock'])
-        interval = dict(starts_at='2026-11-21T10:00:00Z', ends_at='2026-11-21T11:00:00Z')
+        interval = dict(starts_at='2026-11-21T10:00:00Z', ends_at='2026-11-21T11:00:00Z', all_day=False)
         validator.validate(interval)
-        for field in ('id', 'title', 'matter_id', 'contact_id', 'attendee_user_ids', 'kind', 'walled', 'all_day', 'count'):
+        for field in ('id', 'title', 'matter_id', 'contact_id', 'attendee_user_ids', 'kind', 'walled', 'video', 'count'):
             with self.subTest(field=field), self.assertRaises(ValidationError):
                 validator.validate(dict(interval, **{field: 'private'}))

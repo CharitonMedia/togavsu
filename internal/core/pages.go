@@ -62,7 +62,7 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 {{define "login"}}{{template "top" .}}
 <form class="card" method="post" action="/login">
 <p><label>Email<br><input name="email" type="email" required value="{{.Form.email}}" autocomplete="username"></label></p>
-<p><label>Password<br><input name="password" type="password" required autocomplete="current-password"></label></p>
+<p><label>{{if .PasswordOptional}}Password (optional on this install){{else}}Password{{end}}<br><input name="password" type="password"{{if not .PasswordOptional}} required{{end}} autocomplete="current-password"></label></p>
 <p><button type="submit">Sign in</button></p></form>
 {{template "bottom" .}}{{end}}
 
@@ -108,13 +108,13 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 
 {{define "settings"}}{{template "top" .}}
 <nav class="tabs" aria-label="Settings tabs">{{range .Tabs}}<a href="/admin/settings?tab={{.}}" {{if eq . $.Tab}}aria-current="page"{{end}}>{{label .}}</a>{{end}}</nav>
-<table><thead><tr><th>Setting</th><th>Value</th><th>Default</th><th></th></tr></thead><tbody>
-{{range .Settings}}<tr><td><strong>{{.Key}}</strong><br><span class="muted">{{.Help}}</span></td>
-<td>{{if .Secret}}<span class="muted">{{if .SecretSet}}configured{{else}}not set{{end}}</span>{{else}}{{.Value}}{{end}}{{if and (not .Secret) (ne .Value .Default)}} <span class="badge">changed</span>{{end}}</td>
-<td>{{if not .Secret}}{{.Default}}{{end}}</td>
+<table><thead><tr><th>Name</th><th>Value</th><th>Default</th><th></th></tr></thead><tbody>
+{{range .Settings}}<tr><td>{{.Label}}<br><span class="muted">{{.Help}}</span><details><summary>Advanced</summary><small class="muted">{{.Key}}</small></details></td>
+<td>{{if .Secret}}<span class="muted">{{if .SecretSet}}configured{{else}}not set{{end}}</span>{{else}}{{.ValuePlain}}{{end}}{{if and (not .Secret) (ne .Value .Default)}} <span class="badge">changed</span>{{end}}</td>
+<td>{{if not .Secret}}{{.DefaultPlain}}{{end}}</td>
 <td>{{if .Locked}}<span class="muted">locked</span>{{else}}
 <form method="post" action="/admin/settings/{{.Key}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}">
-<input name="value" aria-label="New value for {{.Key}}" {{if not .Secret}}value="{{.Value}}"{{end}} {{if .Secret}}type="password"{{end}}> <button type="submit">Save</button></form>
+<input name="value" aria-label="New value for {{.Label}}" {{if not .Secret}}value="{{.Value}}"{{end}} {{if .Secret}}type="password"{{end}}> <button type="submit">Save</button></form>
 {{if and (not .Secret) (ne .Value .Default)}}<form method="post" action="/admin/settings/{{.Key}}/reset"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit">Reset to default</button></form>{{end}}{{end}}</td></tr>
 {{end}}</tbody></table>
 {{template "bottom" .}}{{end}}
@@ -136,17 +136,18 @@ func tabLabel(tab string) string {
 }
 
 type view struct {
-	Title    string
-	Error    string
-	Nav      bool
-	CSRF     string
-	Form     map[string]string
-	Enroll   identity.Enrollment
-	Codes    []string
-	Token    string
-	Tabs     []string
-	Tab      string
-	Settings []settings.Entry
+	Title            string
+	Error            string
+	Nav              bool
+	CSRF             string
+	Form             map[string]string
+	Enroll           identity.Enrollment
+	Codes            []string
+	Token            string
+	Tabs             []string
+	Tab              string
+	Settings         []coreSettingRow
+	PasswordOptional bool
 }
 
 func render(w http.ResponseWriter, code int, name string, v view) {
@@ -219,7 +220,7 @@ func (a *App) confirmPost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		e, serr := a.Identity.StartEnrollment(r.Context(), token)
 		if serr != nil {
-			render(w, status(err), "login", view{Title: "Sign in", Error: message(err), Form: map[string]string{}})
+			a.renderLogin(w, r, status(err), message(err), map[string]string{})
 			return
 		}
 		render(w, status(err), "enroll", view{Title: "Turn on two-factor sign-in", Error: message(err), Enroll: e})
@@ -229,15 +230,26 @@ func (a *App) confirmPost(w http.ResponseWriter, r *http.Request) {
 	render(w, http.StatusOK, "recovery", view{Title: "Recovery codes", Codes: res.RecoveryCodes})
 }
 
+func (a *App) renderLogin(w http.ResponseWriter, r *http.Request, code int, errText string, form map[string]string) {
+	if form == nil {
+		form = map[string]string{}
+	}
+	v := view{Title: "Sign in", Error: errText, Form: form}
+	if on, err := a.Identity.PasswordOptional(r.Context()); err == nil {
+		v.PasswordOptional = on
+	}
+	render(w, code, "login", v)
+}
+
 func (a *App) loginPage(w http.ResponseWriter, r *http.Request) {
-	render(w, http.StatusOK, "login", view{Title: "Sign in", Form: map[string]string{}})
+	a.renderLogin(w, r, http.StatusOK, "", map[string]string{})
 }
 
 func (a *App) loginPost(w http.ResponseWriter, r *http.Request) {
 	email := r.FormValue("email")
 	res, err := a.Identity.Login(r.Context(), email, r.FormValue("password"))
 	if err != nil {
-		render(w, status(err), "login", view{Title: "Sign in", Error: message(err), Form: map[string]string{"email": email}})
+		a.renderLogin(w, r, status(err), message(err), map[string]string{"email": email})
 		return
 	}
 	a.loginStep(w, r, res)
@@ -257,12 +269,12 @@ func (a *App) loginStep(w http.ResponseWriter, r *http.Request, res identity.Log
 	case res.EnrollmentToken != "":
 		e, err := a.Identity.StartEnrollment(r.Context(), res.EnrollmentToken)
 		if err != nil {
-			render(w, status(err), "login", view{Title: "Sign in", Error: message(err), Form: map[string]string{}})
+			a.renderLogin(w, r, status(err), message(err), map[string]string{})
 			return
 		}
 		render(w, http.StatusOK, "enroll", view{Title: "Turn on two-factor sign-in", Enroll: e})
 	default:
-		render(w, http.StatusUnauthorized, "login", view{Title: "Sign in", Error: "Sign in did not complete.", Form: map[string]string{}})
+		a.renderLogin(w, r, http.StatusUnauthorized, "Sign in did not complete.", map[string]string{})
 	}
 }
 
@@ -314,13 +326,22 @@ func (a *App) settingsView(r *http.Request, errText string) (view, error) {
 	if !seen[tab] && len(tabs) > 0 {
 		tab = tabs[0]
 	}
-	var rows []settings.Entry
+	var rows []coreSettingRow
 	for _, e := range list {
 		if e.Tab == tab {
-			rows = append(rows, e)
+			rows = append(rows, coreSettingRow{
+				Entry: e, ValuePlain: settings.DisplayPlain(e.Definition, e.Value),
+				DefaultPlain: settings.DisplayPlain(e.Definition, e.Default),
+			})
 		}
 	}
 	return view{Title: "Settings", Nav: true, CSRF: csrfOf(r), Error: errText, Tabs: tabs, Tab: tab, Settings: rows}, nil
+}
+
+type coreSettingRow struct {
+	settings.Entry
+	ValuePlain   string
+	DefaultPlain string
 }
 
 func (a *App) settingsPage(w http.ResponseWriter, r *http.Request) {
@@ -365,7 +386,8 @@ func (a *App) settingsChange(w http.ResponseWriter, r *http.Request, change func
 		return
 	}
 	if err := change(p); err != nil {
-		v, verr := a.settingsView(r, "That value is not allowed for "+r.PathValue("setting_key")+". "+strings.TrimPrefix(message(settingErr(err)), "settings: "))
+		key := r.PathValue("setting_key")
+		v, verr := a.settingsView(r, settings.UIError(key, err))
 		if verr != nil {
 			writeErr(w, verr)
 			return

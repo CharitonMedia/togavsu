@@ -56,9 +56,10 @@ var (
 	ErrForbidden = errors.New("settings: admin role required")
 )
 
-// Definition is one registry entry: key, type, default, range, tab, and help.
+// Definition is one registry entry: key, plain label, type, default, range, tab, and help.
 type Definition struct {
 	Key      string
+	Label    string
 	Kind     string
 	Default  string
 	Min      int64
@@ -152,7 +153,7 @@ func Definitions() []Definition {
 	return out
 }
 
-// ValidateCatalog checks keys, help, and that every default is a legal value.
+// ValidateCatalog checks keys, labels, help, and that every default is a legal value.
 func ValidateCatalog() error {
 	seen := map[string]bool{}
 	for _, def := range definitions {
@@ -160,6 +161,9 @@ func ValidateCatalog() error {
 			return fmt.Errorf("%w: duplicate or empty key %q", ErrInvalid, def.Key)
 		}
 		seen[def.Key] = true
+		if def.Label == "" {
+			return fmt.Errorf("%w: %s missing label", ErrInvalid, def.Key)
+		}
 		if def.Tab == "" || def.Help == "" || def.Kind == "" {
 			return fmt.Errorf("%w: %s missing kind, tab, or help", ErrInvalid, def.Key)
 		}
@@ -168,6 +172,44 @@ func ValidateCatalog() error {
 		}
 	}
 	return nil
+}
+
+// LabelOf returns the plain label for a setting key, or the key when unknown.
+func LabelOf(key string) string {
+	for _, def := range definitions {
+		if def.Key == key {
+			return def.Label
+		}
+	}
+	return key
+}
+
+// UIError returns a short user-facing message for a settings mutation failure,
+// naming the setting by its plain label. API handlers keep the registry error
+// wording (which still names the key) so contract bodies stay unchanged.
+func UIError(key string, err error) string {
+	label := LabelOf(key)
+	switch {
+	case errors.Is(err, ErrReadOnly):
+		return label + " is read only"
+	case errors.Is(err, ErrInvalid):
+		reason := strings.TrimSpace(strings.TrimPrefix(err.Error(), ErrInvalid.Error()+": "))
+		if reason == "" || reason == key {
+			return "That value is not allowed for " + label + "."
+		}
+		if strings.HasPrefix(reason, key) {
+			rest := strings.TrimSpace(strings.TrimPrefix(reason, key))
+			if rest == "" {
+				return "That value is not allowed for " + label + "."
+			}
+			return "invalid value: " + label + " " + rest
+		}
+		// Domain specials (naming_pattern, model_prices, …) wrap reasons without the
+		// key; keep that hint so the admin still sees what to fix.
+		return "That value is not allowed for " + label + ": " + reason + "."
+	default:
+		return err.Error()
+	}
 }
 
 // Get returns the stored value or the default.
@@ -207,6 +249,8 @@ func (r *Registry) List(ctx context.Context) ([]Entry, error) {
 // Set validates and stores a value, then audits the old and new values.
 // who supplies the actor id, roles, and source written to the audit log.
 // Only an admin may write. Any other principal returns before the store or the audit log changes.
+// Saving practice.case_number_examples also derives and stores practice.case_number_patterns
+// in the same transaction (one audit entry each).
 func (r *Registry) Set(ctx context.Context, key, value string, who domain.Principal) (Change, error) {
 	def, err := r.definition(key)
 	if err != nil {
@@ -229,16 +273,121 @@ func (r *Registry) Set(ctx context.Context, key, value string, who domain.Princi
 	if def.Special == "required" && strings.TrimSpace(value) == "" {
 		return Change{}, fmt.Errorf("%w: %s is required", ErrInvalid, key)
 	}
+	if key == keyCaseExamples {
+		return r.setCaseExamples(ctx, def, value, who)
+	}
 	return r.persist(ctx, def, value, who)
 }
 
 // Reset restores the default and audits the change.
+// Resetting practice.case_number_examples also restores the derived default patterns.
 func (r *Registry) Reset(ctx context.Context, key string, who domain.Principal) (Change, error) {
 	def, err := r.definition(key)
 	if err != nil {
 		return Change{}, err
 	}
 	return r.Set(ctx, key, def.Default, who)
+}
+
+func (r *Registry) setCaseExamples(ctx context.Context, def Definition, value string, who domain.Principal) (Change, error) {
+	patterns, err := DeriveCasePatterns(value)
+	if err != nil {
+		return Change{}, err
+	}
+	patDef, err := r.definition(keyCasePatterns)
+	if err != nil {
+		return Change{}, err
+	}
+	patValue := jsonText(patterns)
+	if err := validate(patDef, patValue); err != nil {
+		return Change{}, err
+	}
+	// The two writes commit together. The external audit events are recorded only
+	// after that commit, so a failed pair never leaves an audit event for a value
+	// that was never stored.
+	var change Change
+	var audits []Change
+	err = r.store.Transact(ctx, func(tx Store) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		audits = audits[:0]
+		exChange, exChanged, err := r.write(ctx, tx, def, value, who)
+		if err != nil {
+			return err
+		}
+		patChange, patChanged, err := r.write(ctx, tx, patDef, patValue, who)
+		if err != nil {
+			return err
+		}
+		if exChanged {
+			audits = append(audits, exChange)
+		}
+		if patChanged {
+			audits = append(audits, patChange)
+		}
+		change = exChange
+		return ctx.Err()
+	})
+	if err != nil {
+		return Change{}, err
+	}
+	// The pair is committed. SQL stores have already recorded both durable audit
+	// rows through ChangeLogger in that transaction. These external notifications
+	// are best effort: try each one, but never report committed values as failed.
+	for _, c := range audits {
+		_ = r.audit.SettingChanged(ctx, c)
+	}
+	return change, nil
+}
+
+// writeOne applies one setting mutation inside an open store transaction and audits it.
+func (r *Registry) writeOne(ctx context.Context, tx Store, def Definition, value string, who domain.Principal) (Change, error) {
+	change, changed, err := r.write(ctx, tx, def, value, who)
+	if err != nil || !changed {
+		return change, err
+	}
+	if err := r.audit.SettingChanged(ctx, change); err != nil {
+		return Change{}, err
+	}
+	return change, nil
+}
+
+// write applies one setting mutation inside an open store transaction and logs it
+// to the transaction. It reports whether the value changed; it does not record the
+// external audit event.
+func (r *Registry) write(ctx context.Context, tx Store, def Definition, value string, who domain.Principal) (Change, bool, error) {
+	prev, ok, err := tx.Get(ctx, def.Key)
+	if err != nil {
+		return Change{}, false, err
+	}
+	current := def.Default
+	if ok {
+		current = prev
+	}
+	at := r.now().UTC()
+	change := Change{
+		Key: def.Key, Actor: who.UserID, Role: formatRoles(who.Roles), Source: who.Source,
+		TokenID: who.TokenID, ModuleID: who.ModuleID, At: at, Redacted: def.Secret,
+	}
+	change.Old = display(def, current)
+	change.New = display(def, value)
+	if value == current {
+		return change, false, nil
+	}
+	if value == def.Default {
+		if err := tx.Delete(ctx, def.Key); err != nil {
+			return Change{}, false, err
+		}
+	} else if err := tx.Put(ctx, def.Key, value, at, who.UserID); err != nil {
+		return Change{}, false, err
+	}
+	if logger, ok := tx.(ChangeLogger); ok {
+		if err := logger.LogChange(ctx, change); err != nil {
+			return Change{}, false, err
+		}
+	}
+	return change, true, nil
 }
 
 func (r *Registry) definition(key string) (Definition, error) {
@@ -266,39 +415,11 @@ func (r *Registry) persist(ctx context.Context, def Definition, value string, wh
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		prev, ok, err := tx.Get(ctx, def.Key)
+		ch, err := r.writeOne(ctx, tx, def, value, who)
 		if err != nil {
 			return err
 		}
-		current := def.Default
-		if ok {
-			current = prev
-		}
-		at := r.now().UTC()
-		change = Change{
-			Key: def.Key, Actor: who.UserID, Role: formatRoles(who.Roles), Source: who.Source,
-			TokenID: who.TokenID, ModuleID: who.ModuleID, At: at, Redacted: def.Secret,
-		}
-		change.Old = display(def, current)
-		change.New = display(def, value)
-		if value == current {
-			return nil
-		}
-		if value == def.Default {
-			if err := tx.Delete(ctx, def.Key); err != nil {
-				return err
-			}
-		} else if err := tx.Put(ctx, def.Key, value, at, who.UserID); err != nil {
-			return err
-		}
-		if logger, ok := tx.(ChangeLogger); ok {
-			if err := logger.LogChange(ctx, change); err != nil {
-				return err
-			}
-		}
-		if err := r.audit.SettingChanged(ctx, change); err != nil {
-			return err
-		}
+		change = ch
 		return ctx.Err()
 	})
 	if err != nil {
@@ -416,6 +537,10 @@ func validateSpecial(def Definition, value string) error {
 			if err != nil || n < 0 || n > 365 {
 				return fmt.Errorf("%w: %s", ErrInvalid, def.Key)
 			}
+		}
+	case "case_examples":
+		if _, err := DeriveCasePatterns(value); err != nil {
+			return err
 		}
 	case "regexp_list":
 		var patterns []string

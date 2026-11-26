@@ -16,39 +16,64 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 		return LoginResult{}, err
 	}
 	email = normalizeEmail(email)
-	if email == "" || password == "" {
+	if email == "" {
+		return LoginResult{}, domain.Invalid("email", "email and password are required")
+	}
+	optional, err := s.PasswordOptional(ctx)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if password == "" && !optional {
 		return LoginResult{}, domain.Invalid("email", "email and password are required")
 	}
 	user, lookupErr := s.userByEmail(ctx, email)
 	if lookupErr != nil && !errors.Is(lookupErr, repository.ErrNotFound) {
 		return LoginResult{}, lookupErr
 	}
-	hash := ""
-	stored := false
-	if lookupErr == nil {
-		cred, err := s.passwords.GetByUser(ctx, user.ID)
-		if err == nil {
-			hash = cred.Argon2Hash
-			stored = true
-		} else if !errors.Is(err, repository.ErrNotFound) {
-			return LoginResult{}, err
+	passwordSkipped := false
+	ok := false
+	if optional && lookupErr == nil && user.Active {
+		roles, rerr := rolesOf(user)
+		if rerr != nil {
+			return LoginResult{}, rerr
+		}
+		enroll, eerr := s.needsTOTPEnrollment(ctx, user, roles)
+		if eerr != nil {
+			return LoginResult{}, eerr
+		}
+		if !enroll {
+			passwordSkipped = true
+			ok = true
 		}
 	}
-	if !stored {
-		hash = dummyHash()
-	}
-	// One Argon2id check on every path. The dummy hash is used only when no credential is stored,
-	// and that check cannot succeed: the dummy password is public.
-	ok := VerifyPassword(password, hash)
-	if !stored {
-		ok = false
+	if !passwordSkipped {
+		hash := ""
+		stored := false
+		if lookupErr == nil {
+			cred, err := s.passwords.GetByUser(ctx, user.ID)
+			if err == nil {
+				hash = cred.Argon2Hash
+				stored = true
+			} else if !errors.Is(err, repository.ErrNotFound) {
+				return LoginResult{}, err
+			}
+		}
+		if !stored {
+			hash = dummyHash()
+		}
+		// One Argon2id check on every path. The dummy hash is used only when no credential is stored,
+		// and that check cannot succeed: the dummy password is public.
+		ok = VerifyPassword(password, hash)
+		if !stored {
+			ok = false
+		}
 	}
 	lockID := unknownLoginID(email)
 	if lookupErr == nil && user.Active {
 		lockID = user.ID
 	}
 	var result LoginResult
-	err := s.withUser(ctx, lockID, func() error {
+	err = s.withUser(ctx, lockID, func() error {
 		if lookupErr != nil || !ok || !user.Active {
 			if lookupErr == nil && user.Active {
 				var ferr error
@@ -67,13 +92,33 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 		if err != nil {
 			return err
 		}
-		result, err = s.afterPassword(ctx, user, roles)
+		result, err = s.afterPassword(ctx, user, roles, passwordSkipped)
 		return err
 	})
 	if err != nil {
 		return LoginResult{}, err
 	}
 	return result, nil
+}
+
+// needsTOTPEnrollment is true when afterPassword would issue a purposeEnroll challenge:
+// the role requires two-factor and the user has no confirmed TOTP secret.
+func (s *Service) needsTOTPEnrollment(ctx context.Context, user domain.User, roles []domain.Role) (bool, error) {
+	required, err := s.totpRequired(ctx, roles)
+	if err != nil {
+		return false, err
+	}
+	if !required {
+		return false, nil
+	}
+	secret, err := s.totp.GetByUser(ctx, user.ID)
+	if err == nil && secret.Confirmed {
+		return false, nil
+	}
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Service) failUnknown(ctx context.Context, email string) (LoginResult, error) {
@@ -123,7 +168,7 @@ func (s *Service) failPassword(ctx context.Context, user domain.User) (LoginResu
 	return LoginResult{}, s.recordFailure(ctx, user, roles)
 }
 
-func (s *Service) afterPassword(ctx context.Context, user domain.User, roles []domain.Role) (LoginResult, error) {
+func (s *Service) afterPassword(ctx context.Context, user domain.User, roles []domain.Role, passwordSkipped bool) (LoginResult, error) {
 	required, err := s.totpRequired(ctx, roles)
 	if err != nil {
 		return LoginResult{}, err
@@ -134,20 +179,28 @@ func (s *Service) afterPassword(ctx context.Context, user domain.User, roles []d
 		return LoginResult{}, err
 	}
 	if confirmed {
-		token, _, err := s.issueChallenge(ctx, user, purposeTOTP, "", "")
+		action := ""
+		if passwordSkipped {
+			action = passwordSkippedAction
+		}
+		token, _, err := s.issueChallenge(ctx, user, purposeTOTP, "", action)
 		if err != nil {
 			return LoginResult{}, err
 		}
 		return LoginResult{Status: statusTOTP, TOTPToken: token, User: user}, nil
 	}
 	if required {
+		// Re-check under the user lock: a pre-lock skip must never reach enrollment.
+		if passwordSkipped {
+			return LoginResult{}, s.recordFailure(ctx, user, roles)
+		}
 		token, _, err := s.issueChallenge(ctx, user, purposeEnroll, "", "")
 		if err != nil {
 			return LoginResult{}, err
 		}
 		return LoginResult{Status: statusEnroll, EnrollmentToken: token, User: user}, nil
 	}
-	return s.openSession(ctx, user, roles)
+	return s.openSession(ctx, user, roles, passwordSkipped)
 }
 
 // StartEnrollment turns a login enrollment token into a one-time secret.
@@ -222,7 +275,7 @@ func (s *Service) VerifyRecovery(ctx context.Context, totpToken, code string) (L
 // useChallenge spends the challenge once, then evaluates the code.
 // A second caller on the same token does not get a guess. The lock is checked again before a session opens.
 func (s *Service) useChallenge(ctx context.Context, token, purpose string, eval func(domain.User, []domain.Role) error) (LoginResult, error) {
-	_, sess, user, err := s.loadChallenge(ctx, token, purpose)
+	body, sess, user, err := s.loadChallenge(ctx, token, purpose)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -230,6 +283,7 @@ func (s *Service) useChallenge(ctx context.Context, token, purpose string, eval 
 	if err != nil {
 		return LoginResult{}, err
 	}
+	passwordSkipped := purpose == purposeTOTP && body.Action == passwordSkippedAction
 	var result LoginResult
 	err = s.withUser(ctx, user.ID, func() error {
 		if err := s.claimChallenge(ctx, sess, principalOf(user, roles)); err != nil {
@@ -248,7 +302,7 @@ func (s *Service) useChallenge(ctx context.Context, token, purpose string, eval 
 		if err := s.rejectIfLocked(ctx, user); err != nil {
 			return err
 		}
-		result, err = s.openSession(ctx, user, roles)
+		result, err = s.openSession(ctx, user, roles, passwordSkipped)
 		return err
 	})
 	if err != nil {

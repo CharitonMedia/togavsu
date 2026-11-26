@@ -351,6 +351,9 @@ class Stage1InventoryTest(unittest.TestCase):
                 "core-update-2a-service-principal",
                 "module-secret-create-if-absent",
                 "core-update-2c-price-invoice-import",
+                "settings-plain-labels",
+                "settings-case-number-examples",
+                "settings-password-optional",
             },
         )
 

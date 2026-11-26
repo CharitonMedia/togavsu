@@ -520,6 +520,35 @@ type ConflictReview struct {
 
 func (ConflictReview) TableName() string { return "conflict_reviews" }
 
+// CalendarVideo identifies a video booking. Location carries its join link.
+type CalendarVideo struct {
+	Requested         bool    `json:"requested"`
+	Provider          *string `json:"provider"`
+	HostUserID        *ID     `json:"host_user_id"`
+	ProviderMeetingID *string `json:"provider_meeting_id"`
+}
+
+// Clone returns an independent copy, including nullable fields.
+func (v *CalendarVideo) Clone() *CalendarVideo {
+	if v == nil {
+		return nil
+	}
+	cp := *v
+	if v.Provider != nil {
+		value := *v.Provider
+		cp.Provider = &value
+	}
+	if v.HostUserID != nil {
+		value := *v.HostUserID
+		cp.HostUserID = &value
+	}
+	if v.ProviderMeetingID != nil {
+		value := *v.ProviderMeetingID
+		cp.ProviderMeetingID = &value
+	}
+	return &cp
+}
+
 // CalendarEvent is a firm calendar item.
 type CalendarEvent struct {
 	Meta
@@ -532,6 +561,8 @@ type CalendarEvent struct {
 	Location      string `db:"location"`
 	TravelMinutes int    `db:"travel_minutes"`
 	Notes         string `db:"notes"`
+	// Video is stored by composed-core migration 1700, outside db.Embedded.
+	Video *CalendarVideo `db:"-"`
 }
 
 func (CalendarEvent) TableName() string { return "calendar_events" }

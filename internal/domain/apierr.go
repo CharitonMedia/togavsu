@@ -12,9 +12,11 @@ const (
 	CodeForbidden       = "forbidden"
 	CodeNotFound        = "not_found"
 	CodeValidation      = "validation"
-	CodeConflict        = "conflict"
-	CodeAppendOnly      = "append_only"
-	CodeRateLimited     = "rate_limited"
+	// CodeInvalidInput identifies invalid calendar video metadata.
+	CodeInvalidInput = "invalid_input"
+	CodeConflict     = "conflict"
+	CodeAppendOnly   = "append_only"
+	CodeRateLimited  = "rate_limited"
 	// CodeIdempotencyConflict is an Idempotency-Key reused with a different body.
 	CodeIdempotencyConflict = "idempotency_conflict"
 	// CodeDuplicateEmail is an email address another user already has.
@@ -58,7 +60,7 @@ func (e *APIError) HTTPStatus() int {
 		return http.StatusForbidden
 	case CodeNotFound:
 		return http.StatusNotFound
-	case CodeValidation, CodeRefundExceeds:
+	case CodeValidation, CodeInvalidInput, CodeRefundExceeds:
 		return http.StatusBadRequest
 	case CodeConflict, CodeAppendOnly, CodeIdempotencyConflict, CodeDuplicateEmail:
 		return http.StatusConflict

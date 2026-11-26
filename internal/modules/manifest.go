@@ -284,7 +284,6 @@ const (
 )
 
 var (
-	moduleID  = regexp.MustCompile(`^[a-z][a-z0-9-]{0,40}[a-z0-9]$`)
 	slug      = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
 	ident     = regexp.MustCompile(`^[a-z_][a-z0-9_]{0,62}$`)
 	scopeRe   = regexp.MustCompile(`^[a-z_]+:[a-z_]+$`)
@@ -371,7 +370,7 @@ func (m Manifest) validate(report func(error) bool) {
 			return !marketplace.ReservedModuleID(m.ID) || ok(invalid("id", marketplace.ErrReservedModuleID.Error()))
 		},
 		func() bool {
-			return moduleID.MatchString(m.ID) || ok(invalid("id", "module id must be a lower-case slug"))
+			return domain.ValidModuleID(m.ID) || ok(invalid("id", "module id must be a lower-case slug"))
 		},
 		func() bool {
 			return (strings.TrimSpace(m.Name) != "" && strings.TrimSpace(m.Author) != "") || ok(invalid("name", "name and author are required"))

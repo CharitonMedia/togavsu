@@ -150,9 +150,17 @@ func (e *env) author(name, email string) author {
 }
 
 func pkg(t *testing.T, id, version string, perms ...string) []byte {
+	return pkgPrice(t, id, version, "", perms...)
+}
+
+func pkgPrice(t *testing.T, id, version, price string, perms ...string) []byte {
 	t.Helper()
-	man, _ := json.Marshal(map[string]any{"id": id, "name": "Matter Clock", "version": version, "permissions": perms})
-	b, err := shared.BuildPackage(man, map[string][]byte{"migrations/0001_matter_targets.sql": []byte("-- synthetic\n")})
+	man := map[string]any{"id": id, "name": "Matter Clock", "version": version, "permissions": perms}
+	if price != "" {
+		man["price"] = price
+	}
+	raw, _ := json.Marshal(man)
+	b, err := shared.BuildPackage(raw, map[string][]byte{"migrations/0001_matter_targets.sql": []byte("-- synthetic\n")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,6 +173,19 @@ func (e *env) publish(a author, p []byte, price *string) resp {
 		body["price_note"] = *price
 	}
 	return e.do("POST", "/v1/authors/me/packages", a.token, body)
+}
+
+// signedFile is the kit's signed package file for p (SignFile's fields).
+func (e *env) signedFile(a author, p []byte) map[string]any {
+	man, err := shared.ReadManifest(p)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return map[string]any{
+		"listing_id": man.ID, "version": man.Version, "immutable": false, "manifest": nil,
+		"digest": shared.Digest(p), "package_base64": base64.StdEncoding.EncodeToString(p),
+		"signature": shared.Sign(a.priv, p), "key_id": a.keyID,
+	}
 }
 
 func TestAuthorAccounts(t *testing.T) {
@@ -255,7 +276,15 @@ func TestUploadAndListing(t *testing.T) {
 	if l.Author != "Synthetic Author" || l.SigningKey != a.keyID || l.SigningKeyPEM == "" || l.Version != "0.2.0" || l.PriceNote != wantNote || l.Notice != shared.Notice {
 		t.Fatalf("listing %+v want price_note %q", l, wantNote)
 	}
-	if strings.Join(l.Permissions, ",") != "matters:read,time:read,notes:write" || len(l.VersionHistory) != 2 || l.VersionHistory[0].Version != "0.1.0" {
+	// Re-upload 0.1.0's price via a new version that carries the manifest price.
+	if r := e.publish(a, pkgPrice(t, "matter-clock", "0.2.1", price, "matters:read"), nil); r.code != http.StatusCreated {
+		t.Fatalf("publish 0.2.1 %d %s", r.code, r.body)
+	}
+	e.do("GET", "/v1/listings/matter-clock", "", nil).json(t, &l)
+	if l.PriceNote != wantNote || l.Version != "0.2.1" {
+		t.Fatalf("manifest price: %+v", l)
+	}
+	if strings.Join(l.Permissions, ",") != "matters:read" || len(l.VersionHistory) != 3 || l.VersionHistory[0].Version != "0.1.0" {
 		t.Fatalf("listing permissions/history %+v", l)
 	}
 	// Listed versions never change.
@@ -309,7 +338,7 @@ func TestUploadAndListing(t *testing.T) {
 		t.Fatalf("search by author %+v", found)
 	}
 	page := e.do("GET", "/listings/matter-clock", "", nil)
-	for _, want := range []string{"Synthetic Author", a.keyID, "notes:write", "0.1.0", "0.2.0", "$10 per month", "Modules are published by their authors. The Togavsu marketplace does not review, test or warrant any module. Install at your own risk."} {
+	for _, want := range []string{"Synthetic Author", a.keyID, "matters:read", "0.1.0", "0.2.0", "0.2.1", "$10 per month", "Modules are published by their authors. The Togavsu marketplace does not review, test or warrant any module. Install at your own risk."} {
 		if !strings.Contains(string(page.body), want) && !strings.Contains(string(page.body), htmlEscape(want)) {
 			t.Fatalf("listing page lacks %q", want)
 		}
@@ -342,6 +371,53 @@ func TestPublishRefusesReservedModuleID(t *testing.T) {
 
 func htmlEscape(s string) string {
 	return strings.NewReplacer("'", "&#39;", "&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&#34;").Replace(s)
+}
+
+func TestUploadAcceptsKitSignedPackageFile(t *testing.T) {
+	e := newEnv(t)
+	a := e.author("Kit Author", "kit@example.test")
+	p := pkgPrice(t, "kit-mod", "1.0.0", "Free", "matters:read")
+	body := e.signedFile(a, p)
+	r := e.do("POST", "/v1/authors/me/packages", a.token, body)
+	if r.code != http.StatusCreated {
+		t.Fatalf("kit file upload %d %s", r.code, r.body)
+	}
+	var l shared.Listing
+	e.do("GET", "/v1/listings/kit-mod", "", nil).json(t, &l)
+	if l.PriceNote != WirePriceNote("Free", "Kit Author") || l.Version != "1.0.0" {
+		t.Fatalf("listing from kit file %+v", l)
+	}
+	// A wrong digest is refused.
+	body["digest"] = "sha256:" + strings.Repeat("0", 64)
+	if r := e.do("POST", "/v1/authors/me/packages", a.token, body); r.code != http.StatusBadRequest || !strings.Contains(string(r.body), "digest_mismatch") {
+		t.Fatalf("wrong digest: %d %s", r.code, r.body)
+	}
+	// An unknown field is still refused; the old three-field body still works.
+	bad := e.signedFile(a, pkg(t, "other", "1.0.0"))
+	bad["extra"] = "nope"
+	if r := e.do("POST", "/v1/authors/me/packages", a.token, bad); r.code != http.StatusBadRequest {
+		t.Fatalf("unknown field: %d %s", r.code, r.body)
+	}
+	three := map[string]any{"package_base64": base64.StdEncoding.EncodeToString(pkg(t, "three-field", "1.0.0")),
+		"signature": shared.Sign(a.priv, pkg(t, "three-field", "1.0.0")), "key_id": a.keyID}
+	// Rebuild so signature matches the same bytes.
+	p3 := pkg(t, "three-field", "1.0.0")
+	three = map[string]any{"package_base64": base64.StdEncoding.EncodeToString(p3), "signature": shared.Sign(a.priv, p3), "key_id": a.keyID}
+	if r := e.do("POST", "/v1/authors/me/packages", a.token, three); r.code != http.StatusCreated {
+		t.Fatalf("three-field body: %d %s", r.code, r.body)
+	}
+	// The manifest price remains authoritative over the legacy price_note fallback.
+	p2 := pkgPrice(t, "priced", "1.0.0", "From manifest", "matters:read")
+	note := "$9 override"
+	body = e.signedFile(a, p2)
+	body["price_note"] = note
+	if r := e.do("POST", "/v1/authors/me/packages", a.token, body); r.code != http.StatusCreated {
+		t.Fatalf("price override %d %s", r.code, r.body)
+	}
+	e.do("GET", "/v1/listings/priced", "", nil).json(t, &l)
+	if l.PriceNote != WirePriceNote("From manifest", "Kit Author") {
+		t.Fatalf("manifest price overridden: %+v", l)
+	}
 }
 
 func TestFlagAndPull(t *testing.T) {

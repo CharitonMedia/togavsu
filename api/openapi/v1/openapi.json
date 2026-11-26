@@ -37965,7 +37965,7 @@
       "get": {
         "operationId": "listCalendarEvent",
         "summary": "List calendar events",
-        "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only under calendar:read and returns only starts_at and ends_at for visible assigned or unassigned events. Events on walled matters are also included when they have no assigned attendee user (no calendar_event_attendees rows); any assigned user, including an inactive user, keeps a walled event out. These bare intervals use the same ordering and pagination with no wall metadata or separate counts. Removing a wall leaves unassigned occupancy unchanged and returns assigned events on the next read. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls.",
+        "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns only events where the requested active user is an attendee, across walls using only starts_at, ends_at and all_day, with normal pagination. view=busy never includes unassigned walled events; those appear only on the service occupancy read. matter_id and kind filters are refused. view=occupancy is service-principal only under calendar:read and returns only starts_at, ends_at and all_day for visible assigned or unassigned events. Events on walled matters are also included when they have no assigned attendee user (no active attendee users; inactive users do not count). Reactivating an attendee excludes that walled interval on the next read. all_day is the only widening of the times-only shape; no event id, title, matter, kind, attendee, video or wall metadata is disclosed. These bare intervals use the same ordering and pagination with no separate counts. Removing a wall leaves unassigned occupancy unchanged and returns assigned events on the next read. It uses the same interval bound and pagination and refuses user_id/matter_id/kind filters. Ordinary event gets/lists retain their existing walls and include optional video metadata where the event is readable.",
         "tags": [
           "Calendar"
         ],
@@ -38219,7 +38219,7 @@
               "context_token"
             ]
           },
-          "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns occupancy across walls using only starts_at, ends_at and all_day, with normal pagination. matter_id and kind filters are refused. view=occupancy is service-principal only under calendar:read and returns only starts_at and ends_at for visible assigned or unassigned events. Events on walled matters are also included when they have no assigned attendee user (no calendar_event_attendees rows); any assigned user, including an inactive user, keeps a walled event out. These bare intervals use the same ordering and pagination with no wall metadata or separate counts. Removing a wall leaves unassigned occupancy unchanged and returns assigned events on the next read. It uses the same interval bound and pagination, refuses user_id/matter_id/kind filters and exposes no all_day flag or other details. Ordinary event gets/lists retain their existing walls."
+          "description": "Cursor-paginated calendar events the caller is allowed to see. view=busy requires active user_id and an ordered from_time/to_time interval within the available-dates maximum range. It returns only events where the requested active user is an attendee, across walls using only starts_at, ends_at and all_day, with normal pagination. view=busy never includes unassigned walled events; those appear only on the service occupancy read. matter_id and kind filters are refused. view=occupancy is service-principal only under calendar:read and returns only starts_at, ends_at and all_day for visible assigned or unassigned events. Events on walled matters are also included when they have no assigned attendee user (no active attendee users; inactive users do not count). Reactivating an attendee excludes that walled interval on the next read. all_day is the only widening of the times-only shape; no event id, title, matter, kind, attendee, video or wall metadata is disclosed. These bare intervals use the same ordering and pagination with no separate counts. Removing a wall leaves unassigned occupancy unchanged and returns assigned events on the next read. It uses the same interval bound and pagination and refuses user_id/matter_id/kind filters. Ordinary event gets/lists retain their existing walls and include optional video metadata where the event is readable."
         },
         "security": [
           {
@@ -38234,7 +38234,7 @@
       "post": {
         "operationId": "createCalendarEvent",
         "summary": "Create a calendar event",
-        "description": "Creates one calendar event. A repeated Idempotency-Key with the same body returns the original result.",
+        "description": "Creates one calendar event. A repeated Idempotency-Key with the same body returns the original result. Optional video metadata identifies video bookings: requested (boolean, required on create), provider (manifest module id, 2 to 42 lowercase slug characters, or null), host_user_id (new or changed hosts must be active core users; null clears), provider_meeting_id (opaque string up to 200 characters or null). location carries the join link. Omitted video on PATCH is preserved; null clears it; an object merges only supplied fields against the current row, including concurrent writers. Requested is optional on PATCH. A null field clears it (requested resets to false); absent video starts with requested false and null fields. An unchanged host may remain after deactivation. Updating the meeting id does not infer requested. Existing staff/service write rules and walls apply. Calendar event notifications retain record IDs; recipients fetch video with the other event fields through getCalendarEvent.",
         "tags": [
           "Calendar"
         ],
@@ -38356,7 +38356,8 @@
               "context_token",
               "body"
             ]
-          }
+          },
+          "description": "Creates one calendar event. A repeated Idempotency-Key with the same body returns the original result. Optional video metadata identifies video bookings: requested (boolean, required on create), provider (manifest module id, 2 to 42 lowercase slug characters, or null), host_user_id (new or changed hosts must be active core users; null clears), provider_meeting_id (opaque string up to 200 characters or null). location carries the join link. Omitted video on PATCH is preserved; null clears it; an object merges only supplied fields against the current row, including concurrent writers. Requested is optional on PATCH. A null field clears it (requested resets to false); absent video starts with requested false and null fields. An unchanged host may remain after deactivation. Updating the meeting id does not infer requested. Existing staff/service write rules and walls apply. Calendar event notifications retain record IDs; recipients fetch video with the other event fields through getCalendarEvent."
         },
         "security": [
           {
@@ -38383,7 +38384,7 @@
       "get": {
         "operationId": "getCalendarEvent",
         "summary": "Get a calendar event",
-        "description": "Returns the calendar event. A matter wall or a missing record is a not_found problem, with the same response either way.",
+        "description": "Returns the calendar event. A matter wall or a missing record is a not_found problem, with the same response either way. Optional video metadata identifies video bookings: requested (boolean, required on create), provider (manifest module id, 2 to 42 lowercase slug characters, or null), host_user_id (new or changed hosts must be active core users; null clears), provider_meeting_id (opaque string up to 200 characters or null). location carries the join link. Omitted video on PATCH is preserved; null clears it; an object merges only supplied fields against the current row, including concurrent writers. Requested is optional on PATCH. A null field clears it (requested resets to false); absent video starts with requested false and null fields. An unchanged host may remain after deactivation. Updating the meeting id does not infer requested. Existing staff/service write rules and walls apply. Calendar event notifications retain record IDs; recipients fetch video with the other event fields through getCalendarEvent.",
         "tags": [
           "Calendar"
         ],
@@ -38499,7 +38500,8 @@
               "query",
               "context_token"
             ]
-          }
+          },
+          "description": "Returns the calendar event. A matter wall or a missing record is a not_found problem, with the same response either way. Optional video metadata identifies video bookings: requested (boolean, required on create), provider (manifest module id, 2 to 42 lowercase slug characters, or null), host_user_id (new or changed hosts must be active core users; null clears), provider_meeting_id (opaque string up to 200 characters or null). location carries the join link. Omitted video on PATCH is preserved; null clears it; an object merges only supplied fields against the current row, including concurrent writers. Requested is optional on PATCH. A null field clears it (requested resets to false); absent video starts with requested false and null fields. An unchanged host may remain after deactivation. Updating the meeting id does not infer requested. Existing staff/service write rules and walls apply. Calendar event notifications retain record IDs; recipients fetch video with the other event fields through getCalendarEvent."
         },
         "security": [
           {
@@ -38514,7 +38516,7 @@
       "patch": {
         "operationId": "updateCalendarEvent",
         "summary": "Update a calendar event",
-        "description": "Patches fields the caller may write. Omitted fields stay as they are. Server-computed fields on the write schema are ignored.",
+        "description": "Patches fields the caller may write. Omitted fields stay as they are. Server-computed fields on the write schema are ignored. Optional video metadata identifies video bookings: requested (boolean, required on create), provider (manifest module id, 2 to 42 lowercase slug characters, or null), host_user_id (new or changed hosts must be active core users; null clears), provider_meeting_id (opaque string up to 200 characters or null). location carries the join link. Omitted video on PATCH is preserved; null clears it; an object merges only supplied fields against the current row, including concurrent writers. Requested is optional on PATCH. A null field clears it (requested resets to false); absent video starts with requested false and null fields. An unchanged host may remain after deactivation. Updating the meeting id does not infer requested. Existing staff/service write rules and walls apply. Calendar event notifications retain record IDs; recipients fetch video with the other event fields through getCalendarEvent.",
         "tags": [
           "Calendar"
         ],
@@ -38645,7 +38647,8 @@
               "context_token",
               "body"
             ]
-          }
+          },
+          "description": "Patches fields the caller may write. Omitted fields stay as they are. Server-computed fields on the write schema are ignored. Optional video metadata identifies video bookings: requested (boolean, required on create), provider (manifest module id, 2 to 42 lowercase slug characters, or null), host_user_id (new or changed hosts must be active core users; null clears), provider_meeting_id (opaque string up to 200 characters or null). location carries the join link. Omitted video on PATCH is preserved; null clears it; an object merges only supplied fields against the current row, including concurrent writers. Requested is optional on PATCH. A null field clears it (requested resets to false); absent video starts with requested false and null fields. An unchanged host may remain after deactivation. Updating the meeting id does not infer requested. Existing staff/service write rules and walls apply. Calendar event notifications retain record IDs; recipients fetch video with the other event fields through getCalendarEvent."
         },
         "security": [
           {
@@ -59693,7 +59696,7 @@
       "get": {
         "operationId": "listSettings",
         "summary": "List settings",
-        "description": "Admins see every registry setting. A module with settings:read and approved contracts:call or contracts:provide sees only its contract runtime settings, including modules.contract_call_max_bytes. Secrets are never returned.",
+        "description": "Every registry setting with its key, label, type, tab, value, default, configured, locked, help, and optional allowed. Admins see every setting. A module with settings:read and approved contracts:call or contracts:provide sees only its contract runtime settings, including modules.contract_call_max_bytes. Secrets are never returned; configured is.",
         "tags": [
           "Settings"
         ],
@@ -69967,6 +69970,7 @@
           "code": {
             "type": "string",
             "enum": [
+              "invalid_input",
               "too_large",
               "validation_failed",
               "unauthenticated",
@@ -75835,13 +75839,17 @@
             "type": "string",
             "format": "date-time",
             "description": "UTC timestamp."
+          },
+          "all_day": {
+            "type": "boolean"
           }
         },
         "required": [
           "starts_at",
-          "ends_at"
+          "ends_at",
+          "all_day"
         ],
-        "description": "Service-only firm-wide occupancy under calendar:read, including events on walled matters only when they have no assigned attendee user (no calendar_event_attendees rows). Walled events with any assigned user stay out; inactive users still count as assigned. Start/end only; exact requested interval overlap; no other fields."
+        "description": "Service-only firm-wide occupancy under calendar:read, including events on walled matters only when they have no assigned attendee user (no active attendee users; inactive users do not count). Start/end and all_day only: all_day is the sole widening of the times-only shape; exact requested interval overlap; no identifiers, video or other details."
       },
       "CalendarBusyBlock": {
         "type": "object",
@@ -75952,6 +75960,108 @@
         ],
         "description": "Approved requires reference_number, declined forbids it; pending forbids both optional fields. All results must match the original intent/amount/destination. Only approved permits paid-intake continuation. No core matter/contact/payment write occurs in the broker."
       },
+      "CalendarVideo": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requested": {
+            "type": "boolean"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,40}[a-z0-9]$",
+                "minLength": 2,
+                "maxLength": 42
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "host_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider_meeting_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "requested"
+        ],
+        "description": "Video booking metadata. Requested is required on create. Provider follows the manifest module-id rule (2 to 42 lowercase slug characters). New or changed hosts must be active core users; unchanged hosts may remain after deactivation. Location holds the join link."
+      },
+      "CalendarVideoPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requested": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,40}[a-z0-9]$",
+                "minLength": 2,
+                "maxLength": 42
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "host_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provider_meeting_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "description": "PATCH merges supplied fields against the current video object under a row lock. Omitted fields are preserved; null clears a field (requested resets to false). Whole video null clears the object. A patch on absent video starts with requested false and null fields. New or changed hosts must be active; an unchanged deactivated host is preserved."
+      },
       "CalendarEvent": {
         "type": "object",
         "additionalProperties": false,
@@ -76001,6 +76111,16 @@
           },
           "all_day": {
             "type": "boolean"
+          },
+          "video": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalendarVideo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "matter_id": {
             "anyOf": [
@@ -76080,6 +76200,16 @@
           },
           "all_day": {
             "type": "boolean"
+          },
+          "video": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalendarVideo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "matter_id": {
             "anyOf": [
@@ -79689,6 +79819,10 @@
           "key": {
             "type": "string"
           },
+          "label": {
+            "type": "string",
+            "description": "Plain name shown on the admin Settings page."
+          },
           "type": {
             "type": "string",
             "enum": [
@@ -79724,13 +79858,14 @@
         },
         "required": [
           "key",
+          "label",
           "type",
           "tab",
           "configured",
           "locked",
           "help"
         ],
-        "description": "One settings-registry row."
+        "description": "One settings-registry row with key, label, type, tab, value, default, configured, locked, help, and optional allowed."
       },
       "SettingKey": {
         "type": "string",
@@ -79752,11 +79887,13 @@
           "security.totp_required.staff",
           "security.totp_required.accountant",
           "security.totp_required.client",
+          "security.password_optional",
           "security.idle_timeout_seconds",
           "security.failed_sign_in_limit",
           "security.lockout_seconds",
           "security.api_rate_limit_per_minute",
           "client_access.days_after_close",
+          "practice.case_number_examples",
           "practice.case_number_patterns",
           "practice.conflict_score_floor",
           "practice.conflict_additional_names_max",
@@ -83131,7 +83268,7 @@
           },
           "price_note": {
             "type": "string",
-            "description": "Empty when the module is free."
+            "description": "The provider's listing price information, including any provider disclaimer. Togavsu never sells or bills modules."
           },
           "flagged": {
             "type": "boolean"
@@ -88429,6 +88566,16 @@
           "all_day": {
             "type": "boolean"
           },
+          "video": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalendarVideoPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "matter_id": {
             "anyOf": [
               {
@@ -91126,6 +91273,15 @@
       "help": "Client two-factor required when true."
     },
     {
+      "key": "security.password_optional",
+      "type": "boolean",
+      "tab": "security",
+      "default": false,
+      "secret": false,
+      "locked": false,
+      "help": "Lets users sign in with their email alone. For test and demo installs only: anyone who knows an account's email can sign in. Turning it off does not sign out anyone already signed in; each sign-in without a password is in the audit log. Default off."
+    },
+    {
       "key": "security.idle_timeout_seconds",
       "type": "integer",
       "tab": "security",
@@ -91175,6 +91331,17 @@
       "minimum": 0,
       "maximum": 3650,
       "help": "Days after closed_on that a client may still read the matter, its shared files and invoices. Default 14. Reopening restores access."
+    },
+    {
+      "key": "practice.case_number_examples",
+      "type": "json",
+      "tab": "practice",
+      "default": [
+        "23AR-CV00825"
+      ],
+      "secret": false,
+      "locked": false,
+      "help": "Type one real case number per line in each format your courts use. Togavsu learns the format from the example."
     },
     {
       "key": "practice.case_number_patterns",

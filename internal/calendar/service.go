@@ -289,6 +289,12 @@ type change struct{ Field, Old, New string }
 func (s *Service) commit(ctx context.Context, p domain.Principal, write, undo func(context.Context) error, entity string, id, matter domain.ID, action, summary string, changes []change) error {
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
+	return s.commitLocked(ctx, p, write, undo, entity, id, matter, action, summary, changes)
+}
+
+// commitLocked is commit while the caller holds wmu. Event patches acquire it
+// before their row lock so another local write cannot hold wmu waiting on that row.
+func (s *Service) commitLocked(ctx context.Context, p domain.Principal, write, undo func(context.Context) error, entity string, id, matter domain.ID, action, summary string, changes []change) error {
 	wrote := false
 	err := s.d.Audit.Atomic(ctx, func(ctx context.Context) error {
 		if err := write(ctx); err != nil {

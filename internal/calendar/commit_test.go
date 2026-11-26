@@ -231,6 +231,14 @@ type racyStore struct {
 	land func()
 }
 
+// Deliberately bypass the event lock in this faulty-store fixture: land injects
+// a writer synchronously inside Event. This keeps exercising the defensive stale
+// check for writers that do not participate in the read/merge/write lock. Real
+// concurrent locked patches are covered by TestCoreUpdate2IVideoConcurrentMerge.
+func (r *racyStore) WithEventLock(ctx context.Context, _ domain.ID, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 func (r *racyStore) fire() {
 	if f := r.land; f != nil {
 		r.land = nil

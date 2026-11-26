@@ -2,8 +2,10 @@ package calendar
 
 import (
 	"context"
+	"errors"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/repository"
 )
 
 // BusyBlock is occupancy only. It deliberately cannot carry any event, matter,
@@ -54,12 +56,13 @@ func (s *Service) ListBusy(ctx context.Context, p domain.Principal, f EventFilte
 
 // OccupancyBlock contains only a busy interval, including unassigned walled events.
 type OccupancyBlock struct {
+	AllDay   bool   `json:"all_day"`
 	StartsAt string `json:"starts_at"`
 	EndsAt   string `json:"ends_at"`
 }
 
 // ListOccupancy allows a calendar service principal to read firm-wide occupancy.
-// No user, matter, kind, wall, title, all-day flag or event id is exposed.
+// Only start, end and all_day are exposed; no event details or identifiers.
 func (s *Service) ListOccupancy(ctx context.Context, p domain.Principal, f EventFilter) ([]OccupancyBlock, error) {
 	var zero int
 	if p.Source != domain.SourceService || p.ModuleID == "" || !p.UserID.IsZero() {
@@ -91,14 +94,36 @@ func (s *Service) ListOccupancy(ctx context.Context, p domain.Principal, f Event
 	for _, row := range rows {
 		// Unassigned intervals never consult wall policy, regardless of placement.
 		// Assigned intervals retain the same authoritative service policy as lists.
+		assigned, err := s.hasActiveAttendee(ctx, row.Attendees)
+		if err != nil {
+			return nil, err
+		}
 		if !overlaps(domain.FromUnixMicro(row.StartsAt), domain.FromUnixMicro(row.EndsAt), f.From, f.To) ||
-			(row.HasAttendees && !row.MatterID.IsZero() && !s.visible(ctx, p, row.MatterID)) {
+			(assigned && !row.MatterID.IsZero() && !s.visible(ctx, p, row.MatterID)) {
 			continue
 		}
-		out = append(out, OccupancyBlock{StartsAt: fmtTime(row.StartsAt), EndsAt: fmtTime(row.EndsAt)})
+		out = append(out, OccupancyBlock{StartsAt: fmtTime(row.StartsAt), EndsAt: fmtTime(row.EndsAt), AllDay: row.AllDay})
 		if f.Max > zero && len(out) == f.Max {
 			break
 		}
 	}
 	return out, nil
+}
+
+// hasActiveAttendee reads current user state on every availability read. Lookup
+// failures fail the read rather than silently exposing an assigned walled event.
+func (s *Service) hasActiveAttendee(ctx context.Context, ids []domain.ID) (bool, error) {
+	for _, id := range ids {
+		u, err := s.d.Users.Get(ctx, id)
+		if errors.Is(err, repository.ErrNotFound) || isCode(err, domain.CodeNotFound) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if u.Active {
+			return true, nil
+		}
+	}
+	return false, nil
 }

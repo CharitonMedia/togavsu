@@ -150,7 +150,7 @@ func TestCoreUpdate2GFirmOccupancy(t *testing.T) {
 			}
 			for _, r := range rows {
 				row := r.(map[string]any)
-				if len(row) != 2 || row["starts_at"] != start.Format(time.RFC3339) || row["ends_at"] != start.Add(time.Hour).Format(time.RFC3339) {
+				if len(row) != 3 || row["all_day"] != false || row["starts_at"] != start.Format(time.RFC3339) || row["ends_at"] != start.Add(time.Hour).Format(time.RFC3339) {
 					t.Fatalf("leaked details: %v", row)
 				}
 			}

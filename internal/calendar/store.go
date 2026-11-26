@@ -13,6 +13,9 @@ import (
 // Store is the calendar persistence seam. Memory satisfies it; a Postgres store
 // over calendar_events, calendar_event_attendees and deadlines is the upgrade path.
 type Store interface {
+	// WithEventLock serializes read/merge/write for one event. Postgres holds the
+	// row lock through the audit transaction's commit or rollback.
+	WithEventLock(context.Context, domain.ID, func(context.Context) error) error
 	PutEvent(ctx context.Context, row Event) error
 	DeleteEvent(ctx context.Context, id domain.ID) error
 	Event(ctx context.Context, id domain.ID) (Event, error)
@@ -68,6 +71,7 @@ type IdemRecord struct {
 
 // Memory is the in-process Store.
 type Memory struct {
+	updateMu  sync.Mutex
 	mu        sync.RWMutex
 	events    map[domain.ID]Event
 	deadlines map[domain.ID]Deadline
@@ -88,10 +92,17 @@ func NewMemory() *Memory {
 	}
 }
 
+func (m *Memory) WithEventLock(ctx context.Context, _ domain.ID, fn func(context.Context) error) error {
+	m.updateMu.Lock()
+	defer m.updateMu.Unlock()
+	return fn(ctx)
+}
+
 func (m *Memory) PutEvent(_ context.Context, row Event) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	row.Attendees = append([]domain.ID(nil), row.Attendees...)
+	row.Video = row.Video.Clone()
 	m.events[row.ID] = row
 	return nil
 }
@@ -114,6 +125,7 @@ func (m *Memory) Event(_ context.Context, id domain.ID) (Event, error) {
 		return Event{}, repository.ErrNotFound
 	}
 	row.Attendees = append([]domain.ID(nil), row.Attendees...)
+	row.Video = row.Video.Clone()
 	return row, nil
 }
 
@@ -148,7 +160,7 @@ func (m *Memory) OccupancyCandidates(ctx context.Context, from, to time.Time) ([
 	}
 	var out []OccupancyCandidate
 	for _, row := range rows {
-		out = append(out, OccupancyCandidate{StartsAt: row.StartsAt, EndsAt: row.EndsAt, MatterID: row.MatterID, HasAttendees: len(row.Attendees) > 0})
+		out = append(out, OccupancyCandidate{StartsAt: row.StartsAt, EndsAt: row.EndsAt, MatterID: row.MatterID, AllDay: row.AllDay, Attendees: row.Attendees})
 	}
 	return out, nil
 }
@@ -159,6 +171,7 @@ func (m *Memory) Events(context.Context) ([]Event, error) {
 	out := make([]Event, 0, len(m.events))
 	for _, row := range m.events {
 		row.Attendees = append([]domain.ID(nil), row.Attendees...)
+		row.Video = row.Video.Clone()
 		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool {

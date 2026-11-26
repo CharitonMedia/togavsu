@@ -54,10 +54,11 @@ type Event struct {
 // OccupancyCandidate is internal persistence input to the service's occupancy
 // filter, never a response. Only OccupancyBlock may be returned to the caller.
 type OccupancyCandidate struct {
-	StartsAt     int64
-	EndsAt       int64
-	MatterID     domain.ID
-	HasAttendees bool
+	StartsAt  int64
+	EndsAt    int64
+	MatterID  domain.ID
+	AllDay    bool
+	Attendees []domain.ID
 }
 
 // Start and End return the stored UTC instants.
@@ -76,6 +77,7 @@ type EventInput struct {
 	TravelMinutes int
 	Notes         string
 	Attendees     []domain.ID
+	Video         *domain.CalendarVideo
 }
 
 // EventPatch changes only the fields that are set.
@@ -90,6 +92,8 @@ type EventPatch struct {
 	TravelMinutes *int
 	Notes         *string
 	Attendees     *[]domain.ID
+	// Video nil preserves the value; a pointer to nil clears it.
+	Video **VideoPatch
 }
 
 // EventFilter selects events. From and To bound the overlap window; zero values are open.
