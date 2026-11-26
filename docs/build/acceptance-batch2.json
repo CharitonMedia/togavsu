@@ -5,7 +5,7 @@
   },
   {
     "id": "CU2-02",
-    "requirement": "A service call on every CORE-30 operation leaves out a walled matter's records and answers not_found on a walled get; lifting the wall returns them on the next read. The one exception is the occupancy read, which also returns the events of walled matters with no assigned attendee user as start and end intervals only (Patrick's 2026-11-21 ruling, section 1)."
+    "requirement": "A service call on every CORE-30 operation leaves out a walled matter's records and answers not_found on a walled get; lifting the wall returns them on the next read. The one exception is the occupancy read, which also returns the events of walled matters with no assigned attendee user as intervals carrying only start, end and all_day (Patrick's 2026-11-21 ruling, section 1); from core update 2i an attendee counts as assigned only while that user is active (Patrick's 2026-11-24 approval, section 1)."
   },
   {
     "id": "CU2-03",
